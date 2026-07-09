@@ -57,11 +57,11 @@ export function UpdateCheckerSection({
     setChecking(true)
     try {
       const response = await fetch(
-        'https://api.github.com/repos/Calcium-Ion/new-api/releases/latest',
+        'https://api.github.com/repos/QuantumNous/token-boat/releases/latest',
         {
           headers: {
             Accept: 'application/vnd.github+json',
-            'User-Agent': 'new-api-dashboard',
+            'User-Agent': 'tokenboat-dashboard',
           },
         }
       )
@@ -98,9 +98,7 @@ export function UpdateCheckerSection({
   }
 
   const goToRelease = () => {
-    if (release?.html_url) {
-      window.open(release.html_url, '_blank', 'noopener,noreferrer')
-    }
+    window.open('http://tokenboat.com', '_blank', 'noopener,noreferrer')
   }
 
   return (

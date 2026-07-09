@@ -2,7 +2,7 @@
 
 本文档提供使用宝塔面板 Docker 功能部署 token boat 的图文教程。
 
-> 📖 官方文档：[宝塔面板部署](https://docs.token-boat.pro/zh/docs/installation/deployment-methods/bt-docker-installation)
+> 📖 官方文档：[宝塔面板部署](http://tokenboat.com/zh/docs/installation/deployment-methods/bt-docker-installation)
 
 ***
 
@@ -136,10 +136,10 @@ docker-compose down && docker-compose up -d
 
 ## 相关链接
 
-- [官方文档](https://docs.token-boat.pro/zh/docs/installation)
-- [环境变量配置](https://docs.token-boat.pro/zh/docs/installation/config-maintenance/environment-variables)
-- [常见问题](https://docs.token-boat.pro/zh/docs/support/faq)
-- [GitHub 仓库](https://github.com/QuantumNous/token-boat)
+- [官方文档](http://tokenboat.com/zh/docs/installation)
+- [环境变量配置](http://tokenboat.com/zh/docs/installation/config-maintenance/environment-variables)
+- [常见问题](http://tokenboat.com/zh/docs/support/faq)
+- [GitHub 仓库](http://tokenboat.com)
 
 ***
 

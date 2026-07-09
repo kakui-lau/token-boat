@@ -18,7 +18,7 @@
   <a href="https://raw.githubusercontent.com/Calcium-Ion/token-boat/main/LICENSE">
     <img src="https://img.shields.io/github/license/Calcium-Ion/token-boat?color=brightgreen" alt="licence">
   </a><!--
-  --><a href="https://github.com/Calcium-Ion/token-boat/releases/latest">
+  --><a href="http://tokenboat.com">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/token-boat?color=brightgreen&include_prereleases" alt="version">
   </a><!--
   --><a href="https://hub.docker.com/r/CalciumIon/token-boat">
@@ -155,7 +155,7 @@ docker run --name token boat -d --restart always \
 > [!WARNING]
 > Lorsque vous exploitez ce projet en tant que service public d'IA générative ou service de revente d'API, les utilisateurs doivent d'abord remplir toutes les obligations requises en matière d'enregistrement, de licence, de sécurité du contenu, de vérification d'identité, de conservation des journaux, de fiscalité, de paiement et d'autorisation en amont.
 
-📖 Pour plus de méthodes de déploiement, veuillez vous référer à [Guide de déploiement](https://docs.token-boat.pro/en/docs/installation)
+📖 Pour plus de méthodes de déploiement, veuillez vous référer à [Guide de déploiement](http://tokenboat.com/en/docs/installation)
 
 ---
 
@@ -163,7 +163,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 📖 [Documentation officielle](https://docs.token-boat.pro/en/docs) | [![Demander à DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
+### 📖 [Documentation officielle](http://tokenboat.com/en/docs) | [![Demander à DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
 
 </div>
 
@@ -171,17 +171,17 @@ docker run --name token boat -d --restart always \
 
 | Catégorie | Lien |
 |------|------|
-| 🚀 Guide de déploiement | [Documentation d'installation](https://docs.token-boat.pro/en/docs/installation) |
-| ⚙️ Configuration de l'environnement | [Variables d'environnement](https://docs.token-boat.pro/en/docs/installation/config-maintenance/environment-variables) |
-| 📡 Documentation de l'API | [Documentation de l'API](https://docs.token-boat.pro/en/docs/api) |
-| ❓ FAQ | [FAQ](https://docs.token-boat.pro/en/docs/support/faq) |
-| 💬 Interaction avec la communauté | [Canaux de communication](https://docs.token-boat.pro/en/docs/support/community-interaction) |
+| 🚀 Guide de déploiement | [Documentation d'installation](http://tokenboat.com/en/docs/installation) |
+| ⚙️ Configuration de l'environnement | [Variables d'environnement](http://tokenboat.com/en/docs/installation/config-maintenance/environment-variables) |
+| 📡 Documentation de l'API | [Documentation de l'API](http://tokenboat.com/en/docs/api) |
+| ❓ FAQ | [FAQ](http://tokenboat.com/en/docs/support/faq) |
+| 💬 Interaction avec la communauté | [Canaux de communication](http://tokenboat.com/en/docs/support/community-interaction) |
 
 ---
 
 ## ✨ Fonctionnalités clés
 
-> Pour les fonctionnalités détaillées, veuillez vous référer à [Présentation des fonctionnalités](https://docs.token-boat.pro/en/docs/guide/wiki/basic-concepts/features-introduction) |
+> Pour les fonctionnalités détaillées, veuillez vous référer à [Présentation des fonctionnalités](http://tokenboat.com/en/docs/guide/wiki/basic-concepts/features-introduction) |
 
 ### 🎨 Fonctions principales
 
@@ -206,16 +206,16 @@ docker run --name token boat -d --restart always \
 - 🤖 Connexion par autorisation LinuxDO
 - 📱 Connexion par autorisation Telegram
 - 🔑 Authentification unifiée OIDC
-- 🔍 Requête de quota d'utilisation de clé (avec [token-boat-key-tool](https://github.com/Calcium-Ion/token-boat-key-tool))
+- 🔍 Requête de quota d'utilisation de clé (avec [token-boat-key-tool](http://tokenboat.com))
 
 ### 🚀 Fonctionnalités avancées
 
 **Prise en charge des formats d'API:**
-- ⚡ [OpenAI Responses](https://docs.token-boat.pro/en/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](https://docs.token-boat.pro/en/docs/api/ai-model/realtime/create-realtime-session) (y compris Azure)
-- ⚡ [Claude Messages](https://docs.token-boat.pro/en/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](https://doc.token-boat.pro/en/api/google-gemini-chat)
-- 🔄 [Modèles Rerank](https://docs.token-boat.pro/en/docs/api/ai-model/rerank/create-rerank) (Cohere, Jina)
+- ⚡ [OpenAI Responses](http://tokenboat.com/en/docs/api/ai-model/chat/openai/create-response)
+- ⚡ [OpenAI Realtime API](http://tokenboat.com/en/docs/api/ai-model/realtime/create-realtime-session) (y compris Azure)
+- ⚡ [Claude Messages](http://tokenboat.com/en/docs/api/ai-model/chat/create-message)
+- ⚡ [Google Gemini](http://tokenboat.com/en/api/google-gemini-chat)
+- 🔄 [Modèles Rerank](http://tokenboat.com/en/docs/api/ai-model/rerank/create-rerank) (Cohere, Jina)
 
 **Routage intelligent:**
 - ⚖️ Sélection aléatoire pondérée des canaux
@@ -258,17 +258,17 @@ docker run --name token boat -d --restart always \
 
 ## 🤖 Prise en charge des modèles
 
-> Pour les détails, veuillez vous référer à [Documentation de l'API - Interface de passerelle](https://docs.token-boat.pro/en/docs/api)
+> Pour les détails, veuillez vous référer à [Documentation de l'API - Interface de passerelle](http://tokenboat.com/en/docs/api)
 
 | Type de modèle | Description | Documentation |
 |---------|------|------|
-| 🤖 OpenAI-Compatible | Modèles compatibles OpenAI | [Documentation](https://docs.token-boat.pro/en/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | Format OpenAI Responses | [Documentation](https://docs.token-boat.pro/en/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [Documentation](https://doc.token-boat.pro/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [Documentation](https://doc.token-boat.pro/api/suno-music) |
-| 🔄 Rerank | Cohere, Jina | [Documentation](https://docs.token-boat.pro/en/docs/api/ai-model/rerank/creatererank) |
-| 💬 Claude | Format Messages | [Documentation](https://docs.token-boat.pro/en/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Format Google Gemini | [Documentation](https://docs.token-boat.pro/en/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
+| 🤖 OpenAI-Compatible | Modèles compatibles OpenAI | [Documentation](http://tokenboat.com/en/docs/api/ai-model/chat/openai/createchatcompletion) |
+| 🤖 OpenAI Responses | Format OpenAI Responses | [Documentation](http://tokenboat.com/en/docs/api/ai-model/chat/openai/createresponse) |
+| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [Documentation](http://tokenboat.com/api/midjourney-proxy-image) |
+| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [Documentation](http://tokenboat.com/api/suno-music) |
+| 🔄 Rerank | Cohere, Jina | [Documentation](http://tokenboat.com/en/docs/api/ai-model/rerank/creatererank) |
+| 💬 Claude | Format Messages | [Documentation](http://tokenboat.com/en/docs/api/ai-model/chat/createmessage) |
+| 🌐 Gemini | Format Google Gemini | [Documentation](http://tokenboat.com/en/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
 | 🔧 Dify | Mode ChatFlow | - |
 | 🎯 Amont personnalisé | Configuration des points d'accès amont légalement autorisés | - |
 
@@ -277,16 +277,16 @@ docker run --name token boat -d --restart always \
 <details>
 <summary>Voir la liste complète des interfaces</summary>
 
-- [Interface de discussion (Chat Completions)](https://docs.token-boat.pro/en/docs/api/ai-model/chat/openai/createchatcompletion)
-- [Interface de réponse (Responses)](https://docs.token-boat.pro/en/docs/api/ai-model/chat/openai/createresponse)
-- [Interface d'image (Image)](https://docs.token-boat.pro/en/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [Interface audio (Audio)](https://docs.token-boat.pro/en/docs/api/ai-model/audio/openai/create-transcription)
-- [Interface vidéo (Video)](https://docs.token-boat.pro/en/docs/api/ai-model/audio/openai/createspeech)
-- [Interface d'incorporation (Embeddings)](https://docs.token-boat.pro/en/docs/api/ai-model/embeddings/createembedding)
-- [Interface de rerank (Rerank)](https://docs.token-boat.pro/en/docs/api/ai-model/rerank/creatererank)
-- [Conversation en temps réel (Realtime)](https://docs.token-boat.pro/en/docs/api/ai-model/realtime/createrealtimesession)
-- [Discussion Claude](https://docs.token-boat.pro/en/docs/api/ai-model/chat/createmessage)
-- [Discussion Google Gemini](https://docs.token-boat.pro/en/docs/api/ai-model/chat/gemini/geminirelayv1beta)
+- [Interface de discussion (Chat Completions)](http://tokenboat.com/en/docs/api/ai-model/chat/openai/createchatcompletion)
+- [Interface de réponse (Responses)](http://tokenboat.com/en/docs/api/ai-model/chat/openai/createresponse)
+- [Interface d'image (Image)](http://tokenboat.com/en/docs/api/ai-model/images/openai/post-v1-images-generations)
+- [Interface audio (Audio)](http://tokenboat.com/en/docs/api/ai-model/audio/openai/create-transcription)
+- [Interface vidéo (Video)](http://tokenboat.com/en/docs/api/ai-model/audio/openai/createspeech)
+- [Interface d'incorporation (Embeddings)](http://tokenboat.com/en/docs/api/ai-model/embeddings/createembedding)
+- [Interface de rerank (Rerank)](http://tokenboat.com/en/docs/api/ai-model/rerank/creatererank)
+- [Conversation en temps réel (Realtime)](http://tokenboat.com/en/docs/api/ai-model/realtime/createrealtimesession)
+- [Discussion Claude](http://tokenboat.com/en/docs/api/ai-model/chat/createmessage)
+- [Discussion Google Gemini](http://tokenboat.com/en/docs/api/ai-model/chat/gemini/geminirelayv1beta)
 
 </details>
 
@@ -330,7 +330,7 @@ docker run --name token boat -d --restart always \
 | `PYROSCOPE_BLOCK_RATE` | Taux d'échantillonnage block Pyroscope | `5` |
 | `HOSTNAME` | Nom d'hôte tagué pour Pyroscope | `token boat` |
 
-📖 **Configuration complète:** [Documentation des variables d'environnement](https://docs.token-boat.pro/en/docs/installation/config-maintenance/environment-variables)
+📖 **Configuration complète:** [Documentation des variables d'environnement](http://tokenboat.com/en/docs/installation/config-maintenance/environment-variables)
 
 </details>
 
@@ -421,8 +421,8 @@ docker run --name token boat -d --restart always \
 
 | Projet | Description |
 |------|------|
-| [token-boat-key-tool](https://github.com/Calcium-Ion/token-boat-key-tool) | Outil de recherche de quota d'utilisation avec une clé |
-| [token-boat-horizon](https://github.com/Calcium-Ion/token-boat-horizon) | Version optimisée haute performance de token boat |
+| [token-boat-key-tool](http://tokenboat.com) | Outil de recherche de quota d'utilisation avec une clé |
+| [token-boat-horizon](http://tokenboat.com) | Version optimisée haute performance de token boat |
 
 ---
 
@@ -432,10 +432,10 @@ docker run --name token boat -d --restart always \
 
 | Ressource | Lien |
 |------|------|
-| 📘 FAQ | [FAQ](https://docs.token-boat.pro/en/docs/support/faq) |
-| 💬 Interaction avec la communauté | [Canaux de communication](https://docs.token-boat.pro/en/docs/support/community-interaction) |
-| 🐛 Commentaires sur les problèmes | [Commentaires sur les problèmes](https://docs.token-boat.pro/en/docs/support/feedback-issues) |
-| 📚 Documentation complète | [Documentation officielle](https://docs.token-boat.pro/en/docs) |
+| 📘 FAQ | [FAQ](http://tokenboat.com/en/docs/support/faq) |
+| 💬 Interaction avec la communauté | [Canaux de communication](http://tokenboat.com/en/docs/support/community-interaction) |
+| 🐛 Commentaires sur les problèmes | [Commentaires sur les problèmes](http://tokenboat.com/en/docs/support/feedback-issues) |
+| 📚 Documentation complète | [Documentation officielle](http://tokenboat.com/en/docs) |
 
 ### 🤝 Guide de contribution
 
@@ -474,7 +474,7 @@ Si les politiques de votre organisation ne permettent pas l'utilisation de logic
 
 Si ce projet vous est utile, bienvenue à nous donner une ⭐️ Étoile！
 
-**[Documentation officielle](https://docs.token-boat.pro/en/docs)** • **[Commentaires sur les problèmes](https://github.com/Calcium-Ion/token-boat/issues)** • **[Dernière version](https://github.com/Calcium-Ion/token-boat/releases)**
+**[Documentation officielle](http://tokenboat.com/en/docs)** • **[Commentaires sur les problèmes](http://tokenboat.com)** • **[Dernière version](http://tokenboat.com)**
 
 <sub>Construit avec ❤️ par QuantumNous</sub>
 

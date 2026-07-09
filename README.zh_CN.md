@@ -18,7 +18,7 @@
   <a href="https://raw.githubusercontent.com/Calcium-Ion/token-boat/main/LICENSE">
     <img src="https://img.shields.io/github/license/Calcium-Ion/token-boat?color=brightgreen" alt="license">
   </a><!--
-  --><a href="https://github.com/Calcium-Ion/token-boat/releases/latest">
+  --><a href="http://tokenboat.com">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/token-boat?color=brightgreen&include_prereleases" alt="release">
   </a><!--
   --><a href="https://hub.docker.com/r/CalciumIon/token-boat">
@@ -155,7 +155,7 @@ docker run --name token boat -d --restart always \
 > [!WARNING]
 > 将本项目作为面向公众的生成式 AI 服务或 API 转售服务运营时，使用者应先完成备案、内容安全、实名、日志留存、税务、支付和上游授权等合规义务。
 
-📖 更多部署方式请参考 [部署指南](https://docs.token-boat.pro/zh/docs/installation)
+📖 更多部署方式请参考 [部署指南](http://tokenboat.com/zh/docs/installation)
 
 ---
 
@@ -163,7 +163,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 📖 [官方文档](https://docs.token-boat.pro/zh/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
+### 📖 [官方文档](http://tokenboat.com/zh/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
 
 </div>
 
@@ -171,17 +171,17 @@ docker run --name token boat -d --restart always \
 
 | 分类 | 链接 |
 |------|------|
-| 🚀 部署指南 | [安装文档](https://docs.token-boat.pro/zh/docs/installation) |
-| ⚙️ 环境配置 | [环境变量](https://docs.token-boat.pro/zh/docs/installation/config-maintenance/environment-variables) |
-| 📡 接口文档 | [API 文档](https://docs.token-boat.pro/zh/docs/api) |
-| ❓ 常见问题 | [FAQ](https://docs.token-boat.pro/zh/docs/support/faq) |
-| 💬 社区交流 | [交流渠道](https://docs.token-boat.pro/zh/docs/support/community-interaction) |
+| 🚀 部署指南 | [安装文档](http://tokenboat.com/zh/docs/installation) |
+| ⚙️ 环境配置 | [环境变量](http://tokenboat.com/zh/docs/installation/config-maintenance/environment-variables) |
+| 📡 接口文档 | [API 文档](http://tokenboat.com/zh/docs/api) |
+| ❓ 常见问题 | [FAQ](http://tokenboat.com/zh/docs/support/faq) |
+| 💬 社区交流 | [交流渠道](http://tokenboat.com/zh/docs/support/community-interaction) |
 
 ---
 
 ## ✨ 主要特性
 
-> 详细特性请参考 [特性说明](https://docs.token-boat.pro/zh/docs/guide/wiki/basic-concepts/features-introduction)
+> 详细特性请参考 [特性说明](http://tokenboat.com/zh/docs/guide/wiki/basic-concepts/features-introduction)
 
 ### 🎨 核心功能
 
@@ -206,16 +206,16 @@ docker run --name token boat -d --restart always \
 - 🤖 LinuxDO 授权登录
 - 📱 Telegram 授权登录
 - 🔑 OIDC 统一认证
-- 🔍 Key 查询使用额度（配合 [token-boat-key-tool](https://github.com/Calcium-Ion/token-boat-key-tool)）
+- 🔍 Key 查询使用额度（配合 [token-boat-key-tool](http://tokenboat.com)）
 
 ### 🚀 高级功能
 
 **API 格式支持：**
-- ⚡ [OpenAI Responses](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](https://docs.token-boat.pro/zh/docs/api/ai-model/realtime/create-realtime-session)（含 Azure）
-- ⚡ [Claude Messages](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](https://doc.token-boat.pro/api/google-gemini-chat)
-- 🔄 [Rerank 模型](https://docs.token-boat.pro/zh/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
+- ⚡ [OpenAI Responses](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/create-response)
+- ⚡ [OpenAI Realtime API](http://tokenboat.com/zh/docs/api/ai-model/realtime/create-realtime-session)（含 Azure）
+- ⚡ [Claude Messages](http://tokenboat.com/zh/docs/api/ai-model/chat/create-message)
+- ⚡ [Google Gemini](http://tokenboat.com/api/google-gemini-chat)
+- 🔄 [Rerank 模型](http://tokenboat.com/zh/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
 
 **智能路由：**
 - ⚖️ 渠道加权随机
@@ -258,17 +258,17 @@ docker run --name token boat -d --restart always \
 
 ## 🤖 模型支持
 
-> 详情请参考 [接口文档 - 网关接口](https://docs.token-boat.pro/zh/docs/api)
+> 详情请参考 [接口文档 - 网关接口](http://tokenboat.com/zh/docs/api)
 
 | 模型类型 | 说明 | 文档 |
 |---------|------|------|
-| 🤖 OpenAI-Compatible | OpenAI 兼容模型 | [文档](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | OpenAI Responses 格式 | [文档](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [文档](https://doc.token-boat.pro/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [文档](https://doc.token-boat.pro/api/suno-music) |
-| 🔄 Rerank | Cohere、Jina | [文档](https://docs.token-boat.pro/zh/docs/api/ai-model/rerank/create-rerank) |
-| 💬 Claude | Messages 格式 | [文档](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Google Gemini 格式 | [文档](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
+| 🤖 OpenAI-Compatible | OpenAI 兼容模型 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createchatcompletion) |
+| 🤖 OpenAI Responses | OpenAI Responses 格式 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createresponse) |
+| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [文档](http://tokenboat.com/api/midjourney-proxy-image) |
+| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [文档](http://tokenboat.com/api/suno-music) |
+| 🔄 Rerank | Cohere、Jina | [文档](http://tokenboat.com/zh/docs/api/ai-model/rerank/create-rerank) |
+| 💬 Claude | Messages 格式 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/createmessage) |
+| 🌐 Gemini | Google Gemini 格式 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
 | 🔧 Dify | ChatFlow 模式 | - |
 | 🎯 自定义上游 | 支持配置合法授权的上游接口地址 | - |
 
@@ -277,16 +277,16 @@ docker run --name token boat -d --restart always \
 <details>
 <summary>查看完整接口列表</summary>
 
-- [聊天接口 (Chat Completions)](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/openai/createchatcompletion)
-- [响应接口 (Responses)](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/openai/createresponse)
-- [图像接口 (Image)](https://docs.token-boat.pro/zh/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [音频接口 (Audio)](https://docs.token-boat.pro/zh/docs/api/ai-model/audio/openai/create-transcription)
-- [视频接口 (Video)](https://docs.token-boat.pro/zh/docs/api/ai-model/audio/openai/createspeech)
-- [嵌入接口 (Embeddings)](https://docs.token-boat.pro/zh/docs/api/ai-model/embeddings/createembedding)
-- [重排序接口 (Rerank)](https://docs.token-boat.pro/zh/docs/api/ai-model/rerank/creatererank)
-- [实时对话 (Realtime)](https://docs.token-boat.pro/zh/docs/api/ai-model/realtime/createrealtimesession)
-- [Claude 聊天](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/createmessage)
-- [Google Gemini 聊天](https://docs.token-boat.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta)
+- [聊天接口 (Chat Completions)](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createchatcompletion)
+- [响应接口 (Responses)](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createresponse)
+- [图像接口 (Image)](http://tokenboat.com/zh/docs/api/ai-model/images/openai/post-v1-images-generations)
+- [音频接口 (Audio)](http://tokenboat.com/zh/docs/api/ai-model/audio/openai/create-transcription)
+- [视频接口 (Video)](http://tokenboat.com/zh/docs/api/ai-model/audio/openai/createspeech)
+- [嵌入接口 (Embeddings)](http://tokenboat.com/zh/docs/api/ai-model/embeddings/createembedding)
+- [重排序接口 (Rerank)](http://tokenboat.com/zh/docs/api/ai-model/rerank/creatererank)
+- [实时对话 (Realtime)](http://tokenboat.com/zh/docs/api/ai-model/realtime/createrealtimesession)
+- [Claude 聊天](http://tokenboat.com/zh/docs/api/ai-model/chat/createmessage)
+- [Google Gemini 聊天](http://tokenboat.com/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta)
 
 </details>
 
@@ -330,7 +330,7 @@ docker run --name token boat -d --restart always \
 | `PYROSCOPE_BLOCK_RATE` | Pyroscope block 采样率                               | `5` |
 | `HOSTNAME` | Pyroscope 标签里的主机名                                          | `token boat` |
 
-📖 **完整配置：** [环境变量文档](https://docs.token-boat.pro/zh/docs/installation/config-maintenance/environment-variables)
+📖 **完整配置：** [环境变量文档](http://tokenboat.com/zh/docs/installation/config-maintenance/environment-variables)
 
 </details>
 
@@ -421,8 +421,8 @@ docker run --name token boat -d --restart always \
 
 | 项目 | 说明 |
 |------|------|
-| [token-boat-key-tool](https://github.com/Calcium-Ion/token-boat-key-tool) | Key 额度查询工具 |
-| [token-boat-horizon](https://github.com/Calcium-Ion/token-boat-horizon) | token boat 高性能优化版 |
+| [token-boat-key-tool](http://tokenboat.com) | Key 额度查询工具 |
+| [token-boat-horizon](http://tokenboat.com) | token boat 高性能优化版 |
 
 ---
 
@@ -432,10 +432,10 @@ docker run --name token boat -d --restart always \
 
 | 资源 | 链接 |
 |------|------|
-| 📘 常见问题 | [FAQ](https://docs.token-boat.pro/zh/docs/support/faq) |
-| 💬 社区交流 | [交流渠道](https://docs.token-boat.pro/zh/docs/support/community-interaction) |
-| 🐛 反馈问题 | [问题反馈](https://docs.token-boat.pro/zh/docs/support/feedback-issues) |
-| 📚 完整文档 | [官方文档](https://docs.token-boat.pro/zh/docs) |
+| 📘 常见问题 | [FAQ](http://tokenboat.com/zh/docs/support/faq) |
+| 💬 社区交流 | [交流渠道](http://tokenboat.com/zh/docs/support/community-interaction) |
+| 🐛 反馈问题 | [问题反馈](http://tokenboat.com/zh/docs/support/feedback-issues) |
+| 📚 完整文档 | [官方文档](http://tokenboat.com/zh/docs) |
 
 ### 🤝 贡献指南
 
@@ -474,7 +474,7 @@ docker run --name token boat -d --restart always \
 
 如果这个项目对你有帮助，欢迎给我们一个 ⭐️ Star！
 
-**[官方文档](https://docs.token-boat.pro/zh/docs)** • **[问题反馈](https://github.com/Calcium-Ion/token-boat/issues)** • **[最新发布](https://github.com/Calcium-Ion/token-boat/releases)**
+**[官方文档](http://tokenboat.com/zh/docs)** • **[问题反馈](http://tokenboat.com)** • **[最新发布](http://tokenboat.com)**
 
 <sub>Built with ❤️ by QuantumNous</sub>
 

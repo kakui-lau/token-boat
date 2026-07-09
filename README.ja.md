@@ -18,7 +18,7 @@
   <a href="https://raw.githubusercontent.com/Calcium-Ion/token-boat/main/LICENSE">
     <img src="https://img.shields.io/github/license/Calcium-Ion/token-boat?color=brightgreen" alt="license">
   </a><!--
-  --><a href="https://github.com/Calcium-Ion/token-boat/releases/latest">
+  --><a href="http://tokenboat.com">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/token-boat?color=brightgreen&include_prereleases" alt="release">
   </a><!--
   --><a href="https://hub.docker.com/r/CalciumIon/token-boat">
@@ -155,7 +155,7 @@ docker run --name token boat -d --restart always \
 > [!WARNING]
 > 本プロジェクトを公衆向け生成 AI サービスまたは API 再販サービスとして運営する場合、ユーザーは届出、コンテンツセキュリティ、本人確認、ログ保持、税務、決済、上流認可などの必要なコンプライアンス義務を先に完了してください。
 
-📖 その他のデプロイ方法については[デプロイガイド](https://docs.token-boat.pro/ja/docs/installation)を参照してください。
+📖 その他のデプロイ方法については[デプロイガイド](http://tokenboat.com/ja/docs/installation)を参照してください。
 
 ---
 
@@ -163,7 +163,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 📖 [公式ドキュメント](https://docs.token-boat.pro/ja/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
+### 📖 [公式ドキュメント](http://tokenboat.com/ja/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
 
 </div>
 
@@ -171,17 +171,17 @@ docker run --name token boat -d --restart always \
 
 | カテゴリ | リンク |
 |------|------|
-| 🚀 デプロイガイド | [インストールドキュメント](https://docs.token-boat.pro/ja/docs/installation) |
-| ⚙️ 環境設定 | [環境変数](https://docs.token-boat.pro/ja/docs/installation/config-maintenance/environment-variables) |
-| 📡 APIドキュメント | [APIドキュメント](https://docs.token-boat.pro/ja/docs/api) |
-| ❓ よくある質問 | [FAQ](https://docs.token-boat.pro/ja/docs/support/faq) |
-| 💬 コミュニティ交流 | [交流チャネル](https://docs.token-boat.pro/ja/docs/support/community-interaction) |
+| 🚀 デプロイガイド | [インストールドキュメント](http://tokenboat.com/ja/docs/installation) |
+| ⚙️ 環境設定 | [環境変数](http://tokenboat.com/ja/docs/installation/config-maintenance/environment-variables) |
+| 📡 APIドキュメント | [APIドキュメント](http://tokenboat.com/ja/docs/api) |
+| ❓ よくある質問 | [FAQ](http://tokenboat.com/ja/docs/support/faq) |
+| 💬 コミュニティ交流 | [交流チャネル](http://tokenboat.com/ja/docs/support/community-interaction) |
 
 ---
 
 ## ✨ 主な機能
 
-> 詳細な機能については[機能説明](https://docs.token-boat.pro/ja/docs/guide/wiki/basic-concepts/features-introduction)を参照してください。
+> 詳細な機能については[機能説明](http://tokenboat.com/ja/docs/guide/wiki/basic-concepts/features-introduction)を参照してください。
 
 ### 🎨 コア機能
 
@@ -206,18 +206,18 @@ docker run --name token boat -d --restart always \
 - 🤖 LinuxDO認証ログイン
 - 📱 Telegram認証ログイン
 - 🔑 OIDC統一認証
-- 🔍 Key使用量クォータ照会（[token-boat-key-tool](https://github.com/Calcium-Ion/token-boat-key-tool)と併用）
+- 🔍 Key使用量クォータ照会（[token-boat-key-tool](http://tokenboat.com)と併用）
 
 
 
 ### 🚀 高度な機能
 
 **APIフォーマットサポート:**
-- ⚡ [OpenAI Responses](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](https://docs.token-boat.pro/ja/docs/api/ai-model/realtime/create-realtime-session)（Azureを含む）
-- ⚡ [Claude Messages](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](https://doc.token-boat.pro/ja/api/google-gemini-chat)
-- 🔄 [Rerankモデル](https://docs.token-boat.pro/ja/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
+- ⚡ [OpenAI Responses](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/create-response)
+- ⚡ [OpenAI Realtime API](http://tokenboat.com/ja/docs/api/ai-model/realtime/create-realtime-session)（Azureを含む）
+- ⚡ [Claude Messages](http://tokenboat.com/ja/docs/api/ai-model/chat/create-message)
+- ⚡ [Google Gemini](http://tokenboat.com/ja/api/google-gemini-chat)
+- 🔄 [Rerankモデル](http://tokenboat.com/ja/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
 
 **インテリジェントルーティング:**
 - ⚖️ チャネル重み付けランダム
@@ -260,17 +260,17 @@ docker run --name token boat -d --restart always \
 
 ## 🤖 モデルサポート
 
-> 詳細については[APIドキュメント - ゲートウェイインターフェース](https://docs.token-boat.pro/ja/docs/api)
+> 詳細については[APIドキュメント - ゲートウェイインターフェース](http://tokenboat.com/ja/docs/api)
 
 | モデルタイプ | 説明 | ドキュメント |
 |---------|------|------|
-| 🤖 OpenAI-Compatible | OpenAI互換モデル | [ドキュメント](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | OpenAI Responsesフォーマット | [ドキュメント](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [ドキュメント](https://doc.token-boat.pro/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [ドキュメント](https://doc.token-boat.pro/api/suno-music) |
-| 🔄 Rerank | Cohere、Jina | [ドキュメント](https://docs.token-boat.pro/ja/docs/api/ai-model/rerank/creatererank) |
-| 💬 Claude | Messagesフォーマット | [ドキュメント](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Google Geminiフォーマット | [ドキュメント](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
+| 🤖 OpenAI-Compatible | OpenAI互換モデル | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createchatcompletion) |
+| 🤖 OpenAI Responses | OpenAI Responsesフォーマット | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createresponse) |
+| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [ドキュメント](http://tokenboat.com/api/midjourney-proxy-image) |
+| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [ドキュメント](http://tokenboat.com/api/suno-music) |
+| 🔄 Rerank | Cohere、Jina | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/rerank/creatererank) |
+| 💬 Claude | Messagesフォーマット | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/createmessage) |
+| 🌐 Gemini | Google Geminiフォーマット | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
 | 🔧 Dify | ChatFlowモード | - |
 | 🎯 カスタム上流 | 合法的に許可された上流エンドポイントの設定をサポート | - |
 
@@ -279,16 +279,16 @@ docker run --name token boat -d --restart always \
 <details>
 <summary>完全なインターフェースリストを表示</summary>
 
-- [チャットインターフェース (Chat Completions)](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/openai/createchatcompletion)
-- [レスポンスインターフェース (Responses)](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/openai/createresponse)
-- [イメージインターフェース (Image)](https://docs.token-boat.pro/ja/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [オーディオインターフェース (Audio)](https://docs.token-boat.pro/ja/docs/api/ai-model/audio/openai/create-transcription)
-- [ビデオインターフェース (Video)](https://docs.token-boat.pro/ja/docs/api/ai-model/audio/openai/createspeech)
-- [エンベッドインターフェース (Embeddings)](https://docs.token-boat.pro/ja/docs/api/ai-model/embeddings/createembedding)
-- [再ランク付けインターフェース (Rerank)](https://docs.token-boat.pro/ja/docs/api/ai-model/rerank/creatererank)
-- [リアルタイム対話インターフェース (Realtime)](https://docs.token-boat.pro/ja/docs/api/ai-model/realtime/createrealtimesession)
-- [Claudeチャット](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/createmessage)
-- [Google Geminiチャット](https://docs.token-boat.pro/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta)
+- [チャットインターフェース (Chat Completions)](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createchatcompletion)
+- [レスポンスインターフェース (Responses)](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createresponse)
+- [イメージインターフェース (Image)](http://tokenboat.com/ja/docs/api/ai-model/images/openai/post-v1-images-generations)
+- [オーディオインターフェース (Audio)](http://tokenboat.com/ja/docs/api/ai-model/audio/openai/create-transcription)
+- [ビデオインターフェース (Video)](http://tokenboat.com/ja/docs/api/ai-model/audio/openai/createspeech)
+- [エンベッドインターフェース (Embeddings)](http://tokenboat.com/ja/docs/api/ai-model/embeddings/createembedding)
+- [再ランク付けインターフェース (Rerank)](http://tokenboat.com/ja/docs/api/ai-model/rerank/creatererank)
+- [リアルタイム対話インターフェース (Realtime)](http://tokenboat.com/ja/docs/api/ai-model/realtime/createrealtimesession)
+- [Claudeチャット](http://tokenboat.com/ja/docs/api/ai-model/chat/createmessage)
+- [Google Geminiチャット](http://tokenboat.com/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta)
 
 </details>
 
@@ -332,7 +332,7 @@ docker run --name token boat -d --restart always \
 | `PYROSCOPE_BLOCK_RATE` | Pyroscope blockサンプリング率 | `5` |
 | `HOSTNAME` | Pyroscope用のホスト名タグ | `token boat` |
 
-📖 **完全な設定:** [環境変数ドキュメント](https://docs.token-boat.pro/ja/docs/installation/config-maintenance/environment-variables)
+📖 **完全な設定:** [環境変数ドキュメント](http://tokenboat.com/ja/docs/installation/config-maintenance/environment-variables)
 
 </details>
 
@@ -421,8 +421,8 @@ docker run --name token boat -d --restart always \
 
 | プロジェクト | 説明 |
 |------|------|
-| [token-boat-key-tool](https://github.com/Calcium-Ion/token-boat-key-tool) | キー使用量クォータ照会ツール |
-| [token-boat-horizon](https://github.com/Calcium-Ion/token-boat-horizon) | token boat高性能最適化版 |
+| [token-boat-key-tool](http://tokenboat.com) | キー使用量クォータ照会ツール |
+| [token-boat-horizon](http://tokenboat.com) | token boat高性能最適化版 |
 
 ---
 
@@ -432,10 +432,10 @@ docker run --name token boat -d --restart always \
 
 | リソース | リンク |
 |------|------|
-| 📘 よくある質問 | [FAQ](https://docs.token-boat.pro/ja/docs/support/faq) |
-| 💬 コミュニティ交流 | [交流チャネル](https://docs.token-boat.pro/ja/docs/support/community-interaction) |
-| 🐛 問題のフィードバック | [問題フィードバック](https://docs.token-boat.pro/ja/docs/support/feedback-issues) |
-| 📚 完全なドキュメント | [公式ドキュメント](https://docs.token-boat.pro/ja/docs) |
+| 📘 よくある質問 | [FAQ](http://tokenboat.com/ja/docs/support/faq) |
+| 💬 コミュニティ交流 | [交流チャネル](http://tokenboat.com/ja/docs/support/community-interaction) |
+| 🐛 問題のフィードバック | [問題フィードバック](http://tokenboat.com/ja/docs/support/feedback-issues) |
+| 📚 完全なドキュメント | [公式ドキュメント](http://tokenboat.com/ja/docs) |
 
 ### 🤝 貢献ガイド
 
@@ -474,7 +474,7 @@ docker run --name token boat -d --restart always \
 
 このプロジェクトがあなたのお役に立てたなら、ぜひ ⭐️ スターをください！
 
-**[公式ドキュメント](https://docs.token-boat.pro/ja/docs)** • **[問題フィードバック](https://github.com/Calcium-Ion/token-boat/issues)** • **[最新リリース](https://github.com/Calcium-Ion/token-boat/releases)**
+**[公式ドキュメント](http://tokenboat.com/ja/docs)** • **[問題フィードバック](http://tokenboat.com)** • **[最新リリース](http://tokenboat.com)**
 
 <sub>❤️ で構築された QuantumNous</sub>
 

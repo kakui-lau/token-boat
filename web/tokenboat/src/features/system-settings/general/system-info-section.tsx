@@ -55,7 +55,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const _systemInfoSchema = z.object({
   theme: z.object({
-    frontend: z.enum(['default', 'classic', 'tokenboat']),
+    frontend: z.enum(['default', 'classic', 'token-boat']),
   }),
   SystemName: z.string().min(1),
   ServerAddress: z.string().optional(),
@@ -86,7 +86,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
 
   const normalizedDefaults: SystemInfoFormValues = {
     theme: {
-      frontend: ['classic', 'tokenboat'].includes(
+      frontend: ['classic', 'token-boat'].includes(
         defaultValues.theme?.frontend
       )
         ? defaultValues.theme.frontend
@@ -106,7 +106,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
 
   const systemInfoSchemaWithI18n = z.object({
     theme: z.object({
-      frontend: z.enum(['default', 'classic', 'tokenboat']),
+      frontend: z.enum(['default', 'classic', 'token-boat']),
     }),
     SystemName: z.string().min(1, {
       error: () => t('System name is required'),
@@ -209,7 +209,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                           label: t('Classic (Legacy Frontend)'),
                         },
                         {
-                          value: 'tokenboat',
+                          value: 'token-boat',
                           label: t('Token Boat Theme'),
                         },
                       ]}
@@ -229,7 +229,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                           <SelectItem value='classic'>
                             {t('Classic (Legacy Frontend)')}
                           </SelectItem>
-                          <SelectItem value='tokenboat'>
+                          <SelectItem value='token-boat'>
                             {t('Token Boat Theme')}
                           </SelectItem>
                         </SelectGroup>

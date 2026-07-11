@@ -32,7 +32,10 @@ func GetTheme() string {
 // SetTheme updates the frontend theme atomically.
 // Only known frontend themes are accepted; other values are silently ignored.
 func SetTheme(t string) {
-	if t == "default" || t == "classic" || t == "tokenboat" {
+	if t == "tokenboat" {
+		t = "token-boat"
+	}
+	if t == "default" || t == "classic" || t == "token-boat" {
 		themeValue.Store(t)
 	}
 }

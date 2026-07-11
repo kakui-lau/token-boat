@@ -55,7 +55,7 @@ func (t *themeAwareFileSystem) Exists(prefix string, path string) bool {
 	switch GetTheme() {
 	case "classic":
 		return t.classicFS.Exists(prefix, path)
-	case "tokenboat":
+	case "token-boat":
 		return t.tokenboatFS.Exists(prefix, path)
 	default:
 		return t.defaultFS.Exists(prefix, path)
@@ -66,7 +66,7 @@ func (t *themeAwareFileSystem) Open(name string) (http.File, error) {
 	switch GetTheme() {
 	case "classic":
 		return t.classicFS.Open(name)
-	case "tokenboat":
+	case "token-boat":
 		return t.tokenboatFS.Open(name)
 	default:
 		return t.defaultFS.Open(name)

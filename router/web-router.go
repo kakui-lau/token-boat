@@ -43,7 +43,7 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 		switch common.GetTheme() {
 		case "classic":
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
-		case "tokenboat":
+		case "token-boat":
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.TokenboatIndexPage)
 		default:
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)

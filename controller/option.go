@@ -216,10 +216,13 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "theme.frontend":
-		if option.Value != "default" && option.Value != "classic" && option.Value != "tokenboat" {
+		if option.Value == "tokenboat" {
+			option.Value = "token-boat"
+		}
+		if option.Value != "default" && option.Value != "classic" && option.Value != "token-boat" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）、tokenboat（Token Boat 主题）",
+				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）、token-boat（自定义前端）",
 			})
 			return
 		}

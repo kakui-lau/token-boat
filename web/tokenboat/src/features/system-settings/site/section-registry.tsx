@@ -40,7 +40,7 @@ const SITE_SECTIONS = [
             frontend: settings['theme.frontend'] as
               | 'default'
               | 'classic'
-              | 'tokenboat',
+              | 'token-boat',
           },
           SystemName: settings.SystemName,
           Logo: settings.Logo,

@@ -14,9 +14,9 @@ import (
 
 var StartTime = time.Now().Unix() // unit: second
 var Version = "v0.0.0"            // this hard coding will be replaced automatically when building, no need to manually change
-var SystemName = "New API"
+var SystemName = "Token Boat"
 var Footer = ""
-var Logo = ""
+var Logo = "/logo.png?v=token-boat"
 var TopUpLink = ""
 
 var themeValue atomic.Value // stores string; safe for concurrent read/write
@@ -30,9 +30,9 @@ func GetTheme() string {
 }
 
 // SetTheme updates the frontend theme atomically.
-// Only "default" and "classic" are accepted; other values are silently ignored.
+// Only known frontend themes are accepted; other values are silently ignored.
 func SetTheme(t string) {
-	if t == "default" || t == "classic" {
+	if t == "default" || t == "classic" || t == "tokenboat" {
 		themeValue.Store(t)
 	}
 }
@@ -43,7 +43,7 @@ func SetTheme(t string) {
 // known prefixes so it is safe to call with arbitrary suffixes and query
 // strings.
 func ThemeAwarePath(suffix string) string {
-	if GetTheme() != "default" {
+	if GetTheme() == "classic" {
 		return suffix
 	}
 	switch {

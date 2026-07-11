@@ -10,7 +10,9 @@ build
 logs
 web/default/dist
 web/classic/dist
+web/tokenboat/dist
 web/node_modules
+web/tokenboat/node_modules
 web/dist
 .env
 one-api

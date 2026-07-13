@@ -268,13 +268,7 @@ export function Wallet(props: WalletProps) {
             <div className='mx-auto flex w-full max-w-full flex-col gap-3 sm:gap-4'>
               <WalletStatsCard user={user} loading={userLoading} />
 
-              <div
-                className={
-                  showSubscriptionPanel
-                    ? 'grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] xl:items-start'
-                    : 'grid gap-3 sm:gap-4'
-                }
-              >
+              <div className='grid gap-3 sm:gap-4'>
                 <div id='wallet-add-funds' className='scroll-mt-4'>
                   <RechargeFormCard
                     topupInfo={topupInfo}
@@ -309,38 +303,24 @@ export function Wallet(props: WalletProps) {
                   />
                 </div>
 
-                {showSubscriptionPanel ? (
-                  <div className='grid min-w-0 gap-3 sm:gap-4'>
-                    <SubscriptionPlansCard
-                      topupInfo={topupInfo}
-                      onAvailabilityChange={
-                        handleSubscriptionAvailabilityChange
-                      }
-                      userQuota={user?.quota}
-                      onPurchaseSuccess={fetchUser}
-                    />
-
-                    <AffiliateRewardsCard
-                      user={user}
-                      affiliateLink={affiliateLink}
-                      onTransfer={() => setTransferDialogOpen(true)}
-                      complianceConfirmed={
-                        topupInfo?.payment_compliance_confirmed !== false
-                      }
-                      loading={affiliateLoading}
-                    />
-                  </div>
-                ) : (
-                  <AffiliateRewardsCard
-                    user={user}
-                    affiliateLink={affiliateLink}
-                    onTransfer={() => setTransferDialogOpen(true)}
-                    complianceConfirmed={
-                      topupInfo?.payment_compliance_confirmed !== false
-                    }
-                    loading={affiliateLoading}
+                {showSubscriptionPanel && (
+                  <SubscriptionPlansCard
+                    topupInfo={topupInfo}
+                    onAvailabilityChange={handleSubscriptionAvailabilityChange}
+                    userQuota={user?.quota}
+                    onPurchaseSuccess={fetchUser}
                   />
                 )}
+
+                <AffiliateRewardsCard
+                  user={user}
+                  affiliateLink={affiliateLink}
+                  onTransfer={() => setTransferDialogOpen(true)}
+                  complianceConfirmed={
+                    topupInfo?.payment_compliance_confirmed !== false
+                  }
+                  loading={affiliateLoading}
+                />
               </div>
             </div>
           </div>

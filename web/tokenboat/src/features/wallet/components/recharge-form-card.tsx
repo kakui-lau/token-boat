@@ -195,61 +195,37 @@ export function RechargeFormCard({
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect
       className='token-boat-pro-card token-boat-energy-panel overflow-hidden'
-      headerClassName='bg-background/50'
-      iconClassName='bg-primary/7 text-primary'
+      headerClassName='bg-background/50 !p-2.5 !pb-2.5 sm:!p-3 sm:!pb-3'
+      iconClassName='bg-primary/7 text-primary h-8 w-8'
+      titleClassName='text-base sm:text-lg'
+      descriptionClassName='text-xs'
       action={
         onOpenBilling ? (
           <Button
             variant='outline'
             size='sm'
             onClick={onOpenBilling}
-            className='w-full gap-2 sm:w-auto'
+            className='h-8 w-full gap-2 px-2.5 sm:w-auto'
           >
-            <Receipt className='h-4 w-4' />
+            <Receipt className='h-3.5 w-3.5' />
             {t('Order History')}
           </Button>
         ) : null
       }
-      contentClassName='bg-muted/10 p-3 sm:p-4'
+      contentClassName='bg-muted/10 p-2 sm:p-2.5'
     >
       {/* Online Topup Section */}
       {hasAnyTopup ? (
-        <div className='space-y-5'>
+        <div className='space-y-2.5'>
           {hasConfigurableTopup && (
-            <div className='wallet-recharge-workspace grid gap-4 rounded-xl border bg-background/72 p-3 shadow-sm sm:p-4 2xl:grid-cols-[80px_minmax(0,1fr)_minmax(280px,0.4fr)] 2xl:items-start'>
-              <div className='hidden h-full border-r pr-3 2xl:block'>
-                <div className='sticky top-4 space-y-7 py-2'>
-                  {[
-                    t('Select Amount'),
-                    t('Payment Channel'),
-                    t('Confirm Payment'),
-                  ].map((step, index) => (
-                    <div
-                      key={step}
-                      className='text-muted-foreground relative flex gap-2 text-xs'
-                    >
-                      <span
-                        className={cn(
-                          'flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold',
-                          index === 0
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-background'
-                        )}
-                      >
-                        {index + 1}
-                      </span>
-                      <span className='pt-1 leading-tight'>{step}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className='flex flex-col gap-4'>
+            <div className='wallet-recharge-workspace grid gap-2.5 rounded-xl border bg-background/72 p-2 shadow-sm sm:p-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.3fr)] xl:items-start'>
+              <div className='flex flex-col gap-2.5'>
                 {presetAmounts.length > 0 && (
-                  <div className='rounded-xl p-1'>
+                  <div className='rounded-xl'>
                     <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                       {t('Select Amount')}
                     </Label>
-                    <div className='mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 2xl:gap-3'>
+                    <div className='mt-2 grid grid-cols-2 gap-1.5 md:grid-cols-3 2xl:grid-cols-6'>
                       {presetAmounts.map((preset, index) => {
                         const discount =
                           preset.discount ||
@@ -271,7 +247,7 @@ export function RechargeFormCard({
                             key={index}
                             variant='outline'
                             className={cn(
-                              'wallet-strong-control relative flex min-h-[72px] flex-col items-start overflow-hidden rounded-xl border-2 px-3 py-2.5 text-left whitespace-normal transition-all sm:min-h-[82px] sm:p-3.5',
+                              'wallet-strong-control relative flex min-h-14 flex-col items-start overflow-hidden rounded-lg border-2 px-2.5 py-1.5 text-left whitespace-normal transition-all sm:min-h-16',
                               selectedPreset === preset.value
                                 ? 'border-primary bg-primary/[0.18] shadow-[0_0_0_1px_color-mix(in_oklch,var(--primary)_32%,transparent)_inset,0_16px_34px_-20px_color-mix(in_oklch,var(--primary)_95%,black)]'
                                 : 'bg-card/80 hover:bg-primary/[0.045]'
@@ -282,16 +258,16 @@ export function RechargeFormCard({
                               <span className='bg-primary absolute inset-x-0 top-0 h-1' />
                             )}
                             <div className='flex w-full items-center justify-between'>
-                              <div className='text-base font-semibold sm:text-lg'>
+                              <div className='text-sm font-semibold sm:text-base'>
                                 {formatNumber(displayValue)}
                               </div>
                               {hasDiscount && (
-                                <div className='bg-success/10 text-success rounded-full px-2 py-0.5 text-[11px] font-medium'>
+                                <div className='bg-success/10 text-success rounded-full px-1.5 py-0.5 text-[10px] font-medium'>
                                   {getDiscountLabel(discount)}
                                 </div>
                               )}
                             </div>
-                            <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
+                            <div className='text-muted-foreground mt-0.5 w-full text-[11px]'>
                               Pay {formatCurrency(actualPrice)}
                               {hasDiscount && savedAmount > 0 && (
                                 <span className='text-success'>
@@ -307,14 +283,14 @@ export function RechargeFormCard({
                   </div>
                 )}
 
-                <div className='rounded-xl p-1'>
+                <div className='rounded-xl'>
                   <Label
                     htmlFor='topup-amount'
                     className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
                   >
                     {t('Custom Amount')}
                   </Label>
-                  <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.55fr)] lg:items-center'>
+                  <div className='mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,0.34fr)] lg:items-center'>
                     <Input
                       id='topup-amount'
                       type='number'
@@ -322,9 +298,9 @@ export function RechargeFormCard({
                       onChange={(e) => handleAmountChange(e.target.value)}
                       min={minTopup}
                       placeholder={`Minimum ${minTopup}`}
-                      className='wallet-strong-control border-2 bg-background/75 h-11 text-base shadow-xs sm:h-12 sm:text-lg'
+                      className='wallet-strong-control h-9 border-2 bg-background/75 text-sm shadow-xs sm:h-10'
                     />
-                    <div className='wallet-strong-control bg-primary/[0.035] flex min-h-11 items-center justify-between gap-2 rounded-lg border-2 px-3 shadow-xs lg:min-w-56'>
+                    <div className='wallet-strong-control bg-primary/[0.035] flex min-h-9 items-center justify-between gap-2 rounded-lg border-2 px-2.5 shadow-xs lg:min-w-44'>
                       <span className='text-muted-foreground truncate text-xs'>
                         {t('Total to pay')}
                       </span>
@@ -340,13 +316,13 @@ export function RechargeFormCard({
                 </div>
               </div>
 
-              <div className='flex flex-col gap-4'>
-                <div className='rounded-xl border-primary/15 bg-primary/[0.025] p-1 2xl:border-l 2xl:pl-4'>
+              <div className='flex flex-col gap-2.5'>
+                <div className='rounded-xl border-primary/15 bg-primary/[0.025] xl:border-l xl:pl-2.5'>
                   <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                     {t('Payment Channel')}
                   </Label>
                   {hasStandardPaymentMethods ? (
-                    <div className='mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 2xl:grid-cols-1'>
+                    <div className='mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-1'>
                       {topupInfo?.pay_methods?.map((method) => {
                         const minTopup = method.min_topup || 0
                         const disabled = minTopup > topupAmount
@@ -371,7 +347,7 @@ export function RechargeFormCard({
                                 ? `${method.name}. ${disabledReason}`
                                 : method.name
                             }
-                            className='wallet-strong-control bg-card/86 hover:bg-primary/[0.045] min-h-16 min-w-0 justify-start gap-2 rounded-xl border-2 px-3.5 py-2.5 text-left'
+                            className='wallet-strong-control bg-card/86 hover:bg-primary/[0.045] min-h-10 min-w-0 justify-start gap-2 rounded-lg border-2 px-2.5 py-1.5 text-left'
                           >
                             {paymentLoading === method.type ? (
                               <Loader2 className='h-4 w-4 animate-spin' />
@@ -422,11 +398,11 @@ export function RechargeFormCard({
                 {enableWaffoTopup &&
                   hasWaffoPaymentMethods &&
                   onWaffoMethodSelect && (
-                    <div className='token-boat-glass-panel rounded-xl border p-4 sm:p-5'>
+                    <div className='token-boat-glass-panel rounded-xl border p-2.5'>
                       <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                         {t('Waffo Payment')}
                       </Label>
-                      <div className='mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 2xl:grid-cols-1'>
+                      <div className='mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-1'>
                         {waffoPayMethods?.map((method, index) => {
                           const loadingKey = `waffo-${index}`
                           const waffoMin = waffoMinTopup || 0
@@ -452,7 +428,7 @@ export function RechargeFormCard({
                                   ? `${method.name}. ${disabledReason}`
                                   : method.name
                               }
-                              className='wallet-strong-control bg-card/86 hover:bg-primary/[0.045] min-h-16 min-w-0 justify-start gap-2 rounded-xl border-2 px-3.5 py-2.5 text-left'
+                              className='wallet-strong-control bg-card/86 hover:bg-primary/[0.045] min-h-10 min-w-0 justify-start gap-2 rounded-lg border-2 px-2.5 py-1.5 text-left'
                             >
                               {paymentLoading === loadingKey ? (
                                 <Loader2 className='h-4 w-4 animate-spin' />
@@ -511,30 +487,30 @@ export function RechargeFormCard({
       )}
 
       {hasConfigurableTopup ? (
-        <div className='wallet-payment-summary rounded-xl border bg-background/82 p-3 sm:p-4'>
+        <div className='wallet-payment-summary rounded-xl border bg-background/82 p-2'>
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <div className='flex items-center gap-2'>
-              <span className='bg-primary/8 text-primary flex size-8 items-center justify-center rounded-lg'>
-                <Receipt className='size-4' />
+              <span className='bg-primary/8 text-primary flex size-7 items-center justify-center rounded-lg'>
+                <Receipt className='size-3.5' />
               </span>
               <div>
                 <div className='text-sm font-semibold'>
                   {t('Payment Summary')}
                 </div>
-                <div className='text-muted-foreground text-xs'>
+                <div className='text-muted-foreground text-[11px]'>
                   {t('Choose a payment channel to continue')}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <div className='wallet-strong-control rounded-lg border-2 bg-background/72 px-3 py-2.5'>
+          <div className='mt-2 grid gap-1.5 sm:grid-cols-2'>
+            <div className='wallet-strong-control rounded-lg border-2 bg-background/72 px-2.5 py-1.5'>
               <div className='text-muted-foreground text-xs'>
                 {t('Estimated Credit')}
               </div>
               <div className='mt-1 flex min-w-0 items-baseline gap-1.5'>
-                <span className='truncate font-mono text-xl font-semibold tracking-tight tabular-nums'>
+                <span className='truncate font-mono text-lg font-semibold tracking-tight tabular-nums'>
                   {formatCurrency(topupAmount)}
                 </span>
                 <span className='text-muted-foreground text-xs'>
@@ -542,15 +518,15 @@ export function RechargeFormCard({
                 </span>
               </div>
             </div>
-            <div className='wallet-strong-control bg-primary/[0.055] rounded-lg border-2 px-3 py-2.5'>
+            <div className='wallet-strong-control bg-primary/[0.055] rounded-lg border-2 px-2.5 py-1.5'>
               <div className='text-muted-foreground text-xs'>
                 {t('Total to pay')}
               </div>
               <div className='mt-1 flex min-w-0 items-baseline gap-1.5'>
                 {calculating ? (
-                  <Skeleton className='h-7 w-20' />
+                  <Skeleton className='h-6 w-20' />
                 ) : (
-                  <span className='truncate font-mono text-xl font-semibold tracking-tight tabular-nums'>
+                  <span className='truncate font-mono text-lg font-semibold tracking-tight tabular-nums'>
                     {formatCurrency(paymentAmount)}
                   </span>
                 )}
@@ -565,7 +541,7 @@ export function RechargeFormCard({
         Array.isArray(creemProducts) &&
         creemProducts.length > 0 &&
         onCreemProductSelect && (
-          <div className='token-boat-glass-panel space-y-3 rounded-xl border p-4 sm:p-5'>
+          <div className='token-boat-glass-panel space-y-3 rounded-xl border p-3'>
             <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
               {t('Creem Payment')}
             </Label>
@@ -578,7 +554,7 @@ export function RechargeFormCard({
 
       {/* Redemption Code Section */}
       {redemptionEnabled ? (
-        <div className='token-boat-glass-panel space-y-3 rounded-xl border p-4 sm:p-5'>
+        <div className='token-boat-glass-panel space-y-2.5 rounded-xl border p-3'>
           <div className='flex items-center gap-2'>
             <Gift className='text-muted-foreground h-4 w-4' />
             <Label

@@ -34,16 +34,16 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   if (props.loading) {
     return (
       <div className='token-boat-cockpit-strip overflow-hidden rounded-xl'>
-        <div className='grid gap-3 p-3 lg:grid-cols-[minmax(260px,1.15fr)_repeat(2,minmax(210px,0.72fr))]'>
-          <div className='token-boat-glass-panel rounded-xl border p-4 sm:p-5'>
+        <div className='grid gap-2.5 p-2.5 lg:grid-cols-[minmax(260px,1.15fr)_repeat(2,minmax(210px,0.72fr))]'>
+          <div className='token-boat-glass-panel rounded-xl border p-3 sm:p-4'>
             <Skeleton className='h-3.5 w-24' />
-            <Skeleton className='mt-4 h-10 w-48' />
-            <Skeleton className='mt-3 h-4 w-40' />
+            <Skeleton className='mt-3 h-9 w-48' />
+            <Skeleton className='mt-2 h-4 w-40' />
           </div>
           {Array.from({ length: 2 }).map((_, i) => (
             <div
               key={i}
-              className='token-boat-glass-panel rounded-xl border px-3 py-3 sm:px-4 sm:py-4'
+              className='token-boat-glass-panel rounded-xl border px-3 py-3'
             >
               <Skeleton className='h-3.5 w-20' />
               <Skeleton className='mt-2 h-7 w-28' />
@@ -73,8 +73,8 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   return (
     <div className='token-boat-cockpit-strip relative overflow-hidden rounded-xl'>
       <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
-      <div className='relative grid gap-3 p-3 lg:grid-cols-[minmax(260px,1.15fr)_repeat(2,minmax(210px,0.72fr))]'>
-        <div className='from-primary to-secondary text-primary-foreground relative min-h-36 overflow-hidden rounded-xl bg-gradient-to-br p-5 shadow-[0_20px_54px_-24px_color-mix(in_oklch,var(--primary)_70%,black)]'>
+      <div className='relative grid gap-2.5 p-2.5 lg:grid-cols-[minmax(260px,1.15fr)_repeat(2,minmax(210px,0.72fr))]'>
+        <div className='from-primary to-secondary text-primary-foreground relative min-h-28 overflow-hidden rounded-xl bg-gradient-to-br p-4 shadow-[0_20px_54px_-24px_color-mix(in_oklch,var(--primary)_70%,black)]'>
           <div className='pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(120deg,transparent_0%,rgba(255,255,255,.34)_45%,transparent_72%)]' />
           <div className='pointer-events-none absolute -right-8 -bottom-12 h-40 w-40 rounded-full border border-white/20' />
           <div className='flex items-center justify-between gap-3'>
@@ -90,15 +90,12 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
               <WalletCards className='size-4' />
             </span>
           </div>
-          <div className='mt-5 flex flex-wrap items-end gap-2'>
-            <div className='font-mono text-3xl font-semibold tracking-tight break-all tabular-nums sm:text-4xl'>
+          <div className='mt-3 flex flex-wrap items-end gap-2'>
+            <div className='font-mono text-2xl font-semibold tracking-tight break-all tabular-nums sm:text-3xl'>
               {formatQuota(props.user?.quota ?? 0)}
             </div>
-            <div className='mb-1 rounded-full border border-white/20 bg-white/12 px-2 py-0.5 text-xs text-white/78'>
-              USD
-            </div>
           </div>
-          <div className='mt-5 text-xs text-white/68'>
+          <div className='mt-3 text-xs text-white/68'>
             {t('Remaining quota')}
           </div>
         </div>
@@ -106,14 +103,14 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
         {secondaryStats.map((item) => (
           <div
             key={item.label}
-            className='token-boat-glass-panel min-h-36 rounded-xl border p-4'
+            className='token-boat-glass-panel min-h-28 rounded-xl border p-3'
           >
             <div className='flex items-start justify-between gap-3'>
               <div className='min-w-0'>
                 <div className='text-muted-foreground truncate text-xs font-medium tracking-wider uppercase'>
                   {item.label}
                 </div>
-                <div className='mt-2 truncate text-xl font-semibold tracking-tight tabular-nums'>
+                <div className='mt-1.5 truncate text-lg font-semibold tracking-tight tabular-nums'>
                   {item.value}
                 </div>
               </div>
@@ -121,7 +118,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
                 <item.icon className='size-4' />
               </span>
             </div>
-            <div className='text-muted-foreground mt-2 text-xs'>
+            <div className='text-muted-foreground mt-1.5 text-xs'>
               {item.description}
             </div>
           </div>

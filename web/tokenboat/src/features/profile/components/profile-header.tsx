@@ -51,9 +51,13 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
 
   if (loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card relative gap-0 overflow-hidden py-0'
+      >
+        <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
         <CardContent className='p-4 sm:p-5'>
-          <div className='flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left'>
+          <div className='token-boat-glass-panel flex flex-col items-center gap-4 rounded-xl border p-3 text-center sm:flex-row sm:text-left'>
             <Skeleton className='h-16 w-16 rounded-2xl' />
             <div className='space-y-3'>
               <div className='flex flex-col items-center gap-2 sm:flex-row sm:justify-start'>
@@ -68,10 +72,13 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
             </div>
           </div>
         </CardContent>
-        <div className='border-t'>
-          <div className='divide-border/60 grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
+        <div className='bg-background/35 border-t p-2'>
+          <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className='px-4 py-3.5 sm:px-5 sm:py-4'>
+              <div
+                key={i}
+                className='wallet-strong-control rounded-xl border-2 px-4 py-3.5 sm:px-5 sm:py-4'
+              >
                 <Skeleton className='h-3.5 w-20' />
                 <Skeleton className='mt-2 h-7 w-28' />
                 <Skeleton className='mt-1.5 h-3.5 w-24' />
@@ -117,10 +124,10 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
       className='token-boat-pro-card relative gap-0 overflow-hidden py-0'
     >
       <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
-      <CardContent className='relative p-2.5 sm:p-4'>
-        <div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.34fr)] lg:items-stretch'>
-          <div className='token-boat-glass-panel flex min-w-0 items-center gap-3 rounded-xl border p-3 sm:gap-4 sm:p-4'>
-            <Avatar className='ring-background size-14 rounded-2xl text-sm shadow-sm ring-4 sm:size-18 sm:text-lg'>
+      <CardContent className='relative p-2.5 sm:p-3'>
+        <div className='token-boat-energy-panel grid gap-3 rounded-xl border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.34fr)] lg:items-stretch'>
+          <div className='flex min-w-0 items-center gap-3 sm:gap-4'>
+            <Avatar className='ring-background size-14 rounded-2xl text-sm shadow-sm ring-4 sm:size-16 sm:text-lg'>
               <AvatarFallback
                 className='rounded-2xl font-semibold text-white'
                 style={avatarFallbackStyle}
@@ -167,7 +174,7 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
             </div>
           </div>
 
-          <div className='border-primary/20 bg-primary/[0.04] flex flex-col justify-between rounded-xl border p-3.5'>
+          <div className='wallet-strong-control bg-primary/[0.07] flex flex-col justify-between rounded-xl border-2 p-3.5'>
             <div className='flex items-center justify-between gap-3'>
               <div className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                 {t('Current Balance')}
@@ -193,7 +200,7 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
           {stats.map((item, index) => (
             <div
               key={item.label}
-              className={`token-boat-glass-panel min-w-0 rounded-xl border p-3 ${
+              className={`wallet-strong-control min-w-0 rounded-xl border-2 bg-background/70 p-3 ${
                 index === 0 ? 'md:hidden' : ''
               }`}
             >

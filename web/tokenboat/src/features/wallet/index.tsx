@@ -265,13 +265,13 @@ export function Wallet(props: WalletProps) {
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='token-boat-account-surface -mx-3 -mt-1 min-h-[calc(100vh-8rem)] px-3 pt-1 pb-4 sm:-mx-4 sm:px-4'>
-            <div className='mx-auto flex w-full max-w-7xl flex-col gap-3 sm:gap-4'>
+            <div className='mx-auto flex w-full max-w-full flex-col gap-3 sm:gap-4'>
               <WalletStatsCard user={user} loading={userLoading} />
 
               <div
                 className={
                   showSubscriptionPanel
-                    ? 'grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1.52fr)_minmax(330px,0.68fr)] xl:items-start'
+                    ? 'grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] xl:items-start'
                     : 'grid gap-3 sm:gap-4'
                 }
               >
@@ -309,23 +309,39 @@ export function Wallet(props: WalletProps) {
                   />
                 </div>
 
-                <SubscriptionPlansCard
-                  topupInfo={topupInfo}
-                  onAvailabilityChange={handleSubscriptionAvailabilityChange}
-                  userQuota={user?.quota}
-                  onPurchaseSuccess={fetchUser}
-                />
-              </div>
+                {showSubscriptionPanel ? (
+                  <div className='grid min-w-0 gap-3 sm:gap-4'>
+                    <SubscriptionPlansCard
+                      topupInfo={topupInfo}
+                      onAvailabilityChange={
+                        handleSubscriptionAvailabilityChange
+                      }
+                      userQuota={user?.quota}
+                      onPurchaseSuccess={fetchUser}
+                    />
 
-              <AffiliateRewardsCard
-                user={user}
-                affiliateLink={affiliateLink}
-                onTransfer={() => setTransferDialogOpen(true)}
-                complianceConfirmed={
-                  topupInfo?.payment_compliance_confirmed !== false
-                }
-                loading={affiliateLoading}
-              />
+                    <AffiliateRewardsCard
+                      user={user}
+                      affiliateLink={affiliateLink}
+                      onTransfer={() => setTransferDialogOpen(true)}
+                      complianceConfirmed={
+                        topupInfo?.payment_compliance_confirmed !== false
+                      }
+                      loading={affiliateLoading}
+                    />
+                  </div>
+                ) : (
+                  <AffiliateRewardsCard
+                    user={user}
+                    affiliateLink={affiliateLink}
+                    onTransfer={() => setTransferDialogOpen(true)}
+                    complianceConfirmed={
+                      topupInfo?.payment_compliance_confirmed !== false
+                    }
+                    loading={affiliateLoading}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </SectionPageLayout.Content>

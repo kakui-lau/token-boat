@@ -67,7 +67,7 @@ export function AffiliateRewardsCard({
       className='token-boat-pro-card relative overflow-hidden py-0'
     >
       <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
-      <CardContent className='relative grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(220px,0.9fr)_minmax(260px,0.85fr)_minmax(320px,1fr)] lg:items-center'>
+      <CardContent className='relative grid gap-3 p-3 sm:gap-4 sm:p-4 xl:grid-cols-1'>
         <div className='token-boat-glass-panel flex min-w-0 items-center gap-3 rounded-xl border p-3'>
           <div className='bg-primary text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-xl shadow-sm'>
             <Share2 className='size-5' />
@@ -101,7 +101,7 @@ export function AffiliateRewardsCard({
           ))}
         </div>
 
-        <div className='token-boat-glass-panel flex items-center gap-2 rounded-xl border p-2'>
+        <div className='token-boat-glass-panel grid gap-2 rounded-xl border p-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center xl:grid-cols-[minmax(0,1fr)_auto]'>
           <Input
             value={affiliateLink}
             readOnly
@@ -119,7 +119,7 @@ export function AffiliateRewardsCard({
             <Button
               onClick={onTransfer}
               disabled={!complianceConfirmed}
-              className='h-9 shrink-0 px-3'
+              className='h-9 shrink-0 px-3 sm:col-auto xl:col-span-2'
               size='sm'
             >
               {t('Transfer to Balance')}

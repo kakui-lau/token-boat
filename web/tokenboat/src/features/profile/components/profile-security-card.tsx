@@ -49,7 +49,10 @@ export function ProfileSecurityCard({
 
   if (loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
         <CardHeader className='border-b p-3 !pb-3 sm:p-5 sm:!pb-5'>
           <Skeleton className='h-6 w-32' />
           <Skeleton className='mt-2 h-4 w-48' />
@@ -106,10 +109,10 @@ export function ProfileSecurityCard({
               key={item.title}
               type='button'
               onClick={item.action}
-              className={`token-boat-glass-panel group hover:bg-primary/[0.025] relative min-h-22 overflow-hidden rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 md:min-h-30 ${
+              className={`wallet-strong-control bg-card/80 group relative min-h-22 overflow-hidden rounded-xl border-2 p-3 text-left transition-all hover:-translate-y-0.5 md:min-h-30 ${
                 item.variant === 'destructive'
-                  ? 'border-destructive/25 hover:bg-destructive/[0.025]'
-                  : 'hover:border-primary/25'
+                  ? 'border-destructive/35 hover:bg-destructive/[0.045]'
+                  : 'hover:bg-primary/[0.055]'
               }`}
             >
               <span

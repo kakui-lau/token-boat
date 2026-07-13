@@ -189,7 +189,10 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
 
   if (pageLoading || loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
         <CardHeader className='p-3 sm:p-5'>
           <Skeleton className='h-6 w-48' />
           <Skeleton className='mt-2 h-4 w-64' />
@@ -228,8 +231,11 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
 
   return (
     <>
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-        <CardHeader className='p-3 sm:p-5'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
+        <CardHeader className='border-b bg-background/45 p-3 sm:p-5'>
           <CardTitle className='text-lg tracking-tight sm:text-xl'>
             {t('Passkey Login')}
           </CardTitle>
@@ -240,9 +246,9 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
 
         <CardContent className='p-3 sm:p-5'>
           <div className='space-y-6'>
-            <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between xl:flex-col 2xl:flex-row'>
+            <div className='wallet-strong-control bg-card/80 flex flex-col gap-4 rounded-xl border-2 p-3 sm:flex-row sm:items-start sm:justify-between xl:flex-col 2xl:flex-row'>
               <div className='flex items-start gap-4'>
-                <div className='bg-muted rounded-md p-2'>
+                <div className='bg-primary/8 text-primary rounded-lg p-2'>
                   <KeyRound className='h-5 w-5' />
                 </div>
                 <div className='space-y-1'>
@@ -284,7 +290,7 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
             </div>
 
             {enabled && (
-              <div className='flex flex-col gap-3 border-t pt-6 sm:flex-row xl:flex-col 2xl:flex-row'>
+              <div className='flex flex-col gap-3 border-t pt-4 sm:flex-row xl:flex-col 2xl:flex-row'>
                 <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
                   <AlertDialogTrigger
                     render={
@@ -334,7 +340,7 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
             )}
 
             {showUnsupportedNotice && (
-              <div className='bg-muted/60 text-muted-foreground flex items-start gap-3 rounded-md p-4 text-sm'>
+              <div className='wallet-strong-control bg-card/80 text-muted-foreground flex items-start gap-3 rounded-xl border-2 p-4 text-sm'>
                 <ShieldAlert className='mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500' />
                 <div>
                   <p className='text-foreground font-medium'>

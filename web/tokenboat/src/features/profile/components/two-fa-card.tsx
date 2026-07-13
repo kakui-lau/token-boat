@@ -53,7 +53,10 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
 
   if (pageLoading || loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
         <CardHeader className='p-3 sm:p-5'>
           <Skeleton className='h-6 w-48' />
           <Skeleton className='mt-2 h-4 w-64' />
@@ -67,8 +70,11 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
 
   return (
     <>
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-        <CardHeader className='p-3 sm:p-5'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
+        <CardHeader className='border-b bg-background/45 p-3 sm:p-5'>
           <CardTitle className='text-lg tracking-tight sm:text-xl'>
             {t('Two-Factor Authentication')}
           </CardTitle>
@@ -80,9 +86,9 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
         <CardContent className='p-3 sm:p-5'>
           <div className='space-y-6'>
             {/* Status Section */}
-            <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between xl:flex-col 2xl:flex-row'>
+            <div className='wallet-strong-control bg-card/80 flex flex-col gap-4 rounded-xl border-2 p-3 sm:flex-row sm:items-start sm:justify-between xl:flex-col 2xl:flex-row'>
               <div className='flex items-start gap-4'>
-                <div className='bg-muted rounded-md p-2'>
+                <div className='bg-primary/8 text-primary rounded-lg p-2'>
                   <Shield className='h-5 w-5' />
                 </div>
                 <div className='space-y-1'>
@@ -134,7 +140,7 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
 
             {/* Actions Section - Only show when enabled */}
             {status.enabled && (
-              <div className='flex flex-col gap-3 border-t pt-6 sm:flex-row xl:flex-col 2xl:flex-row'>
+              <div className='flex flex-col gap-3 border-t pt-4 sm:flex-row xl:flex-col 2xl:flex-row'>
                 <Button
                   variant='outline'
                   className='flex-1'

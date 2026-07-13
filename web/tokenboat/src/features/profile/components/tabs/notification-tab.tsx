@@ -158,7 +158,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
               <ToggleGroupItem
                 key={method.value}
                 value={method.value}
-                className='h-auto min-h-14 w-full flex-col gap-1.5 px-3 py-3 sm:min-h-16'
+                className='wallet-strong-control h-auto min-h-14 w-full flex-col gap-1.5 rounded-xl border-2 bg-card/80 px-3 py-3 data-[state=on]:bg-primary/[0.16] data-[state=on]:text-primary sm:min-h-16'
               >
                 <Icon className='h-4 w-4 sm:h-5 sm:w-5' />
                 <span className='max-w-full truncate text-xs font-medium sm:text-sm'>
@@ -176,7 +176,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
         <Input
           id='threshold'
           type='number'
-          className='h-9'
+          className='wallet-strong-control h-10 border-2 bg-background/75'
           value={settings.quota_warning_threshold}
           onChange={(e) =>
             updateField('quota_warning_threshold', Number(e.target.value))
@@ -195,7 +195,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           <Input
             id='notifyEmail'
             type='email'
-            className='h-9'
+            className='wallet-strong-control h-10 border-2 bg-background/75'
             value={settings.notification_email}
             onChange={(e) => updateField('notification_email', e.target.value)}
             placeholder={t('Leave empty to use account email')}
@@ -211,7 +211,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
             <Input
               id='webhookUrl'
               type='url'
-              className='h-9'
+              className='wallet-strong-control h-10 border-2 bg-background/75'
               value={settings.webhook_url}
               onChange={(e) => updateField('webhook_url', e.target.value)}
               placeholder={t('https://example.com/webhook')}
@@ -236,7 +236,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           <Input
             id='barkUrl'
             type='url'
-            className='h-9'
+            className='wallet-strong-control h-10 border-2 bg-background/75'
             value={settings.bark_url}
             onChange={(e) => updateField('bark_url', e.target.value)}
             placeholder={t('https://api.day.app/yourkey/{{title}}/{{content}}')}
@@ -255,7 +255,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
             <Input
               id='gotifyUrl'
               type='url'
-              className='h-9'
+              className='wallet-strong-control h-10 border-2 bg-background/75'
               value={settings.gotify_url}
               onChange={(e) => updateField('gotify_url', e.target.value)}
               placeholder={t('https://gotify.example.com')}
@@ -281,7 +281,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
             <Input
               id='gotifyPriority'
               type='number'
-              className='h-9'
+              className='wallet-strong-control h-10 border-2 bg-background/75'
               min='0'
               max='10'
               value={settings.gotify_priority}
@@ -296,7 +296,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
               )}
             </p>
           </div>
-          <div className='bg-muted/50 rounded-lg border p-3 sm:p-4'>
+          <div className='wallet-strong-control bg-primary/[0.035] rounded-xl border-2 p-3 sm:p-4'>
             <h5 className='mb-1.5 text-sm font-medium sm:mb-2'>
               {t('Setup Instructions')}
             </h5>
@@ -334,7 +334,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
 
         {/* Receive Upstream Model Update Notifications (admin only) */}
         {isAdmin && (
-          <div className='flex items-start justify-between gap-3 rounded-lg border p-3 sm:items-center sm:p-4'>
+          <div className='wallet-strong-control bg-card/80 flex items-start justify-between gap-3 rounded-xl border-2 p-3 sm:items-center sm:p-4'>
             <div className='space-y-0.5'>
               <Label htmlFor='upstreamModelUpdateNotify'>
                 {t('Receive Upstream Model Update Notifications')}
@@ -357,7 +357,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
         )}
 
         {/* Accept Unset Model Price */}
-        <div className='flex items-start justify-between gap-3 rounded-lg border p-3 sm:items-center sm:p-4'>
+        <div className='wallet-strong-control bg-card/80 flex items-start justify-between gap-3 rounded-xl border-2 p-3 sm:items-center sm:p-4'>
           <div className='space-y-0.5'>
             <Label htmlFor='acceptUnsetPrice'>
               {t('Accept Unpriced Models')}
@@ -377,7 +377,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
         </div>
 
         {/* Record IP Log */}
-        <div className='flex items-start justify-between gap-3 rounded-lg border p-3 sm:items-center sm:p-4'>
+        <div className='wallet-strong-control bg-card/80 flex items-start justify-between gap-3 rounded-xl border-2 p-3 sm:items-center sm:p-4'>
           <div className='space-y-0.5'>
             <Label htmlFor='recordIp'>{t('Record IP Address')}</Label>
             <p className='text-muted-foreground text-xs sm:text-sm'>

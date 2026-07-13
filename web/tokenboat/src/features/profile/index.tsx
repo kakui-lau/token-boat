@@ -48,14 +48,14 @@ export function Profile() {
 
   return (
     <Main>
-      <div className='token-boat-account-surface min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4 sm:py-4'>
-        <CardStaggerContainer className='mx-auto flex w-full max-w-7xl flex-col gap-3 sm:gap-4'>
+      <div className='token-boat-account-surface -mx-3 -mt-1 min-h-[calc(100vh-8rem)] flex-1 overflow-auto px-3 pt-1 pb-4 sm:-mx-4 sm:px-4'>
+        <CardStaggerContainer className='mx-auto flex w-full max-w-full flex-col gap-3 sm:gap-4'>
           <CardStaggerItem>
             <ProfileHeader profile={profile} loading={loading} />
           </CardStaggerItem>
 
           <CardStaggerItem>
-            <div className='grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(340px,0.36fr)] xl:items-start'>
+            <div className='grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] xl:items-start'>
               <div className='space-y-3 sm:space-y-4'>
                 <ProfileSettingsCard
                   profile={profile}

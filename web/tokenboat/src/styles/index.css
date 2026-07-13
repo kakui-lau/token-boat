@@ -198,6 +198,38 @@ For commercial licensing, please contact support@quantumnous.com
     0 18px 54px color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
+.token-boat-cockpit-strip {
+  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--primary) 22%);
+  background:
+    linear-gradient(
+      120deg,
+      color-mix(in oklch, var(--primary) 6%, transparent),
+      transparent 34%,
+      color-mix(in oklch, var(--success) 5%, transparent)
+    ),
+    linear-gradient(180deg, var(--card), var(--background));
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 76%, transparent) inset,
+    0 22px 64px color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.wallet-recharge-workspace,
+.wallet-payment-summary {
+  border-color: color-mix(in oklch, var(--border) 76%, var(--primary) 24%);
+}
+
+.wallet-strong-control {
+  border-color: color-mix(in oklch, var(--border) 54%, var(--primary) 46%);
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 82%, transparent) inset,
+    0 8px 22px color-mix(in oklch, var(--primary) 7%, transparent);
+}
+
+.wallet-strong-control:hover {
+  border-color: color-mix(in oklch, var(--primary) 62%, var(--border) 38%);
+  background: color-mix(in oklch, var(--card) 82%, var(--primary) 18%);
+}
+
 .token-boat-energy-panel {
   background:
     linear-gradient(

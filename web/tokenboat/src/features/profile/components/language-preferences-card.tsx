@@ -108,8 +108,11 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
       description={t('Set the language used across the interface')}
       icon={<Languages className='h-4 w-4' />}
       disableHoverEffect
+      className='token-boat-pro-card'
+      headerClassName='bg-background/45'
+      iconClassName='bg-primary/7 text-primary'
     >
-      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+      <div className='wallet-strong-control bg-card/80 flex flex-col gap-3 rounded-xl border-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
         <div className='space-y-1'>
           <div className='text-sm font-medium'>{t('Interface Language')}</div>
           <p className='text-muted-foreground line-clamp-2 text-xs sm:text-sm'>
@@ -130,7 +133,7 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
             onValueChange={handleLanguageChange}
             disabled={saving}
           >
-            <SelectTrigger className='w-full sm:w-48'>
+            <SelectTrigger className='wallet-strong-control w-full border-2 bg-background/75 sm:w-48'>
               <SelectValue placeholder={t('Select language')} />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>

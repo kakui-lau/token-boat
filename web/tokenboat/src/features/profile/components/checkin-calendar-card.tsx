@@ -224,7 +224,10 @@ export function CheckinCalendarCard({
 
   if (isLoading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
         <div className='p-6'>
           <div className='flex items-start justify-between gap-4'>
             <div className='flex items-center gap-3'>
@@ -273,9 +276,12 @@ export function CheckinCalendarCard({
         </div>
       </Dialog>
 
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='token-boat-pro-card gap-0 overflow-hidden py-0'
+      >
         {/* Header */}
-        <div className='border-b p-4 sm:p-6'>
+        <div className='border-b bg-background/45 p-4 sm:p-5'>
           <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4'>
             <button
               type='button'
@@ -332,8 +338,8 @@ export function CheckinCalendarCard({
         {!collapsed ? (
           <>
             {/* Stats */}
-            <div className='grid grid-cols-3 gap-px border-b'>
-              <div className='bg-card p-3 text-center sm:p-5'>
+            <div className='grid grid-cols-3 gap-2 border-b p-2'>
+              <div className='wallet-strong-control rounded-xl border-2 bg-card/80 p-3 text-center sm:p-4'>
                 <div className='text-xl font-semibold tracking-tight tabular-nums sm:text-2xl'>
                   {checkinData?.stats?.total_checkins || 0}
                 </div>
@@ -341,7 +347,7 @@ export function CheckinCalendarCard({
                   {t('Total check-ins')}
                 </div>
               </div>
-              <div className='bg-card p-3 text-center sm:p-5'>
+              <div className='wallet-strong-control rounded-xl border-2 bg-card/80 p-3 text-center sm:p-4'>
                 <div className='text-xl font-semibold tracking-tight tabular-nums sm:text-2xl'>
                   {formatQuotaWithCurrency(monthlyQuota, { digitsLarge: 0 })}
                 </div>
@@ -349,7 +355,7 @@ export function CheckinCalendarCard({
                   {t('This month')}
                 </div>
               </div>
-              <div className='bg-card p-3 text-center sm:p-5'>
+              <div className='wallet-strong-control rounded-xl border-2 bg-card/80 p-3 text-center sm:p-4'>
                 <div className='text-xl font-semibold tracking-tight tabular-nums sm:text-2xl'>
                   {formatQuotaWithCurrency(
                     checkinData?.stats?.total_quota || 0,
@@ -365,7 +371,7 @@ export function CheckinCalendarCard({
             </div>
 
             {/* Calendar */}
-            <div className='p-4 sm:p-6'>
+            <div className='p-4 sm:p-5'>
               <div className='space-y-3 sm:space-y-4'>
                 {/* Month navigation */}
                 <div className='flex items-center justify-between'>
@@ -462,7 +468,7 @@ export function CheckinCalendarCard({
                   {t('You can only check in once per day')}
                 </div>
 
-                <div className='bg-muted/30 text-muted-foreground rounded-lg border p-3 text-xs'>
+                <div className='wallet-strong-control bg-card/80 text-muted-foreground rounded-xl border-2 p-3 text-xs'>
                   <ul className='list-disc space-y-1 pl-5'>
                     <li>
                       {t('Check in daily to receive random quota rewards')}

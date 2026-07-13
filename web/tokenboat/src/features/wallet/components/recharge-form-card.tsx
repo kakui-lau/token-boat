@@ -194,8 +194,8 @@ export function RechargeFormCard({
       description={t('Choose an amount and payment method')}
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect
-      className='token-boat-pro-card token-boat-energy-panel'
-      headerClassName='bg-background/45'
+      className='token-boat-pro-card token-boat-energy-panel overflow-hidden'
+      headerClassName='bg-background/50'
       iconClassName='bg-primary/7 text-primary'
       action={
         onOpenBilling ? (
@@ -210,20 +210,46 @@ export function RechargeFormCard({
           </Button>
         ) : null
       }
-      contentClassName='bg-muted/10 p-4 sm:p-6'
+      contentClassName='bg-muted/10 p-3 sm:p-4'
     >
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-5'>
           {hasConfigurableTopup && (
-            <div className='grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.44fr)] xl:items-start'>
-              <div className='flex flex-col gap-5'>
+            <div className='wallet-recharge-workspace grid gap-4 rounded-xl border bg-background/72 p-3 shadow-sm sm:p-4 2xl:grid-cols-[80px_minmax(0,1fr)_minmax(280px,0.4fr)] 2xl:items-start'>
+              <div className='hidden h-full border-r pr-3 2xl:block'>
+                <div className='sticky top-4 space-y-7 py-2'>
+                  {[
+                    t('Select Amount'),
+                    t('Payment Channel'),
+                    t('Confirm Payment'),
+                  ].map((step, index) => (
+                    <div
+                      key={step}
+                      className='text-muted-foreground relative flex gap-2 text-xs'
+                    >
+                      <span
+                        className={cn(
+                          'flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold',
+                          index === 0
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background'
+                        )}
+                      >
+                        {index + 1}
+                      </span>
+                      <span className='pt-1 leading-tight'>{step}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className='flex flex-col gap-4'>
                 {presetAmounts.length > 0 && (
-                  <div className='token-boat-glass-panel rounded-xl border p-4 sm:p-5'>
+                  <div className='rounded-xl p-1'>
                     <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                      {t('Amount')}
+                      {t('Select Amount')}
                     </Label>
-                    <div className='mt-4 grid grid-cols-2 gap-3 md:grid-cols-4'>
+                    <div className='mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 2xl:gap-3'>
                       {presetAmounts.map((preset, index) => {
                         const discount =
                           preset.discount ||
@@ -245,15 +271,15 @@ export function RechargeFormCard({
                             key={index}
                             variant='outline'
                             className={cn(
-                              'relative flex min-h-20 flex-col items-start overflow-hidden rounded-xl px-3.5 py-3 text-left whitespace-normal transition-all sm:min-h-[88px] sm:p-4',
+                              'wallet-strong-control relative flex min-h-[72px] flex-col items-start overflow-hidden rounded-xl border-2 px-3 py-2.5 text-left whitespace-normal transition-all sm:min-h-[82px] sm:p-3.5',
                               selectedPreset === preset.value
-                                ? 'border-primary/60 bg-primary/[0.07] shadow-sm'
-                                : 'border-muted bg-card/75 hover:border-primary/30 hover:bg-primary/[0.03]'
+                                ? 'border-primary bg-primary/[0.18] shadow-[0_0_0_1px_color-mix(in_oklch,var(--primary)_32%,transparent)_inset,0_16px_34px_-20px_color-mix(in_oklch,var(--primary)_95%,black)]'
+                                : 'bg-card/80 hover:bg-primary/[0.045]'
                             )}
                             onClick={() => onSelectPreset(preset)}
                           >
                             {selectedPreset === preset.value && (
-                              <span className='bg-primary absolute inset-x-0 top-0 h-0.5' />
+                              <span className='bg-primary absolute inset-x-0 top-0 h-1' />
                             )}
                             <div className='flex w-full items-center justify-between'>
                               <div className='text-base font-semibold sm:text-lg'>
@@ -281,14 +307,14 @@ export function RechargeFormCard({
                   </div>
                 )}
 
-                <div className='token-boat-glass-panel rounded-xl border p-4 sm:p-5'>
+                <div className='rounded-xl p-1'>
                   <Label
                     htmlFor='topup-amount'
                     className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
                   >
                     {t('Custom Amount')}
                   </Label>
-                  <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(190px,0.55fr)] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
+                  <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.55fr)] lg:items-center'>
                     <Input
                       id='topup-amount'
                       type='number'
@@ -296,11 +322,11 @@ export function RechargeFormCard({
                       onChange={(e) => handleAmountChange(e.target.value)}
                       min={minTopup}
                       placeholder={`Minimum ${minTopup}`}
-                      className='border-primary/15 bg-background/75 h-11 text-base shadow-xs sm:h-12 sm:text-lg'
+                      className='wallet-strong-control border-2 bg-background/75 h-11 text-base shadow-xs sm:h-12 sm:text-lg'
                     />
-                    <div className='border-primary/15 bg-primary/[0.035] flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 shadow-xs lg:min-w-56'>
+                    <div className='wallet-strong-control bg-primary/[0.035] flex min-h-11 items-center justify-between gap-2 rounded-lg border-2 px-3 shadow-xs lg:min-w-56'>
                       <span className='text-muted-foreground truncate text-xs'>
-                        {t('Amount to pay:')}
+                        {t('Total to pay')}
                       </span>
                       {calculating ? (
                         <Skeleton className='h-5 w-16' />
@@ -314,13 +340,13 @@ export function RechargeFormCard({
                 </div>
               </div>
 
-              <div className='flex flex-col gap-5'>
-                <div className='token-boat-glass-panel rounded-xl border p-4 sm:p-5'>
+              <div className='flex flex-col gap-4'>
+                <div className='rounded-xl border-primary/15 bg-primary/[0.025] p-1 2xl:border-l 2xl:pl-4'>
                   <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                    {t('Payment Method')}
+                    {t('Payment Channel')}
                   </Label>
                   {hasStandardPaymentMethods ? (
-                    <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1'>
+                    <div className='mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 2xl:grid-cols-1'>
                       {topupInfo?.pay_methods?.map((method) => {
                         const minTopup = method.min_topup || 0
                         const disabled = minTopup > topupAmount
@@ -345,7 +371,7 @@ export function RechargeFormCard({
                                 ? `${method.name}. ${disabledReason}`
                                 : method.name
                             }
-                            className='border-muted bg-card/75 hover:border-primary/30 hover:bg-primary/[0.03] min-h-16 min-w-0 justify-start gap-2 rounded-xl px-3.5 py-2.5 text-left'
+                            className='wallet-strong-control bg-card/86 hover:bg-primary/[0.045] min-h-16 min-w-0 justify-start gap-2 rounded-xl border-2 px-3.5 py-2.5 text-left'
                           >
                             {paymentLoading === method.type ? (
                               <Loader2 className='h-4 w-4 animate-spin' />
@@ -400,7 +426,7 @@ export function RechargeFormCard({
                       <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                         {t('Waffo Payment')}
                       </Label>
-                      <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1'>
+                      <div className='mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 2xl:grid-cols-1'>
                         {waffoPayMethods?.map((method, index) => {
                           const loadingKey = `waffo-${index}`
                           const waffoMin = waffoMinTopup || 0
@@ -426,7 +452,7 @@ export function RechargeFormCard({
                                   ? `${method.name}. ${disabledReason}`
                                   : method.name
                               }
-                              className='border-muted bg-card/75 hover:border-primary/30 hover:bg-primary/[0.03] min-h-16 min-w-0 justify-start gap-2 rounded-xl px-3.5 py-2.5 text-left'
+                              className='wallet-strong-control bg-card/86 hover:bg-primary/[0.045] min-h-16 min-w-0 justify-start gap-2 rounded-xl border-2 px-3.5 py-2.5 text-left'
                             >
                               {paymentLoading === loadingKey ? (
                                 <Loader2 className='h-4 w-4 animate-spin' />
@@ -483,6 +509,56 @@ export function RechargeFormCard({
           </AlertDescription>
         </Alert>
       )}
+
+      {hasConfigurableTopup ? (
+        <div className='wallet-payment-summary rounded-xl border bg-background/82 p-3 sm:p-4'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <div className='flex items-center gap-2'>
+              <span className='bg-primary/8 text-primary flex size-8 items-center justify-center rounded-lg'>
+                <Receipt className='size-4' />
+              </span>
+              <div>
+                <div className='text-sm font-semibold'>
+                  {t('Payment Summary')}
+                </div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Choose a payment channel to continue')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+            <div className='wallet-strong-control rounded-lg border-2 bg-background/72 px-3 py-2.5'>
+              <div className='text-muted-foreground text-xs'>
+                {t('Estimated Credit')}
+              </div>
+              <div className='mt-1 flex min-w-0 items-baseline gap-1.5'>
+                <span className='truncate font-mono text-xl font-semibold tracking-tight tabular-nums'>
+                  {formatCurrency(topupAmount)}
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {t('Quota')}
+                </span>
+              </div>
+            </div>
+            <div className='wallet-strong-control bg-primary/[0.055] rounded-lg border-2 px-3 py-2.5'>
+              <div className='text-muted-foreground text-xs'>
+                {t('Total to pay')}
+              </div>
+              <div className='mt-1 flex min-w-0 items-baseline gap-1.5'>
+                {calculating ? (
+                  <Skeleton className='h-7 w-20' />
+                ) : (
+                  <span className='truncate font-mono text-xl font-semibold tracking-tight tabular-nums'>
+                    {formatCurrency(paymentAmount)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Creem Products Section */}
       {enableCreemTopup &&

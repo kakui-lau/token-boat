@@ -96,29 +96,41 @@ export function ProfileSecurityCard({
         description={t('Manage your security settings and account access')}
         icon={<Shield className='h-4 w-4' />}
         disableHoverEffect
+        className='token-boat-pro-card'
+        headerClassName='bg-background/45'
+        iconClassName='bg-primary/7 text-primary'
       >
-        <div className='grid grid-cols-1 gap-2.5 sm:gap-3 md:grid-cols-3'>
+        <div className='grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1'>
           {securityActions.map((item) => (
             <button
               key={item.title}
               type='button'
               onClick={item.action}
-              className={`flex items-center gap-3 rounded-lg border p-3 text-left md:flex-col md:gap-2 md:p-4 md:text-center ${
-                item.variant === 'destructive' ? 'border-destructive/30' : ''
+              className={`token-boat-glass-panel group hover:bg-primary/[0.025] relative min-h-22 overflow-hidden rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 md:min-h-30 ${
+                item.variant === 'destructive'
+                  ? 'border-destructive/25 hover:bg-destructive/[0.025]'
+                  : 'hover:border-primary/25'
               }`}
             >
+              <span
+                className={`absolute inset-x-0 top-0 h-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${
+                  item.variant === 'destructive'
+                    ? 'bg-destructive'
+                    : 'bg-primary'
+                }`}
+              />
               <div
-                className={`rounded-md p-2 ${
+                className={`mb-2.5 flex size-9 items-center justify-center rounded-lg ${
                   item.variant === 'destructive'
                     ? 'bg-destructive/10 text-destructive'
-                    : 'bg-muted'
+                    : 'bg-primary/7 text-primary'
                 }`}
               >
-                <item.icon className='h-5 w-5' />
+                <item.icon className='size-4' />
               </div>
-              <div className='min-w-0 md:contents'>
+              <div className='min-w-0'>
                 <p className='text-sm font-medium'>{item.title}</p>
-                <p className='text-muted-foreground line-clamp-1 text-xs md:line-clamp-none'>
+                <p className='text-muted-foreground mt-1 line-clamp-2 text-xs'>
                   {item.description}
                 </p>
               </div>

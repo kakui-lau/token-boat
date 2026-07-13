@@ -171,6 +171,78 @@ For commercial licensing, please contact support@quantumnous.com
   opacity: 0.38;
 }
 
+.token-boat-account-surface {
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--background) 94%, var(--primary) 6%),
+      var(--background) 16rem
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--primary) 5%, transparent),
+      transparent 34%,
+      color-mix(in oklch, var(--success) 4%, transparent)
+    );
+}
+
+.token-boat-pro-card {
+  border-color: color-mix(in oklch, var(--border) 78%, var(--primary) 22%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--card) 96%, var(--primary) 4%),
+    var(--card)
+  );
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 72%, transparent) inset,
+    0 18px 54px color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.token-boat-energy-panel {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 8%, transparent),
+      transparent 28%
+    ),
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 9%, transparent) 0,
+      color-mix(in oklch, var(--primary) 9%, transparent) 1px,
+      transparent 1px,
+      transparent 18px
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--card) 96%, var(--primary) 4%),
+      var(--card)
+    );
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 76%, transparent) inset,
+    0 24px 70px color-mix(in oklch, var(--primary) 13%, transparent);
+}
+
+.dark .token-boat-pro-card {
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 8%, transparent) inset,
+    0 18px 54px color-mix(in oklch, black 28%, transparent);
+}
+
+.token-boat-glass-panel {
+  border-color: color-mix(in oklch, var(--border) 82%, var(--primary) 18%);
+  background: color-mix(in oklch, var(--background) 76%, var(--card) 24%);
+}
+
+.token-boat-hairline {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--primary) 38%, transparent),
+    color-mix(in oklch, var(--success) 26%, transparent),
+    transparent
+  );
+}
+
 .token-boat-aurora {
   position: absolute;
   inset: -12rem -20%;

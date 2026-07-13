@@ -198,7 +198,7 @@ function CommonLogsCard<TData>({
         />
       </div>
 
-      <div className='grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] gap-1.5'>
+      <div className='grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-1.5'>
         <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
           <div className='text-muted-foreground mb-1 text-[11px] leading-none font-medium select-none'>
             {t('Time')}

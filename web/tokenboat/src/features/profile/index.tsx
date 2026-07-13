@@ -48,15 +48,15 @@ export function Profile() {
 
   return (
     <Main>
-      <div className='min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4 sm:py-6'>
-        <CardStaggerContainer className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-6'>
+      <div className='token-boat-account-surface min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4 sm:py-4'>
+        <CardStaggerContainer className='mx-auto flex w-full max-w-7xl flex-col gap-3 sm:gap-4'>
           <CardStaggerItem>
             <ProfileHeader profile={profile} loading={loading} />
           </CardStaggerItem>
 
           <CardStaggerItem>
-            <div className='grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)] xl:items-start'>
-              <div className='space-y-4 sm:space-y-6'>
+            <div className='grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(340px,0.36fr)] xl:items-start'>
+              <div className='space-y-3 sm:space-y-4'>
                 <ProfileSettingsCard
                   profile={profile}
                   loading={loading}
@@ -66,10 +66,10 @@ export function Profile() {
                   profile={profile}
                   onProfileUpdate={refreshProfile}
                 />
-                <ProfileSecurityCard profile={profile} loading={loading} />
               </div>
 
-              <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
+              <div className='space-y-3 sm:space-y-4 xl:sticky xl:top-4'>
+                <ProfileSecurityCard profile={profile} loading={loading} />
                 {checkinEnabled && (
                   <CheckinCalendarCard
                     checkinEnabled={checkinEnabled}

@@ -70,12 +70,15 @@ export function ProfileSettingsCard({
       description={t('Configure your account preferences and integrations')}
       icon={<Settings className='h-4 w-4' />}
       disableHoverEffect
+      className='token-boat-pro-card'
+      headerClassName='bg-background/45'
+      iconClassName='bg-primary/7 text-primary'
     >
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className='grid w-full grid-cols-2 items-stretch gap-1 rounded-xl p-1 group-data-horizontal/tabs:h-10'>
+        <TabsList className='token-boat-glass-panel grid w-full grid-cols-2 items-stretch gap-1 rounded-xl border p-1 group-data-horizontal/tabs:h-11'>
           <TabsTrigger
             value='bindings'
-            className='h-full gap-2 rounded-lg px-3 py-0 leading-none'
+            className='h-full gap-2 rounded-lg px-3 py-0 leading-none data-[selected]:shadow-xs'
           >
             <Link2 className='h-4 w-4' />
             <span className='hidden sm:inline'>{t('Account Bindings')}</span>
@@ -83,7 +86,7 @@ export function ProfileSettingsCard({
           </TabsTrigger>
           <TabsTrigger
             value='settings'
-            className='h-full gap-2 rounded-lg px-3 py-0 leading-none'
+            className='h-full gap-2 rounded-lg px-3 py-0 leading-none data-[selected]:shadow-xs'
           >
             <Settings className='h-4 w-4' />
             <span className='hidden sm:inline'>

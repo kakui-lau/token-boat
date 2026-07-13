@@ -46,7 +46,7 @@ export function AffiliateRewardsCard({
   const { t } = useTranslation()
   if (loading) {
     return (
-      <Card data-card-hover='false' className='bg-muted/20 py-0'>
+      <Card data-card-hover='false' className='token-boat-pro-card py-0'>
         <CardContent className='grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.72fr)_minmax(320px,1.15fr)] lg:items-center'>
           <div>
             <Skeleton className='h-5 w-32' />
@@ -62,11 +62,15 @@ export function AffiliateRewardsCard({
   const hasRewards = (user?.aff_quota ?? 0) > 0
 
   return (
-    <Card data-card-hover='false' className='bg-muted/20 py-0'>
-      <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
-        <div className='flex min-w-0 items-center gap-2.5'>
-          <div className='bg-background flex size-8 shrink-0 items-center justify-center rounded-lg border'>
-            <Share2 className='text-muted-foreground size-4' />
+    <Card
+      data-card-hover='false'
+      className='token-boat-pro-card relative overflow-hidden py-0'
+    >
+      <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
+      <CardContent className='relative grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(220px,0.9fr)_minmax(260px,0.85fr)_minmax(320px,1fr)] lg:items-center'>
+        <div className='token-boat-glass-panel flex min-w-0 items-center gap-3 rounded-xl border p-3'>
+          <div className='bg-primary text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-xl shadow-sm'>
+            <Share2 className='size-5' />
           </div>
           <div className='min-w-0'>
             <h3 className='truncate text-sm font-semibold'>
@@ -80,13 +84,13 @@ export function AffiliateRewardsCard({
           </div>
         </div>
 
-        <div className='grid grid-cols-3 gap-1.5 text-center'>
+        <div className='token-boat-glass-panel grid grid-cols-3 gap-1.5 rounded-xl border p-2 text-center'>
           {[
             [t('Pending'), formatQuota(user?.aff_quota ?? 0)],
             [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
             [t('Invites'), String(user?.aff_count ?? 0)],
           ].map(([label, value]) => (
-            <div key={label}>
+            <div key={label} className='bg-card/80 rounded-lg px-2 py-2'>
               <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
                 {label}
               </div>
@@ -97,11 +101,11 @@ export function AffiliateRewardsCard({
           ))}
         </div>
 
-        <div className='flex items-center gap-2'>
+        <div className='token-boat-glass-panel flex items-center gap-2 rounded-xl border p-2'>
           <Input
             value={affiliateLink}
             readOnly
-            className='border-muted bg-background/70 h-9 min-w-0 flex-1 font-mono text-xs'
+            className='border-muted bg-card/75 h-9 min-w-0 flex-1 font-mono text-xs'
           />
           <CopyButton
             value={affiliateLink}

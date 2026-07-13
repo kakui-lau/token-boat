@@ -16,7 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import {
+  Activity,
+  BarChart3,
+  Mail,
+  ShieldCheck,
+  UserRound,
+  WalletCards,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -105,69 +112,107 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
   ]
 
   return (
-    <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-      <CardContent className='p-3 sm:p-5'>
-        <div className='flex items-center gap-3 text-left sm:gap-4'>
-          <Avatar className='ring-background h-12 w-12 rounded-xl text-sm ring-2 sm:h-16 sm:w-16 sm:rounded-2xl sm:text-lg sm:ring-4'>
-            <AvatarFallback
-              className='rounded-xl font-semibold text-white sm:rounded-2xl'
-              style={avatarFallbackStyle}
-            >
-              {avatarFallback}
-            </AvatarFallback>
-          </Avatar>
+    <Card
+      data-card-hover='false'
+      className='token-boat-pro-card relative gap-0 overflow-hidden py-0'
+    >
+      <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
+      <CardContent className='relative p-2.5 sm:p-4'>
+        <div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.34fr)] lg:items-stretch'>
+          <div className='token-boat-glass-panel flex min-w-0 items-center gap-3 rounded-xl border p-3 sm:gap-4 sm:p-4'>
+            <Avatar className='ring-background size-14 rounded-2xl text-sm shadow-sm ring-4 sm:size-18 sm:text-lg'>
+              <AvatarFallback
+                className='rounded-2xl font-semibold text-white'
+                style={avatarFallbackStyle}
+              >
+                {avatarFallback}
+              </AvatarFallback>
+            </Avatar>
 
-          <div className='min-w-0 flex-1 space-y-1.5 sm:space-y-3'>
-            <div className='flex min-w-0 items-center gap-2'>
-              <h1 className='truncate text-xl font-semibold tracking-tight sm:text-2xl'>
-                {displayName}
-              </h1>
-              <StatusBadge
-                label={roleLabel}
-                variant='neutral'
-                copyable={false}
-              />
-              <StatusBadge
-                label={`${t('User ID')} ${profile.id}`}
-                variant='info'
-                copyText={String(profile.id)}
-              />
+            <div className='min-w-0 flex-1'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <h1 className='truncate text-xl font-semibold tracking-tight sm:text-2xl'>
+                  {displayName}
+                </h1>
+                <StatusBadge
+                  label={roleLabel}
+                  variant='neutral'
+                  copyable={false}
+                />
+                <StatusBadge
+                  label={`${t('User ID')} ${profile.id}`}
+                  variant='info'
+                  copyText={String(profile.id)}
+                />
+              </div>
+
+              <div className='text-muted-foreground mt-2 flex flex-wrap gap-1.5 text-xs'>
+                <span className='bg-card/70 inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1'>
+                  <UserRound className='text-primary size-3.5' />
+                  <span className='truncate'>@{profile.username}</span>
+                </span>
+                {profile.email && (
+                  <span className='bg-card/70 inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1'>
+                    <Mail className='text-primary size-3.5' />
+                    <span className='truncate'>{profile.email}</span>
+                  </span>
+                )}
+                {profile.group && (
+                  <span className='bg-card/70 inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1'>
+                    <ShieldCheck className='text-success size-3.5' />
+                    <span className='truncate'>{profile.group}</span>
+                  </span>
+                )}
+              </div>
             </div>
+          </div>
 
-            <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:gap-x-4 sm:text-sm'>
-              <span className='truncate'>@{profile.username}</span>
-              {profile.email && (
-                <>
-                  <span>•</span>
-                  <span className='truncate'>{profile.email}</span>
-                </>
-              )}
-              {profile.group && (
-                <>
-                  <span>•</span>
-                  <span className='truncate'>{profile.group}</span>
-                </>
-              )}
+          <div className='border-primary/20 bg-primary/[0.04] flex flex-col justify-between rounded-xl border p-3.5'>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                {t('Current Balance')}
+              </div>
+              <span className='bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-lg'>
+                <WalletCards className='size-4' />
+              </span>
+            </div>
+            <div className='mt-3 font-mono text-2xl font-semibold tracking-tight break-all tabular-nums sm:text-[1.7rem]'>
+              {formatQuota(profile.quota)}
+            </div>
+            <div className='text-muted-foreground mt-2 flex items-center gap-2 text-xs'>
+              <ShieldCheck className='text-success size-3.5' />
+              <span>
+                {t('Manage your security settings and account access')}
+              </span>
             </div>
           </div>
         </div>
       </CardContent>
-      <div className='border-t'>
-        <div className='divide-border/60 grid grid-cols-3 divide-x'>
-          {stats.map((item) => (
-            <div key={item.label} className='min-w-0 px-3 py-3 sm:px-5 sm:py-4'>
+      <div className='bg-background/35 relative border-t p-2'>
+        <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+          {stats.map((item, index) => (
+            <div
+              key={item.label}
+              className={`token-boat-glass-panel min-w-0 rounded-xl border p-3 ${
+                index === 0 ? 'md:hidden' : ''
+              }`}
+            >
               <div className='flex items-center gap-2'>
-                <item.icon className='text-muted-foreground/60 size-3.5 shrink-0' />
-                <div className='text-muted-foreground truncate text-xs font-medium tracking-wider uppercase'>
-                  {item.label}
+                <span className='bg-primary/7 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg'>
+                  <item.icon className='size-4' />
+                </span>
+                <div className='min-w-0'>
+                  <div className='text-muted-foreground truncate text-xs font-medium tracking-wider uppercase'>
+                    {item.label}
+                  </div>
+                  <div className='text-muted-foreground/60 hidden text-xs sm:block'>
+                    {item.description}
+                  </div>
                 </div>
               </div>
 
-              <div className='text-foreground mt-1.5 truncate font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
+              <div className='text-foreground mt-2 truncate font-mono text-lg font-semibold tracking-tight tabular-nums sm:text-xl'>
                 {item.value}
-              </div>
-              <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-                {item.description}
               </div>
             </div>
           ))}

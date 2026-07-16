@@ -60,9 +60,9 @@ export const GATEWAY_FEATURES = [
 // Stats section - Default statistics
 export const DEFAULT_STATS = [
   {
-    value: '50',
-    suffix: '+',
-    description: 'upstream services integrated',
+    value: '23',
+    suffix: '',
+    description: 'Provider channel types',
   },
   {
     value: '100',

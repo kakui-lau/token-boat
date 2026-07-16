@@ -99,7 +99,7 @@ const principles: AboutFeature[] = [
 ]
 
 const metrics = [
-  { value: '40+', label: 'Provider channel types' },
+  { value: '23', label: 'Provider channel types' },
   { value: '3', label: 'Supported databases' },
   { value: '1', label: 'Unified API entry' },
 ]

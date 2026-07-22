@@ -17,14 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import {
   ArrowRight,
   BadgeCheck,
-  Boxes,
+  Building2,
   Compass,
-  Gauge,
   Globe2,
-  LockKeyhole,
   Network,
   Route,
   ShieldCheck,
@@ -32,7 +31,6 @@ import {
   WalletCards,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Link } from '@tanstack/react-router'
 
 import { PublicLayout } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
@@ -53,55 +51,25 @@ type AboutFeature = {
 const capabilities: AboutFeature[] = [
   {
     icon: Network,
-    title: 'Unified model gateway',
-    description:
-      'Connect OpenAI-compatible, Claude-compatible, Gemini-compatible, image, audio, and task channels behind one clean API surface.',
+    title: 'Model Access',
+    description: 'Compatible API routes for common AI application workflows',
   },
   {
     icon: Route,
-    title: 'Flexible routing control',
-    description:
-      'Route requests by model, group, priority, health, weight, and cost policy so applications can stay stable as providers change.',
+    title: 'Global Coverage',
+    description: 'Multi-region deployment for stable global access',
   },
   {
     icon: WalletCards,
-    title: 'Built-in quota and billing',
-    description:
-      'Manage tokens, prepaid balance, pricing ratios, consumption logs, and settlement flows without rebuilding account infrastructure.',
+    title: 'Transparent Billing',
+    description: 'Pay-as-you-go with real-time usage monitoring',
   },
   {
     icon: ShieldCheck,
-    title: 'Operational visibility',
+    title: 'Secure & Reliable',
     description:
-      'Track keys, channels, errors, task status, user activity, and usage analytics from an admin console designed for daily operations.',
+      'Enterprise-grade security with comprehensive permission management',
   },
-]
-
-const principles: AboutFeature[] = [
-  {
-    icon: Gauge,
-    title: 'Reliable by default',
-    description:
-      'Token Boat is designed for provider failover, request tracing, and predictable gateway behavior under real production traffic.',
-  },
-  {
-    icon: LockKeyhole,
-    title: 'Secure access boundaries',
-    description:
-      'API keys, user permissions, admin controls, and optional passkeys help keep model access governed and auditable.',
-  },
-  {
-    icon: Boxes,
-    title: 'Ready for secondary development',
-    description:
-      'The codebase follows a layered backend and modern React frontend so teams can extend providers, billing, dashboards, and workflows.',
-  },
-]
-
-const metrics = [
-  { value: '23', label: 'Provider channel types' },
-  { value: '3', label: 'Supported databases' },
-  { value: '1', label: 'Unified API entry' },
 ]
 
 function SectionHeading({
@@ -119,7 +87,7 @@ function SectionHeading({
 
   return (
     <div className={cn('max-w-3xl space-y-3', className)}>
-      <Badge className='border-primary/20 bg-primary/10 text-primary rounded-full px-3 py-1 shadow-none hover:bg-primary/10'>
+      <Badge className='border-primary/20 bg-primary/10 text-primary hover:bg-primary/10 rounded-full px-3 py-1 shadow-none'>
         {t(eyebrow)}
       </Badge>
       <h2 className='text-3xl font-semibold tracking-tight sm:text-4xl'>
@@ -168,20 +136,18 @@ function DefaultAboutContent() {
       <div aria-hidden className='token-boat-beam' />
       <div aria-hidden className='token-boat-orbit hidden lg:block' />
 
-      <section className='container relative z-10 grid min-h-[72vh] items-center gap-12 pt-28 pb-16 lg:grid-cols-[1.05fr_0.95fr]'>
+      <section className='relative z-10 container grid min-h-[72vh] items-center gap-12 pt-28 pb-16 lg:grid-cols-[1.05fr_0.95fr]'>
         <div className='max-w-4xl space-y-8'>
-          <Badge className='border-primary/20 bg-background/70 text-primary rounded-full px-3 py-1 shadow-none backdrop-blur-md hover:bg-background/70'>
+          <Badge className='border-primary/20 bg-background/70 text-primary hover:bg-background/70 rounded-full px-3 py-1 shadow-none backdrop-blur-md'>
             <Sparkles className='mr-1.5 size-3.5' />
-            {t('Token Boat AI gateway platform')}
+            {t('AI Model API Relay Platform')}
           </Badge>
           <div className='space-y-5'>
             <h1 className='max-w-4xl text-5xl font-semibold tracking-tight sm:text-6xl lg:text-7xl'>
-              {t('Build one gateway for every AI model')}
+              {t('Unified Access to')} {t('Leading AI Models')}
             </h1>
             <p className='text-muted-foreground max-w-2xl text-lg leading-8 sm:text-xl'>
-              {t(
-                'Token Boat helps teams aggregate model providers, standardize API access, manage quota and billing, and keep AI applications observable from one console.'
-              )}
+              {t('about.introduction')}
             </p>
           </div>
           <div className='flex flex-wrap gap-3'>
@@ -216,7 +182,7 @@ function DefaultAboutContent() {
               <div className='flex items-center justify-between'>
                 <div>
                   <p className='text-muted-foreground text-sm'>
-                    {t('Gateway status')}
+                    {t('AI Model API Relay Platform')}
                   </p>
                   <h2 className='text-2xl font-semibold'>Token Boat</h2>
                 </div>
@@ -241,70 +207,180 @@ function DefaultAboutContent() {
                   </div>
                 ))}
               </div>
-              <div className='grid grid-cols-3 gap-3'>
-                {metrics.map((metric) => (
-                  <div
-                    key={metric.label}
-                    className='bg-background/72 rounded-2xl p-4 text-center backdrop-blur-md'
-                  >
-                    <div className='from-primary to-secondary bg-gradient-to-r bg-clip-text text-3xl font-semibold text-transparent'>
-                      {metric.value}
-                    </div>
-                    <p className='text-muted-foreground mt-1 text-xs leading-5'>
-                      {t(metric.label)}
-                    </p>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className='relative z-10 border-t border-primary/10 bg-background/45 py-20 backdrop-blur-xl'>
+      <section className='border-primary/10 bg-background/45 relative z-10 border-t py-20 backdrop-blur-xl'>
         <div className='container space-y-10'>
           <SectionHeading
             eyebrow='What Token Boat does'
-            title='A control plane for model access'
-            description='Use Token Boat as the operational layer between applications and upstream AI providers, with consistent authentication, routing, metering, and monitoring.'
+            title='For Individuals & Businesses'
+            description='about.services.description'
           />
           <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-4'>
             {capabilities.map((feature, index) => (
-              <FeatureCard key={feature.title} feature={feature} index={index} />
+              <FeatureCard
+                key={feature.title}
+                feature={feature}
+                index={index}
+              />
             ))}
           </div>
         </div>
       </section>
 
-      <section className='relative z-10 py-20'>
-        <div className='container grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-start'>
-          <SectionHeading
-            eyebrow='Built for teams'
-            title='Designed for fast integration and long-term operation'
-            description='The platform keeps the gateway practical: simple for developers to call, clear for operators to monitor, and flexible for administrators to configure.'
-          />
-          <div className='grid gap-4'>
-            {principles.map((feature, index) => (
-              <FeatureCard key={feature.title} feature={feature} index={index} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className='relative z-10 border-t border-primary/10 py-16'>
-        <div className='container flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between'>
-          <div className='space-y-2'>
-            <div className='flex items-center gap-2'>
-              <Compass className='text-primary size-5' />
-              <h2 className='text-2xl font-semibold'>{t('Our direction')}</h2>
+      <section className='relative z-10 py-24'>
+        <div className='container flex flex-col gap-12'>
+          <div className='grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center'>
+            <div className='flex flex-col gap-7'>
+              <SectionHeading
+                eyebrow='about.company.title'
+                title='about.title'
+                description='about.company.description'
+              />
+              <p className='text-muted-foreground max-w-2xl leading-7'>
+                {t(
+                  'We help individuals and organizations use AI models with less integration overhead and clearer operational control.'
+                )}
+              </p>
+              <div className='flex flex-wrap gap-2'>
+                {['Unified API', 'Flexible routing', 'Usage visibility'].map(
+                  (item) => (
+                    <Badge
+                      key={item}
+                      variant='secondary'
+                      className='rounded-full'
+                    >
+                      {t(item)}
+                    </Badge>
+                  )
+                )}
+              </div>
             </div>
-            <p className='text-muted-foreground max-w-2xl leading-7'>
-              {t(
-                'We are building Token Boat into a dependable AI infrastructure product that makes model access easier to govern, scale, and evolve.'
-              )}
-            </p>
+
+            <article className='token-boat-glow-card border-primary/10 bg-background/72 overflow-hidden rounded-3xl border backdrop-blur-xl'>
+              <div className='from-primary/12 to-secondary/10 flex items-center gap-4 bg-gradient-to-r p-6 sm:p-8'>
+                <div className='bg-background/75 text-primary flex size-12 items-center justify-center rounded-2xl shadow-sm'>
+                  <Building2 className='size-6' aria-hidden='true' />
+                </div>
+                <div>
+                  <p className='text-muted-foreground text-sm'>
+                    {t('Platform operator')}
+                  </p>
+                  <h3 className='text-xl font-semibold'>TokenBoat</h3>
+                </div>
+                <Badge variant='secondary' className='ml-auto rounded-full'>
+                  <BadgeCheck className='size-3.5' aria-hidden='true' />
+                  {t('Hong Kong registered company')}
+                </Badge>
+              </div>
+              <dl className='bg-border/60 grid gap-px sm:grid-cols-3'>
+                {[
+                  [
+                    t('about.company.legalName'),
+                    'ORBITER TECHNOLOGY CO., LIMITED',
+                  ],
+                  [t('Registered region'), t('Hong Kong')],
+                  [t('Official website'), 'tokenboat.com'],
+                ].map(([label, value]) => (
+                  <div key={label} className='bg-background/90 p-5 sm:p-6'>
+                    <dt className='text-muted-foreground text-xs tracking-wider uppercase'>
+                      {label}
+                    </dt>
+                    <dd className='mt-2 text-sm font-semibold break-words'>
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
           </div>
-          <p className='text-muted-foreground text-sm'>© {currentYear} Token Boat</p>
+
+          <div className='border-primary/10 bg-background/55 rounded-3xl border p-6 backdrop-blur-xl sm:p-8 lg:p-10'>
+            <div className='flex flex-col gap-3'>
+              <div className='flex items-center gap-2'>
+                <Compass className='text-primary size-5' aria-hidden='true' />
+                <h2 className='text-2xl font-semibold'>
+                  {t('Our commitments')}
+                </h2>
+              </div>
+              <p className='text-muted-foreground max-w-3xl leading-7'>
+                {t(
+                  'We focus on the essentials that make an AI gateway dependable for everyday use.'
+                )}
+              </p>
+            </div>
+
+            <div className='mt-8 grid gap-4 md:grid-cols-3'>
+              {[
+                {
+                  icon: Route,
+                  title: 'Stable access',
+                  description:
+                    'Provider routing and operational visibility designed to keep model access predictable.',
+                },
+                {
+                  icon: WalletCards,
+                  title: 'Clear billing',
+                  description:
+                    'Usage records and pricing information help every request remain understandable.',
+                },
+                {
+                  icon: ShieldCheck,
+                  title: 'Security and control',
+                  description:
+                    'Keys, permissions, and account controls support responsible access management.',
+                },
+              ].map((item) => {
+                const Icon = item.icon
+                return (
+                  <article
+                    key={item.title}
+                    className='bg-background/75 rounded-2xl p-5'
+                  >
+                    <div className='bg-primary/10 text-primary flex size-10 items-center justify-center rounded-xl'>
+                      <Icon className='size-5' aria-hidden='true' />
+                    </div>
+                    <h3 className='mt-5 font-semibold'>{t(item.title)}</h3>
+                    <p className='text-muted-foreground mt-2 text-sm leading-6'>
+                      {t(item.description)}
+                    </p>
+                  </article>
+                )
+              })}
+            </div>
+
+            <div className='border-primary/10 mt-8 flex flex-col gap-5 border-t pt-6 sm:flex-row sm:items-center sm:justify-between'>
+              <nav
+                aria-label={t('Legal and support')}
+                className='flex flex-wrap gap-4 text-sm'
+              >
+                <Link
+                  to='/user-agreement'
+                  className='text-muted-foreground hover:text-foreground'
+                >
+                  {t('User Agreement')}
+                </Link>
+                <Link
+                  to='/privacy-policy'
+                  className='text-muted-foreground hover:text-foreground'
+                >
+                  {t('Privacy Policy')}
+                </Link>
+                <Link
+                  to='/support/community-interaction'
+                  className='text-muted-foreground hover:text-foreground'
+                >
+                  {t('Contact us')}
+                </Link>
+              </nav>
+              <p className='text-muted-foreground text-sm'>
+                © {currentYear} Token Boat
+              </p>
+            </div>
+          </div>
         </div>
       </section>
     </div>

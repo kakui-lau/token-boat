@@ -41,6 +41,13 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
+var errAsyncVideoChannelTestUnsupported = errors.New("asynchronous video models are not supported by channel model testing; use the /v1/videos API to verify this model")
+
+func isAsyncVideoTestModel(channelType int, modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return channelType == constant.ChannelTypeOpenRouter && strings.HasPrefix(modelName, "bytedance/seedance-")
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -111,6 +118,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo || isAsyncVideoTestModel(channel.Type, testModel) {
+		return testResult{localErr: errAsyncVideoChannelTestUnsupported}
+	}
 
 	requestPath := "/v1/chat/completions"
 
@@ -929,6 +939,10 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		milliseconds := tok.Sub(tik).Milliseconds()
 		if ctx != nil && ctx.Err() != nil {
 			break
+		}
+
+		if errors.Is(result.localErr, errAsyncVideoChannelTestUnsupported) {
+			continue
 		}
 
 		summary.Tested++

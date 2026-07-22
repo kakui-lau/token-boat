@@ -207,7 +207,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           <button
             type='button'
             onClick={props.onClick}
-            className='text-primary hover:bg-primary/10 inline-flex items-center gap-1 rounded-full border border-primary/10 bg-primary/5 px-2 py-1 text-xs transition-colors sm:px-2.5 sm:py-1.5'
+            className='text-primary hover:bg-primary/10 border-primary/10 bg-primary/5 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors sm:px-2.5 sm:py-1.5'
           >
             {t('Details')}
             <ChevronRight className='size-3.5' />
@@ -215,7 +215,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           <button
             type='button'
             onClick={handleCopy}
-            className='text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full border border-primary/10 bg-background/60 p-1.5 transition-colors'
+            className='text-muted-foreground hover:text-primary hover:bg-primary/10 border-primary/10 bg-background/60 rounded-full border p-1.5 transition-colors'
             title={t('Copy')}
           >
             <Copy className='size-3.5' />

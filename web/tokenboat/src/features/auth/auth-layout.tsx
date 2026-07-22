@@ -59,7 +59,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           </h1>
         )}
       </Link>
-      <div className='container relative z-10 flex items-center pt-20 sm:pt-0'>
+      <div className='relative z-10 container flex items-center pt-20 sm:pt-0'>
         <div className='token-boat-glow-card border-primary/15 bg-background/72 mx-auto flex w-full flex-col justify-center space-y-2 rounded-3xl border px-5 py-7 shadow-[0_28px_100px_-60px_color-mix(in_oklch,var(--secondary)_70%,transparent)] backdrop-blur-2xl sm:w-[480px] sm:p-8'>
           {children}
         </div>

@@ -281,7 +281,7 @@ export function CheckinCalendarCard({
         className='token-boat-pro-card gap-0 overflow-hidden py-0'
       >
         {/* Header */}
-        <div className='border-b bg-background/45 p-4 sm:p-5'>
+        <div className='bg-background/45 border-b p-4 sm:p-5'>
           <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4'>
             <button
               type='button'
@@ -339,7 +339,7 @@ export function CheckinCalendarCard({
           <>
             {/* Stats */}
             <div className='grid grid-cols-3 gap-2 border-b p-2'>
-              <div className='wallet-strong-control rounded-xl border-2 bg-card/80 p-3 text-center sm:p-4'>
+              <div className='wallet-strong-control bg-card/80 rounded-xl border-2 p-3 text-center sm:p-4'>
                 <div className='text-xl font-semibold tracking-tight tabular-nums sm:text-2xl'>
                   {checkinData?.stats?.total_checkins || 0}
                 </div>
@@ -347,7 +347,7 @@ export function CheckinCalendarCard({
                   {t('Total check-ins')}
                 </div>
               </div>
-              <div className='wallet-strong-control rounded-xl border-2 bg-card/80 p-3 text-center sm:p-4'>
+              <div className='wallet-strong-control bg-card/80 rounded-xl border-2 p-3 text-center sm:p-4'>
                 <div className='text-xl font-semibold tracking-tight tabular-nums sm:text-2xl'>
                   {formatQuotaWithCurrency(monthlyQuota, { digitsLarge: 0 })}
                 </div>
@@ -355,7 +355,7 @@ export function CheckinCalendarCard({
                   {t('This month')}
                 </div>
               </div>
-              <div className='wallet-strong-control rounded-xl border-2 bg-card/80 p-3 text-center sm:p-4'>
+              <div className='wallet-strong-control bg-card/80 rounded-xl border-2 p-3 text-center sm:p-4'>
                 <div className='text-xl font-semibold tracking-tight tabular-nums sm:text-2xl'>
                   {formatQuotaWithCurrency(
                     checkinData?.stats?.total_quota || 0,

@@ -694,8 +694,12 @@ type TaskSubmitReq struct {
 	Image          string                 `json:"image,omitempty"`
 	Images         []string               `json:"images,omitempty"`
 	Size           string                 `json:"size,omitempty"`
+	Resolution     string                 `json:"resolution,omitempty"`
+	AspectRatio    string                 `json:"aspect_ratio,omitempty"`
 	Duration       int                    `json:"duration,omitempty"`
 	Seconds        string                 `json:"seconds,omitempty"`
+	GenerateAudio  *bool                  `json:"generate_audio,omitempty"`
+	Seed           *int                   `json:"seed,omitempty"`
 	InputReference string                 `json:"input_reference,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -770,15 +774,17 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int    `json:"code"`
-	TaskID           string `json:"task_id"`
-	Status           string `json:"status"`
-	Reason           string `json:"reason,omitempty"`
-	Url              string `json:"url,omitempty"`
-	RemoteUrl        string `json:"remote_url,omitempty"`
-	Progress         string `json:"progress,omitempty"`
-	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
-	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	Code             int                `json:"code"`
+	TaskID           string             `json:"task_id"`
+	Status           string             `json:"status"`
+	Reason           string             `json:"reason,omitempty"`
+	Url              string             `json:"url,omitempty"`
+	RemoteUrl        string             `json:"remote_url,omitempty"`
+	Progress         string             `json:"progress,omitempty"`
+	CompletionTokens int                `json:"completion_tokens,omitempty"` // 用于按倍率计费
+	TotalTokens      int                `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	Cost             float64            `json:"cost,omitempty"`              // 上游返回的实际美元成本
+	QuotaClamp       *common.QuotaClamp `json:"-"`                           // 实际成本转换发生饱和时的审计信息
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

@@ -111,25 +111,25 @@ export function Hero(props: HeroProps) {
               <span className='bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75' />
               <span className='bg-primary relative inline-flex size-1.5 rounded-full' />
             </span>
-            <span>{t('AI Application Infrastructure Foundation')}</span>
+            <span>{t('AI Model API Relay Platform')}</span>
           </div>
 
           <h1
             className='landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight'
             style={{ animationDelay: '60ms' }}
           >
-            {t('Unified API Gateway for')}
+            {t('Unified Access to')}
             <br />
             <span className='from-primary via-secondary to-chart-4 bg-gradient-to-r bg-clip-text text-transparent'>
-              {t('Vast Range of AI Models')}
+              {t('Leading AI Models')}
             </span>
           </h1>
           <p
-            className='landing-animate-fade-up text-muted-foreground/80 mt-5 max-w-full break-words text-base leading-relaxed opacity-0 md:max-w-xl md:text-[15px]'
+            className='landing-animate-fade-up text-muted-foreground/80 mt-5 max-w-full text-base leading-relaxed break-words opacity-0 md:max-w-xl md:text-[15px]'
             style={{ animationDelay: '120ms' }}
           >
             {t(
-              'Access a vast selection of models via a standard, unified API protocol. Power AI applications, manage digital assets, and connect the Future.'
+              'One account connects you to leading AI models through a unified API, with flexible options for individuals, teams, and businesses.'
             )}
           </p>
 

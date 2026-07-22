@@ -272,7 +272,7 @@ export function SubscriptionPlansCard({
         contentClassName='space-y-2.5 p-2 sm:p-2.5'
       >
         {/* My subscriptions & billing preference */}
-        <div className='wallet-strong-control rounded-xl border-2 bg-background/72 p-2'>
+        <div className='wallet-strong-control bg-background/72 rounded-xl border-2 p-2'>
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <div className='flex min-w-0 flex-wrap items-center gap-1.5'>
               <span className='text-sm font-medium'>
@@ -339,7 +339,7 @@ export function SubscriptionPlansCard({
                 value={displayPref}
                 onValueChange={(v) => v !== null && handlePreferenceChange(v)}
               >
-                <SelectTrigger className='wallet-strong-control h-7 flex-1 border-2 bg-background/75 text-xs sm:w-[140px] sm:flex-none'>
+                <SelectTrigger className='wallet-strong-control bg-background/75 h-7 flex-1 border-2 text-xs sm:w-[140px] sm:flex-none'>
                   <SelectValue>
                     {getBillingPreferenceLabel(displayPref, t)}
                   </SelectValue>
@@ -420,7 +420,7 @@ export function SubscriptionPlansCard({
                   return (
                     <div
                       key={subscription?.id}
-                      className='wallet-strong-control rounded-lg border-2 bg-card/80 p-2 text-xs'
+                      className='wallet-strong-control bg-card/80 rounded-lg border-2 p-2 text-xs'
                     >
                       <div className='flex items-center justify-between gap-2'>
                         <div className='flex min-w-0 items-center gap-1.5'>

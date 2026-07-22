@@ -81,7 +81,7 @@ export function ProfileSettingsCard({
         <TabsList className='token-boat-glass-panel grid w-full grid-cols-2 items-stretch gap-1 rounded-xl border-2 p-1 group-data-horizontal/tabs:h-11'>
           <TabsTrigger
             value='bindings'
-            className='h-full gap-2 rounded-lg px-3 py-0 leading-none data-[selected]:bg-primary/[0.16] data-[selected]:text-primary data-[selected]:shadow-xs'
+            className='data-[selected]:bg-primary/[0.16] data-[selected]:text-primary h-full gap-2 rounded-lg px-3 py-0 leading-none data-[selected]:shadow-xs'
           >
             <Link2 className='h-4 w-4' />
             <span className='hidden sm:inline'>{t('Account Bindings')}</span>
@@ -89,7 +89,7 @@ export function ProfileSettingsCard({
           </TabsTrigger>
           <TabsTrigger
             value='settings'
-            className='h-full gap-2 rounded-lg px-3 py-0 leading-none data-[selected]:bg-primary/[0.16] data-[selected]:text-primary data-[selected]:shadow-xs'
+            className='data-[selected]:bg-primary/[0.16] data-[selected]:text-primary h-full gap-2 rounded-lg px-3 py-0 leading-none data-[selected]:shadow-xs'
           >
             <Settings className='h-4 w-4' />
             <span className='hidden sm:inline'>

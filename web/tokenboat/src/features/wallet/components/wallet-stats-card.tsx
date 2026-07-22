@@ -75,7 +75,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       <div className='token-boat-hairline pointer-events-none absolute inset-x-0 top-0 h-px' />
       <div className='relative grid gap-2.5 p-2.5 lg:grid-cols-[minmax(260px,1.15fr)_repeat(2,minmax(210px,0.72fr))]'>
         <div className='from-primary to-secondary text-primary-foreground relative min-h-28 overflow-hidden rounded-xl bg-gradient-to-br p-4 shadow-[0_20px_54px_-24px_color-mix(in_oklch,var(--primary)_70%,black)]'>
-          <div className='pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(120deg,transparent_0%,rgba(255,255,255,.34)_45%,transparent_72%)]' />
+          <div className='pointer-events-none absolute inset-0 [background-image:linear-gradient(120deg,transparent_0%,rgba(255,255,255,.34)_45%,transparent_72%)] opacity-30' />
           <div className='pointer-events-none absolute -right-8 -bottom-12 h-40 w-40 rounded-full border border-white/20' />
           <div className='flex items-center justify-between gap-3'>
             <div>

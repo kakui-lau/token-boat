@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -82,6 +83,13 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)
+}
+
+func TestIsAsyncVideoTestModelRecognizesOpenRouterSeedance(t *testing.T) {
+	require.True(t, isAsyncVideoTestModel(constant.ChannelTypeOpenRouter, "bytedance/seedance-2.0"))
+	require.True(t, isAsyncVideoTestModel(constant.ChannelTypeOpenRouter, "bytedance/seedance-2.0-fast"))
+	require.False(t, isAsyncVideoTestModel(constant.ChannelTypeOpenRouter, "openai/gpt-4o-mini"))
+	require.False(t, isAsyncVideoTestModel(constant.ChannelTypeOpenAI, "bytedance/seedance-2.0"))
 }
 
 func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *testing.T) {

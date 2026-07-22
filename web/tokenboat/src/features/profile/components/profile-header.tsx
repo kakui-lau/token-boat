@@ -200,7 +200,7 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
           {stats.map((item, index) => (
             <div
               key={item.label}
-              className={`wallet-strong-control min-w-0 rounded-xl border-2 bg-background/70 p-3 ${
+              className={`wallet-strong-control bg-background/70 min-w-0 rounded-xl border-2 p-3 ${
                 index === 0 ? 'md:hidden' : ''
               }`}
             >

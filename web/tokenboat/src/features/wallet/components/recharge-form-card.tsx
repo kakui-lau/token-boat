@@ -218,7 +218,7 @@ export function RechargeFormCard({
       {hasAnyTopup ? (
         <div className='space-y-2.5'>
           {hasConfigurableTopup && (
-            <div className='wallet-recharge-workspace grid gap-2.5 rounded-xl border bg-background/72 p-2 shadow-sm sm:p-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.3fr)] xl:items-start'>
+            <div className='wallet-recharge-workspace bg-background/72 grid gap-2.5 rounded-xl border p-2 shadow-sm sm:p-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.3fr)] xl:items-start'>
               <div className='flex flex-col gap-2.5'>
                 {presetAmounts.length > 0 && (
                   <div className='rounded-xl'>
@@ -298,7 +298,7 @@ export function RechargeFormCard({
                       onChange={(e) => handleAmountChange(e.target.value)}
                       min={minTopup}
                       placeholder={`Minimum ${minTopup}`}
-                      className='wallet-strong-control h-9 border-2 bg-background/75 text-sm shadow-xs sm:h-10'
+                      className='wallet-strong-control bg-background/75 h-9 border-2 text-sm shadow-xs sm:h-10'
                     />
                     <div className='wallet-strong-control bg-primary/[0.035] flex min-h-9 items-center justify-between gap-2 rounded-lg border-2 px-2.5 shadow-xs lg:min-w-44'>
                       <span className='text-muted-foreground truncate text-xs'>
@@ -317,7 +317,7 @@ export function RechargeFormCard({
               </div>
 
               <div className='flex flex-col gap-2.5'>
-                <div className='rounded-xl border-primary/15 bg-primary/[0.025] xl:border-l xl:pl-2.5'>
+                <div className='border-primary/15 bg-primary/[0.025] rounded-xl xl:border-l xl:pl-2.5'>
                   <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                     {t('Payment Channel')}
                   </Label>
@@ -487,7 +487,7 @@ export function RechargeFormCard({
       )}
 
       {hasConfigurableTopup ? (
-        <div className='wallet-payment-summary rounded-xl border bg-background/82 p-2'>
+        <div className='wallet-payment-summary bg-background/82 rounded-xl border p-2'>
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <div className='flex items-center gap-2'>
               <span className='bg-primary/8 text-primary flex size-7 items-center justify-center rounded-lg'>
@@ -505,7 +505,7 @@ export function RechargeFormCard({
           </div>
 
           <div className='mt-2 grid gap-1.5 sm:grid-cols-2'>
-            <div className='wallet-strong-control rounded-lg border-2 bg-background/72 px-2.5 py-1.5'>
+            <div className='wallet-strong-control bg-background/72 rounded-lg border-2 px-2.5 py-1.5'>
               <div className='text-muted-foreground text-xs'>
                 {t('Estimated Credit')}
               </div>

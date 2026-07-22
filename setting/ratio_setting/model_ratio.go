@@ -296,6 +296,8 @@ var defaultModelPrice = map[string]float64{
 	"mj_upload":                      0.05,
 	"sora-2":                         0.3,
 	"sora-2-pro":                     0.5,
+	"bytedance/seedance-2.0":         0.1512,
+	"bytedance/seedance-2.0-fast":    0.12096,
 	"gpt-4o-mini-tts":                0.3,
 	"veo-3.0-generate-001":           0.4,
 	"veo-3.0-fast-generate-001":      0.15,
@@ -353,7 +355,17 @@ func ModelPrice2JSONString() string {
 }
 
 func UpdateModelPriceByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(modelPriceMap, jsonStr, InvalidateExposedDataCache)
+	if err := types.LoadFromJsonStringWithCallback(modelPriceMap, jsonStr, InvalidateExposedDataCache); err != nil {
+		return err
+	}
+	// Existing installations persist the entire price map, so newly shipped
+	// OpenRouter video prices would otherwise disappear when that map is loaded.
+	for _, model := range []string{"bytedance/seedance-2.0", "bytedance/seedance-2.0-fast"} {
+		if _, exists := modelPriceMap.Get(model); !exists {
+			modelPriceMap.Set(model, defaultModelPrice[model])
+		}
+	}
+	return nil
 }
 
 // GetModelPrice 返回模型的价格，如果模型不存在则返回-1，false

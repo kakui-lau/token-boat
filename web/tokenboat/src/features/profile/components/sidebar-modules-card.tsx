@@ -205,7 +205,7 @@ export function SidebarModulesCard() {
       data-card-hover='false'
       className='token-boat-pro-card gap-0 overflow-hidden py-0'
     >
-      <CardHeader className='border-b bg-background/45 p-3 !pb-3 sm:p-5 sm:!pb-5'>
+      <CardHeader className='bg-background/45 border-b p-3 !pb-3 sm:p-5 sm:!pb-5'>
         <div className='flex items-center gap-3'>
           <div className='bg-primary/8 text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9'>
             <LayoutDashboard className='h-4 w-4' />
@@ -244,7 +244,7 @@ export function SidebarModulesCard() {
                 {section.modules.map((mod) => (
                   <div
                     key={mod.key}
-                    className={`wallet-strong-control flex min-h-16 items-center justify-between rounded-xl border-2 bg-card/80 p-3 ${
+                    className={`wallet-strong-control bg-card/80 flex min-h-16 items-center justify-between rounded-xl border-2 p-3 ${
                       sectionEnabled ? '' : 'opacity-50'
                     }`}
                   >

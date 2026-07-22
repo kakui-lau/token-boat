@@ -245,7 +245,7 @@ export function MarketShareSection(props: MarketShareSectionProps) {
       </div>
 
       {/* Vendor list block ----------------------------------------------- */}
-      <div className='border-primary/10 border-t bg-background/40'>
+      <div className='border-primary/10 bg-background/40 border-t'>
         <header className='px-5 pt-4 pb-2'>
           <h3 className='text-foreground text-sm font-semibold'>
             {t('By model author')}
@@ -280,7 +280,7 @@ function VendorList(props: {
       {props.rows.map((vendor) => (
         <li
           key={vendor.vendor}
-          className='bg-background/58 border-primary/8 flex items-center gap-3 rounded-2xl border px-3 py-2.5 backdrop-blur-md transition-colors hover:bg-background/78'
+          className='bg-background/58 border-primary/8 hover:bg-background/78 flex items-center gap-3 rounded-2xl border px-3 py-2.5 backdrop-blur-md transition-colors'
         >
           <span className='text-muted-foreground/80 w-6 shrink-0 text-right font-mono text-xs tabular-nums'>
             {vendor.rank}.

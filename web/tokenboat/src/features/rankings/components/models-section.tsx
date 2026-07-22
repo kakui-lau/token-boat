@@ -207,7 +207,7 @@ export function ModelsSection(props: ModelsSectionProps) {
       </div>
 
       {/* Leaderboard block ----------------------------------------------- */}
-      <div className='border-primary/10 border-t bg-background/40'>
+      <div className='border-primary/10 bg-background/40 border-t'>
         <header className='px-5 pt-4 pb-2'>
           <h3 className='text-foreground inline-flex items-center gap-2 text-sm font-semibold'>
             <Trophy className='size-3.5 text-amber-500' />

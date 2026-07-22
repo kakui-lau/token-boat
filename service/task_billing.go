@@ -250,6 +250,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	other["actual_quota"] = actualQuota
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)
+		if clamp != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("quota saturation on task settlement: task=%s op=%s kind=%s original=%g clamped=%d",
+				task.TaskID, clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped))
+		}
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,

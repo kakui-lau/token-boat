@@ -235,7 +235,7 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
         data-card-hover='false'
         className='token-boat-pro-card gap-0 overflow-hidden py-0'
       >
-        <CardHeader className='border-b bg-background/45 p-3 sm:p-5'>
+        <CardHeader className='bg-background/45 border-b p-3 sm:p-5'>
           <CardTitle className='text-lg tracking-tight sm:text-xl'>
             {t('Passkey Login')}
           </CardTitle>

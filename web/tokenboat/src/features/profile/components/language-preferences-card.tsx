@@ -133,7 +133,7 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
             onValueChange={handleLanguageChange}
             disabled={saving}
           >
-            <SelectTrigger className='wallet-strong-control w-full border-2 bg-background/75 sm:w-48'>
+            <SelectTrigger className='wallet-strong-control bg-background/75 w-full border-2 sm:w-48'>
               <SelectValue placeholder={t('Select language')} />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>

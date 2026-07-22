@@ -213,7 +213,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   />
                 )}
               </div>
-              <span className='inline-flex h-7 items-center text-sm leading-none font-semibold tracking-tight transition-colors group-hover:text-primary'>
+              <span className='group-hover:text-primary inline-flex h-7 items-center text-sm leading-none font-semibold tracking-tight transition-colors'>
                 {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
               </span>
             </Link>

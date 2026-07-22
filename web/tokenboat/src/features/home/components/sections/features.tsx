@@ -174,8 +174,8 @@ export function Features(_props: FeaturesProps) {
     },
     {
       icon: <HeartHandshake className='size-5' strokeWidth={1.5} />,
-      title: t('Open Source'),
-      desc: t('Community driven, self-hosted, and extensible'),
+      title: t('For Individuals & Businesses'),
+      desc: t('Flexible access and service options for every stage of growth'),
     },
   ]
 
@@ -187,9 +187,9 @@ export function Features(_props: FeaturesProps) {
             {t('Core Features')}
           </p>
           <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-3xl'>
-            {t('Built for developers,')}
+            {t('Built for individuals,')}
             <br />
-            {t('designed for scale')}
+            {t('ready for business')}
           </h2>
         </AnimateInView>
 

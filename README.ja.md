@@ -1,8 +1,8 @@
 <div align="center">
 
-![token boat](/web/default/public/logo.png)
+![new-api](/web/public/logo.png)
 
-# token boat
+# New API
 
 🍥 **次世代大規模モデルゲートウェイとAI資産管理システム**
 
@@ -15,30 +15,30 @@
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Calcium-Ion/token-boat/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Calcium-Ion/token-boat?color=brightgreen" alt="license">
+  <a href="https://raw.githubusercontent.com/Calcium-Ion/new-api/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Calcium-Ion/new-api?color=brightgreen" alt="license">
   </a><!--
-  --><a href="http://tokenboat.com">
-    <img src="https://img.shields.io/github/v/release/Calcium-Ion/token-boat?color=brightgreen&include_prereleases" alt="release">
+  --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/token-boat">
+  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
     <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
   </a><!--
-  --><a href="https://goreportcard.com/report/github.com/Calcium-Ion/token-boat">
-    <img src="https://goreportcard.com/badge/github.com/Calcium-Ion/token-boat" alt="GoReportCard">
+  --><a href="https://goreportcard.com/report/github.com/Calcium-Ion/new-api">
+    <img src="https://goreportcard.com/badge/github.com/Calcium-Ion/new-api" alt="GoReportCard">
   </a>
 </p>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/20180" target="_blank">
-    <img src="https://trendshift.io/api/badge/repositories/20180" alt="QuantumNous%2Ftoken boat | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
+    <img src="https://trendshift.io/api/badge/repositories/20180" alt="QuantumNous%2Fnew-api | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
   </a>
   <br>
-  <a href="https://hellogithub.com/repository/QuantumNous/token-boat" target="_blank">
+  <a href="https://hellogithub.com/repository/QuantumNous/new-api" target="_blank">
     <img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=539ac4217e69431684ad4a0bab768811&claim_uid=tbFPfKIDHpc4TzR" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" />
   </a><!--
-  --><a href="https://www.producthunt.com/products/token-boat/launches/token-boat?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-token-boat" target="_blank" rel="noopener noreferrer">
-    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1047693&theme=light&t=1769577875005" alt="token boat - All-in-one AI asset management gateway. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" />
+  --><a href="https://www.producthunt.com/products/new-api/launches/new-api?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-new-api" target="_blank" rel="noopener noreferrer">
+    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1047693&theme=light&t=1769577875005" alt="New API - All-in-one AI asset management gateway. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" />
   </a>
 </p>
 
@@ -78,7 +78,7 @@
   --><a href="https://bda.pku.edu.cn/" target="_blank">
     <img src="./docs/images/pku.png" alt="北京大学" height="80" />
   </a><!--
-  --><a href="https://www.compshare.cn/?ytag=GPU_yy_gh_token-boat" target="_blank">
+  --><a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank">
     <img src="./docs/images/ucloud.png" alt="UCloud 優刻得" height="80" />
   </a><!--
   --><a href="https://www.aliyun.com/" target="_blank">
@@ -94,13 +94,13 @@
 ## 🙏 特別な感謝
 
 <p align="center">
-  <a href="https://www.jetbrains.com/?from=token-boat" target="_blank">
+  <a href="https://www.jetbrains.com/?from=new-api" target="_blank">
     <img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" alt="JetBrains Logo" width="120" />
   </a>
 </p>
 
 <p align="center">
-  <strong>感謝 <a href="https://www.jetbrains.com/?from=token-boat">JetBrains</a> が本プロジェクトに無料のオープンソース開発ライセンスを提供してくれたことに感謝します</strong>
+  <strong>感謝 <a href="https://www.jetbrains.com/?from=new-api">JetBrains</a> が本プロジェクトに無料のオープンソース開発ライセンスを提供してくれたことに感謝します</strong>
 </p>
 
 ---
@@ -111,8 +111,8 @@
 
 ```bash
 # プロジェクトをクローン
-git clone https://github.com/QuantumNous/token-boat.git
-cd token-boat
+git clone https://github.com/QuantumNous/new-api.git
+cd new-api
 
 # docker-compose.yml 設定を編集
 nano docker-compose.yml
@@ -126,22 +126,22 @@ docker-compose up -d
 
 ```bash
 # 最新のイメージをプル
-docker pull calciumion/token-boat:latest
+docker pull calciumion/new-api:latest
 
 # SQLiteを使用（デフォルト）
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 
 # MySQLを使用
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 ```
 
 > **💡 ヒント:** `-v ./data:/data` は現在のディレクトリの `data` フォルダにデータを保存します。絶対パスに変更することもできます：`-v /your/custom/path:/data`
@@ -155,7 +155,7 @@ docker run --name token boat -d --restart always \
 > [!WARNING]
 > 本プロジェクトを公衆向け生成 AI サービスまたは API 再販サービスとして運営する場合、ユーザーは届出、コンテンツセキュリティ、本人確認、ログ保持、税務、決済、上流認可などの必要なコンプライアンス義務を先に完了してください。
 
-📖 その他のデプロイ方法については[デプロイガイド](http://tokenboat.com/ja/docs/installation)を参照してください。
+📖 その他のデプロイ方法については[デプロイガイド](https://docs.newapi.pro/ja/docs/installation)を参照してください。
 
 ---
 
@@ -163,7 +163,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 📖 [公式ドキュメント](http://tokenboat.com/ja/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
+### 📖 [公式ドキュメント](https://docs.newapi.pro/ja/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/new-api)
 
 </div>
 
@@ -171,17 +171,17 @@ docker run --name token boat -d --restart always \
 
 | カテゴリ | リンク |
 |------|------|
-| 🚀 デプロイガイド | [インストールドキュメント](http://tokenboat.com/ja/docs/installation) |
-| ⚙️ 環境設定 | [環境変数](http://tokenboat.com/ja/docs/installation/config-maintenance/environment-variables) |
-| 📡 APIドキュメント | [APIドキュメント](http://tokenboat.com/ja/docs/api) |
-| ❓ よくある質問 | [FAQ](http://tokenboat.com/ja/docs/support/faq) |
-| 💬 コミュニティ交流 | [交流チャネル](http://tokenboat.com/ja/docs/support/community-interaction) |
+| 🚀 デプロイガイド | [インストールドキュメント](https://docs.newapi.pro/ja/docs/installation) |
+| ⚙️ 環境設定 | [環境変数](https://docs.newapi.pro/ja/docs/installation/config-maintenance/environment-variables) |
+| 📡 APIドキュメント | [APIドキュメント](https://docs.newapi.pro/ja/docs/api) |
+| ❓ よくある質問 | [FAQ](https://docs.newapi.pro/ja/docs/support/faq) |
+| 💬 コミュニティ交流 | [交流チャネル](https://docs.newapi.pro/ja/docs/support/community-interaction) |
 
 ---
 
 ## ✨ 主な機能
 
-> 詳細な機能については[機能説明](http://tokenboat.com/ja/docs/guide/wiki/basic-concepts/features-introduction)を参照してください。
+> 詳細な機能については[機能説明](https://docs.newapi.pro/ja/docs/guide/wiki/basic-concepts/features-introduction)を参照してください。
 
 ### 🎨 コア機能
 
@@ -206,18 +206,18 @@ docker run --name token boat -d --restart always \
 - 🤖 LinuxDO認証ログイン
 - 📱 Telegram認証ログイン
 - 🔑 OIDC統一認証
-- 🔍 Key使用量クォータ照会（[token-boat-key-tool](http://tokenboat.com)と併用）
+- 🔍 Key使用量クォータ照会（[new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool)と併用）
 
 
 
 ### 🚀 高度な機能
 
 **APIフォーマットサポート:**
-- ⚡ [OpenAI Responses](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](http://tokenboat.com/ja/docs/api/ai-model/realtime/create-realtime-session)（Azureを含む）
-- ⚡ [Claude Messages](http://tokenboat.com/ja/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](http://tokenboat.com/ja/api/google-gemini-chat)
-- 🔄 [Rerankモデル](http://tokenboat.com/ja/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
+- ⚡ [OpenAI Responses](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/create-response)
+- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/ja/docs/api/ai-model/realtime/create-realtime-session)（Azureを含む）
+- ⚡ [Claude Messages](https://docs.newapi.pro/ja/docs/api/ai-model/chat/create-message)
+- ⚡ [Google Gemini](https://doc.newapi.pro/ja/api/google-gemini-chat)
+- 🔄 [Rerankモデル](https://docs.newapi.pro/ja/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
 
 **インテリジェントルーティング:**
 - ⚖️ チャネル重み付けランダム
@@ -260,17 +260,17 @@ docker run --name token boat -d --restart always \
 
 ## 🤖 モデルサポート
 
-> 詳細については[APIドキュメント - ゲートウェイインターフェース](http://tokenboat.com/ja/docs/api)
+> 詳細については[APIドキュメント - ゲートウェイインターフェース](https://docs.newapi.pro/ja/docs/api)
 
 | モデルタイプ | 説明 | ドキュメント |
 |---------|------|------|
-| 🤖 OpenAI-Compatible | OpenAI互換モデル | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | OpenAI Responsesフォーマット | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [ドキュメント](http://tokenboat.com/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [ドキュメント](http://tokenboat.com/api/suno-music) |
-| 🔄 Rerank | Cohere、Jina | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/rerank/creatererank) |
-| 💬 Claude | Messagesフォーマット | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Google Geminiフォーマット | [ドキュメント](http://tokenboat.com/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
+| 🤖 OpenAI-Compatible | OpenAI互換モデル | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createchatcompletion) |
+| 🤖 OpenAI Responses | OpenAI Responsesフォーマット | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createresponse) |
+| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [ドキュメント](https://doc.newapi.pro/api/midjourney-proxy-image) |
+| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [ドキュメント](https://doc.newapi.pro/api/suno-music) |
+| 🔄 Rerank | Cohere、Jina | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/rerank/creatererank) |
+| 💬 Claude | Messagesフォーマット | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/createmessage) |
+| 🌐 Gemini | Google Geminiフォーマット | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
 | 🔧 Dify | ChatFlowモード | - |
 | 🎯 カスタム上流 | 合法的に許可された上流エンドポイントの設定をサポート | - |
 
@@ -279,16 +279,16 @@ docker run --name token boat -d --restart always \
 <details>
 <summary>完全なインターフェースリストを表示</summary>
 
-- [チャットインターフェース (Chat Completions)](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createchatcompletion)
-- [レスポンスインターフェース (Responses)](http://tokenboat.com/ja/docs/api/ai-model/chat/openai/createresponse)
-- [イメージインターフェース (Image)](http://tokenboat.com/ja/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [オーディオインターフェース (Audio)](http://tokenboat.com/ja/docs/api/ai-model/audio/openai/create-transcription)
-- [ビデオインターフェース (Video)](http://tokenboat.com/ja/docs/api/ai-model/audio/openai/createspeech)
-- [エンベッドインターフェース (Embeddings)](http://tokenboat.com/ja/docs/api/ai-model/embeddings/createembedding)
-- [再ランク付けインターフェース (Rerank)](http://tokenboat.com/ja/docs/api/ai-model/rerank/creatererank)
-- [リアルタイム対話インターフェース (Realtime)](http://tokenboat.com/ja/docs/api/ai-model/realtime/createrealtimesession)
-- [Claudeチャット](http://tokenboat.com/ja/docs/api/ai-model/chat/createmessage)
-- [Google Geminiチャット](http://tokenboat.com/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta)
+- [チャットインターフェース (Chat Completions)](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createchatcompletion)
+- [レスポンスインターフェース (Responses)](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createresponse)
+- [イメージインターフェース (Image)](https://docs.newapi.pro/ja/docs/api/ai-model/images/openai/post-v1-images-generations)
+- [オーディオインターフェース (Audio)](https://docs.newapi.pro/ja/docs/api/ai-model/audio/openai/create-transcription)
+- [ビデオインターフェース (Video)](https://docs.newapi.pro/ja/docs/api/ai-model/audio/openai/createspeech)
+- [エンベッドインターフェース (Embeddings)](https://docs.newapi.pro/ja/docs/api/ai-model/embeddings/createembedding)
+- [再ランク付けインターフェース (Rerank)](https://docs.newapi.pro/ja/docs/api/ai-model/rerank/creatererank)
+- [リアルタイム対話インターフェース (Realtime)](https://docs.newapi.pro/ja/docs/api/ai-model/realtime/createrealtimesession)
+- [Claudeチャット](https://docs.newapi.pro/ja/docs/api/ai-model/chat/createmessage)
+- [Google Geminiチャット](https://docs.newapi.pro/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta)
 
 </details>
 
@@ -297,7 +297,7 @@ docker run --name token boat -d --restart always \
 ## 🚢 デプロイ
 
 > [!TIP]
-> **最新のDockerイメージ:** `calciumion/token-boat:latest`
+> **最新のDockerイメージ:** `calciumion/new-api:latest`
 
 ### 📋 デプロイ要件
 
@@ -315,8 +315,16 @@ docker run --name token boat -d --restart always \
 
 | 変数名 | 説明 | デフォルト値 |
 |--------|------|--------|
-| `SESSION_SECRET` | セッションシークレット（マルチマシンデプロイに必須） | - |
-| `CRYPTO_SECRET` | 暗号化シークレット（Redisに必須） | - |
+| `SESSION_SECRET` | 認証署名シークレット。すべてのノードで同じ値が必要 | - |
+| `SESSION_COOKIE_SECURE` | `false`/未設定ではローカル HTTP 開発プロキシ向けに refresh/logout の OriginGuard を無効化し、`true` では Secure Cookie と厳格な Origin 検証を有効化 | `false` |
+| `SESSION_COOKIE_TRUSTED_URL` | Secure モードでは必須。refresh/logout を許可する完全一致の HTTPS Origin をカンマ区切りで指定。relay CORS 設定ではありません | - |
+| `TRUSTED_PROXIES` | 未設定/空ではループバック、RFC 1918、IPv6 ULA を信頼して起動時に警告し、`none` ではすべて無効、明示的なプロキシ IP/CIDR リストは既定値を完全に置き換えます | `127.0.0.0/8, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7` |
+| `USER_SESSION_ACTIVE_LIMIT` | 1 ユーザーあたりの有効なログイン Session 上限 | `50` |
+| `USER_SESSION_ISSUANCE_LIMIT` | カウント期間内に作成できる Session 数の上限（取り消し済みを含む） | `100` |
+| `USER_SESSION_ISSUANCE_WINDOW_SECONDS` | Session 発行のカウント期間（秒）。取り消し済み Session の保持期間を超える場合は自動的に制限 | `86400` |
+| `USER_SESSION_REVOKED_RETENTION_DAYS` | 監査と発行数計算のため取り消し済み Session を保持する日数 | `7` |
+| `USER_SESSION_HOURLY_ALERT_THRESHOLD` | 1 時間あたりのグローバル Session 発行数の警告閾値。ログインは拒否しません | `5000` |
+| `CRYPTO_SECRET` | キャッシュキー用 HMAC シークレット。Redis を共有するノードでは同じ実効値が必要 | デフォルトは `SESSION_SECRET` |
 | `SQL_DSN** | データベース接続文字列 | - |
 | `REDIS_CONN_STRING` | Redis接続文字列 | - |
 | `STREAMING_TIMEOUT` | ストリーミング応答のタイムアウト時間（秒） | `300` |
@@ -325,14 +333,14 @@ docker run --name token boat -d --restart always \
 | `AZURE_DEFAULT_API_VERSION` | Azure APIバージョン | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | エラーログスイッチ | `false` |
 | `PYROSCOPE_URL` | Pyroscopeサーバーのアドレス | - |
-| `PYROSCOPE_APP_NAME` | Pyroscopeアプリ名 | `token boat` |
+| `PYROSCOPE_APP_NAME` | Pyroscopeアプリ名 | `new-api` |
 | `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Authユーザー | - |
 | `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope Basic Authパスワード | - |
 | `PYROSCOPE_MUTEX_RATE` | Pyroscope mutexサンプリング率 | `5` |
 | `PYROSCOPE_BLOCK_RATE` | Pyroscope blockサンプリング率 | `5` |
-| `HOSTNAME` | Pyroscope用のホスト名タグ | `token boat` |
+| `HOSTNAME` | Pyroscope用のホスト名タグ | `new-api` |
 
-📖 **完全な設定:** [環境変数ドキュメント](http://tokenboat.com/ja/docs/installation/config-maintenance/environment-variables)
+📖 **完全な設定:** [環境変数ドキュメント](https://docs.newapi.pro/ja/docs/installation/config-maintenance/environment-variables)
 
 </details>
 
@@ -343,8 +351,8 @@ docker run --name token boat -d --restart always \
 
 ```bash
 # プロジェクトをクローン
-git clone https://github.com/QuantumNous/token-boat.git
-cd token-boat
+git clone https://github.com/QuantumNous/new-api.git
+cd new-api
 
 # 設定を編集
 nano docker-compose.yml
@@ -360,21 +368,21 @@ docker-compose up -d
 
 **SQLiteを使用:**
 ```bash
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 ```
 
 **MySQLを使用:**
 ```bash
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 ```
 
 > **💡 パス説明:**
@@ -386,7 +394,7 @@ docker run --name token boat -d --restart always \
 <details>
 <summary><strong>方法 3: 宝塔パネル</strong></summary>
 
-1. 宝塔パネル（**9.2.0バージョン**以上）をインストールし、アプリケーションストアで**token boat**を検索してインストールします。
+1. 宝塔パネル（**9.2.0バージョン**以上）をインストールし、アプリケーションストアで**New-API**を検索してインストールします。
 
 📖 [画像付きチュートリアル](./docs/BT.md)
 
@@ -395,8 +403,20 @@ docker run --name token boat -d --restart always \
 ### ⚠️ マルチマシンデプロイの注意事項
 
 > [!WARNING]
-> - **必ず設定する必要があります** `SESSION_SECRET` - そうしないとマルチマシンデプロイ時にログイン状態が不一致になります
-> - **共有Redisは必ず設定する必要があります** `CRYPTO_SECRET` - そうしないとデータを復号化できません
+> - すべてのノードで同じプライマリデータベースと同じ `SESSION_SECRET` を使用してください。異なる場合、Access Token、Refresh セッション、一時認証フローを一貫して検証できません。
+> - 同じ Redis に接続するノードでは同じ `CRYPTO_SECRET` も設定してください。異なる場合、キャッシュキーのダイジェストが一致せず、共有エントリを正しく再利用できません。
+
+ログイン Session とユーザー単位の有効数／発行数制限では、データベースが信頼できる唯一の情報源です。Redis の Session エントリは短期キャッシュであり、TTL は `SYNC_FREQUENCY`（デフォルト 60 秒）に従い、Session の残り有効期間を超えません。
+
+| Redis トポロジー | Session 状態の伝播 | レート制限 |
+| --- | --- | --- |
+| すべてのノードで Redis を共有 | 取り消しとバージョン更新は通常即時に伝播 | Redis の制限枠はノード間で共有 |
+| ノードごとに独立した Redis | 有効な `SYNC_FREQUENCY` 以内にデータベースへフォールバックして収束。バージョンローテーション直後の新しい Token は、古いキャッシュを持つノードで一時的に 401 になる場合があります | ノードごとに独立して計数するため、クラスター全体では設定値の約ノード数倍まで許可される可能性があります |
+| Redis なし | Session の検証ごとにデータベースを直接参照 | メモリ内の制限枠はノードごとに独立 |
+
+`SYNC_FREQUENCY` を短くすると独立 Redis のキャッシュ陳腐化時間は短くなりますが、有効な SID ごと、ノードごと、TTL ごとにデータベースへの主キー照会が 1 回増えます。この保証は Session 認証の陳腐化時間を限定するものです。レート制限や Redis を使うその他のコントロールプレーンキャッシュは、引き続きトポロジーに依存します。
+
+Token、Origin 検証、PAT の契約については[ユーザー認証とログインセッション](./docs/authentication.md)を参照してください。
 
 ### 🔄 チャネルリトライとキャッシュ
 
@@ -421,8 +441,8 @@ docker run --name token boat -d --restart always \
 
 | プロジェクト | 説明 |
 |------|------|
-| [token-boat-key-tool](http://tokenboat.com) | キー使用量クォータ照会ツール |
-| [token-boat-horizon](http://tokenboat.com) | token boat高性能最適化版 |
+| [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool) | キー使用量クォータ照会ツール |
+| [new-api-horizon](https://github.com/Calcium-Ion/new-api-horizon) | New API高性能最適化版 |
 
 ---
 
@@ -432,10 +452,10 @@ docker run --name token boat -d --restart always \
 
 | リソース | リンク |
 |------|------|
-| 📘 よくある質問 | [FAQ](http://tokenboat.com/ja/docs/support/faq) |
-| 💬 コミュニティ交流 | [交流チャネル](http://tokenboat.com/ja/docs/support/community-interaction) |
-| 🐛 問題のフィードバック | [問題フィードバック](http://tokenboat.com/ja/docs/support/feedback-issues) |
-| 📚 完全なドキュメント | [公式ドキュメント](http://tokenboat.com/ja/docs) |
+| 📘 よくある質問 | [FAQ](https://docs.newapi.pro/ja/docs/support/faq) |
+| 💬 コミュニティ交流 | [交流チャネル](https://docs.newapi.pro/ja/docs/support/community-interaction) |
+| 🐛 問題のフィードバック | [問題フィードバック](https://docs.newapi.pro/ja/docs/support/feedback-issues) |
+| 📚 完全なドキュメント | [公式ドキュメント](https://docs.newapi.pro/ja/docs) |
 
 ### 🤝 貢献ガイド
 
@@ -462,7 +482,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-[![スター履歴チャート](https://api.star-history.com/svg?repos=Calcium-Ion/token-boat&type=Date)](https://star-history.com/#Calcium-Ion/token-boat&Date)
+[![スター履歴チャート](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
 
 </div>
 
@@ -470,11 +490,11 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 💖 token boatをご利用いただきありがとうございます
+### 💖 New APIをご利用いただきありがとうございます
 
 このプロジェクトがあなたのお役に立てたなら、ぜひ ⭐️ スターをください！
 
-**[公式ドキュメント](http://tokenboat.com/ja/docs)** • **[問題フィードバック](http://tokenboat.com)** • **[最新リリース](http://tokenboat.com)**
+**[公式ドキュメント](https://docs.newapi.pro/ja/docs)** • **[問題フィードバック](https://github.com/Calcium-Ion/new-api/issues)** • **[最新リリース](https://github.com/Calcium-Ion/new-api/releases)**
 
 <sub>❤️ で構築された QuantumNous</sub>
 

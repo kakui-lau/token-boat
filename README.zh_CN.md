@@ -1,8 +1,8 @@
 <div align="center">
 
-![token boat](/web/default/public/logo.png)
+![new-api](/web/public/logo.png)
 
-# token boat
+# New API
 
 🍥 **新一代大模型网关与AI资产管理系统**
 
@@ -15,30 +15,30 @@
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Calcium-Ion/token-boat/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Calcium-Ion/token-boat?color=brightgreen" alt="license">
+  <a href="https://raw.githubusercontent.com/Calcium-Ion/new-api/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Calcium-Ion/new-api?color=brightgreen" alt="license">
   </a><!--
-  --><a href="http://tokenboat.com">
-    <img src="https://img.shields.io/github/v/release/Calcium-Ion/token-boat?color=brightgreen&include_prereleases" alt="release">
+  --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/token-boat">
+  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
     <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
   </a><!--
-  --><a href="https://goreportcard.com/report/github.com/Calcium-Ion/token-boat">
-    <img src="https://goreportcard.com/badge/github.com/Calcium-Ion/token-boat" alt="GoReportCard">
+  --><a href="https://goreportcard.com/report/github.com/Calcium-Ion/new-api">
+    <img src="https://goreportcard.com/badge/github.com/Calcium-Ion/new-api" alt="GoReportCard">
   </a>
 </p>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/20180" target="_blank">
-    <img src="https://trendshift.io/api/badge/repositories/20180" alt="QuantumNous%2Ftoken boat | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
+    <img src="https://trendshift.io/api/badge/repositories/20180" alt="QuantumNous%2Fnew-api | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
   </a>
   <br>
-  <a href="https://hellogithub.com/repository/QuantumNous/token-boat" target="_blank">
+  <a href="https://hellogithub.com/repository/QuantumNous/new-api" target="_blank">
     <img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=539ac4217e69431684ad4a0bab768811&claim_uid=tbFPfKIDHpc4TzR" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" />
   </a><!--
-  --><a href="https://www.producthunt.com/products/token-boat/launches/token-boat?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-token-boat" target="_blank" rel="noopener noreferrer">
-    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1047693&theme=light&t=1769577875005" alt="token boat - All-in-one AI asset management gateway. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" />
+  --><a href="https://www.producthunt.com/products/new-api/launches/new-api?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-new-api" target="_blank" rel="noopener noreferrer">
+    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1047693&theme=light&t=1769577875005" alt="New API - All-in-one AI asset management gateway. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" />
   </a>
 </p>
 
@@ -78,7 +78,7 @@
   --><a href="https://bda.pku.edu.cn/" target="_blank">
     <img src="./docs/images/pku.png" alt="北京大学" height="80" />
   </a><!--
-  --><a href="https://www.compshare.cn/?ytag=GPU_yy_gh_token-boat" target="_blank">
+  --><a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank">
     <img src="./docs/images/ucloud.png" alt="UCloud 优刻得" height="80" />
   </a><!--
   --><a href="https://www.aliyun.com/" target="_blank">
@@ -94,13 +94,13 @@
 ## 🙏 特别鸣谢
 
 <p align="center">
-  <a href="https://www.jetbrains.com/?from=token-boat" target="_blank">
+  <a href="https://www.jetbrains.com/?from=new-api" target="_blank">
     <img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" alt="JetBrains Logo" width="120" />
   </a>
 </p>
 
 <p align="center">
-  <strong>感谢 <a href="https://www.jetbrains.com/?from=token-boat">JetBrains</a> 为本项目提供免费的开源开发许可证</strong>
+  <strong>感谢 <a href="https://www.jetbrains.com/?from=new-api">JetBrains</a> 为本项目提供免费的开源开发许可证</strong>
 </p>
 
 ---
@@ -111,8 +111,8 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/QuantumNous/token-boat.git
-cd token-boat
+git clone https://github.com/QuantumNous/new-api.git
+cd new-api
 
 # 编辑 docker-compose.yml 配置
 nano docker-compose.yml
@@ -126,22 +126,22 @@ docker-compose up -d
 
 ```bash
 # 拉取最新镜像
-docker pull calciumion/token-boat:latest
+docker pull calciumion/new-api:latest
 
 # 使用 SQLite（默认）
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 
 # 使用 MySQL
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 ```
 
 > **💡 提示：** `-v ./data:/data` 会将数据保存在当前目录的 `data` 文件夹中，你也可以改为绝对路径如 `-v /your/custom/path:/data`
@@ -155,7 +155,7 @@ docker run --name token boat -d --restart always \
 > [!WARNING]
 > 将本项目作为面向公众的生成式 AI 服务或 API 转售服务运营时，使用者应先完成备案、内容安全、实名、日志留存、税务、支付和上游授权等合规义务。
 
-📖 更多部署方式请参考 [部署指南](http://tokenboat.com/zh/docs/installation)
+📖 更多部署方式请参考 [部署指南](https://docs.newapi.pro/zh/docs/installation)
 
 ---
 
@@ -163,7 +163,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 📖 [官方文档](http://tokenboat.com/zh/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/token-boat)
+### 📖 [官方文档](https://docs.newapi.pro/zh/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/new-api)
 
 </div>
 
@@ -171,17 +171,17 @@ docker run --name token boat -d --restart always \
 
 | 分类 | 链接 |
 |------|------|
-| 🚀 部署指南 | [安装文档](http://tokenboat.com/zh/docs/installation) |
-| ⚙️ 环境配置 | [环境变量](http://tokenboat.com/zh/docs/installation/config-maintenance/environment-variables) |
-| 📡 接口文档 | [API 文档](http://tokenboat.com/zh/docs/api) |
-| ❓ 常见问题 | [FAQ](http://tokenboat.com/zh/docs/support/faq) |
-| 💬 社区交流 | [交流渠道](http://tokenboat.com/zh/docs/support/community-interaction) |
+| 🚀 部署指南 | [安装文档](https://docs.newapi.pro/zh/docs/installation) |
+| ⚙️ 环境配置 | [环境变量](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables) |
+| 📡 接口文档 | [API 文档](https://docs.newapi.pro/zh/docs/api) |
+| ❓ 常见问题 | [FAQ](https://docs.newapi.pro/zh/docs/support/faq) |
+| 💬 社区交流 | [交流渠道](https://docs.newapi.pro/zh/docs/support/community-interaction) |
 
 ---
 
 ## ✨ 主要特性
 
-> 详细特性请参考 [特性说明](http://tokenboat.com/zh/docs/guide/wiki/basic-concepts/features-introduction)
+> 详细特性请参考 [特性说明](https://docs.newapi.pro/zh/docs/guide/wiki/basic-concepts/features-introduction)
 
 ### 🎨 核心功能
 
@@ -206,16 +206,16 @@ docker run --name token boat -d --restart always \
 - 🤖 LinuxDO 授权登录
 - 📱 Telegram 授权登录
 - 🔑 OIDC 统一认证
-- 🔍 Key 查询使用额度（配合 [token-boat-key-tool](http://tokenboat.com)）
+- 🔍 Key 查询使用额度（配合 [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool)）
 
 ### 🚀 高级功能
 
 **API 格式支持：**
-- ⚡ [OpenAI Responses](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](http://tokenboat.com/zh/docs/api/ai-model/realtime/create-realtime-session)（含 Azure）
-- ⚡ [Claude Messages](http://tokenboat.com/zh/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](http://tokenboat.com/api/google-gemini-chat)
-- 🔄 [Rerank 模型](http://tokenboat.com/zh/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
+- ⚡ [OpenAI Responses](https://docs.newapi.pro/zh/docs/api/ai-model/chat/openai/create-response)
+- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/zh/docs/api/ai-model/realtime/create-realtime-session)（含 Azure）
+- ⚡ [Claude Messages](https://docs.newapi.pro/zh/docs/api/ai-model/chat/create-message)
+- ⚡ [Google Gemini](https://doc.newapi.pro/api/google-gemini-chat)
+- 🔄 [Rerank 模型](https://docs.newapi.pro/zh/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
 
 **智能路由：**
 - ⚖️ 渠道加权随机
@@ -258,17 +258,17 @@ docker run --name token boat -d --restart always \
 
 ## 🤖 模型支持
 
-> 详情请参考 [接口文档 - 网关接口](http://tokenboat.com/zh/docs/api)
+> 详情请参考 [接口文档 - 网关接口](https://docs.newapi.pro/zh/docs/api)
 
 | 模型类型 | 说明 | 文档 |
 |---------|------|------|
-| 🤖 OpenAI-Compatible | OpenAI 兼容模型 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | OpenAI Responses 格式 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [文档](http://tokenboat.com/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [文档](http://tokenboat.com/api/suno-music) |
-| 🔄 Rerank | Cohere、Jina | [文档](http://tokenboat.com/zh/docs/api/ai-model/rerank/create-rerank) |
-| 💬 Claude | Messages 格式 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Google Gemini 格式 | [文档](http://tokenboat.com/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
+| 🤖 OpenAI-Compatible | OpenAI 兼容模型 | [文档](https://docs.newapi.pro/zh/docs/api/ai-model/chat/openai/createchatcompletion) |
+| 🤖 OpenAI Responses | OpenAI Responses 格式 | [文档](https://docs.newapi.pro/zh/docs/api/ai-model/chat/openai/createresponse) |
+| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [文档](https://doc.newapi.pro/api/midjourney-proxy-image) |
+| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [文档](https://doc.newapi.pro/api/suno-music) |
+| 🔄 Rerank | Cohere、Jina | [文档](https://docs.newapi.pro/zh/docs/api/ai-model/rerank/create-rerank) |
+| 💬 Claude | Messages 格式 | [文档](https://docs.newapi.pro/zh/docs/api/ai-model/chat/createmessage) |
+| 🌐 Gemini | Google Gemini 格式 | [文档](https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
 | 🔧 Dify | ChatFlow 模式 | - |
 | 🎯 自定义上游 | 支持配置合法授权的上游接口地址 | - |
 
@@ -277,16 +277,16 @@ docker run --name token boat -d --restart always \
 <details>
 <summary>查看完整接口列表</summary>
 
-- [聊天接口 (Chat Completions)](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createchatcompletion)
-- [响应接口 (Responses)](http://tokenboat.com/zh/docs/api/ai-model/chat/openai/createresponse)
-- [图像接口 (Image)](http://tokenboat.com/zh/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [音频接口 (Audio)](http://tokenboat.com/zh/docs/api/ai-model/audio/openai/create-transcription)
-- [视频接口 (Video)](http://tokenboat.com/zh/docs/api/ai-model/audio/openai/createspeech)
-- [嵌入接口 (Embeddings)](http://tokenboat.com/zh/docs/api/ai-model/embeddings/createembedding)
-- [重排序接口 (Rerank)](http://tokenboat.com/zh/docs/api/ai-model/rerank/creatererank)
-- [实时对话 (Realtime)](http://tokenboat.com/zh/docs/api/ai-model/realtime/createrealtimesession)
-- [Claude 聊天](http://tokenboat.com/zh/docs/api/ai-model/chat/createmessage)
-- [Google Gemini 聊天](http://tokenboat.com/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta)
+- [聊天接口 (Chat Completions)](https://docs.newapi.pro/zh/docs/api/ai-model/chat/openai/createchatcompletion)
+- [响应接口 (Responses)](https://docs.newapi.pro/zh/docs/api/ai-model/chat/openai/createresponse)
+- [图像接口 (Image)](https://docs.newapi.pro/zh/docs/api/ai-model/images/openai/post-v1-images-generations)
+- [音频接口 (Audio)](https://docs.newapi.pro/zh/docs/api/ai-model/audio/openai/create-transcription)
+- [视频接口 (Video)](https://docs.newapi.pro/zh/docs/api/ai-model/audio/openai/createspeech)
+- [嵌入接口 (Embeddings)](https://docs.newapi.pro/zh/docs/api/ai-model/embeddings/createembedding)
+- [重排序接口 (Rerank)](https://docs.newapi.pro/zh/docs/api/ai-model/rerank/creatererank)
+- [实时对话 (Realtime)](https://docs.newapi.pro/zh/docs/api/ai-model/realtime/createrealtimesession)
+- [Claude 聊天](https://docs.newapi.pro/zh/docs/api/ai-model/chat/createmessage)
+- [Google Gemini 聊天](https://docs.newapi.pro/zh/docs/api/ai-model/chat/gemini/geminirelayv1beta)
 
 </details>
 
@@ -295,7 +295,7 @@ docker run --name token boat -d --restart always \
 ## 🚢 部署
 
 > [!TIP]
-> **最新版 Docker 镜像：** `calciumion/token-boat:latest`
+> **最新版 Docker 镜像：** `calciumion/new-api:latest`
 
 ### 📋 部署要求
 
@@ -313,8 +313,16 @@ docker run --name token boat -d --restart always \
 
 | 变量名 | 说明                                                           | 默认值 |
 |--------|--------------------------------------------------------------|--------|
-| `SESSION_SECRET` | 会话密钥（多机部署必须）                                                 | - |
-| `CRYPTO_SECRET` | 加密密钥（Redis 必须）                                               | - |
+| `SESSION_SECRET` | 鉴权签名密钥；所有节点必须保持一致                                           | - |
+| `SESSION_COOKIE_SECURE` | `false`/未配置时关闭 refresh/logout OriginGuard 以兼容本地 HTTP 开发代理；`true` 时启用 Secure Cookie 和严格 Origin 校验 | `false` |
+| `SESSION_COOKIE_TRUSTED_URL` | Secure 模式必填：允许调用 refresh/logout 的精确 HTTPS Origin，多个用英文逗号分隔；不是 relay CORS 白名单 | - |
+| `TRUSTED_PROXIES` | 未配置/留空时信任回环、RFC1918 和 IPv6 ULA 并输出启动告警；`none` 不信任任何代理；显式代理 IP/CIDR 列表完全替代默认值 | `127.0.0.0/8, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7` |
+| `USER_SESSION_ACTIVE_LIMIT` | 单用户最大活跃登录 Session 数 | `50` |
+| `USER_SESSION_ISSUANCE_LIMIT` | 单用户在签发窗口内可创建的 Session 总数，包含已撤销 Session | `100` |
+| `USER_SESSION_ISSUANCE_WINDOW_SECONDS` | Session 签发计数窗口（秒）；高于 revoked 保留期时自动钳制 | `86400` |
+| `USER_SESSION_REVOKED_RETENTION_DAYS` | revoked Session 用于审计和签发计数的保留天数 | `7` |
+| `USER_SESSION_HOURLY_ALERT_THRESHOLD` | 全局每小时 Session 签发告警阈值；只告警，不拒绝登录 | `5000` |
+| `CRYPTO_SECRET` | 缓存键 HMAC 密钥；共享 Redis 的节点必须使用相同有效值 | 默认跟随 `SESSION_SECRET` |
 | `SQL_DSN` | 数据库连接字符串                                                     | - |
 | `REDIS_CONN_STRING` | Redis 连接字符串                                                  | - |
 | `STREAMING_TIMEOUT` | 流式超时时间（秒）                                                    | `300` |
@@ -323,14 +331,14 @@ docker run --name token boat -d --restart always \
 | `AZURE_DEFAULT_API_VERSION` | Azure API 版本                                                 | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | 错误日志开关                                                       | `false` |
 | `PYROSCOPE_URL` | Pyroscope 服务地址                                            | - |
-| `PYROSCOPE_APP_NAME` | Pyroscope 应用名                                        | `token boat` |
+| `PYROSCOPE_APP_NAME` | Pyroscope 应用名                                        | `new-api` |
 | `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Auth 用户名                        | - |
 | `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope Basic Auth 密码                  | - |
 | `PYROSCOPE_MUTEX_RATE` | Pyroscope mutex 采样率                               | `5` |
 | `PYROSCOPE_BLOCK_RATE` | Pyroscope block 采样率                               | `5` |
-| `HOSTNAME` | Pyroscope 标签里的主机名                                          | `token boat` |
+| `HOSTNAME` | Pyroscope 标签里的主机名                                          | `new-api` |
 
-📖 **完整配置：** [环境变量文档](http://tokenboat.com/zh/docs/installation/config-maintenance/environment-variables)
+📖 **完整配置：** [环境变量文档](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables)
 
 </details>
 
@@ -341,8 +349,8 @@ docker run --name token boat -d --restart always \
 
 ```bash
 # 克隆项目
-git clone https://github.com/QuantumNous/token-boat.git
-cd token-boat
+git clone https://github.com/QuantumNous/new-api.git
+cd new-api
 
 # 编辑配置
 nano docker-compose.yml
@@ -358,21 +366,21 @@ docker-compose up -d
 
 **使用 SQLite：**
 ```bash
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 ```
 
 **使用 MySQL：**
 ```bash
-docker run --name token boat -d --restart always \
+docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/token-boat:latest
+  calciumion/new-api:latest
 ```
 
 > **💡 路径说明：**
@@ -385,7 +393,7 @@ docker run --name token boat -d --restart always \
 <summary><strong>方式 3：宝塔面板</strong></summary>
 
 1. 安装宝塔面板（≥ 9.2.0 版本）
-2. 在应用商店搜索 **token boat**
+2. 在应用商店搜索 **New-API**
 3. 一键安装
 
 📖 [图文教程](./docs/installation/BT.md)
@@ -395,8 +403,20 @@ docker run --name token boat -d --restart always \
 ### ⚠️ 多机部署注意事项
 
 > [!WARNING]
-> - **必须设置** `SESSION_SECRET` - 否则登录状态不一致
-> - **公用 Redis 必须设置** `CRYPTO_SECRET` - 否则数据无法解密
+> - 所有节点必须使用同一个主数据库，并设置相同的 `SESSION_SECRET`；否则 Access Token、Refresh 会话和临时鉴权流程无法一致校验。
+> - 连接同一个 Redis 的节点还必须设置相同的 `CRYPTO_SECRET`，否则节点生成的缓存键摘要不一致，无法正确共享缓存。
+
+登录 Session 和单用户活跃数/签发数限制均以数据库为权威。Redis 中的 Session 仅为短期缓存，TTL 跟随 `SYNC_FREQUENCY`（默认 60 秒），且不会超过 Session 的剩余寿命。
+
+| Redis 拓扑 | Session 状态传播 | 限流语义 |
+| --- | --- | --- |
+| 所有节点共享 Redis | 撤销和版本发布通常即时传播 | Redis 限流额度在节点间共享 |
+| 每个节点使用独立 Redis | 最迟在有效 `SYNC_FREQUENCY` 内回源数据库收敛；版本轮换后，新 Token 在持有旧缓存的节点上可能短暂返回 401 | 每个节点独立计数，集群总额度最坏约为单节点阈值乘以节点数 |
+| 不使用 Redis | 每次 Session 校验直接读取数据库 | 各节点使用独立的内存限流额度 |
+
+缩短 `SYNC_FREQUENCY` 可减小独立 Redis 的陈旧窗口，但每个活跃 SID 在每个节点上会按该 TTL 增加一次数据库主键点查。上述保证只让 Session 鉴权在不同拓扑下保持有界陈旧；限流和其他 Redis 控制面缓存仍受拓扑影响。
+
+Token、Origin 校验和 PAT 契约见[用户鉴权与登录会话](./docs/authentication.md)。
 
 ### 🔄 渠道重试与缓存
 
@@ -421,8 +441,8 @@ docker run --name token boat -d --restart always \
 
 | 项目 | 说明 |
 |------|------|
-| [token-boat-key-tool](http://tokenboat.com) | Key 额度查询工具 |
-| [token-boat-horizon](http://tokenboat.com) | token boat 高性能优化版 |
+| [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool) | Key 额度查询工具 |
+| [new-api-horizon](https://github.com/Calcium-Ion/new-api-horizon) | New API 高性能优化版 |
 
 ---
 
@@ -432,10 +452,10 @@ docker run --name token boat -d --restart always \
 
 | 资源 | 链接 |
 |------|------|
-| 📘 常见问题 | [FAQ](http://tokenboat.com/zh/docs/support/faq) |
-| 💬 社区交流 | [交流渠道](http://tokenboat.com/zh/docs/support/community-interaction) |
-| 🐛 反馈问题 | [问题反馈](http://tokenboat.com/zh/docs/support/feedback-issues) |
-| 📚 完整文档 | [官方文档](http://tokenboat.com/zh/docs) |
+| 📘 常见问题 | [FAQ](https://docs.newapi.pro/zh/docs/support/faq) |
+| 💬 社区交流 | [交流渠道](https://docs.newapi.pro/zh/docs/support/community-interaction) |
+| 🐛 反馈问题 | [问题反馈](https://docs.newapi.pro/zh/docs/support/feedback-issues) |
+| 📚 完整文档 | [官方文档](https://docs.newapi.pro/zh/docs) |
 
 ### 🤝 贡献指南
 
@@ -462,7 +482,7 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Calcium-Ion/token-boat&type=Date)](https://star-history.com/#Calcium-Ion/token-boat&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
 
 </div>
 
@@ -470,11 +490,11 @@ docker run --name token boat -d --restart always \
 
 <div align="center">
 
-### 💖 感谢使用 token boat
+### 💖 感谢使用 New API
 
 如果这个项目对你有帮助，欢迎给我们一个 ⭐️ Star！
 
-**[官方文档](http://tokenboat.com/zh/docs)** • **[问题反馈](http://tokenboat.com)** • **[最新发布](http://tokenboat.com)**
+**[官方文档](https://docs.newapi.pro/zh/docs)** • **[问题反馈](https://github.com/Calcium-Ion/new-api/issues)** • **[最新发布](https://github.com/Calcium-Ion/new-api/releases)**
 
 <sub>Built with ❤️ by QuantumNous</sub>
 

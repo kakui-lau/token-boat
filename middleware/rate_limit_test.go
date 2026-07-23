@@ -93,6 +93,120 @@ func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {
 	assert.Equal(t, 23*time.Second, redisServer.TTL(key))
 }
 
+func TestAuthenticationRecoveryRoutesDoNotShareGlobalAPILimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	redisServer, _ := useRateLimitMiniRedis(t)
+
+	previousEnabled := common.GlobalApiRateLimitEnable
+	previousMaximum := common.GlobalApiRateLimitNum
+	previousDuration := common.GlobalApiRateLimitDuration
+	common.GlobalApiRateLimitEnable = true
+	common.GlobalApiRateLimitNum = 1
+	common.GlobalApiRateLimitDuration = 60
+	t.Cleanup(func() {
+		common.GlobalApiRateLimitEnable = previousEnabled
+		common.GlobalApiRateLimitNum = previousMaximum
+		common.GlobalApiRateLimitDuration = previousDuration
+	})
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.Use(GlobalAPIRateLimit())
+	router.GET("/api/status", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	exemptRoutes := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/user/auth/refresh"},
+		{method: http.MethodPost, path: "/api/user/auth/logout"},
+		{method: http.MethodPost, path: "/api/user/login"},
+		{method: http.MethodPost, path: "/api/user/login/2fa"},
+		{method: http.MethodPost, path: "/api/user/passkey/login/begin"},
+		{method: http.MethodPost, path: "/api/user/passkey/login/finish"},
+		{method: http.MethodGet, path: "/api/verification"},
+		{method: http.MethodGet, path: "/api/reset_password"},
+		{method: http.MethodPost, path: "/api/user/reset"},
+		{method: http.MethodPost, path: "/api/oauth/state"},
+		{method: http.MethodGet, path: "/api/oauth/github"},
+		{method: http.MethodGet, path: "/api/user/sessions"},
+		{method: http.MethodDelete, path: "/api/user/sessions/session-id"},
+		{method: http.MethodPost, path: "/api/user/sessions/revoke-others"},
+	}
+	for _, route := range exemptRoutes {
+		router.Handle(route.method, route.path, func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		})
+	}
+
+	remoteAddr := "192.0.2.25:12345"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/api/status", remoteAddr).Code)
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/api/status", remoteAddr).Code)
+
+	for _, route := range exemptRoutes {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(route.method, route.path, nil)
+		request.RemoteAddr = remoteAddr
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusNoContent, recorder.Code, "%s %s", route.method, route.path)
+	}
+
+	count, err := redisServer.Get(redisIPRateLimitKey("GA", "192.0.2.25"))
+	require.NoError(t, err)
+	assert.Equal(t, "2", count)
+}
+
+func TestPaymentWebhooksDoNotShareGlobalAPILimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	redisServer, _ := useRateLimitMiniRedis(t)
+
+	previousEnabled := common.GlobalApiRateLimitEnable
+	previousMaximum := common.GlobalApiRateLimitNum
+	previousDuration := common.GlobalApiRateLimitDuration
+	common.GlobalApiRateLimitEnable = true
+	common.GlobalApiRateLimitNum = 1
+	common.GlobalApiRateLimitDuration = 60
+	t.Cleanup(func() {
+		common.GlobalApiRateLimitEnable = previousEnabled
+		common.GlobalApiRateLimitNum = previousMaximum
+		common.GlobalApiRateLimitDuration = previousDuration
+	})
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.Use(GlobalAPIRateLimit())
+	webhookRoutes := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/stripe/webhook"},
+		{method: http.MethodPost, path: "/api/creem/webhook"},
+		{method: http.MethodPost, path: "/api/waffo/webhook"},
+		{method: http.MethodPost, path: "/api/waffo-pancake/webhook/prod"},
+		{method: http.MethodGet, path: "/api/user/epay/notify"},
+		{method: http.MethodPost, path: "/api/user/epay/notify"},
+		{method: http.MethodGet, path: "/api/subscription/epay/notify"},
+		{method: http.MethodPost, path: "/api/subscription/epay/notify"},
+	}
+	for _, route := range webhookRoutes {
+		router.Handle(route.method, route.path, func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		})
+	}
+
+	remoteAddr := "192.0.2.26:12345"
+	for _, route := range webhookRoutes {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(route.method, route.path, nil)
+		request.RemoteAddr = remoteAddr
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusNoContent, recorder.Code, "%s %s", route.method, route.path)
+	}
+
+	assert.False(t, redisServer.Exists(redisIPRateLimitKey("GA", "192.0.2.26")))
+}
+
 func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	redisServer, _ := useRateLimitMiniRedis(t)

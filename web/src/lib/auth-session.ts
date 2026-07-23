@@ -39,6 +39,7 @@ export interface AuthRefreshHTTPResponse {
   status: number
   data?: unknown
   error?: unknown
+  retryAfterSeconds?: number
 }
 
 export interface AuthRefreshRuntime {
@@ -48,6 +49,7 @@ export interface AuthRefreshRuntime {
   acceptBundle: (bundle: AuthBundle) => void
   clear: (synchronizeTabs: boolean, bootstrapState?: AuthBootstrapState) => void
   markTransient: () => void
+  markRateLimited?: (retryAfterSeconds: number) => void
   wait: (delay: number) => Promise<void>
   isCurrent?: () => boolean
 }
@@ -77,6 +79,7 @@ const authClient = axios.create({
 const refreshRaceDelays = [80, 200, 500] as const
 let refreshPromise: Promise<RefreshOutcome> | null = null
 let authEpoch = 0
+let refreshRateLimitedUntil = 0
 
 class AuthRefreshSupersededError extends Error {
   constructor() {
@@ -151,6 +154,7 @@ export function applyAuthBundle(
 ): void {
   const previousSID = useAuthStore.getState().auth.session?.sid
   authEpoch += 1
+  refreshRateLimitedUntil = 0
   useAuthStore.getState().auth.setBundle(bundle)
   if (synchronizeTabs && previousSID !== bundle.session.sid) {
     publishAuthSessionEvent('authenticated', bundle.session.sid)
@@ -188,6 +192,7 @@ export function clearAuthentication(
 ): void {
   const sid = useAuthStore.getState().auth.session?.sid
   authEpoch += 1
+  refreshRateLimitedUntil = 0
   useAuthStore.getState().auth.reset(bootstrapState)
   if (synchronizeTabs && sid) {
     publishAuthSessionEvent('signed_out', sid)
@@ -253,7 +258,16 @@ export function createRefreshRunner(
       return { kind: 'anonymous' }
     }
 
-    if (!response.status || response.status >= 500 || response.status === 429) {
+    if (response.status === 429) {
+      runtime.markRateLimited?.(response.retryAfterSeconds ?? 1)
+      runtime.markTransient()
+      return {
+        kind: 'transient_error',
+        error: response.error ?? response.data,
+      }
+    }
+
+    if (!response.status || response.status >= 500) {
       runtime.markTransient()
       return {
         kind: 'transient_error',
@@ -285,10 +299,16 @@ async function requestRefresh(
     return { status: response.status, data: response.data }
   } catch (error: unknown) {
     if (!axios.isAxiosError(error)) return { status: 0, error }
+    const retryAfterValue = error.response?.headers?.['retry-after']
+    const parsedRetryAfter = Number(retryAfterValue)
     return {
       status: error.response?.status ?? 0,
       data: error.response?.data,
       error,
+      retryAfterSeconds:
+        Number.isFinite(parsedRetryAfter) && parsedRetryAfter > 0
+          ? Math.min(Math.ceil(parsedRetryAfter), 300)
+          : undefined,
     }
   }
 }
@@ -307,6 +327,10 @@ function runRefresh(refreshEpoch: number): Promise<RefreshOutcome> {
       clearAuthentication(synchronizeTabs, bootstrapState)
     },
     markTransient: () => useAuthStore.getState().auth.setBootstrapState('idle'),
+    markRateLimited: (retryAfterSeconds) => {
+      refreshRateLimitedUntil =
+        Date.now() + Math.max(1, retryAfterSeconds) * 1000
+    },
     wait: waitForRefreshRace,
     isCurrent: () => authEpoch === refreshEpoch,
   })()
@@ -331,6 +355,12 @@ async function performRefreshWithBrowserLock(
 }
 
 export function refreshAuthentication(): Promise<RefreshOutcome> {
+  if (Date.now() < refreshRateLimitedUntil) {
+    return Promise.resolve({
+      kind: 'transient_error',
+      error: new Error('Authentication refresh is temporarily rate limited'),
+    })
+  }
   if (!refreshPromise) {
     const refreshEpoch = authEpoch
     refreshPromise = performRefreshWithBrowserLock(refreshEpoch).finally(() => {

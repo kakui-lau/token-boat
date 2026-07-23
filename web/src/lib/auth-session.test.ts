@@ -150,8 +150,9 @@ describe('authentication session coordination', () => {
   test('a rate limited refresh remains retryable without clearing the session', async () => {
     let transientCount = 0
     let clearCount = 0
+    const retryDelays: number[] = []
     const runtime: AuthRefreshRuntime = {
-      request: async () => ({ status: 429 }),
+      request: async () => ({ status: 429, retryAfterSeconds: 37 }),
       getExpectedSID: () => bundle.session.sid,
       parseBundle: () => null,
       acceptBundle: () => undefined,
@@ -161,6 +162,9 @@ describe('authentication session coordination', () => {
       markTransient: () => {
         transientCount += 1
       },
+      markRateLimited: (retryAfterSeconds) => {
+        retryDelays.push(retryAfterSeconds)
+      },
       wait: async () => undefined,
     }
 
@@ -169,6 +173,7 @@ describe('authentication session coordination', () => {
     assert.equal(outcome.kind, 'transient_error')
     assert.equal(clearCount, 0)
     assert.equal(transientCount, 1)
+    assert.deepEqual(retryDelays, [37])
   })
 
   test('an exhausted refresh race clears the unusable local session', async () => {

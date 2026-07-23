@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -165,15 +166,76 @@ func GlobalWebRateLimit() func(c *gin.Context) {
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
-	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+	if !common.GlobalApiRateLimitEnable {
+		return defNext
 	}
-	return defNext
+	limiter := rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+	return func(c *gin.Context) {
+		if isGlobalAPIRateLimitExempt(c.Request.Method, c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+		limiter(c)
+	}
+}
+
+// Authentication recovery and signed payment callbacks must not compete with
+// ordinary dashboard traffic for the shared per-IP API allowance. These routes
+// retain their route-level authentication, signature checks, CAPTCHA, or
+// dedicated rate limits.
+func isGlobalAPIRateLimitExempt(method string, path string) bool {
+	switch {
+	case method == http.MethodPost && path == "/api/user/auth/refresh":
+		return true
+	case method == http.MethodPost && path == "/api/user/auth/logout":
+		return true
+	case method == http.MethodPost && path == "/api/user/login":
+		return true
+	case method == http.MethodPost && path == "/api/user/login/2fa":
+		return true
+	case method == http.MethodPost && strings.HasPrefix(path, "/api/user/passkey/login/"):
+		return true
+	case method == http.MethodGet && path == "/api/verification":
+		return true
+	case method == http.MethodGet && path == "/api/reset_password":
+		return true
+	case method == http.MethodPost && path == "/api/user/reset":
+		return true
+	case strings.HasPrefix(path, "/api/oauth/"):
+		return true
+	case method == http.MethodGet && path == "/api/user/sessions":
+		return true
+	case method == http.MethodDelete && strings.HasPrefix(path, "/api/user/sessions/"):
+		return true
+	case method == http.MethodPost && path == "/api/user/sessions/revoke-others":
+		return true
+	case method == http.MethodPost && path == "/api/stripe/webhook":
+		return true
+	case method == http.MethodPost && path == "/api/creem/webhook":
+		return true
+	case method == http.MethodPost && path == "/api/waffo/webhook":
+		return true
+	case method == http.MethodPost && strings.HasPrefix(path, "/api/waffo-pancake/webhook/"):
+		return true
+	case (method == http.MethodGet || method == http.MethodPost) && path == "/api/user/epay/notify":
+		return true
+	case (method == http.MethodGet || method == http.MethodPost) && path == "/api/subscription/epay/notify":
+		return true
+	default:
+		return false
+	}
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
 	if common.CriticalRateLimitEnable {
 		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
+	}
+	return defNext
+}
+
+func AuthRefreshRateLimit() func(c *gin.Context) {
+	if common.AuthRefreshRateLimitEnable {
+		return rateLimitFactory(common.AuthRefreshRateLimitNum, common.AuthRefreshRateLimitDuration, "AR")
 	}
 	return defNext
 }

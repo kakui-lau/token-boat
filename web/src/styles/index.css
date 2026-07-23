@@ -130,6 +130,348 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+.token-boat-home {
+  background:
+    radial-gradient(
+      circle at 18% 8%,
+      color-mix(in oklch, var(--primary) 26%, transparent) 0,
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 82% 14%,
+      color-mix(in oklch, var(--secondary) 22%, transparent) 0,
+      transparent 30rem
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--background) 92%, var(--primary) 8%) 0%,
+      var(--background) 42%,
+      color-mix(in oklch, var(--background) 94%, var(--secondary) 6%) 100%
+    );
+}
+
+.token-boat-home::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklch, var(--primary) 15%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--primary) 15%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, black, transparent 68%);
+  opacity: 0.38;
+}
+
+.token-boat-account-surface {
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--background) 94%, var(--primary) 6%),
+      var(--background) 16rem
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--primary) 5%, transparent),
+      transparent 34%,
+      color-mix(in oklch, var(--success) 4%, transparent)
+    );
+}
+
+.token-boat-pro-card {
+  border-color: color-mix(in oklch, var(--border) 78%, var(--primary) 22%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--card) 96%, var(--primary) 4%),
+    var(--card)
+  );
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 72%, transparent) inset,
+    0 18px 54px color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.token-boat-cockpit-strip {
+  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--primary) 22%);
+  background:
+    linear-gradient(
+      120deg,
+      color-mix(in oklch, var(--primary) 6%, transparent),
+      transparent 34%,
+      color-mix(in oklch, var(--success) 5%, transparent)
+    ),
+    linear-gradient(180deg, var(--card), var(--background));
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 76%, transparent) inset,
+    0 22px 64px color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.wallet-recharge-workspace,
+.wallet-payment-summary {
+  border-color: color-mix(in oklch, var(--border) 76%, var(--primary) 24%);
+}
+
+.wallet-strong-control {
+  border-color: color-mix(in oklch, var(--border) 54%, var(--primary) 46%);
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 82%, transparent) inset,
+    0 8px 22px color-mix(in oklch, var(--primary) 7%, transparent);
+}
+
+.wallet-strong-control:hover {
+  border-color: color-mix(in oklch, var(--primary) 62%, var(--border) 38%);
+  background: color-mix(in oklch, var(--card) 82%, var(--primary) 18%);
+}
+
+.token-boat-energy-panel {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 8%, transparent),
+      transparent 28%
+    ),
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--primary) 9%, transparent) 0,
+      color-mix(in oklch, var(--primary) 9%, transparent) 1px,
+      transparent 1px,
+      transparent 18px
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--card) 96%, var(--primary) 4%),
+      var(--card)
+    );
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 76%, transparent) inset,
+    0 24px 70px color-mix(in oklch, var(--primary) 13%, transparent);
+}
+
+.dark .token-boat-pro-card {
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 8%, transparent) inset,
+    0 18px 54px color-mix(in oklch, black 28%, transparent);
+}
+
+.token-boat-glass-panel {
+  border-color: color-mix(in oklch, var(--border) 82%, var(--primary) 18%);
+  background: color-mix(in oklch, var(--background) 76%, var(--card) 24%);
+}
+
+.token-boat-hairline {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--primary) 38%, transparent),
+    color-mix(in oklch, var(--success) 26%, transparent),
+    transparent
+  );
+}
+
+.token-boat-aurora {
+  position: absolute;
+  inset: -12rem -20%;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at 20% 25%,
+      color-mix(in oklch, var(--primary) 40%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      ellipse at 72% 8%,
+      color-mix(in oklch, var(--secondary) 30%, transparent),
+      transparent 30%
+    ),
+    radial-gradient(
+      ellipse at 48% 45%,
+      color-mix(in oklch, var(--chart-4) 20%, transparent),
+      transparent 28%
+    );
+  filter: blur(18px) saturate(1.15);
+  opacity: 0.72;
+  animation: token-boat-aurora-drift 18s ease-in-out infinite alternate;
+}
+
+.token-boat-beam {
+  position: absolute;
+  left: -20%;
+  top: 7rem;
+  height: 1px;
+  width: 140%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--primary) 55%, transparent),
+    color-mix(in oklch, var(--secondary) 45%, transparent),
+    transparent
+  );
+  box-shadow: 0 0 28px color-mix(in oklch, var(--primary) 45%, transparent);
+  transform: rotate(-8deg);
+  animation: token-boat-beam-scan 9s ease-in-out infinite;
+}
+
+.token-boat-orbit {
+  position: absolute;
+  right: max(2rem, 8vw);
+  top: 8rem;
+  width: min(38vw, 28rem);
+  aspect-ratio: 1;
+  pointer-events: none;
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
+  border-radius: 999px;
+  opacity: 0.52;
+  animation: token-boat-orbit-spin 28s linear infinite;
+}
+
+.token-boat-orbit::before,
+.token-boat-orbit::after {
+  content: '';
+  position: absolute;
+  border-radius: inherit;
+}
+
+.token-boat-orbit::before {
+  inset: 12%;
+  border: 1px dashed color-mix(in oklch, var(--secondary) 26%, transparent);
+}
+
+.token-boat-orbit::after {
+  top: 16%;
+  left: 4%;
+  width: 0.7rem;
+  aspect-ratio: 1;
+  background: var(--primary);
+  box-shadow:
+    0 0 24px var(--primary),
+    10rem 18rem 0 color-mix(in oklch, var(--secondary) 85%, transparent);
+}
+
+.token-boat-glow-card {
+  position: relative;
+}
+
+.token-boat-glow-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--primary) 45%, transparent),
+    transparent 36%,
+    color-mix(in oklch, var(--secondary) 32%, transparent)
+  );
+  opacity: 0;
+  transition: opacity 300ms ease;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+
+.token-boat-glow-card:hover::after {
+  opacity: 1;
+}
+
+.token-boat-auth-shell {
+  background:
+    radial-gradient(
+      circle at 20% 18%,
+      color-mix(in oklch, var(--primary) 24%, transparent),
+      transparent 24rem
+    ),
+    radial-gradient(
+      circle at 80% 12%,
+      color-mix(in oklch, var(--secondary) 18%, transparent),
+      transparent 28rem
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--background) 92%, var(--primary) 8%),
+      var(--background) 52%,
+      color-mix(in oklch, var(--background) 92%, var(--secondary) 8%)
+    );
+}
+
+.token-boat-auth-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklch, var(--primary) 12%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--primary) 12%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 64px 64px;
+  mask-image: radial-gradient(circle at 50% 30%, black, transparent 72%);
+  opacity: 0.45;
+}
+
+.token-boat-auth-shell::after {
+  content: '';
+  position: absolute;
+  inset: 10% 8%;
+  pointer-events: none;
+  border: 1px solid color-mix(in oklch, var(--primary) 12%, transparent);
+  border-radius: 999px;
+  filter: blur(0.2px);
+  opacity: 0.5;
+  transform: rotate(-8deg);
+}
+
+@keyframes token-boat-aurora-drift {
+  from {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.06);
+  }
+}
+
+@keyframes token-boat-beam-scan {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(22rem) rotate(-8deg);
+    opacity: 0.8;
+  }
+}
+
+@keyframes token-boat-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token-boat-aurora,
+  .token-boat-beam,
+  .token-boat-orbit {
+    animation: none !important;
+  }
+}
+
 @utility container {
   margin-inline: auto;
   padding-inline: 2rem;

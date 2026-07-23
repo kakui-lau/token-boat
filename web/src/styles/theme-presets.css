@@ -32,6 +32,67 @@ For commercial licensing, please contact support@quantumnous.com
  *   blocks so an explicit user choice overrides the preset's default radius.
  */
 
+/* -- Token Boat --------------------------------------------------------- */
+[data-theme-preset='token-boat'] {
+  --background: oklch(0.99 0.008 194);
+  --foreground: oklch(0.19 0.045 244);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.19 0.045 244);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.19 0.045 244);
+  --primary: oklch(0.61 0.13 190);
+  --primary-foreground: oklch(0.99 0.008 194);
+  --secondary: oklch(0.39 0.13 245);
+  --secondary-foreground: oklch(0.98 0.006 200);
+  --muted: oklch(0.94 0.028 205);
+  --muted-foreground: oklch(0.48 0.043 235);
+  --accent: oklch(0.92 0.055 188);
+  --accent-foreground: oklch(0.21 0.06 244);
+  --ring: oklch(0.62 0.15 190);
+  --chart-1: oklch(0.61 0.13 190);
+  --chart-2: oklch(0.39 0.13 245);
+  --chart-3: oklch(0.7 0.16 150);
+  --chart-4: oklch(0.73 0.15 78);
+  --chart-5: oklch(0.62 0.18 294);
+  --sidebar: oklch(0.965 0.02 205);
+  --sidebar-foreground: oklch(0.2 0.045 244);
+  --sidebar-primary: oklch(0.61 0.13 190);
+  --sidebar-primary-foreground: oklch(0.99 0.008 194);
+  --sidebar-accent: oklch(0.92 0.055 188);
+  --sidebar-accent-foreground: oklch(0.21 0.06 244);
+  --sidebar-ring: oklch(0.62 0.15 190);
+  --radius: 0.8rem;
+}
+.dark [data-theme-preset='token-boat'] {
+  --background: oklch(0.18 0.035 238);
+  --foreground: oklch(0.96 0.012 195);
+  --card: oklch(0.225 0.038 235);
+  --card-foreground: oklch(0.96 0.012 195);
+  --popover: oklch(0.23 0.04 235);
+  --popover-foreground: oklch(0.96 0.012 195);
+  --primary: oklch(0.74 0.15 185);
+  --primary-foreground: oklch(0.15 0.035 238);
+  --secondary: oklch(0.69 0.14 220);
+  --secondary-foreground: oklch(0.13 0.034 238);
+  --muted: oklch(0.28 0.04 235);
+  --muted-foreground: oklch(0.79 0.035 206);
+  --accent: oklch(0.3 0.07 208);
+  --accent-foreground: oklch(0.94 0.02 190);
+  --ring: oklch(0.74 0.15 185);
+  --chart-1: oklch(0.74 0.15 185);
+  --chart-2: oklch(0.69 0.14 220);
+  --chart-3: oklch(0.72 0.16 150);
+  --chart-4: oklch(0.78 0.15 78);
+  --chart-5: oklch(0.73 0.17 294);
+  --sidebar: oklch(0.165 0.035 238);
+  --sidebar-foreground: oklch(0.94 0.012 195);
+  --sidebar-primary: oklch(0.74 0.15 185);
+  --sidebar-primary-foreground: oklch(0.15 0.035 238);
+  --sidebar-accent: oklch(0.3 0.07 208);
+  --sidebar-accent-foreground: oklch(0.94 0.02 190);
+  --sidebar-ring: oklch(0.74 0.15 185);
+}
+
 /* ── Underground ──────────────────────────────────────────────────────── */
 [data-theme-preset='underground'] {
   --primary: oklch(0.5315 0.0694 156.19);

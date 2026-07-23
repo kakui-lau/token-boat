@@ -174,8 +174,8 @@ export function Features(_props: FeaturesProps) {
     },
     {
       icon: <HeartHandshake className='size-5' strokeWidth={1.5} />,
-      title: t('Open Source'),
-      desc: t('Community driven, self-hosted, and extensible'),
+      title: t('For Individuals & Businesses'),
+      desc: t('Flexible access and service options for every stage of growth'),
     },
   ]
 
@@ -183,27 +183,27 @@ export function Features(_props: FeaturesProps) {
     <section className='relative z-10 px-6 py-24 md:py-32'>
       <div className='mx-auto max-w-6xl'>
         <AnimateInView className='mb-16 max-w-lg'>
-          <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
+          <p className='text-primary mb-3 text-xs font-medium tracking-widest uppercase'>
             {t('Core Features')}
           </p>
           <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-3xl'>
-            {t('Built for developers,')}
+            {t('Built for individuals,')}
             <br />
-            {t('designed for scale')}
+            {t('ready for business')}
           </h2>
         </AnimateInView>
 
         {/* Bento grid */}
-        <div className='border-border/40 bg-border/40 grid gap-px overflow-hidden rounded-xl border md:grid-cols-3'>
+        <div className='border-primary/15 bg-primary/15 grid gap-px overflow-hidden rounded-xl border shadow-[0_24px_80px_-60px_color-mix(in_oklch,var(--secondary)_70%,transparent)] backdrop-blur-xl md:grid-cols-3'>
           {features.map((f, i) => (
             <AnimateInView
               key={f.id}
               delay={i * 100}
               animation='scale-in'
-              className={`bg-background group hover:bg-muted/20 p-7 transition-colors duration-300 md:p-8 ${f.span}`}
+              className={`bg-background/78 group hover:bg-background/92 token-boat-glow-card p-7 backdrop-blur-md transition-colors duration-300 md:p-8 ${f.span}`}
             >
               <div className='mb-3 flex items-center gap-3'>
-                <span className='border-border/40 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums'>
+                <span className='border-primary/20 bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums'>
                   {f.num}
                 </span>
                 <h3 className='text-sm font-semibold'>{f.title}</h3>

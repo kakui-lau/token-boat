@@ -17,10 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { Fragment, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { cn } from '@/lib/utils'
 
@@ -41,12 +40,6 @@ interface FooterProps {
   copyright?: string
   className?: string
 }
-
-const NEW_API_FOOTER_ATTRIBUTION_KEY = [
-  'footer',
-  'new' + 'api',
-  'projectAttributionSuffix',
-].join('.')
 
 function FooterLinkItem(props: { link: FooterLink }) {
   const { t } = useTranslation()
@@ -81,29 +74,15 @@ function FooterLinkItem(props: { link: FooterLink }) {
 // fragmented siblings so the parent flex container's gap controls spacing.
 function LegalLinks(props: { leadingSeparator?: boolean }) {
   const { t } = useTranslation()
-  const { status } = useStatus()
-  const items: { key: string; label: string; href: string }[] = []
-  if (status?.user_agreement_enabled) {
-    items.push({
-      key: 'user-agreement',
-      label: t('User Agreement'),
-      href: '/user-agreement',
-    })
-  }
-  if (status?.privacy_policy_enabled) {
-    items.push({
-      key: 'privacy-policy',
-      label: t('Privacy Policy'),
-      href: '/privacy-policy',
-    })
-  }
-  if (items.length === 0) {
-    return null
-  }
+  const items = [
+    { key: 'terms', label: t('Terms of Service'), href: '/terms' },
+    { key: 'privacy', label: t('Privacy Policy'), href: '/privacy' },
+    { key: 'refund', label: t('Refund Policy'), href: '/refund' },
+  ]
   return (
     <>
       {items.map((item, index) => (
-        <Fragment key={item.key}>
+        <span key={item.key} className='contents'>
           {(props.leadingSeparator || index > 0) && (
             <span aria-hidden='true' className='text-muted-foreground/30'>
               ·
@@ -115,7 +94,7 @@ function LegalLinks(props: { leadingSeparator?: boolean }) {
           >
             {item.label}
           </Link>
-        </Fragment>
+        </span>
       ))}
     </>
   )
@@ -134,9 +113,12 @@ function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
         rel='noopener noreferrer'
         className='text-foreground/70 hover:text-foreground font-medium transition-colors'
       >
-        {t('New API')}
+        TokenBoat
       </a>
-      . {t(NEW_API_FOOTER_ATTRIBUTION_KEY)}
+      {' · '}
+      {t('footer.tokenBoat.operator', {
+        company: 'ORBITER TECHNOLOGY CO., LIMITED',
+      })}
     </span>
   )
   if (props.inline) {
@@ -151,16 +133,10 @@ function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
 
 export function Footer(props: FooterProps) {
   const { t } = useTranslation()
-  const {
-    systemName,
-    logo: systemLogo,
-    footerHtml,
-    demoSiteEnabled,
-  } = useSystemConfig()
+  const { systemName, logo: systemLogo, footerHtml } = useSystemConfig()
 
   const displayLogo = systemLogo || props.logo || '/logo.png'
   const displayName = systemName || props.name || 'New API'
-  const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
 
   const fallbackColumns = useMemo<FooterColumnProps[]>(
@@ -170,15 +146,15 @@ export function Footer(props: FooterProps) {
         links: [
           {
             text: t('footer.columns.about.links.aboutProject'),
-            href: 'http://tokenboat.com/wiki/project-introduction/',
+            href: '/about',
           },
           {
             text: t('footer.columns.about.links.contact'),
-            href: 'http://tokenboat.com/support/community-interaction/',
+            href: '/support/community-interaction',
           },
           {
             text: t('footer.columns.about.links.features'),
-            href: 'http://tokenboat.com/wiki/features-introduction/',
+            href: '/wiki/features-introduction',
           },
         ],
       },
@@ -187,7 +163,7 @@ export function Footer(props: FooterProps) {
         links: [
           {
             text: t('footer.columns.docs.links.quickStart'),
-            href: 'http://tokenboat.com/getting-started/',
+            href: '/getting-started',
           },
           {
             text: t('footer.columns.docs.links.installation'),
@@ -200,19 +176,19 @@ export function Footer(props: FooterProps) {
         ],
       },
       {
-        title: t('footer.columns.related.title'),
+        title: t('Legal'),
         links: [
           {
-            text: t('footer.columns.related.links.oneApi'),
-            href: 'https://github.com/songquanpeng/one-api',
+            text: t('Terms of Service'),
+            href: '/terms',
           },
           {
-            text: t('footer.columns.related.links.midjourney'),
-            href: 'https://github.com/novicezk/midjourney-proxy',
+            text: t('Privacy Policy'),
+            href: '/privacy',
           },
           {
-            text: t('footer.columns.related.links.newApiKeyTool'),
-            href: 'http://tokenboat.com',
+            text: t('Refund Policy'),
+            href: '/refund',
           },
         ],
       },
@@ -265,29 +241,27 @@ export function Footer(props: FooterProps) {
               </span>
             </Link>
             <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
-              {t('Powerful API Management Platform')}
+              {t('Unified AI Model API Platform')}
             </p>
           </div>
 
           {/* Links columns */}
-          {isDemoSiteMode && (
-            <div className='grid grid-cols-3 gap-8 md:gap-16'>
-              {displayColumns.map((column, index) => (
-                <div key={index}>
-                  <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
-                    {t(column.title)}
-                  </p>
-                  <ul className='space-y-2.5'>
-                    {column.links.map((link, linkIndex) => (
-                      <li key={linkIndex}>
-                        <FooterLinkItem link={link} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className='grid grid-cols-2 gap-8 sm:grid-cols-3 md:gap-16'>
+            {displayColumns.map((column) => (
+              <div key={column.title}>
+                <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
+                  {t(column.title)}
+                </p>
+                <ul className='flex flex-col gap-2.5'>
+                  {column.links.map((link) => (
+                    <li key={`${link.href}-${link.text}`}>
+                      <FooterLinkItem link={link} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Copyright + optional legal links inline on the left, project

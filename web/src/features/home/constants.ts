@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
  * Home page constants
  * All hardcoded data for home page sections
  */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 
 // Layout - Main base classes
 export const MAIN_BASE_CLASSES = 'bg-background text-foreground w-full'
@@ -60,9 +60,9 @@ export const GATEWAY_FEATURES = [
 // Stats section - Default statistics
 export const DEFAULT_STATS = [
   {
-    value: '50',
-    suffix: '+',
-    description: 'upstream services integrated',
+    value: '23',
+    suffix: '',
+    description: 'Provider channel types',
   },
   {
     value: '100',
@@ -121,8 +121,9 @@ export const DEFAULT_FEATURES = [
     iconName: 'Users',
   },
   {
-    title: 'Open Source',
-    description: 'Community driven, self-hosted, and extensible',
+    title: 'For Individuals & Businesses',
+    description:
+      'Flexible access and service options for every stage of growth',
     iconName: 'HeartHandshake',
   },
 ] as const

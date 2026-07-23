@@ -30,6 +30,11 @@ export const THEME_PRESETS = [
     swatches: ['oklch(0.72 0.18 250)', 'oklch(0.7 0.12 280)'],
   },
   {
+    value: 'token-boat',
+    name: 'Token Boat',
+    swatches: ['oklch(0.66 0.14 190)', 'oklch(0.39 0.13 245)'],
+  },
+  {
     // Inspired by Anthropic's official brand language: warm cream canvas
     // (#faf9f5) paired with clay/coral (#d97757) as the single accent.
     // Swatches preview the canvas → accent gradient that defines the system.
@@ -116,7 +121,7 @@ export type ThemeCustomization = {
 }
 
 export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
-  preset: 'default',
+  preset: 'token-boat',
   font: 'default',
   radius: 'default',
   scale: 'default',
@@ -177,6 +182,7 @@ export const PRESET_DEFAULT_FONT: Partial<
   Record<ThemePreset, ResolvedThemeFont>
 > = {
   default: 'sans',
+  'token-boat': 'sans',
   anthropic: 'serif',
 }
 

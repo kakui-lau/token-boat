@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -41,6 +41,51 @@ interface FooterProps {
   className?: string
 }
 
+const DEFAULT_COLUMNS: FooterColumnProps[] = [
+  {
+    title: 'footer.columns.about.title',
+    links: [
+      {
+        text: 'footer.columns.about.links.aboutProject',
+        href: '/about',
+      },
+      {
+        text: 'footer.columns.about.links.contact',
+        href: '/support/community-interaction',
+      },
+      {
+        text: 'footer.columns.about.links.features',
+        href: '/wiki/features-introduction',
+      },
+    ],
+  },
+  {
+    title: 'footer.columns.docs.title',
+    links: [
+      {
+        text: 'footer.columns.docs.links.quickStart',
+        href: '/getting-started',
+      },
+      {
+        text: 'footer.columns.docs.links.installation',
+        href: 'http://tokenboat.com/installation/',
+      },
+      {
+        text: 'footer.columns.docs.links.apiDocs',
+        href: 'http://tokenboat.com/api/',
+      },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { text: 'Terms of Service', href: '/terms' },
+      { text: 'Privacy Policy', href: '/privacy' },
+      { text: 'Refund Policy', href: '/refund' },
+    ],
+  },
+]
+
 function FooterLinkItem(props: { link: FooterLink }) {
   const { t } = useTranslation()
   const isExternal = props.link.href.startsWith('http')
@@ -52,9 +97,13 @@ function FooterLinkItem(props: { link: FooterLink }) {
         href={props.link.href}
         target='_blank'
         rel='noopener noreferrer'
-        className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
+        className='text-muted-foreground hover:text-foreground group/link inline-flex items-center gap-1.5 text-sm transition-colors duration-200'
       >
         {label}
+        <ArrowUpRight
+          aria-hidden='true'
+          className='size-3.5 opacity-45 transition-transform duration-200 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5 group-hover/link:opacity-100'
+        />
       </a>
     )
   }
@@ -62,7 +111,7 @@ function FooterLinkItem(props: { link: FooterLink }) {
   return (
     <Link
       to={props.link.href}
-      className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
+      className='text-muted-foreground hover:text-foreground inline-flex text-sm transition-colors duration-200'
     >
       {label}
     </Link>
@@ -90,7 +139,7 @@ function LegalLinks(props: { leadingSeparator?: boolean }) {
           )}
           <Link
             to={item.href}
-            className='hover:text-foreground transition-colors duration-200'
+            className='hover:text-foreground rounded-full px-2.5 py-1 transition-colors duration-200 hover:bg-white/60 dark:hover:bg-white/8'
           >
             {item.label}
           </Link>
@@ -139,83 +188,55 @@ export function Footer(props: FooterProps) {
   const displayName = systemName || props.name || 'New API'
   const currentYear = new Date().getFullYear()
 
-  const fallbackColumns = useMemo<FooterColumnProps[]>(
-    () => [
-      {
-        title: t('footer.columns.about.title'),
-        links: [
-          {
-            text: t('footer.columns.about.links.aboutProject'),
-            href: '/about',
-          },
-          {
-            text: t('footer.columns.about.links.contact'),
-            href: '/support/community-interaction',
-          },
-          {
-            text: t('footer.columns.about.links.features'),
-            href: '/wiki/features-introduction',
-          },
-        ],
-      },
-      {
-        title: t('footer.columns.docs.title'),
-        links: [
-          {
-            text: t('footer.columns.docs.links.quickStart'),
-            href: '/getting-started',
-          },
-          {
-            text: t('footer.columns.docs.links.installation'),
-            href: 'http://tokenboat.com/installation/',
-          },
-          {
-            text: t('footer.columns.docs.links.apiDocs'),
-            href: 'http://tokenboat.com/api/',
-          },
-        ],
-      },
-      {
-        title: t('Legal'),
-        links: [
-          {
-            text: t('Terms of Service'),
-            href: '/terms',
-          },
-          {
-            text: t('Privacy Policy'),
-            href: '/privacy',
-          },
-          {
-            text: t('Refund Policy'),
-            href: '/refund',
-          },
-        ],
-      },
-    ],
-    [t]
-  )
-
-  const displayColumns = props.columns ?? fallbackColumns
+  const displayColumns = props.columns ?? DEFAULT_COLUMNS
 
   if (footerHtml) {
     return (
       <footer
+        data-testid='public-footer'
         className={cn(
-          'border-border/40 relative z-10 border-t',
+          'border-border/45 bg-background/45 relative z-10 border-t',
           props.className
         )}
       >
-        <div className='mx-auto w-full max-w-6xl px-6 py-5'>
-          <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-between gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:flex-row sm:px-5'>
-            <div
-              className='custom-footer text-muted-foreground min-w-0 text-center text-sm sm:text-left'
-              dangerouslySetInnerHTML={{ __html: footerHtml }}
-            />
-            <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
-              <LegalLinks />
-              <ProjectAttribution currentYear={currentYear} inline />
+        <div
+          data-testid='footer-shell'
+          className='mx-auto w-full max-w-[1400px] px-6 py-7 sm:px-8 lg:px-12'
+        >
+          <div className='flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
+            <div className='flex min-w-0 items-center gap-4'>
+              <Link
+                to='/'
+                aria-label={displayName}
+                data-testid='footer-logo-link'
+                className='shrink-0'
+              >
+                <img
+                  src={displayLogo}
+                  alt=''
+                  className='size-10 object-contain'
+                />
+              </Link>
+              <div className='min-w-0'>
+                <p className='text-foreground mb-1 text-base font-semibold tracking-tight'>
+                  {displayName}
+                </p>
+                <p className='text-muted-foreground/55 text-xs'>
+              {t('Unified AI Model API Platform')}
+            </p>
+              </div>
             </div>
+            <nav
+              aria-label={t('Legal')}
+              className='text-muted-foreground flex flex-wrap items-center gap-0.5 self-start text-xs lg:self-auto'
+            >
+              <LegalLinks />
+            </nav>
+          </div>
+          <div className='border-border/35 mt-6 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between'>
+            <p className='text-muted-foreground/55 text-xs'>
+            </p>
+            <ProjectAttribution currentYear={currentYear} />
           </div>
         </div>
       </footer>
@@ -224,35 +245,46 @@ export function Footer(props: FooterProps) {
 
   return (
     <footer
-      className={cn('border-border/40 relative z-10 border-t', props.className)}
+      data-testid='public-footer'
+      className={cn(
+        'border-border/45 bg-background/45 relative z-10 border-t',
+        props.className
+      )}
     >
-      <div className='mx-auto max-w-6xl px-6 py-12 md:py-16'>
-        <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
+      <div
+        data-testid='footer-shell'
+        className='mx-auto max-w-[1400px] px-6 sm:px-8 lg:px-12'
+      >
+        <div className='grid gap-10 py-10 md:grid-cols-[minmax(220px,1.25fr)_2fr] md:py-12 lg:gap-16'>
           {/* Brand column */}
-          <div className='shrink-0'>
-            <Link to='/' className='group flex items-center gap-2.5'>
+          <div>
+            <Link to='/' className='group flex items-center gap-3'>
               <img
+                data-testid='footer-logo'
                 src={displayLogo}
-                alt={displayName}
-                className='size-7 rounded-lg object-contain'
+                alt=''
+                className='size-10 object-contain transition-transform duration-200 group-hover:-translate-y-0.5'
               />
-              <span className='text-sm font-semibold tracking-tight'>
+              <span className='text-base font-semibold tracking-tight'>
                 {displayName}
               </span>
             </Link>
-            <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
+            <p className='text-muted-foreground mt-4 max-w-[280px] text-sm leading-6'>
               {t('Unified AI Model API Platform')}
             </p>
           </div>
 
           {/* Links columns */}
-          <div className='grid grid-cols-2 gap-8 sm:grid-cols-3 md:gap-16'>
+          <div
+            data-testid='footer-link-columns'
+            className='grid grid-cols-1 gap-8 min-[420px]:grid-cols-2 sm:grid-cols-3 md:gap-10 lg:gap-16'
+          >
             {displayColumns.map((column) => (
               <div key={column.title}>
-                <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
+                <p className='text-foreground mb-4 text-sm font-semibold'>
                   {t(column.title)}
                 </p>
-                <ul className='flex flex-col gap-2.5'>
+                <ul className='flex flex-col gap-3'>
                   {column.links.map((link) => (
                     <li key={`${link.href}-${link.text}`}>
                       <FooterLinkItem link={link} />
@@ -266,8 +298,8 @@ export function Footer(props: FooterProps) {
 
         {/* Copyright + optional legal links inline on the left, project
             attribution on the right; wraps on narrow screens. */}
-        <div className='border-border/30 mt-12 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
-          <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
+        <div className='border-border/35 flex flex-col items-center justify-between gap-x-3 gap-y-3 border-t py-4 sm:flex-row'>
+          <div className='text-muted-foreground/55 flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs sm:justify-start'>
             <span>
               &copy; {currentYear} {displayName}.{' '}
               {props.copyright ?? t('footer.defaultCopyright')}

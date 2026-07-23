@@ -70,6 +70,7 @@ import {
   createInitialLaneState,
   createModelPricingSchema,
   hasValue,
+  isSeedanceVideoModel,
   laneConfigs,
   numericDraftRegex,
   ratioFieldByLane,
@@ -188,13 +189,13 @@ export const ModelPricingEditorPanel = forwardRef<
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
       })
-      setPricingMode(
-        editData.billingMode === 'tiered_expr'
-          ? 'tiered_expr'
-          : editData.price
-            ? 'per-request'
-            : 'per-token'
-      )
+      let nextPricingMode: PricingMode = 'per-token'
+      if (editData.billingMode === 'tiered_expr') {
+        nextPricingMode = 'tiered_expr'
+      } else if (editData.price) {
+        nextPricingMode = 'per-request'
+      }
+      setPricingMode(nextPricingMode)
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
@@ -341,6 +342,12 @@ export const ModelPricingEditorPanel = forwardRef<
   }
 
   const watchedValues = form.watch()
+  const usesVideoPerSecondPricing = isSeedanceVideoModel(watchedValues.name)
+  useEffect(() => {
+    if (usesVideoPerSecondPricing && pricingMode !== 'per-request') {
+      setPricingMode('per-request')
+    }
+  }, [pricingMode, usesVideoPerSecondPricing])
   const previewRows = useMemo(
     () =>
       buildPreviewRows(
@@ -545,13 +552,21 @@ export const ModelPricingEditorPanel = forwardRef<
                   className='gap-4'
                 >
                   <TabsList className='grid w-full grid-cols-3'>
-                    <TabsTrigger value='per-token'>
+                    <TabsTrigger
+                      value='per-token'
+                      disabled={usesVideoPerSecondPricing}
+                    >
                       {t('Per-token')}
                     </TabsTrigger>
                     <TabsTrigger value='per-request'>
-                      {t('Per-request')}
+                      {usesVideoPerSecondPricing
+                        ? t('Video per second')
+                        : t('Per-request')}
                     </TabsTrigger>
-                    <TabsTrigger value='tiered_expr'>
+                    <TabsTrigger
+                      value='tiered_expr'
+                      disabled={usesVideoPerSecondPricing}
+                    >
                       {t('Expression')}
                     </TabsTrigger>
                   </TabsList>
@@ -606,7 +621,11 @@ export const ModelPricingEditorPanel = forwardRef<
                         render={({ field }) => (
                           <FormItem className='contents'>
                             <Field>
-                              <FieldLabel>{t('Fixed price')}</FieldLabel>
+                              <FieldLabel>
+                                {usesVideoPerSecondPricing
+                                  ? t('720p price per second')
+                                  : t('Fixed price')}
+                              </FieldLabel>
                               <FormControl>
                                 <InputGroup>
                                   <InputGroupAddon>$</InputGroupAddon>
@@ -622,14 +641,20 @@ export const ModelPricingEditorPanel = forwardRef<
                                     }}
                                   />
                                   <InputGroupAddon align='inline-end'>
-                                    {t('per request')}
+                                    {usesVideoPerSecondPricing
+                                      ? t('per second')
+                                      : t('per request')}
                                   </InputGroupAddon>
                                 </InputGroup>
                               </FormControl>
                               <FieldDescription>
-                                {t(
-                                  'Cost in USD per request, regardless of tokens used.'
-                                )}
+                                {usesVideoPerSecondPricing
+                                  ? t(
+                                      'Seedance customer price for one second of 720p 16:9 video. Duration, resolution, and group multipliers are applied automatically.'
+                                    )
+                                  : t(
+                                      'Cost in USD per request, regardless of tokens used.'
+                                    )}
                               </FieldDescription>
                               <FormMessage />
                             </Field>

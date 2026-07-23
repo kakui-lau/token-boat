@@ -24,19 +24,47 @@ var modelList = []string{
 	"bytedance/seedance-2.0-fast",
 }
 
+var seedanceBasePricePerSecond720p = map[string]float64{
+	"bytedance/seedance-2.0":      0.1512,
+	"bytedance/seedance-2.0-fast": 0.12096,
+}
+
+var seedanceAspectRatios = map[string]bool{
+	"": true, "1:1": true, "3:4": true, "9:16": true, "4:3": true,
+	"16:9": true, "21:9": true, "9:21": true,
+}
+
+var seedanceSizes = map[string]map[string]bool{
+	"bytedance/seedance-2.0-fast": {
+		"480x480": true, "480x640": true, "480x854": true, "640x480": true,
+		"854x480": true, "1120x480": true, "720x720": true, "720x960": true,
+		"720x1280": true, "720x1680": true, "960x720": true, "1280x720": true,
+		"1680x720": true,
+	},
+	"bytedance/seedance-2.0": {
+		"480x480": true, "480x640": true, "480x854": true, "640x480": true,
+		"854x480": true, "1120x480": true, "720x720": true, "720x960": true,
+		"720x1280": true, "720x1680": true, "960x720": true, "1280x720": true,
+		"1680x720": true, "1080x1080": true, "1080x1440": true, "1080x1920": true,
+		"1440x1080": true, "1920x1080": true, "2520x1080": true, "3840x2160": true,
+		"2160x3840": true, "2160x2160": true, "2880x2160": true, "2160x2880": true,
+		"5040x2160": true,
+	},
+}
+
 type videoUsage struct {
 	Cost float64 `json:"cost"`
 	Byok bool    `json:"is_byok"`
 }
 
 type videoResponse struct {
-	ID           string     `json:"id"`
-	GenerationID string     `json:"generation_id,omitempty"`
-	PollingURL   string     `json:"polling_url,omitempty"`
-	Status       string     `json:"status"`
-	UnsignedURLs []string   `json:"unsigned_urls,omitempty"`
-	Usage        videoUsage `json:"usage,omitempty"`
-	Error        any        `json:"error,omitempty"`
+	ID           string      `json:"id"`
+	GenerationID string      `json:"generation_id,omitempty"`
+	PollingURL   string      `json:"polling_url,omitempty"`
+	Status       string      `json:"status"`
+	UnsignedURLs []string    `json:"unsigned_urls,omitempty"`
+	Usage        *videoUsage `json:"usage,omitempty"`
+	Error        any         `json:"error,omitempty"`
 }
 
 type TaskAdaptor struct {
@@ -61,17 +89,27 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
-	if strings.HasPrefix(req.Model, "bytedance/seedance-2.0") {
+	modelName := info.UpstreamModelName
+	if modelName == "" {
+		modelName = req.Model
+	}
+	if _, supported := seedanceBasePricePerSecond720p[modelName]; !supported {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("OpenRouter video model %q is not supported by this adaptor", modelName), "unsupported_model", http.StatusBadRequest)
+	}
+	if strings.HasPrefix(modelName, "bytedance/seedance-2.0") {
 		if req.Duration != 0 && (req.Duration < 4 || req.Duration > 15) {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("Seedance 2.0 duration must be between 4 and 15 seconds"), "invalid_seconds", http.StatusBadRequest)
 		}
 		allowedResolutions := map[string]bool{"": true, "480p": true, "720p": true}
-		if req.Model == "bytedance/seedance-2.0" {
+		if modelName == "bytedance/seedance-2.0" {
 			allowedResolutions["1080p"] = true
 			allowedResolutions["4K"] = true
 		}
 		if !allowedResolutions[req.Resolution] {
-			return service.TaskErrorWrapperLocal(fmt.Errorf("resolution %q is not supported by %s", req.Resolution, req.Model), "invalid_resolution", http.StatusBadRequest)
+			return service.TaskErrorWrapperLocal(fmt.Errorf("resolution %q is not supported by %s", req.Resolution, modelName), "invalid_resolution", http.StatusBadRequest)
+		}
+		if !seedanceAspectRatios[req.AspectRatio] {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("aspect ratio %q is not supported by %s", req.AspectRatio, modelName), "invalid_aspect_ratio", http.StatusBadRequest)
 		}
 	}
 	if req.Size == "" {
@@ -81,11 +119,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if len(parts) != 2 {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("size must use WIDTHxHEIGHT format"), "invalid_size", http.StatusBadRequest)
 	}
-	const maxVideoDimension = 8192
-	width, widthErr := strconv.Atoi(parts[0])
-	height, heightErr := strconv.Atoi(parts[1])
-	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 || width > maxVideoDimension || height > maxVideoDimension {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("video dimensions must be between 1 and %d pixels", maxVideoDimension), "invalid_size", http.StatusBadRequest)
+	if !seedanceSizes[modelName][req.Size] {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("size %q is not supported by %s", req.Size, modelName), "invalid_size", http.StatusBadRequest)
 	}
 	return nil
 }
@@ -96,7 +131,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) 
 		return nil
 	}
 	seconds := req.Duration
-	if seconds <= 0 && strings.HasPrefix(req.Model, "bytedance/seedance-2.0") {
+	if seconds <= 0 {
 		seconds = 15
 	}
 	if seconds <= 0 {
@@ -173,6 +208,19 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, fmt.Errorf("OpenRouter video requests must use JSON: %w", err)
 	}
 	payload["model"] = info.UpstreamModelName
+	// Pin provider defaults so the frozen pre-charge snapshot and the generated
+	// video always describe the same billable SKU.
+	if _, ok := payload["duration"]; !ok {
+		payload["duration"] = 15
+	}
+	if _, hasSize := payload["size"]; !hasSize {
+		if _, hasResolution := payload["resolution"]; !hasResolution {
+			payload["resolution"] = "720p"
+		}
+		if _, hasAspectRatio := payload["aspect_ratio"]; !hasAspectRatio {
+			payload["aspect_ratio"] = "16:9"
+		}
+	}
 	body, err = common.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request body: %w", err)
@@ -185,6 +233,7 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, bod
 }
 
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (string, []byte, *dto.TaskError) {
+	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -226,7 +275,12 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 	if err := common.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("unmarshal OpenRouter video result: %w", err)
 	}
-	result := &relaycommon.TaskInfo{Cost: response.Usage.Cost}
+	result := &relaycommon.TaskInfo{}
+	if response.Usage != nil {
+		result.Cost = response.Usage.Cost
+		result.CostKnown = true
+		result.IsByok = response.Usage.Byok
+	}
 	switch response.Status {
 	case "pending", "queued":
 		result.Status = string(model.TaskStatusQueued)
@@ -266,6 +320,9 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	response.Status = task.Status.ToVideoStatus()
 	response.PollingURL = "/v1/videos/" + task.TaskID
 	response.UnsignedURLs = nil
+	// usage.cost is supplier accounting data. Do not expose it as the customer
+	// price when local SKU pricing is configured.
+	response.Usage = nil
 	if task.Status == model.TaskStatusSuccess {
 		response.UnsignedURLs = []string{taskcommon.BuildProxyURL(task.TaskID)}
 	}
@@ -276,16 +333,14 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 }
 
 func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, result *relaycommon.TaskInfo) int {
-	if result == nil || result.Cost <= 0 {
+	if task == nil || result == nil {
 		return 0
 	}
-	groupRatio := 1.0
-	if task.PrivateData.BillingContext != nil && task.PrivateData.BillingContext.GroupRatio > 0 {
-		groupRatio = task.PrivateData.BillingContext.GroupRatio
-	}
-	quota, clamp := common.QuotaFromFloatChecked(result.Cost * common.QuotaPerUnit * groupRatio)
-	result.QuotaClamp = clamp
-	return quota
+	// Customer revenue is determined by the frozen local SKU snapshot captured
+	// at submit time. OpenRouter usage.cost is supplier cost (and for BYOK can be
+	// only the platform fee), so it is retained in task data for cost accounting
+	// but must never rewrite the customer charge.
+	return task.Quota
 }
 
 func (a *TaskAdaptor) AdjustBillingOnSubmit(_ *relaycommon.RelayInfo, _ []byte) map[string]float64 {

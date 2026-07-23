@@ -118,7 +118,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
-	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo || isAsyncVideoTestModel(channel.Type, testModel) {
+	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo {
 		return testResult{localErr: errAsyncVideoChannelTestUnsupported}
 	}
 
@@ -276,6 +276,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	testModel = info.UpstreamModelName
+	if isAsyncVideoTestModel(channel.Type, testModel) {
+		return testResult{context: c, localErr: errAsyncVideoChannelTestUnsupported}
+	}
 	// 更新请求中的模型名称
 	request.SetModelName(testModel)
 

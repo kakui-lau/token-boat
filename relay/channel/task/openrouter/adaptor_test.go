@@ -1,6 +1,7 @@
 package openrouter
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,7 +20,10 @@ func newVideoTestContext(body string) (*gin.Context, *relaycommon.RelayInfo) {
 	request.Header.Set("Content-Type", "application/json")
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Request = request
-	return context, &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+	return context, &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
 }
 
 func TestParseTaskResult(t *testing.T) {
@@ -29,6 +33,8 @@ func TestParseTaskResult(t *testing.T) {
 		status    model.TaskStatus
 		reason    string
 		cost      float64
+		costKnown bool
+		isByok    bool
 		remoteURL string
 	}{
 		{
@@ -38,9 +44,11 @@ func TestParseTaskResult(t *testing.T) {
 		},
 		{
 			name:      "completed with cost",
-			body:      `{"id":"job-1","status":"completed","unsigned_urls":["https://example.com/video.mp4"],"usage":{"cost":0.25}}`,
+			body:      `{"id":"job-1","status":"completed","unsigned_urls":["https://example.com/video.mp4"],"usage":{"cost":0.25,"is_byok":true}}`,
 			status:    model.TaskStatusSuccess,
 			cost:      0.25,
+			costKnown: true,
+			isByok:    true,
 			remoteURL: "https://example.com/video.mp4",
 		},
 		{
@@ -65,24 +73,44 @@ func TestParseTaskResult(t *testing.T) {
 			assert.Equal(t, string(test.status), result.Status)
 			assert.Equal(t, test.reason, result.Reason)
 			assert.Equal(t, test.cost, result.Cost)
+			assert.Equal(t, test.costKnown, result.CostKnown)
+			assert.Equal(t, test.isByok, result.IsByok)
 			assert.Equal(t, test.remoteURL, result.RemoteUrl)
 		})
 	}
 }
 
-func TestAdjustBillingOnCompleteUsesUpstreamCostAndGroupRatio(t *testing.T) {
+func TestAdjustBillingOnCompleteKeepsFrozenCustomerCharge(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 	task := &model.Task{
+		Quota:      9072,
+		Properties: model.Properties{UpstreamModelName: "bytedance/seedance-2.0-fast"},
 		PrivateData: model.TaskPrivateData{
-			BillingContext: &model.TaskBillingContext{GroupRatio: 1.5},
+			BillingContext: &model.TaskBillingContext{GroupRatio: 1.5, ModelPrice: 0.12096},
 		},
 	}
 	result := &relaycommon.TaskInfo{Cost: 0.25}
 
 	quota := adaptor.AdjustBillingOnComplete(task, result)
 
-	assert.Equal(t, common.QuotaFromFloat(0.25*common.QuotaPerUnit*1.5), quota)
+	assert.Equal(t, task.Quota, quota)
 	assert.Nil(t, result.QuotaClamp)
+}
+
+func TestAdjustBillingOnCompleteDoesNotUseByokPlatformCost(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	task := &model.Task{
+		Quota:      12096,
+		Properties: model.Properties{UpstreamModelName: "bytedance/seedance-2.0-fast"},
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{GroupRatio: 1.25, ModelPrice: 0.12096 * 1.2},
+		},
+	}
+	result := &relaycommon.TaskInfo{Cost: 0.0001}
+
+	quota := adaptor.AdjustBillingOnComplete(task, result)
+
+	assert.Equal(t, task.Quota, quota)
 }
 
 func TestAdjustBillingOnCompleteKeepsPrechargeWithoutCost(t *testing.T) {
@@ -112,6 +140,8 @@ func TestConvertToOpenAIVideoUsesPublicURLs(t *testing.T) {
 	assert.Contains(t, response.UnsignedURLs[0], "/v1/videos/task_public/content")
 	assert.NotContains(t, string(body), "upstream-job")
 	assert.NotContains(t, string(body), "upstream.example")
+	assert.NotContains(t, string(body), "usage")
+	assert.NotContains(t, string(body), "is_byok")
 }
 
 func TestSeedanceResolutionRatio(t *testing.T) {
@@ -160,12 +190,30 @@ func TestValidateSeedanceRequestCapabilities(t *testing.T) {
 			body:     `{"model":"bytedance/seedance-2.0","prompt":"ocean","duration":8,"size":"999999x999999"}`,
 			wantCode: "invalid_size",
 		},
+		{
+			name:     "unsupported exact size is rejected locally",
+			body:     `{"model":"bytedance/seedance-2.0","prompt":"ocean","duration":8,"size":"1000x1000"}`,
+			wantCode: "invalid_size",
+		},
+		{
+			name:     "unsupported aspect ratio is rejected locally",
+			body:     `{"model":"bytedance/seedance-2.0","prompt":"ocean","duration":8,"aspect_ratio":"2:1"}`,
+			wantCode: "invalid_aspect_ratio",
+		},
+		{
+			name:     "non Seedance OpenRouter video model is rejected",
+			body:     `{"model":"google/veo-3.1","prompt":"ocean","duration":8,"resolution":"720p"}`,
+			wantCode: "unsupported_model",
+		},
 	}
 
 	adaptor := &TaskAdaptor{}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			context, info := newVideoTestContext(test.body)
+			var request relaycommon.TaskSubmitReq
+			require.NoError(t, common.Unmarshal([]byte(test.body), &request))
+			info.UpstreamModelName = request.Model
 			taskErr := adaptor.ValidateRequestAndSetAction(context, info)
 			if test.wantCode == "" {
 				require.Nil(t, taskErr)
@@ -175,4 +223,38 @@ func TestValidateSeedanceRequestCapabilities(t *testing.T) {
 			assert.Equal(t, test.wantCode, taskErr.Code)
 		})
 	}
+}
+
+func TestBuildRequestBodyPinsBillableDefaults(t *testing.T) {
+	context, info := newVideoTestContext(`{"model":"public-video-alias","prompt":"ocean"}`)
+	info.UpstreamModelName = "bytedance/seedance-2.0-fast"
+	adaptor := &TaskAdaptor{}
+
+	body, err := adaptor.BuildRequestBody(context, info)
+	require.NoError(t, err)
+	encoded, err := io.ReadAll(body)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, common.Unmarshal(encoded, &payload))
+	assert.Equal(t, info.UpstreamModelName, payload["model"])
+	assert.Equal(t, float64(15), payload["duration"])
+	assert.Equal(t, "720p", payload["resolution"])
+	assert.Equal(t, "16:9", payload["aspect_ratio"])
+}
+
+func TestMappedSeedanceAliasUsesUpstreamCapabilitiesAndDefaultDuration(t *testing.T) {
+	context, info := newVideoTestContext(`{"model":"public-video-alias","prompt":"ocean","resolution":"1080p"}`)
+	info.UpstreamModelName = "bytedance/seedance-2.0-fast"
+	adaptor := &TaskAdaptor{}
+
+	taskErr := adaptor.ValidateRequestAndSetAction(context, info)
+	require.NotNil(t, taskErr)
+	assert.Equal(t, "invalid_resolution", taskErr.Code)
+
+	context, info = newVideoTestContext(`{"model":"public-video-alias","prompt":"ocean","resolution":"720p"}`)
+	info.UpstreamModelName = "bytedance/seedance-2.0-fast"
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+	ratio := adaptor.EstimateBilling(context, info)
+	assert.Equal(t, float64(15), ratio["seconds"])
 }

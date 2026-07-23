@@ -784,6 +784,8 @@ type TaskInfo struct {
 	CompletionTokens int                `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int                `json:"total_tokens,omitempty"`      // 用于按倍率计费
 	Cost             float64            `json:"cost,omitempty"`              // 上游返回的实际美元成本
+	CostKnown        bool               `json:"-"`                           // 上游明确返回成本（包括 0）
+	IsByok           bool               `json:"-"`                           // 上游任务是否使用 BYOK
 	QuotaClamp       *common.QuotaClamp `json:"-"`                           // 实际成本转换发生饱和时的审计信息
 }
 

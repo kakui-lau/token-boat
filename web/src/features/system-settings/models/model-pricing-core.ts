@@ -73,6 +73,10 @@ export type PreviewRow = {
 
 export const numericDraftRegex = /^(\d+(\.\d*)?|\.\d*)?$/
 
+export function isSeedanceVideoModel(modelName: string): boolean {
+  return /^bytedance\/seedance-2\.0(?:-fast)?$/i.test(modelName.trim())
+}
+
 export const EMPTY_LANE_PRICES: Record<LaneKey, string> = {
   completion: '',
   cache: '',
@@ -231,11 +235,14 @@ export function buildPreviewRows(
   }
 
   if (mode === 'per-request') {
+    const videoPerSecond = isSeedanceVideoModel(values.name)
     return [
       {
         key: 'price',
-        label: 'ModelPrice',
-        value: values.price || t('Empty'),
+        label: videoPerSecond ? t('720p price per second') : 'ModelPrice',
+        value: values.price
+          ? `$${values.price}${videoPerSecond ? ` ${t('per second')}` : ''}`
+          : t('Empty'),
       },
     ]
   }

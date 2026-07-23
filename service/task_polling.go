@@ -591,6 +591,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}
 		shouldSettle = true
+		if taskResult.CostKnown {
+			task.PrivateData.ProviderCost = taskResult.Cost
+			task.PrivateData.ProviderCostKnown = true
+			task.PrivateData.ProviderIsByok = taskResult.IsByok
+		}
 	case model.TaskStatusFailure:
 		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
 		task.Status = model.TaskStatusFailure

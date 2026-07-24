@@ -69,6 +69,7 @@ import {
   buildPreviewRows,
   createInitialLaneState,
   createModelPricingSchema,
+  getSeedanceResolutionPrices,
   hasValue,
   isSeedanceVideoModel,
   laneConfigs,
@@ -192,6 +193,8 @@ export const ModelPricingEditorPanel = forwardRef<
       let nextPricingMode: PricingMode = 'per-token'
       if (editData.billingMode === 'tiered_expr') {
         nextPricingMode = 'tiered_expr'
+      } else if (editData.billingMode === 'video_per_second') {
+        nextPricingMode = 'video_per_second'
       } else if (editData.price) {
         nextPricingMode = 'per-request'
       }
@@ -343,11 +346,10 @@ export const ModelPricingEditorPanel = forwardRef<
 
   const watchedValues = form.watch()
   const usesVideoPerSecondPricing = isSeedanceVideoModel(watchedValues.name)
-  useEffect(() => {
-    if (usesVideoPerSecondPricing && pricingMode !== 'per-request') {
-      setPricingMode('per-request')
-    }
-  }, [pricingMode, usesVideoPerSecondPricing])
+  const resolutionPrices = useMemo(
+    () => getSeedanceResolutionPrices(watchedValues.price),
+    [watchedValues.price]
+  )
   const previewRows = useMemo(
     () =>
       buildPreviewRows(
@@ -551,21 +553,21 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-3'>
-                    <TabsTrigger
-                      value='per-token'
-                      disabled={usesVideoPerSecondPricing}
-                    >
+                  <TabsList className='grid w-full grid-cols-2 sm:grid-cols-4'>
+                    <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
                     <TabsTrigger value='per-request'>
-                      {usesVideoPerSecondPricing
-                        ? t('Video per second')
-                        : t('Per-request')}
+                      {t('Per-request')}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value='video_per_second'
+                      disabled={!usesVideoPerSecondPricing}
+                    >
+                      {t('Video per second')}
                     </TabsTrigger>
                     <TabsTrigger
                       value='tiered_expr'
-                      disabled={usesVideoPerSecondPricing}
                     >
                       {t('Expression')}
                     </TabsTrigger>
@@ -613,56 +615,101 @@ export const ModelPricingEditorPanel = forwardRef<
                     </FieldGroup>
                   </TabsContent>
 
-                  <TabsContent value='per-request' className='pt-0'>
-                    <FieldGroup className='gap-5'>
-                      <FormField
-                        control={form.control}
-                        name='price'
-                        render={({ field }) => (
-                          <FormItem className='contents'>
-                            <Field>
-                              <FieldLabel>
-                                {usesVideoPerSecondPricing
-                                  ? t('720p price per second')
-                                  : t('Fixed price')}
-                              </FieldLabel>
-                              <FormControl>
-                                <InputGroup>
-                                  <InputGroupAddon>$</InputGroupAddon>
-                                  <InputGroupInput
-                                    inputMode='decimal'
-                                    placeholder='0.01'
-                                    {...field}
-                                    onChange={(event) => {
-                                      const value = event.target.value
-                                      if (numericDraftRegex.test(value)) {
-                                        field.onChange(value)
-                                      }
-                                    }}
-                                  />
-                                  <InputGroupAddon align='inline-end'>
-                                    {usesVideoPerSecondPricing
-                                      ? t('per second')
-                                      : t('per request')}
-                                  </InputGroupAddon>
-                                </InputGroup>
-                              </FormControl>
-                              <FieldDescription>
-                                {usesVideoPerSecondPricing
-                                  ? t(
-                                      'Seedance customer price for one second of 720p 16:9 video. Duration, resolution, and group multipliers are applied automatically.'
-                                    )
-                                  : t(
-                                      'Cost in USD per request, regardless of tokens used.'
+                  {(['per-request', 'video_per_second'] as const).map(
+                    (mode) => {
+                      const isVideoMode = mode === 'video_per_second'
+                      return (
+                        <TabsContent key={mode} value={mode} className='pt-0'>
+                          <FieldGroup className='gap-5'>
+                            <FormField
+                              control={form.control}
+                              name='price'
+                              render={({ field }) => (
+                                <FormItem className='contents'>
+                                  <Field>
+                                    <FieldLabel>
+                                      {isVideoMode
+                                        ? t('720p price per second')
+                                        : t('Fixed price')}
+                                    </FieldLabel>
+                                    <FormControl>
+                                      <InputGroup>
+                                        <InputGroupAddon>$</InputGroupAddon>
+                                        <InputGroupInput
+                                          inputMode='decimal'
+                                          placeholder='0.01'
+                                          {...field}
+                                          onChange={(event) => {
+                                            const value = event.target.value
+                                            if (numericDraftRegex.test(value)) {
+                                              field.onChange(value)
+                                            }
+                                          }}
+                                        />
+                                        <InputGroupAddon align='inline-end'>
+                                          {isVideoMode
+                                            ? t('per second')
+                                            : t('per request')}
+                                        </InputGroupAddon>
+                                      </InputGroup>
+                                    </FormControl>
+                                    <FieldDescription>
+                                      {isVideoMode
+                                        ? t(
+                                            'Seedance customer price for one second of 720p 16:9 video. Duration, resolution, and group multipliers are applied automatically.'
+                                          )
+                                        : t(
+                                            'Cost in USD per request, regardless of tokens used.'
+                                          )}
+                                    </FieldDescription>
+                                    <FormMessage />
+                                  </Field>
+                                </FormItem>
+                              )}
+                            />
+                            {isVideoMode && (
+                              <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
+                                {resolutionPrices.map((row) => (
+                                  <div
+                                    key={row.resolution}
+                                    className='bg-muted/30 rounded-md border px-3 py-2'
+                                  >
+                                    <div className='text-muted-foreground text-xs'>
+                                      {row.resolution}
+                                    </div>
+                                    {row.price ? (
+                                      <div className='mt-1 min-w-0'>
+                                        <div
+                                          className='truncate text-sm font-medium tabular-nums'
+                                          title={`$${row.price}`}
+                                        >
+                                          ${row.price}
+                                        </div>
+                                        <div className='text-muted-foreground mt-0.5 text-xs'>
+                                          {t('per second')}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className='mt-1 text-sm font-medium'>
+                                        —
+                                      </div>
                                     )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {isVideoMode && (
+                              <FieldDescription>
+                                {t(
+                                  '2K / 1440p is not currently supported by the Seedance 2.0 OpenRouter adapter.'
+                                )}
                               </FieldDescription>
-                              <FormMessage />
-                            </Field>
-                          </FormItem>
-                        )}
-                      />
-                    </FieldGroup>
-                  </TabsContent>
+                            )}
+                          </FieldGroup>
+                        </TabsContent>
+                      )
+                    }
+                  )}
 
                   <TabsContent value='tiered_expr' className='pt-0'>
                     <FieldGroup className='gap-5'>

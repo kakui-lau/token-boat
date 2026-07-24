@@ -81,7 +81,8 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
 }
 
 export const getModeLabel = (mode?: string) => {
-  if (mode === 'per-request') return 'Per-request'
+  if (mode === 'per-request' || mode === 'per_request') return 'Per-request'
+  if (mode === 'video_per_second') return 'Video per second'
   if (mode === 'tiered_expr') return 'Expression'
   return 'Per-token'
 }
@@ -89,7 +90,13 @@ export const getModeLabel = (mode?: string) => {
 export const getModeVariant = (
   mode?: string
 ): 'warning' | 'info' | 'success' => {
-  if (mode === 'per-request') return 'warning'
+  if (
+    mode === 'per-request' ||
+    mode === 'per_request' ||
+    mode === 'video_per_second'
+  ) {
+    return 'warning'
+  }
   if (mode === 'tiered_expr') return 'info'
   return 'success'
 }
@@ -112,8 +119,13 @@ export const getPriceSummary = (
   if (row.billingMode === 'tiered_expr') {
     return getExpressionSummary(row, t)
   }
-  if (row.billingMode === 'per-request') {
+  if (row.billingMode === 'per-request' || row.billingMode === 'per_request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
+  }
+  if (row.billingMode === 'video_per_second') {
+    return row.price
+      ? `$${row.price} / 720p ${t('per second')}`
+      : t('Unset price')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -142,8 +154,11 @@ export const getPriceDetail = (
       ? t('Includes request rules')
       : t('Expression based')
   }
-  if (row.billingMode === 'per-request') {
+  if (row.billingMode === 'per-request' || row.billingMode === 'per_request') {
     return t('Fixed request price')
+  }
+  if (row.billingMode === 'video_per_second') {
+    return t('720p price per second')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -229,7 +244,7 @@ export const buildModelSnapshots = ({
     ...Object.keys(billingExprMap),
   ])
 
-  return Array.from(modelNames).map((name) => {
+  return [...modelNames].map((name) => {
     const price = priceMap[name]?.toString() || ''
     const ratio = ratioMap[name]?.toString() || ''
     const cache = cacheMap[name]?.toString() || ''
@@ -261,6 +276,13 @@ export const buildModelSnapshots = ({
       }
     }
 
+    let billingMode = 'per-token'
+    if (modeForModel === 'video_per_second') {
+      billingMode = 'video_per_second'
+    } else if (modeForModel === 'per_request' || price !== '') {
+      billingMode = 'per-request'
+    }
+
     return {
       name,
       price,
@@ -271,7 +293,7 @@ export const buildModelSnapshots = ({
       imageRatio: image,
       audioRatio: audio,
       audioCompletionRatio: audioCompletion,
-      billingMode: price !== '' ? 'per-request' : 'per-token',
+      billingMode,
       hasConflict:
         price !== '' &&
         (ratio !== '' ||

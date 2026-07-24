@@ -225,6 +225,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
+	if info.ChannelType == constant.ChannelTypeOpenRouter {
+		if err := persistOpenRouterTaskBeforeSubmit(info, platform); err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "persist_task_before_submit_failed", http.StatusInternalServerError)
+		}
+	}
+
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {
@@ -238,6 +244,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK &&
 		!(info.ChannelType == constant.ChannelTypeOpenRouter && resp.StatusCode == http.StatusAccepted) {
+		defer resp.Body.Close()
 		responseBody, _ := io.ReadAll(resp.Body)
 		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
@@ -255,6 +262,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if taskErr != nil {
 		return nil, taskErr
 	}
+	info.UpstreamTaskAccepted = true
+	info.AcceptedUpstreamTaskID = upstreamTaskID
+	info.AcceptedTaskData = append(info.AcceptedTaskData[:0], taskData...)
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
@@ -266,6 +276,23 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			info.PriceData.Quota = finalQuota
 		}
 	}
+	if info.PersistedTaskID > 0 {
+		task, err := model.GetTaskByID(info.PersistedTaskID)
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "get_persisted_task_failed", http.StatusInternalServerError)
+		}
+		task.PrivateData.UpstreamTaskID = upstreamTaskID
+		task.Data = taskData
+		task.Action = info.Action
+		task.Quota = info.FinalPreConsumedQuota
+		task.SettlementTargetQuota = finalQuota
+		task.SettlementStatus = model.TaskSettlementStatusPending
+		task.Status = model.TaskStatusSubmitted
+		task.Progress = taskcommon.ProgressSubmitted
+		if err := task.Update(); err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "finalize_persisted_task_failed", http.StatusInternalServerError)
+		}
+	}
 
 	return &TaskSubmitResult{
 		UpstreamTaskID: upstreamTaskID,
@@ -273,6 +300,43 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+func persistOpenRouterTaskBeforeSubmit(info *relaycommon.RelayInfo, platform constant.TaskPlatform) error {
+	if info.PersistedTaskID > 0 {
+		task, err := model.GetTaskByID(info.PersistedTaskID)
+		if err != nil {
+			return err
+		}
+		task.ChannelId = info.ChannelId
+		task.Properties.UpstreamModelName = info.UpstreamModelName
+		task.PrivateData.Key = info.ApiKey
+		return task.Update()
+	}
+
+	task := model.InitTask(platform, info)
+	task.PrivateData.BillingSource = info.BillingSource
+	task.PrivateData.SubscriptionId = info.SubscriptionId
+	task.PrivateData.TokenId = info.TokenId
+	task.PrivateData.NodeName = common.NodeName
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:      info.PriceData.ModelPrice,
+		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:      info.PriceData.ModelRatio,
+		OtherRatios:     info.PriceData.OtherRatios(),
+		OriginModelName: info.OriginModelName,
+		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
+	}
+	// BillingSession owns the provisional pre-consume until the provider
+	// accepts the request. A failed submission therefore cannot be picked up by
+	// the asynchronous refund sweep and refunded twice.
+	task.Quota = 0
+	task.Progress = "100%"
+	if err := task.Insert(); err != nil {
+		return err
+	}
+	info.PersistedTaskID = task.ID
+	return nil
 }
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
@@ -564,6 +628,19 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 }
 
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+	publicData := task.Data
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenRouter)) {
+		var payload map[string]any
+		if err := common.Unmarshal(task.Data, &payload); err == nil {
+			delete(payload, "id")
+			delete(payload, "polling_url")
+			delete(payload, "unsigned_urls")
+			delete(payload, "usage")
+			if sanitized, err := common.Marshal(payload); err == nil {
+				publicData = sanitized
+			}
+		}
+	}
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,
@@ -584,6 +661,6 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Progress:   task.Progress,
 		Properties: task.Properties,
 		Username:   task.Username,
-		Data:       task.Data,
+		Data:       publicData,
 	}
 }

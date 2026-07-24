@@ -234,7 +234,9 @@ export function tryParseVisualConfig(
 
     const cfg = normalizeVisualConfig({ tiers })
     const regenerated = generateExprFromVisualConfig(cfg)
-    if (regenerated.replace(/\s+/g, '') !== body.replace(/\s+/g, '')) {
+    if (
+      regenerated.replaceAll(/\s+/g, '') !== body.replaceAll(/\s+/g, '')
+    ) {
       return null
     }
     return cfg
@@ -298,6 +300,13 @@ export function evalExprLocally(
       abs: Math.abs,
       ceil: Math.ceil,
       floor: Math.floor,
+      // The token estimator has no request body or headers. Keep its function
+      // surface aligned with the backend while returning the same missing-value
+      // semantics for request-dependent probes.
+      param: () => null,
+      header: () => '',
+      has: (source: unknown, text: string) =>
+        source != null && text !== '' && String(source).includes(text),
     }
     for (const field of ESTIMATOR_VARS) {
       env[field.var] = extraTokenValues[field.stateKey] || 0

@@ -215,6 +215,13 @@ function quotaSaturationKindLabel(
   return t('Invalid (NaN)')
 }
 
+function taskStatusLabel(status: string, t: TFunction): string {
+  if (status === 'SUCCESS') return t('Success')
+  if (status === 'FAILURE') return t('Failed')
+  if (status === 'SUBMITTED') return t('Submitted')
+  return status
+}
+
 function BillingBreakdown(props: {
   log: UsageLog
   other: LogOtherData
@@ -228,7 +235,12 @@ function BillingBreakdown(props: {
   const tieredSummary = getTieredBillingSummary(other)
 
   const rows: Array<{ label: string; value: string }> = []
-  const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
+  const priceOpts = {
+    digitsLarge: 4,
+    digitsSmall: 6,
+    abbreviate: false,
+    roundingMode: 'truncate' as const,
+  }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
 
@@ -287,6 +299,89 @@ function BillingBreakdown(props: {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
       value: `${formatRatio(effectiveGR)}x`,
+    })
+  }
+
+  if (other.is_task) {
+    if (other.task_id) {
+      rows.push({ label: t('Task ID'), value: other.task_id })
+    }
+    if (other.task_status) {
+      rows.push({
+        label: t('Task Status'),
+        value: taskStatusLabel(other.task_status, t),
+      })
+    }
+    if (other.refunded_quota != null && other.refunded_quota > 0) {
+      rows.push({
+        label: t('Refund Amount'),
+        value: formatLogQuota(other.refunded_quota),
+      })
+    }
+    if (other.seconds != null) {
+      rows.push({
+        label: t('Duration'),
+        value: `${other.seconds}s`,
+      })
+    }
+    if (other.resolution != null) {
+      rows.push({
+        label: t('Resolution Multiplier'),
+        value: `${formatRatio(other.resolution)}x`,
+      })
+    }
+  }
+
+  if (other.local_estimated_quota != null) {
+    rows.push({
+      label: t('Local Estimate'),
+      value: formatLogQuota(other.local_estimated_quota),
+    })
+  }
+  if (other.actual_pre_consumed_quota != null) {
+    rows.push({
+      label: t('Actual Pre-Charge'),
+      value: formatLogQuota(other.actual_pre_consumed_quota),
+    })
+  }
+  if (other.customer_final_quota != null) {
+    rows.push({
+      label: t('Customer Final Charge'),
+      value: formatLogQuota(other.customer_final_quota),
+    })
+  }
+  if (other.adjustment_quota != null && other.adjustment_quota !== 0) {
+    rows.push({
+      label: t('Billing Adjustment'),
+      value: formatLogQuota(other.adjustment_quota),
+    })
+  }
+  if (other.outstanding_quota != null && other.outstanding_quota !== 0) {
+    rows.push({
+      label: t('Outstanding Amount'),
+      value: formatLogQuota(other.outstanding_quota),
+    })
+  }
+  if (
+    isAdmin &&
+    other.admin_info?.provider_cost_known &&
+    other.admin_info.provider_cost_usd != null
+  ) {
+    rows.push({
+      label: t('Upstream Actual Cost'),
+      value: fmtPrice(other.admin_info.provider_cost_usd),
+    })
+    if (other.admin_info.provider_is_byok != null) {
+      rows.push({
+        label: t('BYOK Cost'),
+        value: other.admin_info.provider_is_byok ? t('Yes') : t('No'),
+      })
+    }
+  }
+  if (isAdmin && other.admin_info?.gross_margin_usd != null) {
+    rows.push({
+      label: t('Gross Margin'),
+      value: fmtPrice(other.admin_info.gross_margin_usd),
     })
   }
 
@@ -388,7 +483,7 @@ function BillingBreakdown(props: {
   }
 
   rows.push({
-    label: t('Total Cost'),
+    label: other.is_task ? t('Log Amount') : t('Total Cost'),
     value: formatLogQuota(log.quota),
   })
 

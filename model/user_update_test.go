@@ -62,6 +62,75 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	assert.Equal(t, 4, got.RequestCount)
 }
 
+func TestImmediateTaskUsageBypassesBatchQueue(t *testing.T) {
+	setupUserUpdateTestState(t)
+	common.BatchUpdateEnabled = true
+
+	user := User{
+		Id:       10,
+		Username: "task-usage-user",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+	}
+	channel := Channel{
+		Id:     10,
+		Name:   "task-usage-channel",
+		Key:    "sk-test",
+		Status: common.ChannelStatusEnabled,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Create(&channel).Error)
+
+	UpdateUserUsedQuotaAndRequestCountImmediate(user.Id, 600)
+	UpdateChannelUsedQuotaImmediate(channel.Id, 600)
+	batchUpdate()
+
+	var gotUser User
+	require.NoError(t, DB.First(&gotUser, user.Id).Error)
+	assert.Equal(t, 600, gotUser.UsedQuota)
+	assert.Equal(t, 1, gotUser.RequestCount)
+
+	var gotChannel Channel
+	require.NoError(t, DB.First(&gotChannel, channel.Id).Error)
+	assert.Equal(t, int64(600), gotChannel.UsedQuota)
+}
+
+func TestFinancialQuotaUpdatesBypassBatchQueueAndRejectOverdraft(t *testing.T) {
+	setupUserUpdateTestState(t)
+	common.BatchUpdateEnabled = true
+
+	user := User{
+		Id:       11,
+		Username: "atomic-wallet-user",
+		Password: "password",
+		Status:   common.UserStatusEnabled,
+		Quota:    100,
+	}
+	token := Token{
+		Id:          11,
+		UserId:      user.Id,
+		Key:         "sk-atomic-token",
+		Name:        "atomic-token",
+		Status:      common.TokenStatusEnabled,
+		RemainQuota: 100,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Create(&token).Error)
+
+	require.NoError(t, DecreaseUserQuota(user.Id, 60, false))
+	require.Error(t, DecreaseUserQuota(user.Id, 50, false))
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 60))
+	require.Error(t, DecreaseTokenQuota(token.Id, token.Key, 50))
+
+	var gotUser User
+	require.NoError(t, DB.First(&gotUser, user.Id).Error)
+	require.Equal(t, 40, gotUser.Quota)
+	var gotToken Token
+	require.NoError(t, DB.First(&gotToken, token.Id).Error)
+	require.Equal(t, 40, gotToken.RemainQuota)
+	require.Equal(t, 60, gotToken.UsedQuota)
+}
+
 func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 	setupUserUpdateTestState(t)
 

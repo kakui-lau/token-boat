@@ -271,19 +271,25 @@ const ModelRatioVisualEditorComponent = forwardRef<
     () =>
       models.reduce(
         (acc, model) => {
-          const mode =
+          let mode: PricingMode = 'per-token'
+          if (model.billingMode === 'per_request') {
+            mode = 'per-request'
+          } else if (
             model.billingMode === 'per-request' ||
+            model.billingMode === 'video_per_second' ||
             model.billingMode === 'tiered_expr'
-              ? model.billingMode
-              : 'per-token'
+          ) {
+            mode = model.billingMode
+          }
           acc[mode] += 1
           return acc
         },
         {
           'per-token': 0,
           'per-request': 0,
+          video_per_second: 0,
           tiered_expr: 0,
-        } as Record<'per-token' | 'per-request' | 'tiered_expr', number>
+        } as Record<PricingMode, number>
       ),
     [models]
   )
@@ -294,6 +300,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       let editBillingMode: PricingMode = 'per-token'
       if (editableModel.billingMode === 'tiered_expr') {
         editBillingMode = 'tiered_expr'
+      } else if (editableModel.billingMode === 'video_per_second') {
+        editBillingMode = 'video_per_second'
       } else if (editableModel.price && editableModel.price !== '') {
         editBillingMode = 'per-request'
       }
@@ -527,7 +535,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         value: string | undefined
       ) => {
         if (!value || value === '') return
-        const parsed = parseFloat(value)
+        const parsed = Number.parseFloat(value)
         if (Number.isFinite(parsed)) target[name] = parsed
       }
 
@@ -564,9 +572,17 @@ const ModelRatioVisualEditorComponent = forwardRef<
           setIfPresent(imageMap, name, data.imageRatio)
           setIfPresent(audioMap, name, data.audioRatio)
           setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
-        } else if (data.price && data.price !== '') {
+        } else if (
+          data.billingMode === 'per-request' ||
+          data.billingMode === 'video_per_second'
+        ) {
+          billingModeMap[name] =
+            data.billingMode === 'per-request'
+              ? 'per_request'
+              : 'video_per_second'
           setIfPresent(priceMap, name, data.price)
         } else {
+          billingModeMap[name] = 'ratio'
           setIfPresent(ratioMap, name, data.ratio)
           setIfPresent(cacheMap, name, data.cacheRatio)
           setIfPresent(createCacheMap, name, data.createCacheRatio)
@@ -696,6 +712,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     label: 'Per-request',
                     value: 'per-request',
                     count: modeCounts['per-request'],
+                  },
+                  {
+                    label: 'Video per second',
+                    value: 'video_per_second',
+                    count: modeCounts.video_per_second,
                   },
                   {
                     label: 'Expression',

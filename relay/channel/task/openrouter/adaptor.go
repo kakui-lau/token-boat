@@ -16,6 +16,7 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -97,6 +98,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("OpenRouter video model %q is not supported by this adaptor", modelName), "unsupported_model", http.StatusBadRequest)
 	}
 	if strings.HasPrefix(modelName, "bytedance/seedance-2.0") {
+		if req.Size != "" && (req.Resolution != "" || req.AspectRatio != "") {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("size cannot be combined with resolution or aspect_ratio"), "conflicting_video_dimensions", http.StatusBadRequest)
+		}
 		if req.Duration != 0 && (req.Duration < 4 || req.Duration > 15) {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("Seedance 2.0 duration must be between 4 and 15 seconds"), "invalid_seconds", http.StatusBadRequest)
 		}
@@ -125,7 +129,11 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	return nil
 }
 
-func (a *TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	mode, configured := billing_setting.GetConfiguredBillingMode(info.OriginModelName)
+	if !configured || mode != billing_setting.BillingModeVideoSecond {
+		return nil
+	}
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
@@ -248,8 +256,21 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	public := upstream
 	public.ID = info.PublicTaskID
 	public.PollingURL = "/v1/videos/" + info.PublicTaskID
-	c.JSON(http.StatusAccepted, public)
-	return upstream.ID, body, nil
+	public.Usage = nil
+	// The controller writes the accepted response only after the local task row
+	// has been persisted, so clients never receive an unqueryable public ID.
+	c.Set("deferred_task_response", public)
+
+	stored := upstream
+	stored.ID = ""
+	stored.PollingURL = ""
+	stored.UnsignedURLs = nil
+	stored.Usage = nil
+	storedBody, err := common.Marshal(stored)
+	if err != nil {
+		return "", nil, service.TaskErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError)
+	}
+	return upstream.ID, storedBody, nil
 }
 
 func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy string) (*http.Response, error) {

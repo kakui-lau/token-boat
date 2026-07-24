@@ -17,7 +17,7 @@ import (
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
-func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
+func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuota int) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
 	// 支持任务仅按次计费
@@ -38,6 +38,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	other := make(map[string]interface{})
 	other["is_task"] = true
+	other["billing_stage"] = "submitted"
+	other["task_status"] = string(model.TaskStatusSubmitted)
+	other["task_id"] = info.PublicTaskID
+	other["local_estimated_quota"] = info.PriceData.Quota
+	other["actual_pre_consumed_quota"] = info.FinalPreConsumedQuota
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
 	if info.PriceData.ModelRatio > 0 {
@@ -51,76 +56,42 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	for key, ratio := range info.PriceData.OtherRatios() {
+		other[key] = ratio
+	}
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,
 		TokenName: tokenName,
-		Quota:     info.PriceData.Quota,
+		Quota:     chargedQuota,
 		Content:   logContent,
 		TokenId:   info.TokenId,
 		Group:     info.UsingGroup,
+		TaskId:    info.PublicTaskID,
 		Other:     other,
 	})
-	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
-	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+	// Async task refunds update durable accounting in a database transaction.
+	// Persist the matching usage immediately as well; otherwise batch mode can
+	// flush the pre-charge after a refund and make refunded usage reappear.
+	model.UpdateUserUsedQuotaAndRequestCountImmediate(info.UserId, chargedQuota)
+	model.UpdateChannelUsedQuotaImmediate(info.ChannelId, chargedQuota)
 }
 
 // ---------------------------------------------------------------------------
 // 异步任务计费辅助函数
 // ---------------------------------------------------------------------------
 
-// resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
-// 如果令牌已被删除或查询失败，返回空字符串。
-func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
-	token, err := model.GetTokenById(tokenId)
-	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("获取令牌 key 失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
-		return ""
-	}
-	return token.Key
-}
-
 // taskIsSubscription 判断任务是否通过订阅计费。
 func taskIsSubscription(task *model.Task) bool {
 	return task.PrivateData.BillingSource == BillingSourceSubscription && task.PrivateData.SubscriptionId > 0
 }
 
-// taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
-func taskAdjustFunding(task *model.Task, delta int) error {
-	if taskIsSubscription(task) {
-		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
-	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta, false)
-	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
-}
-
-// taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
-// 需要通过 resolveTokenKey 运行时获取 key（不从 PrivateData 中读取）。
-func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
-	if task.PrivateData.TokenId <= 0 || delta == 0 {
-		return
-	}
-	tokenKey := resolveTokenKey(ctx, task.PrivateData.TokenId, task.TaskID)
-	if tokenKey == "" {
-		return
-	}
-	var err error
-	if delta > 0 {
-		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta)
-	} else {
-		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta)
-	}
-	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("调整令牌额度失败 (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
-	}
-}
-
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
+	other["is_task"] = true
+	other["task_id"] = task.TaskID
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
@@ -139,6 +110,52 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		other["upstream_model_name"] = props.UpstreamModelName
 	}
 	return other
+}
+
+func updateTaskBillingAudit(task *model.Task, status string, finalQuota, refundedQuota int) {
+	if task == nil {
+		return
+	}
+	fields := map[string]interface{}{
+		"billing_stage":        "completed",
+		"task_status":          status,
+		"customer_final_quota": finalQuota,
+	}
+	if refundedQuota > 0 {
+		fields["refunded_quota"] = refundedQuota
+	}
+	adminFields := taskBillingAdminInfo(task, finalQuota)
+	if err := model.UpdateTaskConsumeLogDetails(task.TaskID, fields, adminFields); err != nil {
+		common.SysLog(fmt.Sprintf("failed to enrich task billing log task=%s: %s", task.TaskID, err.Error()))
+		if statusErr := model.UpdateTaskBillingAuditStatus(task.ID, model.TaskSettlementStatusPending, err.Error()); statusErr != nil {
+			common.SysLog(fmt.Sprintf("failed to mark task billing audit pending task=%s: %s", task.TaskID, statusErr.Error()))
+		}
+		return
+	}
+	if err := model.UpdateTaskBillingAuditStatus(task.ID, model.TaskSettlementStatusCompleted, ""); err != nil {
+		common.SysLog(fmt.Sprintf("failed to mark task billing audit completed task=%s: %s", task.TaskID, err.Error()))
+	}
+}
+
+func taskBillingAdminInfo(task *model.Task, finalQuota int) map[string]interface{} {
+	adminInfo := make(map[string]interface{})
+	if task != nil && task.PrivateData.ProviderCostKnown {
+		adminInfo["provider_cost_usd"] = task.PrivateData.ProviderCost
+		adminInfo["provider_cost_known"] = true
+		adminInfo["provider_is_byok"] = task.PrivateData.ProviderIsByok
+		if task.PrivateData.ProviderIsByok {
+			adminInfo["provider_cost_scope"] = "platform_fee_only"
+			adminInfo["gross_margin_known"] = false
+		} else if taskIsSubscription(task) {
+			adminInfo["gross_margin_basis"] = "subscription_quota_value"
+			adminInfo["gross_margin_known"] = false
+		} else {
+			adminInfo["gross_margin_basis"] = "customer_charge"
+			adminInfo["gross_margin_known"] = true
+			adminInfo["gross_margin_usd"] = float64(finalQuota)/float64(common.QuotaPerUnit) - task.PrivateData.ProviderCost
+		}
+	}
+	return adminInfo
 }
 
 func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData {
@@ -168,20 +185,37 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	if quota == 0 {
 		return true
 	}
-
-	// 1. 退还资金来源（钱包或订阅）
-	if err := taskAdjustFunding(task, -quota); err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
+	applied, persistedTask, _, err := model.ApplyTaskRefund(task.ID, quota)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("任务退款事务失败 task %s: %s", task.TaskID, err.Error()))
 		return false
 	}
+	if !applied {
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 已完成退款，跳过重复处理", task.TaskID))
+		task.Quota = 0
+		task.RefundStatus = model.TaskRefundStatusCompleted
+		return true
+	}
+	task.Quota = 0
+	task.RefundStatus = model.TaskRefundStatusCompleted
+	task.RefundQuota = quota
+	if persistedTask != nil {
+		task.RefundedAt = persistedTask.RefundedAt
+	}
 
-	// 2. 退还令牌额度
-	taskAdjustTokenQuota(ctx, task, -quota)
-
-	// 3. 记录日志
+	// 核心余额、Token、统计和任务状态已经在同一数据库事务中提交。
+	// 日志数据库可能独立，因此在事务成功后追加审计日志。
 	other := taskBillingOther(task)
-	other["task_id"] = task.TaskID
+	other["billing_stage"] = "completed"
+	other["task_status"] = string(model.TaskStatusFailure)
+	other["local_estimated_quota"] = quota
+	other["actual_pre_consumed_quota"] = quota
+	other["customer_final_quota"] = 0
+	other["refunded_quota"] = quota
 	other["reason"] = reason
+	if adminInfo := taskBillingAdminInfo(task, 0); len(adminInfo) > 0 {
+		other["admin_info"] = adminInfo
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   model.LogTypeRefund,
@@ -191,15 +225,11 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		Quota:     quota,
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,
+		TaskId:    task.TaskID,
 		Other:     other,
 	})
+	updateTaskBillingAudit(task, string(model.TaskStatusFailure), 0, quota)
 
-	// 4. 资金退款完成后再清除持久化标记；失败时保留非零 quota，
-	// 由后续对账重试。回写失败必须显式告警，避免漏掉潜在的重复退款风险。
-	task.Quota = 0
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("退款成功但清除 task quota 失败 task %s: %s", task.TaskID, err.Error()))
-	}
 	return true
 }
 
@@ -214,33 +244,41 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
 
+	applied, persistedTask, _, err := model.ApplyTaskSettlement(task.ID, preConsumedQuota, actualQuota)
+	if err != nil {
+		if markErr := model.MarkTaskSettlementPending(task.ID, actualQuota, err.Error()); markErr != nil {
+			logger.LogError(ctx, fmt.Sprintf("标记任务待结算失败 task %s: %s", task.TaskID, markErr.Error()))
+		}
+		logger.LogError(ctx, fmt.Sprintf("任务差额结算事务失败 task %s: %s", task.TaskID, err.Error()))
+		return
+	}
+	if !applied {
+		if persistedTask != nil {
+			task.Quota = persistedTask.Quota
+			task.SettlementStatus = persistedTask.SettlementStatus
+			task.SettlementTargetQuota = persistedTask.SettlementTargetQuota
+			task.SettlementError = persistedTask.SettlementError
+		}
+		return
+	}
+	task.Quota = actualQuota
+	task.SettlementStatus = model.TaskSettlementStatusCompleted
+	task.SettlementTargetQuota = actualQuota
+	task.SettlementError = ""
+
 	if quotaDelta == 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
 			task.TaskID, logger.LogQuota(actualQuota), reason))
 		return
 	}
 
-	logger.LogInfo(ctx, fmt.Sprintf("任务 %s 差额结算：delta=%s（实际：%s，预扣：%s，%s）",
+	logger.LogInfo(ctx, fmt.Sprintf("任务 %s 差额结算完成：delta=%s（实际：%s，预扣：%s，%s）",
 		task.TaskID,
 		logger.LogQuota(quotaDelta),
 		logger.LogQuota(actualQuota),
 		logger.LogQuota(preConsumedQuota),
 		reason,
 	))
-
-	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
-		return
-	}
-
-	// 调整令牌额度
-	taskAdjustTokenQuota(ctx, task, quotaDelta)
-
-	task.Quota = actualQuota
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算回写 quota 失败 task %s: %s", task.TaskID, err.Error()))
-	}
 
 	var logType int
 	var logQuota int
@@ -251,14 +289,19 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
 	}
-	// The submit log already counted the request and recorded the pre-charge.
-	// Settlement only adjusts consumed quota, including negative refund deltas.
-	model.UpdateUserUsedQuota(task.UserId, quotaDelta)
-	model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	other["billing_stage"] = "completed"
+	other["task_status"] = string(model.TaskStatusSuccess)
+	other["local_estimated_quota"] = preConsumedQuota
+	other["actual_pre_consumed_quota"] = preConsumedQuota
+	other["customer_final_quota"] = actualQuota
+	other["adjustment_quota"] = quotaDelta
+	if adminInfo := taskBillingAdminInfo(task, actualQuota); len(adminInfo) > 0 {
+		other["admin_info"] = adminInfo
+	}
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)
 		if clamp != nil {
@@ -275,9 +318,11 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Quota:     logQuota,
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,
+		TaskId:    task.TaskID,
 		Other:     other,
 		NodeName:  task.PrivateData.NodeName,
 	})
+	updateTaskBillingAudit(task, string(model.TaskStatusSuccess), actualQuota, 0)
 }
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。

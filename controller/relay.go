@@ -502,7 +502,7 @@ func RelayTask(c *gin.Context) {
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
 	defer func() {
-		if taskErr != nil && relayInfo.Billing != nil {
+		if taskErr != nil && relayInfo.Billing != nil && !relayInfo.UpstreamTaskAccepted {
 			relayInfo.Billing.Refund(c)
 		}
 	}()
@@ -573,30 +573,103 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-			common.SysError("settle task billing error: " + settleErr.Error())
+		persistedTaskID := relayInfo.PersistedTaskID
+		if relayInfo.PersistedTaskID == 0 {
+			task := model.InitTask(result.Platform, relayInfo)
+			task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+			task.PrivateData.BillingSource = relayInfo.BillingSource
+			task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
+			task.PrivateData.TokenId = relayInfo.TokenId
+			task.PrivateData.NodeName = common.NodeName
+			task.PrivateData.BillingContext = &model.TaskBillingContext{
+				ModelPrice:      relayInfo.PriceData.ModelPrice,
+				GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+				ModelRatio:      relayInfo.PriceData.ModelRatio,
+				OtherRatios:     relayInfo.PriceData.OtherRatios(),
+				OriginModelName: relayInfo.OriginModelName,
+				PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			}
+			task.Quota = relayInfo.FinalPreConsumedQuota
+			task.SettlementTargetQuota = result.Quota
+			task.SettlementStatus = model.TaskSettlementStatusPending
+			task.Data = result.TaskData
+			task.Action = relayInfo.Action
+			if insertErr := task.Insert(); insertErr != nil {
+				common.SysError("insert task error: " + insertErr.Error())
+				taskErr = service.TaskErrorWrapperLocal(insertErr, "insert_task_failed", http.StatusInternalServerError)
+			} else {
+				persistedTaskID = task.ID
+			}
 		}
-		service.LogTaskConsumption(c, relayInfo)
-
-		task := model.InitTask(result.Platform, relayInfo)
-		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
-		task.PrivateData.BillingSource = relayInfo.BillingSource
-		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
-		task.PrivateData.TokenId = relayInfo.TokenId
-		task.PrivateData.NodeName = common.NodeName
-		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			ModelPrice:      relayInfo.PriceData.ModelPrice,
-			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			ModelRatio:      relayInfo.PriceData.ModelRatio,
-			OtherRatios:     relayInfo.PriceData.OtherRatios(),
-			OriginModelName: relayInfo.OriginModelName,
-			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+		if taskErr == nil {
+			chargedQuota := result.Quota
+			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+				common.SysError("settle task billing error: " + settleErr.Error())
+				chargedQuota = relayInfo.FinalPreConsumedQuota
+				if markErr := model.UpdateTaskInitialSettlement(
+					persistedTaskID,
+					chargedQuota,
+					result.Quota,
+					model.TaskSettlementStatusPending,
+					settleErr.Error(),
+				); markErr != nil {
+					common.SysError("mark initial task settlement pending error: " + markErr.Error())
+				}
+			} else if markErr := model.UpdateTaskInitialSettlement(
+				persistedTaskID,
+				result.Quota,
+				result.Quota,
+				model.TaskSettlementStatusCompleted,
+				"",
+			); markErr != nil {
+				common.SysError("mark initial task settlement completed error: " + markErr.Error())
+			}
+			service.LogTaskConsumption(c, relayInfo, chargedQuota)
+			if response, exists := c.Get("deferred_task_response"); exists {
+				c.JSON(http.StatusAccepted, response)
+			}
 		}
-		task.Quota = result.Quota
-		task.Data = result.TaskData
-		task.Action = relayInfo.Action
-		if insertErr := task.Insert(); insertErr != nil {
-			common.SysError("insert task error: " + insertErr.Error())
+	}
+	if taskErr != nil && relayInfo.PersistedTaskID > 0 && relayInfo.UpstreamTaskAccepted {
+		if task, err := model.GetTaskByID(relayInfo.PersistedTaskID); err == nil {
+			task.PrivateData.UpstreamTaskID = relayInfo.AcceptedUpstreamTaskID
+			task.Data = relayInfo.AcceptedTaskData
+			task.Action = relayInfo.Action
+			task.Quota = relayInfo.FinalPreConsumedQuota
+			task.SettlementTargetQuota = relayInfo.PriceData.Quota
+			task.SettlementStatus = model.TaskSettlementStatusPending
+			task.Status = model.TaskStatusSubmitted
+			task.Progress = "0%"
+			if updateErr := task.Update(); updateErr == nil {
+				chargedQuota := relayInfo.PriceData.Quota
+				if settleErr := service.SettleBilling(c, relayInfo, relayInfo.PriceData.Quota); settleErr != nil {
+					chargedQuota = relayInfo.FinalPreConsumedQuota
+					_ = model.UpdateTaskInitialSettlement(task.ID, chargedQuota, relayInfo.PriceData.Quota, model.TaskSettlementStatusPending, settleErr.Error())
+				} else {
+					_ = model.UpdateTaskInitialSettlement(task.ID, chargedQuota, chargedQuota, model.TaskSettlementStatusCompleted, "")
+				}
+				service.LogTaskConsumption(c, relayInfo, chargedQuota)
+				if response, exists := c.Get("deferred_task_response"); exists {
+					c.JSON(http.StatusAccepted, response)
+				}
+				taskErr = nil
+			} else {
+				common.SysError(fmt.Sprintf(
+					"CRITICAL: provider accepted task but local recovery failed public_task=%s upstream_task=%s error=%s",
+					relayInfo.PublicTaskID, relayInfo.AcceptedUpstreamTaskID, updateErr.Error(),
+				))
+			}
+		}
+	}
+	if taskErr != nil && relayInfo.PersistedTaskID > 0 && !relayInfo.UpstreamTaskAccepted {
+		if task, err := model.GetTaskByID(relayInfo.PersistedTaskID); err == nil {
+			task.Status = model.TaskStatusFailure
+			task.Progress = "100%"
+			task.FailReason = taskErr.Message
+			task.Quota = 0
+			if updateErr := task.Update(); updateErr != nil {
+				common.SysError("mark provisional task failed: " + updateErr.Error())
+			}
 		}
 	}
 
@@ -615,6 +688,9 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	if taskErr.LocalError {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
@@ -644,9 +720,6 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 	}
 	if taskErr.StatusCode == 408 {
 		// azure处理超时不重试
-		return false
-	}
-	if taskErr.LocalError {
 		return false
 	}
 	if taskErr.StatusCode/100 == 2 {

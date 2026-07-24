@@ -120,6 +120,7 @@ func UsageFromChatUsage(src *dto.Usage) *dto.Usage {
 		usage.BillingUsage = dto.NewOpenAIChatBillingUsage(src)
 	}
 	usage.Cost = src.Cost
+	usage.IsByok = src.IsByok
 	if src.PromptTokens != 0 {
 		usage.PromptTokens = src.PromptTokens
 		usage.InputTokens = src.PromptTokens

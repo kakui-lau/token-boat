@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,10 +53,13 @@ func TestParseTaskResult(t *testing.T) {
 			remoteURL: "https://example.com/video.mp4",
 		},
 		{
-			name:   "failed with string error",
-			body:   `{"id":"job-1","status":"failed","error":"content policy violation"}`,
-			status: model.TaskStatusFailure,
-			reason: "content policy violation",
+			name:      "failed with string error and cost",
+			body:      `{"id":"job-1","status":"failed","error":"content policy violation","usage":{"cost":0.03,"is_byok":true}}`,
+			status:    model.TaskStatusFailure,
+			reason:    "content policy violation",
+			cost:      0.03,
+			costKnown: true,
+			isByok:    true,
 		},
 		{
 			name:   "failed with object error",
@@ -144,6 +148,38 @@ func TestConvertToOpenAIVideoUsesPublicURLs(t *testing.T) {
 	assert.NotContains(t, string(body), "is_byok")
 }
 
+func TestDoResponseDefersPublicReplyAndSanitizesStoredData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	info := &relaycommon.RelayInfo{
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"},
+	}
+	response := &http.Response{
+		StatusCode: http.StatusAccepted,
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"upstream-job","polling_url":"https://openrouter.ai/api/v1/videos/upstream-job","status":"pending","unsigned_urls":["https://example.com/video.mp4"],"usage":{"cost":0.25,"is_byok":true}}`,
+		)),
+	}
+
+	upstreamID, storedBody, taskErr := (&TaskAdaptor{}).DoResponse(context, response, info)
+	require.Nil(t, taskErr)
+	assert.Equal(t, "upstream-job", upstreamID)
+	assert.Empty(t, recorder.Body.String())
+
+	deferred, exists := context.Get("deferred_task_response")
+	require.True(t, exists)
+	public, ok := deferred.(videoResponse)
+	require.True(t, ok)
+	assert.Equal(t, "task_public", public.ID)
+	assert.Nil(t, public.Usage)
+
+	assert.NotContains(t, string(storedBody), "upstream-job")
+	assert.NotContains(t, string(storedBody), "polling_url")
+	assert.NotContains(t, string(storedBody), "unsigned_urls")
+	assert.NotContains(t, string(storedBody), "usage")
+}
+
 func TestSeedanceResolutionRatio(t *testing.T) {
 	tests := []struct {
 		name string
@@ -201,6 +237,11 @@ func TestValidateSeedanceRequestCapabilities(t *testing.T) {
 			wantCode: "invalid_aspect_ratio",
 		},
 		{
+			name:     "size conflicts with resolution",
+			body:     `{"model":"bytedance/seedance-2.0","prompt":"ocean","duration":8,"size":"1280x720","resolution":"720p"}`,
+			wantCode: "conflicting_video_dimensions",
+		},
+		{
 			name:     "non Seedance OpenRouter video model is rejected",
 			body:     `{"model":"google/veo-3.1","prompt":"ocean","duration":8,"resolution":"720p"}`,
 			wantCode: "unsupported_model",
@@ -244,7 +285,20 @@ func TestBuildRequestBodyPinsBillableDefaults(t *testing.T) {
 }
 
 func TestMappedSeedanceAliasUsesUpstreamCapabilitiesAndDefaultDuration(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"public-video-alias":"video_per_second"}`,
+	}))
+
 	context, info := newVideoTestContext(`{"model":"public-video-alias","prompt":"ocean","resolution":"1080p"}`)
+	info.OriginModelName = "public-video-alias"
 	info.UpstreamModelName = "bytedance/seedance-2.0-fast"
 	adaptor := &TaskAdaptor{}
 
@@ -253,8 +307,43 @@ func TestMappedSeedanceAliasUsesUpstreamCapabilitiesAndDefaultDuration(t *testin
 	assert.Equal(t, "invalid_resolution", taskErr.Code)
 
 	context, info = newVideoTestContext(`{"model":"public-video-alias","prompt":"ocean","resolution":"720p"}`)
+	info.OriginModelName = "public-video-alias"
 	info.UpstreamModelName = "bytedance/seedance-2.0-fast"
 	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
 	ratio := adaptor.EstimateBilling(context, info)
 	assert.Equal(t, float64(15), ratio["seconds"])
+}
+
+func TestEstimateBillingOnlyAppliesVideoSecondModeWhenConfigured(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+
+	context, info := newVideoTestContext(`{"model":"bytedance/seedance-2.0","prompt":"ocean","duration":8,"resolution":"1080p"}`)
+	info.OriginModelName = "bytedance/seedance-2.0"
+	info.UpstreamModelName = "bytedance/seedance-2.0"
+	adaptor := &TaskAdaptor{}
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{}`,
+	}))
+	assert.Nil(t, adaptor.EstimateBilling(context, info))
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"bytedance/seedance-2.0":"per_request"}`,
+	}))
+	assert.Nil(t, adaptor.EstimateBilling(context, info))
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"bytedance/seedance-2.0":"video_per_second"}`,
+	}))
+	ratios := adaptor.EstimateBilling(context, info)
+	assert.Equal(t, float64(8), ratios["seconds"])
+	assert.Equal(t, 2.25, ratios["resolution"])
 }

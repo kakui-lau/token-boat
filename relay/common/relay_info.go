@@ -122,6 +122,8 @@ type RelayInfo struct {
 	SendResponseCount      int
 	ReceivedResponseCount  int
 	FinalPreConsumedQuota  int // 最终预消耗的配额
+	SettlementStatus       string
+	SettlementError        string
 	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
 	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
 	// 必须在提交前锁定全额。
@@ -678,6 +680,15 @@ type TaskRelayInfo struct {
 	// PublicTaskID 是提交时预生成的 task_xxxx 格式公开 ID，
 	// 供 DoResponse 在返回给客户端时使用（避免暴露上游真实 ID）。
 	PublicTaskID string
+	// PersistedTaskID is the local task row created before an upstream async
+	// submission. It survives retries so the public task ID is durable before
+	// a provider can accept billable work.
+	PersistedTaskID int64
+	// Accepted upstream submission data allows the controller to recover a
+	// provider-accepted task if the first local finalization write fails.
+	UpstreamTaskAccepted   bool
+	AcceptedUpstreamTaskID string
+	AcceptedTaskData       []byte
 
 	ConsumeQuota bool
 

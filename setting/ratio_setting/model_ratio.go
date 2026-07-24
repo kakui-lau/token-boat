@@ -358,13 +358,6 @@ func UpdateModelPriceByJSONString(jsonStr string) error {
 	if err := types.LoadFromJsonStringWithCallback(modelPriceMap, jsonStr, InvalidateExposedDataCache); err != nil {
 		return err
 	}
-	// Existing installations persist the entire price map, so newly shipped
-	// OpenRouter video prices would otherwise disappear when that map is loaded.
-	for _, model := range []string{"bytedance/seedance-2.0", "bytedance/seedance-2.0-fast"} {
-		if _, exists := modelPriceMap.Get(model); !exists {
-			modelPriceMap.Set(model, defaultModelPrice[model])
-		}
-	}
 	return nil
 }
 

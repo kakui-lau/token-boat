@@ -210,6 +210,7 @@ export function formatLogQuota(quota: number): string {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,
+    roundingMode: 'truncate',
   })
 }
 

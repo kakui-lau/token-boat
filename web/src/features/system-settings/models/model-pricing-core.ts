@@ -39,7 +39,11 @@ export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'video_per_second'
+  | 'tiered_expr'
 
 export type LaneKey =
   | 'completion'
@@ -74,7 +78,28 @@ export type PreviewRow = {
 export const numericDraftRegex = /^(\d+(\.\d*)?|\.\d*)?$/
 
 export function isSeedanceVideoModel(modelName: string): boolean {
-  return /^bytedance\/seedance-2\.0(?:-fast)?$/i.test(modelName.trim())
+  return modelName.toLowerCase().includes('seedance')
+}
+
+export const seedanceResolutionMultipliers = [
+  { resolution: '480p', multiplier: 4 / 9 },
+  { resolution: '720p', multiplier: 1 },
+  { resolution: '1080p', multiplier: 2.25 },
+  { resolution: '4K', multiplier: 9 },
+] as const
+
+export function getSeedanceResolutionPrices(basePrice: unknown) {
+  const price = toNumberOrNull(basePrice)
+  return seedanceResolutionMultipliers.map(({ resolution, multiplier }) => ({
+    resolution,
+    multiplier,
+    price:
+      price === null
+        ? ''
+        : formatPricingNumber(
+            Number.parseFloat((price * multiplier).toFixed(6))
+          ),
+  }))
 }
 
 export const EMPTY_LANE_PRICES: Record<LaneKey, string> = {
@@ -234,15 +259,20 @@ export function buildPreviewRows(
     ]
   }
 
+  if (mode === 'video_per_second') {
+    return getSeedanceResolutionPrices(values.price).map((row) => ({
+      key: `video-${row.resolution}`,
+      label: `${row.resolution} ${t('per second')}`,
+      value: row.price ? `$${row.price}` : t('Empty'),
+    }))
+  }
+
   if (mode === 'per-request') {
-    const videoPerSecond = isSeedanceVideoModel(values.name)
     return [
       {
         key: 'price',
-        label: videoPerSecond ? t('720p price per second') : 'ModelPrice',
-        value: values.price
-          ? `$${values.price}${videoPerSecond ? ` ${t('per second')}` : ''}`
-          : t('Empty'),
+        label: 'ModelPrice',
+        value: values.price ? `$${values.price}` : t('Empty'),
       },
     ]
   }

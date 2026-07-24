@@ -33,6 +33,28 @@ type sunoFailurePollingAdaptor struct {
 	failReason string
 }
 
+type pollingHTTPErrorAdaptor struct {
+	status int
+	body   string
+}
+
+func (a *pollingHTTPErrorAdaptor) Init(_ *relaycommon.RelayInfo) {}
+
+func (a *pollingHTTPErrorAdaptor) FetchTask(_ string, _ string, _ map[string]any, _ string) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: a.status,
+		Body:       io.NopCloser(bytes.NewBufferString(a.body)),
+	}, nil
+}
+
+func (a *pollingHTTPErrorAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+	return relaycommon.FailTaskInfo("must not parse HTTP errors"), nil
+}
+
+func (a *pollingHTTPErrorAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+	return 0
+}
+
 func (a *sunoFailurePollingAdaptor) Init(_ *relaycommon.RelayInfo) {}
 
 func (a *sunoFailurePollingAdaptor) FetchTask(_ string, _ string, body map[string]any, _ string) (*http.Response, error) {
@@ -162,6 +184,34 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 	}
 	require.NoError(t, model.DB.Create(task).Error)
 	return task
+}
+
+func TestUpdateVideoSingleTaskDoesNotFailOrRefundOnPollingHTTPError(t *testing.T) {
+	truncate(t)
+
+	const channelID = 100
+	seedTaskPollingChannel(t, channelID, true)
+	task := seedPollingTask(t, channelID, "task_public_http_error", "upstream_http_error")
+	task.Quota = 1200
+	require.NoError(t, model.DB.Model(task).Update("quota", task.Quota).Error)
+
+	channel, err := model.CacheGetChannel(channelID)
+	require.NoError(t, err)
+	adaptor := &pollingHTTPErrorAdaptor{
+		status: http.StatusInternalServerError,
+		body:   `{"error":{"message":"temporary upstream failure","code":500}}`,
+	}
+
+	err = updateVideoSingleTask(context.Background(), adaptor, channel, task.GetUpstreamTaskID(), map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	})
+	require.Error(t, err)
+
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusInProgress), persisted.Status)
+	assert.Equal(t, 1200, persisted.Quota)
+	assert.Empty(t, persisted.RefundStatus)
 }
 
 func TestUpdateVideoTasksDefaultSleepWaitsBetweenTasks(t *testing.T) {

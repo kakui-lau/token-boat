@@ -240,7 +240,8 @@ type Usage struct {
 	ClaudeCacheCreation1hTokens int `json:"claude_cache_creation_1_h_tokens"`
 
 	// OpenRouter Params
-	Cost any `json:"cost,omitempty"`
+	Cost   any   `json:"cost,omitempty"`
+	IsByok *bool `json:"is_byok,omitempty"`
 }
 
 type OpenAIVideoResponse struct {

@@ -106,29 +106,33 @@ func sweepUnrefundedFailedTasks(ctx context.Context) {
 			return
 		}
 
-		quota := task.Quota
-		claimed, err := model.ClaimQuotaForRefund(task.ID, quota)
-		if err != nil {
-			logger.LogError(ctx, fmt.Sprintf("sweepUnrefundedFailedTasks claim error for task %s: %v", task.TaskID, err))
-			continue
-		}
-		if !claimed {
-			logger.LogDebug(ctx, "sweepUnrefundedFailedTasks: task %s claim lost, skip refund", task.TaskID)
-			continue
-		}
+		RefundTaskQuota(ctx, task, task.FailReason)
+	}
+}
 
-		// 对账先清 marker 再退款，确保并发 sweep 只有一个实际退款者。若进程在
-		// claim 后、退款前崩溃，会偏向漏退而不是双退，需由人工账务对账兜底。
-		if RefundTaskQuota(ctx, task, task.FailReason) {
-			continue
+func sweepPendingTaskSettlements(ctx context.Context) {
+	tasks := model.GetPendingTaskSettlements(refundReconciliationLimit)
+	for _, task := range tasks {
+		if ctx.Err() != nil {
+			return
 		}
+		RecalculateTaskQuota(ctx, task, task.SettlementTargetQuota, "pending settlement retry")
+	}
+}
 
-		restored, restoreErr := model.RestoreQuotaAfterFailedRefund(task.ID, quota)
-		if restoreErr != nil {
-			logger.LogError(ctx, fmt.Sprintf("sweepUnrefundedFailedTasks restore quota error for task %s: %v", task.TaskID, restoreErr))
-		} else if !restored {
-			logger.LogError(ctx, fmt.Sprintf("sweepUnrefundedFailedTasks could not restore quota marker for task %s", task.TaskID))
+func sweepPendingTaskBillingAudits(ctx context.Context) {
+	tasks := model.GetPendingTaskBillingAudits(refundReconciliationLimit)
+	for _, task := range tasks {
+		if ctx.Err() != nil {
+			return
 		}
+		finalQuota := task.Quota
+		refundedQuota := 0
+		if task.RefundStatus == model.TaskRefundStatusCompleted {
+			finalQuota = 0
+			refundedQuota = task.RefundQuota
+		}
+		updateTaskBillingAudit(task, string(task.Status), finalQuota, refundedQuota)
 	}
 }
 
@@ -157,6 +161,8 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 	common.SysLog("任务进度轮询开始")
 	sweepTimedOutTasks(ctx)
 	sweepUnrefundedFailedTasks(ctx)
+	sweepPendingTaskSettlements(ctx)
+	sweepPendingTaskBillingAudits(ctx)
 	allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
 	summary.UnfinishedTasks = len(allTasks)
 	platformTask := make(map[constant.TaskPlatform][]*model.Task)
@@ -512,6 +518,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if err != nil {
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		// A polling transport/API error is not a provider-declared task
+		// failure. Keep the task pending so a later poll can recover instead
+		// of refunding a job that may still be running upstream.
+		return fmt.Errorf("poll task %s returned HTTP %d: %s", taskId, resp.StatusCode, truncatePollingError(responseBody))
+	}
 
 	logger.LogDebug(ctx, "updateVideoSingleTask response: %s", responseBody)
 
@@ -533,7 +545,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
 
-	task.Data = redactVideoResponseBody(responseBody)
+	task.Data = redactVideoResponseBody(responseBody, ch.Type)
 
 	logger.LogDebug(ctx, "updateVideoSingleTask taskResult: %+v", taskResult)
 
@@ -563,6 +575,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	shouldRefund := false
 	shouldSettle := false
 	quota := task.Quota
+	if taskResult.CostKnown {
+		task.PrivateData.ProviderCost = taskResult.Cost
+		task.PrivateData.ProviderCostKnown = true
+		task.PrivateData.ProviderIsByok = taskResult.IsByok
+	}
 
 	task.Status = model.TaskStatus(taskResult.Status)
 	switch taskResult.Status {
@@ -591,11 +608,6 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}
 		shouldSettle = true
-		if taskResult.CostKnown {
-			task.PrivateData.ProviderCost = taskResult.Cost
-			task.PrivateData.ProviderCostKnown = true
-			task.PrivateData.ProviderIsByok = taskResult.IsByok
-		}
 	case model.TaskStatusFailure:
 		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
 		task.Status = model.TaskStatusFailure
@@ -639,6 +651,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	if shouldSettle {
 		settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+		updateTaskBillingAudit(task, string(model.TaskStatusSuccess), task.Quota, 0)
 	}
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)
@@ -647,10 +660,25 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	return nil
 }
 
-func redactVideoResponseBody(body []byte) []byte {
+func truncatePollingError(body []byte) string {
+	const maxLen = 512
+	message := strings.TrimSpace(string(body))
+	if len(message) <= maxLen {
+		return message
+	}
+	return message[:maxLen] + "..."
+}
+
+func redactVideoResponseBody(body []byte, channelType int) []byte {
 	var m map[string]any
 	if err := common.Unmarshal(body, &m); err != nil {
 		return body
+	}
+	if channelType == constant.ChannelTypeOpenRouter {
+		delete(m, "id")
+		delete(m, "polling_url")
+		delete(m, "unsigned_urls")
+		delete(m, "usage")
 	}
 	resp, _ := m["response"].(map[string]any)
 	if resp != nil {

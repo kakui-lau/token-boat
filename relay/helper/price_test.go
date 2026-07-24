@@ -272,3 +272,31 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
 }
+
+func TestModelPriceHelperPreConsumesMaxTokensAtCompletionPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedModelRatios := ratio_setting.ModelRatio2JSONString()
+	savedCompletionRatios := ratio_setting.CompletionRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(savedCompletionRatios))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"preconsume-output-model":0.045}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"preconsume-output-model":2.2222222222222223}`))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "preconsume-output-model",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	priceData, err := ModelPriceHelper(ctx, info, 100, &types.TokenCountMeta{MaxTokens: 1000})
+
+	require.NoError(t, err)
+	// Input reserve: 500 * 0.045 = 22.5. Output reserve:
+	// 1000 * 0.045 * 2.222... = 100. The combined quota truncates to 122.
+	require.Equal(t, 122, priceData.QuotaToPreConsume)
+}

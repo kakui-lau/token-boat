@@ -77,6 +77,7 @@ type Log struct {
 	Ip                string `json:"ip" gorm:"index;default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
+	TaskId            string `json:"task_id,omitempty" gorm:"type:varchar(64);index:idx_logs_task_id;default:''"`
 	Other             string `json:"other"`
 }
 
@@ -114,6 +115,19 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 }
 
 func formatUserLogs(logs []*Log, startIdx int) {
+	adminOnlyFields := []string{
+		"provider_cost_usd",
+		"provider_cost_known",
+		"provider_is_byok",
+		"provider_cost_scope",
+		"gross_margin_usd",
+		"gross_margin_known",
+		"gross_margin_basis",
+		"settlement_error",
+		"quota_saturation",
+		"upstream_cost",
+		"upstream_actual_cost",
+	}
 	for i := range logs {
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
@@ -123,8 +137,12 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "admin_info")
 			// Remove operation-audit details (operator/route info), admin-only.
 			delete(otherMap, "audit_info")
-			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			// Defense in depth for legacy or malformed records that wrote
+			// confidential billing fields outside admin_info.
+			for _, field := range adminOnlyFields {
+				delete(otherMap, field)
+			}
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
@@ -337,6 +355,7 @@ type RecordConsumeLogParams struct {
 	UseTimeSeconds   int                    `json:"use_time_seconds"`
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
+	TaskId           string                 `json:"task_id"`
 	Other            map[string]interface{} `json:"other"`
 }
 
@@ -381,6 +400,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		}(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
+		TaskId:            params.TaskId,
 		Other:             otherStr,
 	}
 	err := createLog(log)
@@ -412,6 +432,7 @@ type RecordTaskBillingLogParams struct {
 	Quota     int
 	TokenId   int
 	Group     string
+	TaskId    string
 	Other     map[string]interface{}
 	NodeName  string // 任务发起节点；为空时回退当前节点
 }
@@ -440,6 +461,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,
 		Group:     params.Group,
+		TaskId:    params.TaskId,
 		Other:     common.MapToJsonStr(params.Other),
 	}
 	err := createLog(log)
@@ -463,6 +485,56 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			NodeName:  nodeName,
 		})
 	}
+}
+
+// UpdateTaskConsumeLogDetails enriches the original async-task consumption
+// log after the provider reaches a terminal state. Provider cost fields belong
+// under admin_info so normal user log views strip them automatically.
+func UpdateTaskConsumeLogDetails(taskID string, fields, adminFields map[string]interface{}) error {
+	if taskID == "" {
+		return nil
+	}
+	var log Log
+	if err := LOG_DB.Where(
+		"task_id = ? AND type = ? AND other LIKE ?",
+		taskID,
+		LogTypeConsume,
+		`%"billing_stage":"submitted"%`,
+	).
+		Order("created_at, request_id").
+		First(&log).Error; err != nil {
+		return err
+	}
+	other := make(map[string]interface{})
+	if log.Other != "" {
+		if err := common.UnmarshalJsonStr(log.Other, &other); err != nil {
+			return err
+		}
+	}
+	for key, value := range fields {
+		other[key] = value
+	}
+	if len(adminFields) > 0 {
+		adminInfo, _ := other["admin_info"].(map[string]interface{})
+		if adminInfo == nil {
+			adminInfo = make(map[string]interface{})
+		}
+		for key, value := range adminFields {
+			adminInfo[key] = value
+		}
+		other["admin_info"] = adminInfo
+	}
+	payload, err := common.Marshal(other)
+	if err != nil {
+		return err
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return LOG_DB.Exec(
+			"ALTER TABLE logs UPDATE other = ? WHERE request_id = ? AND task_id = ? AND type = ? SETTINGS mutations_sync = 1",
+			string(payload), log.RequestId, taskID, LogTypeConsume,
+		).Error
+	}
+	return LOG_DB.Model(&Log{}).Where("id = ?", log.Id).Update("other", string(payload)).Error
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
@@ -616,7 +688,10 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	tx := LOG_DB.Table("logs").Select(
+		"COALESCE(SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END), 0) AS quota",
+		LogTypeConsume, LogTypeRefund,
+	)
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
@@ -652,7 +727,6 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
 	}
 
-	tx = tx.Where("type = ?", LogTypeConsume)
 	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
 
 	// 只统计最近60秒的rpm和tpm

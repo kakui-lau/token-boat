@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	BillingModeRatio      = "ratio"
-	BillingModeTieredExpr = "tiered_expr"
-	BillingModeField      = "billing_mode"
-	BillingExprField      = "billing_expr"
+	BillingModeRatio       = "ratio"
+	BillingModePerRequest  = "per_request"
+	BillingModeVideoSecond = "video_per_second"
+	BillingModeTieredExpr  = "tiered_expr"
+	BillingModeField       = "billing_mode"
+	BillingExprField       = "billing_expr"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.
@@ -40,6 +42,11 @@ func GetBillingMode(model string) string {
 		return mode
 	}
 	return BillingModeRatio
+}
+
+func GetConfiguredBillingMode(model string) (string, bool) {
+	mode, ok := billingSetting.BillingMode[model]
+	return mode, ok
 }
 
 func GetBillingExpr(model string) (string, bool) {

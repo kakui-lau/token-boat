@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -47,6 +48,69 @@ func attachQuotaSaturation(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, o
 	attachQuotaSaturationToOther(other, clamp)
 	logger.LogWarn(ctx, fmt.Sprintf("quota saturation on consume log: op=%s kind=%s original=%g clamped=%d user=%d model=%s",
 		clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped, relayInfo.UserId, relayInfo.OriginModelName))
+}
+
+// InjectGeneralBillingAudit adds customer billing reconciliation to every
+// synchronous usage log. OpenRouter's usage.cost is supplier cost, so it is
+// admin-only and never used as the customer charge.
+func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycommon.RelayInfo, finalQuota int, usage *dto.Usage) {
+	if other == nil || relayInfo == nil {
+		return
+	}
+	estimatedQuota := relayInfo.PriceData.QuotaToPreConsume
+	if estimatedQuota == 0 {
+		estimatedQuota = relayInfo.FinalPreConsumedQuota
+	}
+	other["billing_stage"] = "completed"
+	other["local_estimated_quota"] = estimatedQuota
+	other["actual_pre_consumed_quota"] = relayInfo.FinalPreConsumedQuota
+	chargedQuota := finalQuota
+	if relayInfo.SettlementStatus == "failed" {
+		chargedQuota = relayInfo.FinalPreConsumedQuota
+		other["billing_stage"] = "settlement_failed"
+		other["customer_final_quota"] = chargedQuota
+		other["adjustment_quota"] = 0
+		other["outstanding_quota"] = finalQuota - relayInfo.FinalPreConsumedQuota
+		adminInfo, _ := other["admin_info"].(map[string]interface{})
+		if adminInfo == nil {
+			adminInfo = make(map[string]interface{})
+			other["admin_info"] = adminInfo
+		}
+		adminInfo["settlement_error"] = relayInfo.SettlementError
+	} else {
+		other["customer_final_quota"] = finalQuota
+		other["adjustment_quota"] = finalQuota - relayInfo.FinalPreConsumedQuota
+	}
+
+	if relayInfo.ChannelMeta == nil || relayInfo.ChannelType != constant.ChannelTypeOpenRouter || usage == nil {
+		return
+	}
+	providerCost, ok := usage.Cost.(float64)
+	if !ok || providerCost < 0 || math.IsNaN(providerCost) || math.IsInf(providerCost, 0) || common.QuotaPerUnit <= 0 {
+		return
+	}
+	adminInfo, _ := other["admin_info"].(map[string]interface{})
+	if adminInfo == nil {
+		adminInfo = make(map[string]interface{})
+		other["admin_info"] = adminInfo
+	}
+	adminInfo["provider_cost_usd"] = providerCost
+	adminInfo["provider_cost_known"] = true
+	if usage.IsByok != nil {
+		adminInfo["provider_is_byok"] = *usage.IsByok
+	}
+	isByok := usage.IsByok != nil && *usage.IsByok
+	if isByok {
+		adminInfo["provider_cost_scope"] = "platform_fee_only"
+		adminInfo["gross_margin_known"] = false
+	} else if relayInfo.BillingSource == BillingSourceSubscription {
+		adminInfo["gross_margin_basis"] = "subscription_quota_value"
+		adminInfo["gross_margin_known"] = false
+	} else {
+		adminInfo["gross_margin_basis"] = "customer_charge"
+		adminInfo["gross_margin_known"] = true
+		adminInfo["gross_margin_usd"] = float64(chargedQuota)/float64(common.QuotaPerUnit) - providerCost
+	}
 }
 
 func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

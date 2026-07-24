@@ -135,6 +135,14 @@ export interface LogOtherData {
       original: number
       clamped: number
     }
+    provider_cost_usd?: number
+    provider_cost_known?: boolean
+    provider_is_byok?: boolean
+    provider_cost_scope?: 'platform_fee_only' | string
+    gross_margin_basis?: 'customer_charge' | 'subscription_quota_value' | string
+    gross_margin_known?: boolean
+    gross_margin_usd?: number
+    settlement_error?: string
   }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
@@ -223,6 +231,16 @@ export interface LogOtherData {
   // Task-related fields (for refund logs, type=6)
   is_task?: boolean
   task_id?: string
+  billing_stage?: 'submitted' | 'completed' | string
+  task_status?: string
+  local_estimated_quota?: number
+  actual_pre_consumed_quota?: number
+  customer_final_quota?: number
+  refunded_quota?: number
+  adjustment_quota?: number
+  outstanding_quota?: number
+  seconds?: number
+  resolution?: number
   reason?: string
   // Subscription billing fields
   subscription_plan_id?: string

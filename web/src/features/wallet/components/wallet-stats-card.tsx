@@ -34,12 +34,18 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
   if (props.loading) {
     return (
-      <div className='grid grid-cols-3 divide-x rounded-lg border'>
+      <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
         {['balance', 'usage', 'requests'].map((key) => (
-          <div key={key} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
-            <Skeleton className='h-3.5 w-full' />
-            <Skeleton className='mt-2 h-6 w-full sm:h-7' />
-            <Skeleton className='mt-1.5 hidden h-3.5 w-24 md:block' />
+          <div
+            key={key}
+            className='rounded-2xl border border-border/60 bg-card/60 p-4 shadow-sm backdrop-blur-sm'
+          >
+            <div className='flex items-center gap-3'>
+              <Skeleton className='h-10 w-10 rounded-xl' />
+              <Skeleton className='h-4 w-24' />
+            </div>
+            <Skeleton className='mt-5 h-8 w-32' />
+            <Skeleton className='mt-2 h-3.5 w-28' />
           </div>
         ))}
       </div>
@@ -52,6 +58,8 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
     description: string
     icon: typeof WalletCards
     tone: IconBadgeTone
+    accentClass: string
+    lineClass: string
   }[] = [
     {
       label: t('Current Balance'),
@@ -59,6 +67,8 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       description: t('Remaining quota'),
       icon: WalletCards,
       tone: 'success',
+      accentClass: 'from-emerald-500/20 via-teal-500/10 to-transparent',
+      lineClass: 'bg-emerald-500/70',
     },
     {
       label: t('Total Usage'),
@@ -66,6 +76,8 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       description: t('Total consumed quota'),
       icon: BarChart3,
       tone: 'info',
+      accentClass: 'from-cyan-500/20 via-sky-500/10 to-transparent',
+      lineClass: 'bg-cyan-500/70',
     },
     {
       label: t('API Requests'),
@@ -73,28 +85,43 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       description: t('Total requests made'),
       icon: Activity,
       tone: 'chart-4',
+      accentClass: 'from-amber-500/20 via-orange-500/10 to-transparent',
+      lineClass: 'bg-amber-500/70',
     },
   ]
 
   return (
-    <div className='grid grid-cols-3 divide-x rounded-lg border'>
+    <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
       {stats.map((item) => (
-        <div key={item.label} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
-          <div className='flex items-center gap-1.5 sm:gap-2.5'>
-            <IconBadge tone={item.tone} size='stat'>
-              <item.icon />
-            </IconBadge>
-            <div className='text-muted-foreground truncate text-[11px] font-medium tracking-wider uppercase sm:text-xs'>
-              {item.label}
+        <div
+          key={item.label}
+          className='group relative min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-card/65 p-4 shadow-sm backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:bg-card/80 hover:shadow-md sm:p-5'
+        >
+          <div
+            className={`pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-br ${item.accentClass}`}
+          />
+          <div className='relative flex items-start justify-between gap-3'>
+            <div className='flex min-w-0 items-center gap-3'>
+              <IconBadge tone={item.tone} size='stat'>
+                <item.icon />
+              </IconBadge>
+              <div className='min-w-0'>
+                <div className='text-foreground truncate text-sm font-semibold'>
+                  {item.label}
+                </div>
+                <div className='text-muted-foreground mt-0.5 hidden text-xs md:block'>
+                  {item.description}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className='text-foreground mt-1.5 font-mono text-sm font-bold tracking-tight break-all tabular-nums sm:mt-2.5 sm:text-2xl'>
+          <div className='relative mt-5 font-mono text-2xl font-black tracking-tight break-all tabular-nums sm:text-3xl'>
             {item.value}
           </div>
-          <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-            {item.description}
-          </div>
+          <div
+            className={`relative mt-4 h-1 w-12 rounded-full ${item.lineClass}`}
+          />
         </div>
       ))}
     </div>

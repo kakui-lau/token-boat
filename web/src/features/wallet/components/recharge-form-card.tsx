@@ -211,16 +211,16 @@ export function RechargeFormCard({
           </Button>
         ) : null
       }
-      contentClassName='space-y-4 sm:space-y-6'
+      contentClassName='space-y-5 sm:space-y-7'
     >
       {/* Online Topup Section */}
       {hasAnyTopup ? (
-        <div className='space-y-4 sm:space-y-6'>
+        <div className='space-y-5 sm:space-y-7'>
           {hasConfigurableTopup && (
             <>
               {presetAmounts.length > 0 && (
                 <div className='space-y-2.5 sm:space-y-3'>
-                  <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                  <Label className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                     {t('Amount')}
                   </Label>
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 md:grid-cols-4'>
@@ -245,28 +245,27 @@ export function RechargeFormCard({
                           key={preset.value}
                           variant='outline'
                           className={cn(
-                            'flex min-h-16 flex-col items-start rounded-lg px-3 py-2.5 text-left whitespace-normal sm:min-h-[72px] sm:p-4',
+                            'group relative flex min-h-[86px] flex-col items-start justify-between overflow-hidden rounded-xl border bg-card/70 px-3 py-3 text-left whitespace-normal transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card hover:shadow-sm sm:min-h-[96px] sm:p-4',
                             selectedPreset === preset.value
-                              ? 'border-foreground bg-foreground/5 dark:border-foreground dark:bg-foreground/10'
-                              : 'border-muted'
+                              ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20 dark:bg-primary/10'
+                              : 'border-border/60'
                           )}
                           onClick={() => onSelectPreset(preset)}
                         >
-                          <div className='flex w-full items-center justify-between'>
-                            <div className='text-base font-semibold sm:text-lg'>
+                          <div className='flex w-full items-start justify-between gap-2'>
+                            <div className='text-foreground text-xl leading-none font-bold sm:text-2xl'>
                               {formatNumber(displayValue)}
                             </div>
                             {hasDiscount && (
-                              <div className='text-xs font-medium text-green-600'>
+                              <div className='rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap text-emerald-600 dark:text-emerald-400'>
                                 {getDiscountLabel(discount)}
                               </div>
                             )}
                           </div>
-                          <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
+                          <div className='text-muted-foreground mt-3 flex w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs sm:text-sm'>
                             Pay {formatCurrency(actualPrice)}
                             {hasDiscount && savedAmount > 0 && (
-                              <span className='text-green-600'>
-                                {' '}
+                              <span className='font-medium text-emerald-600 dark:text-emerald-400'>
                                 • Save {formatCurrency(savedAmount)}
                               </span>
                             )}
@@ -285,27 +284,29 @@ export function RechargeFormCard({
                 >
                   {t('Custom Amount')}
                 </Label>
-                <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
-                  <Input
-                    id='topup-amount'
-                    type='number'
-                    value={localAmount}
-                    onChange={(e) => handleAmountChange(e.target.value)}
-                    min={minTopup}
-                    placeholder={`Minimum ${minTopup}`}
-                    className='h-9 text-base sm:h-10 sm:text-lg'
-                  />
-                  <div className='bg-muted/30 flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>
-                    <span className='text-muted-foreground truncate text-xs'>
-                      {t('Amount to pay:')}
-                    </span>
-                    {calculating ? (
-                      <Skeleton className='h-5 w-16' />
-                    ) : (
-                      <span className='text-sm font-semibold'>
-                        {formatCurrency(paymentAmount)}
+                <div className='border-border/60 bg-card/55 rounded-xl border p-2.5 sm:p-3'>
+                  <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,0.35fr)]'>
+                    <Input
+                      id='topup-amount'
+                      type='number'
+                      value={localAmount}
+                      onChange={(e) => handleAmountChange(e.target.value)}
+                      min={minTopup}
+                      placeholder={`Minimum ${minTopup}`}
+                      className='bg-background/80 h-11 border-transparent text-base shadow-none sm:text-lg'
+                    />
+                    <div className='border-primary/15 bg-primary/5 flex min-h-11 items-center justify-between gap-3 rounded-lg border px-3'>
+                      <span className='text-muted-foreground truncate text-xs'>
+                        {t('Amount to pay:')}
                       </span>
-                    )}
+                      {calculating ? (
+                        <Skeleton className='h-5 w-16' />
+                      ) : (
+                        <span className='text-base font-bold tabular-nums'>
+                          {formatCurrency(paymentAmount)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -340,17 +341,19 @@ export function RechargeFormCard({
                               ? `${method.name}. ${disabledReason}`
                               : method.name
                           }
-                          className='min-h-14 min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left'
+                          className='border-border/60 bg-card/70 hover:border-primary/35 hover:bg-card disabled:bg-muted/30 min-h-16 min-w-0 justify-start gap-3 rounded-xl px-3 py-3 text-left transition-all hover:shadow-sm'
                         >
                           {paymentLoading === method.type ? (
                             <Loader2 className='h-4 w-4 animate-spin' />
                           ) : (
-                            getPaymentIcon(
-                              method.type,
-                              'h-4 w-4',
-                              method.icon,
-                              method.name
-                            )
+                            <span className='bg-background/80 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-xs'>
+                              {getPaymentIcon(
+                                method.type,
+                                'h-5 w-5',
+                                method.icon,
+                                method.name
+                              )}
+                            </span>
                           )}
                           <span className='flex min-w-0 flex-col items-start gap-0.5'>
                             <span className='max-w-full truncate'>
@@ -438,9 +441,11 @@ export function RechargeFormCard({
                                 ? `${method.name}. ${disabledReason}`
                                 : method.name
                             }
-                            className='min-h-14 min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left'
+                            className='border-border/60 bg-card/70 hover:border-primary/35 hover:bg-card disabled:bg-muted/30 min-h-16 min-w-0 justify-start gap-3 rounded-xl px-3 py-3 text-left transition-all hover:shadow-sm'
                           >
-                            {methodIcon}
+                            <span className='bg-background/80 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-xs'>
+                              {methodIcon}
+                            </span>
                             <span className='flex min-w-0 flex-col items-start gap-0.5'>
                               <span className='max-w-full truncate'>
                                 {method.name}
@@ -499,50 +504,52 @@ export function RechargeFormCard({
 
       {/* Redemption Code Section */}
       {redemptionEnabled ? (
-        <div className='space-y-2.5 border-t pt-4 sm:space-y-3 sm:pt-6'>
-          <div className='flex items-center gap-2'>
-            <IconBadge tone='warning' size='xs'>
-              <Gift />
-            </IconBadge>
-            <Label
-              htmlFor='redemption-code'
-              className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
-            >
-              {t('Have a Code?')}
-            </Label>
-          </div>
-          <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
-            <Input
-              id='redemption-code'
-              value={redemptionCode}
-              onChange={(e) => onRedemptionCodeChange(e.target.value)}
-              placeholder={t('Enter your redemption code')}
-              className='h-9 min-w-0'
-            />
-            <Button
-              onClick={onRedeem}
-              disabled={redeeming}
-              variant='outline'
-              className='h-9 px-4'
-            >
-              {redeeming && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-              {t('Redeem')}
-            </Button>
-          </div>
-          {topupLink && (
-            <p className='text-muted-foreground text-xs'>
-              {t('Need a redemption code?')}{' '}
-              <a
-                href={topupLink}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='inline-flex items-center gap-1 underline-offset-4 hover:underline'
+        <div className='border-t pt-4 sm:pt-6'>
+          <div className='rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 sm:p-4'>
+            <div className='mb-3 flex items-center gap-2'>
+              <IconBadge tone='warning' size='xs'>
+                <Gift />
+              </IconBadge>
+              <Label
+                htmlFor='redemption-code'
+                className='text-xs font-semibold tracking-wider text-amber-700 uppercase dark:text-amber-300'
               >
-                {t('Get one here')}
-                <ExternalLink className='h-3 w-3' />
-              </a>
-            </p>
-          )}
+                {t('Have a Code?')}
+              </Label>
+            </div>
+            <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]'>
+              <Input
+                id='redemption-code'
+                value={redemptionCode}
+                onChange={(e) => onRedemptionCodeChange(e.target.value)}
+                placeholder={t('Enter your redemption code')}
+                className='bg-background/75 h-10 min-w-0 border-amber-500/20'
+              />
+              <Button
+                onClick={onRedeem}
+                disabled={redeeming}
+                variant='outline'
+                className='bg-background/70 h-10 border-amber-500/25 px-5 hover:bg-amber-500/10'
+              >
+                {redeeming && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+                {t('Redeem')}
+              </Button>
+            </div>
+            {topupLink && (
+              <p className='text-muted-foreground mt-2.5 text-xs'>
+                {t('Need a redemption code?')}{' '}
+                <a
+                  href={topupLink}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='inline-flex items-center gap-1 font-medium text-amber-700 underline-offset-4 hover:underline dark:text-amber-300'
+                >
+                  {t('Get one here')}
+                  <ExternalLink className='h-3 w-3' />
+                </a>
+              </p>
+            )}
+          </div>
         </div>
       ) : (
         <Alert className='border-t'>

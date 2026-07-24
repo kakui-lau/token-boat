@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -16,6 +17,9 @@ type TopUp struct {
 	UserId          int     `json:"user_id" gorm:"index"`
 	Amount          int64   `json:"amount"`
 	Money           float64 `json:"money"`
+	PayAmountCents  int64   `json:"pay_amount_cents" gorm:"default:0"`
+	PayCurrency     string  `json:"pay_currency" gorm:"type:varchar(8);default:''"`
+	StripeSessionId string  `json:"stripe_session_id" gorm:"type:varchar(255);default:''"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
@@ -45,6 +49,7 @@ var (
 	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrTopUpAmountMismatch   = errors.New("topup payment amount mismatch")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -106,7 +111,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	})
 }
 
-func Recharge(referenceId string, customerId string, callerIp string) (err error) {
+func Recharge(referenceId string, customerId string, callerIp string, paidAmountCents int64, paidCurrency string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -132,6 +137,11 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		if topUp.Status != common.TopUpStatusPending {
 			return errors.New("充值订单状态错误")
 		}
+		if topUp.PayAmountCents > 0 {
+			if paidAmountCents != topUp.PayAmountCents || !strings.EqualFold(paidCurrency, topUp.PayCurrency) {
+				return ErrTopUpAmountMismatch
+			}
+		}
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
@@ -151,6 +161,9 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
+		if errors.Is(err, ErrTopUpAmountMismatch) || errors.Is(err, ErrPaymentMethodMismatch) {
+			return err
+		}
 		return errors.New("充值失败，请稍后重试")
 	}
 

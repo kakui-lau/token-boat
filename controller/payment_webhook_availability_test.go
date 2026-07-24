@@ -26,12 +26,19 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	originalAPISecret := setting.StripeApiSecret
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
+	originalPricingMode := setting.StripeTopupPricingMode
+	originalProductID := setting.StripeTopupProductId
+	originalCurrency := setting.StripeCurrency
 	t.Cleanup(func() {
 		setting.StripeApiSecret = originalAPISecret
 		setting.StripeWebhookSecret = originalWebhookSecret
 		setting.StripePriceId = originalPriceID
+		setting.StripeTopupPricingMode = originalPricingMode
+		setting.StripeTopupProductId = originalProductID
+		setting.StripeCurrency = originalCurrency
 	})
 
+	setting.StripeTopupPricingMode = setting.StripeTopupPricingModeQuantityPrice
 	setting.StripeWebhookSecret = ""
 	setting.StripeApiSecret = "sk_test_123"
 	setting.StripePriceId = "price_123"
@@ -41,6 +48,17 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.True(t, isStripeWebhookEnabled())
 
 	setting.StripePriceId = ""
+	require.False(t, isStripeWebhookEnabled())
+
+	setting.StripeTopupPricingMode = setting.StripeTopupPricingModeInlinePrice
+	setting.StripeTopupProductId = ""
+	setting.StripeCurrency = "usd"
+	require.False(t, isStripeWebhookEnabled())
+
+	setting.StripeTopupProductId = "prod_123"
+	require.True(t, isStripeWebhookEnabled())
+
+	setting.StripeCurrency = ""
 	require.False(t, isStripeWebhookEnabled())
 }
 

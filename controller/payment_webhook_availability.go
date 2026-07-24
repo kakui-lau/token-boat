@@ -15,9 +15,13 @@ func isStripeTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return strings.TrimSpace(setting.StripeApiSecret) != "" &&
-		strings.TrimSpace(setting.StripeWebhookSecret) != "" &&
-		strings.TrimSpace(setting.StripePriceId) != ""
+	if strings.TrimSpace(setting.StripeApiSecret) == "" || strings.TrimSpace(setting.StripeWebhookSecret) == "" {
+		return false
+	}
+	if setting.NormalizeStripeTopupPricingMode(setting.StripeTopupPricingMode) == setting.StripeTopupPricingModeInlinePrice {
+		return strings.TrimSpace(setting.StripeTopupProductId) != "" && strings.TrimSpace(setting.StripeCurrency) != ""
+	}
+	return strings.TrimSpace(setting.StripePriceId) != ""
 }
 
 func isStripeWebhookConfigured() bool {

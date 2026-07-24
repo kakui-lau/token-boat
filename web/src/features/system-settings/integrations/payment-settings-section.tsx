@@ -43,6 +43,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -144,6 +151,12 @@ const paymentSchema = z.object({
   StripeApiSecret: z.string(),
   StripeWebhookSecret: z.string(),
   StripePriceId: z.string(),
+  StripeTopupPricingMode: z.enum([
+    STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE,
+    STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE,
+  ]),
+  StripeTopupProductId: z.string(),
+  StripeCurrency: z.string(),
   StripeUnitPrice: z.coerce.number().min(0),
   StripeMinTopUp: z.coerce.number().min(0),
   StripePromotionCodesEnabled: z.boolean(),
@@ -186,6 +199,8 @@ type PaymentBaseFormValues = Omit<
 >
 
 const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
+const STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE = 'quantity_price'
+const STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE = 'inline_price'
 const paymentTabContentClassName = 'mt-6 min-w-0'
 
 type PaymentComplianceDefaults = {
@@ -352,6 +367,11 @@ export function PaymentSettingsSection({
     mode: 'onChange', // Enable real-time validation
     defaultValues: {
       ...initialFormValues,
+      StripeTopupPricingMode:
+        initialFormValues.StripeTopupPricingMode ||
+        STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE,
+      StripeTopupProductId: initialFormValues.StripeTopupProductId || '',
+      StripeCurrency: initialFormValues.StripeCurrency || 'usd',
       PayMethods: formatJsonForEditor(initialFormValues.PayMethods),
       AmountOptions: formatJsonForEditor(initialFormValues.AmountOptions),
       AmountDiscount: formatJsonForEditor(initialFormValues.AmountDiscount),
@@ -360,6 +380,7 @@ export function PaymentSettingsSection({
   })
 
   const { isSubmitting } = form.formState
+  const stripeTopupPricingMode = form.watch('StripeTopupPricingMode')
 
   const setPaymentValue = React.useCallback(
     (
@@ -409,6 +430,11 @@ export function PaymentSettingsSection({
     initialRef.current = parsedDefaults
     form.reset({
       ...parsedDefaults,
+      StripeTopupPricingMode:
+        parsedDefaults.StripeTopupPricingMode ||
+        STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE,
+      StripeTopupProductId: parsedDefaults.StripeTopupProductId || '',
+      StripeCurrency: parsedDefaults.StripeCurrency || 'usd',
       PayMethods: formatJsonForEditor(parsedDefaults.PayMethods),
       AmountOptions: formatJsonForEditor(parsedDefaults.AmountOptions),
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
@@ -430,6 +456,11 @@ export function PaymentSettingsSection({
       StripeApiSecret: values.StripeApiSecret.trim(),
       StripeWebhookSecret: values.StripeWebhookSecret.trim(),
       StripePriceId: values.StripePriceId.trim(),
+      StripeTopupPricingMode:
+        values.StripeTopupPricingMode ||
+        STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE,
+      StripeTopupProductId: values.StripeTopupProductId.trim(),
+      StripeCurrency: values.StripeCurrency.trim().toLowerCase() || 'usd',
       StripeUnitPrice: values.StripeUnitPrice,
       StripeMinTopUp: values.StripeMinTopUp,
       StripePromotionCodesEnabled: values.StripePromotionCodesEnabled,
@@ -474,6 +505,12 @@ export function PaymentSettingsSection({
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
       StripeWebhookSecret: initialRef.current.StripeWebhookSecret.trim(),
       StripePriceId: initialRef.current.StripePriceId.trim(),
+      StripeTopupPricingMode:
+        initialRef.current.StripeTopupPricingMode ||
+        STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE,
+      StripeTopupProductId: initialRef.current.StripeTopupProductId.trim(),
+      StripeCurrency:
+        initialRef.current.StripeCurrency.trim().toLowerCase() || 'usd',
       StripeUnitPrice: initialRef.current.StripeUnitPrice,
       StripeMinTopUp: initialRef.current.StripeMinTopUp,
       StripePromotionCodesEnabled:
@@ -581,6 +618,24 @@ export function PaymentSettingsSection({
 
     if (sanitized.StripePriceId !== initial.StripePriceId) {
       updates.push({ key: 'StripePriceId', value: sanitized.StripePriceId })
+    }
+
+    if (sanitized.StripeTopupPricingMode !== initial.StripeTopupPricingMode) {
+      updates.push({
+        key: 'StripeTopupPricingMode',
+        value: sanitized.StripeTopupPricingMode,
+      })
+    }
+
+    if (sanitized.StripeTopupProductId !== initial.StripeTopupProductId) {
+      updates.push({
+        key: 'StripeTopupProductId',
+        value: sanitized.StripeTopupProductId,
+      })
+    }
+
+    if (sanitized.StripeCurrency !== initial.StripeCurrency) {
+      updates.push({ key: 'StripeCurrency', value: sanitized.StripeCurrency })
     }
 
     if (sanitized.StripeUnitPrice !== initial.StripeUnitPrice) {
@@ -1285,6 +1340,47 @@ export function PaymentSettingsSection({
                   </ul>
                 </div>
 
+                <FormField
+                  control={form.control}
+                  name='StripeTopupPricingMode'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Top-up pricing mode')}</FormLabel>
+                      <Select
+                        value={
+                          field.value ||
+                          STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE
+                        }
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem
+                            value={STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE}
+                          >
+                            {t('Fixed Price ID × quantity')}
+                          </SelectItem>
+                          <SelectItem
+                            value={STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE}
+                          >
+                            {t('Inline fixed amount')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t(
+                          'Keep the existing Price ID mode for compatibility, or use inline fixed amounts for dynamic Stripe top-ups.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className='grid gap-6 md:grid-cols-3'>
                   <FormField
                     control={form.control}
@@ -1338,28 +1434,81 @@ export function PaymentSettingsSection({
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name='StripePriceId'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Price ID')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t('price_xxx')}
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Stripe product price ID')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {stripeTopupPricingMode ===
+                  STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE ? (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name='StripeTopupProductId'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Top-up Product ID')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={t('prod_xxx')}
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Stripe Product ID used for inline top-up prices'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='StripeCurrency'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Currency')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={t('usd')}
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('Currency for Stripe top-up Checkout')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  ) : (
+                    <FormField
+                      control={form.control}
+                      name='StripePriceId'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Price ID')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder={t('price_xxx')}
+                              {...field}
+                              onChange={(event) =>
+                                field.onChange(event.target.value)
+                              }
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t('Stripe product price ID')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </div>
 
                 <div className='grid gap-6 md:grid-cols-3'>
@@ -1415,10 +1564,15 @@ export function PaymentSettingsSection({
                     render={({ field }) => (
                       <SettingsSwitchItem>
                         <SettingsSwitchContent>
-                          <FormLabel>{t('Promotion codes')}</FormLabel>
-                          <FormDescription>
-                            {t('Allow users to enter promo codes')}
-                          </FormDescription>
+	                          <FormLabel>{t('Promotion codes')}</FormLabel>
+	                          <FormDescription>
+	                            {stripeTopupPricingMode ===
+	                            STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE
+	                              ? t(
+	                                  'Stripe promo codes are only applied in fixed Price ID mode.'
+	                                )
+	                              : t('Allow users to enter promo codes')}
+	                          </FormDescription>
                         </SettingsSwitchContent>
                         <FormControl>
                           <Switch

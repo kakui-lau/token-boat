@@ -48,10 +48,9 @@ export type SafeNumberFieldProps = {
  *   numeric validators (`z.number().min(...)`, `z.coerce.number()`, etc.)
  *   fail at submit time, so `form.handleSubmit` silently refuses to call
  *   `onSubmit` — the save button appears frozen with no toast and no error.
- * - Numeric inputs should snap back to the previous valid number instead of
- *   keeping `NaN`. We preserve that behaviour by ignoring `NaN`
- *   updates: React's controlled-input reconciliation will restore the last
- *   valid value to the DOM on the next render.
+ * - Empty input should remain editable. We store `''` while the user clears
+ *   the field, so they can delete `1` before typing `2`; Zod still validates
+ *   the value before submit.
  *
  * Display:
  * - When the underlying state is not a finite number, the prop returns `''`
@@ -79,6 +78,10 @@ export function safeNumberFieldProps<
   return {
     value: display,
     onChange: (event) => {
+      if (event.target.value === '') {
+        ;(field.onChange as (value: '') => void)('')
+        return
+      }
       const next = event.target.valueAsNumber
       if (Number.isFinite(next)) {
         ;(field.onChange as (value: number) => void)(next)

@@ -51,6 +51,10 @@ const getGroupDefaults = (settings: BillingSettings) => ({
     settings['group_ratio_setting.group_special_usable_group'],
 })
 
+function normalizeStripeTopupPricingMode(value: string) {
+  return value === 'inline_price' ? 'inline_price' : 'quantity_price'
+}
+
 const BILLING_SECTIONS = [
   {
     id: 'quota',
@@ -145,7 +149,9 @@ const BILLING_SECTIONS = [
           StripeApiSecret: settings.StripeApiSecret,
           StripeWebhookSecret: settings.StripeWebhookSecret,
           StripePriceId: settings.StripePriceId,
-          StripeTopupPricingMode: settings.StripeTopupPricingMode,
+          StripeTopupPricingMode: normalizeStripeTopupPricingMode(
+            settings.StripeTopupPricingMode
+          ),
           StripeTopupProductId: settings.StripeTopupProductId,
           StripeCurrency: settings.StripeCurrency,
           StripeUnitPrice: settings.StripeUnitPrice,

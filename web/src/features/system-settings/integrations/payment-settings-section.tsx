@@ -87,6 +87,11 @@ import {
   type WaffoSettingsValues,
 } from './waffo-settings-section'
 
+const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
+const STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE = 'quantity_price'
+const STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE = 'inline_price'
+const paymentTabContentClassName = 'mt-6 min-w-0'
+
 function isHttpOriginUrl(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return true
@@ -151,10 +156,12 @@ const paymentSchema = z.object({
   StripeApiSecret: z.string(),
   StripeWebhookSecret: z.string(),
   StripePriceId: z.string(),
-  StripeTopupPricingMode: z.enum([
-    STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE,
-    STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE,
-  ]),
+  StripeTopupPricingMode: z.string().refine(
+    (value) =>
+      value === STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE ||
+      value === STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE,
+    'Invalid Stripe top-up pricing mode'
+  ),
   StripeTopupProductId: z.string(),
   StripeCurrency: z.string(),
   StripeUnitPrice: z.coerce.number().min(0),
@@ -197,11 +204,6 @@ type PaymentBaseFormValues = Omit<
   PaymentFormValues,
   keyof WaffoFormFieldValues | keyof WaffoPancakeSettingsValues
 >
-
-const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
-const STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE = 'quantity_price'
-const STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE = 'inline_price'
-const paymentTabContentClassName = 'mt-6 min-w-0'
 
 type PaymentComplianceDefaults = {
   confirmed: boolean

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
 )
+
+const optionSyncChannel = "new-api:option-sync"
 
 type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
@@ -207,6 +210,35 @@ func SyncOptions(frequency int) {
 	}
 }
 
+// StartOptionSyncSubscriber propagates option updates to every application
+// instance immediately. The periodic database sync remains as a fallback when
+// Redis is unavailable or a subscriber reconnects after missing a message.
+func StartOptionSyncSubscriber() {
+	if !common.RedisEnabled || common.RDB == nil {
+		return
+	}
+
+	pubsub := common.RDB.Subscribe(context.Background(), optionSyncChannel)
+	if _, err := pubsub.Receive(context.Background()); err != nil {
+		common.SysError("failed to subscribe to option updates: " + err.Error())
+		_ = pubsub.Close()
+		return
+	}
+
+	for range pubsub.Channel() {
+		loadOptionsFromDatabase()
+	}
+}
+
+func publishOptionSync() {
+	if !common.RedisEnabled || common.RDB == nil {
+		return
+	}
+	if err := common.RDB.Publish(context.Background(), optionSyncChannel, "reload").Err(); err != nil {
+		common.SysError("failed to publish option update: " + err.Error())
+	}
+}
+
 func UpdateOption(key string, value string) error {
 	// Save to database first
 	option := Option{
@@ -220,7 +252,11 @@ func UpdateOption(key string, value string) error {
 	// otherwise it will execute Update (with all fields).
 	DB.Save(&option)
 	// Update OptionMap
-	return updateOptionMap(key, value)
+	if err := updateOptionMap(key, value); err != nil {
+		return err
+	}
+	publishOptionSync()
+	return nil
 }
 
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
@@ -253,6 +289,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 			return err
 		}
 	}
+	publishOptionSync()
 	return nil
 }
 
@@ -591,7 +628,23 @@ func updateOptionMap(key string, value string) (err error) {
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
 	}
+	if err == nil && isPricingOption(key) {
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
+	}
 	return err
+}
+
+func isPricingOption(key string) bool {
+	switch key {
+	case "ModelRatio", "ModelPrice", "GroupRatio", "GroupGroupRatio",
+		"CompletionRatio", "CacheRatio", "CreateCacheRatio", "ImageRatio",
+		"AudioRatio", "AudioCompletionRatio", "AutoGroups", "UserUsableGroups",
+		"ExposeRatioEnabled":
+		return true
+	default:
+		return strings.HasPrefix(key, "billing_setting.")
+	}
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理

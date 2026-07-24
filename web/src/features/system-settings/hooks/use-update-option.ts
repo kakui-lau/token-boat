@@ -24,7 +24,7 @@ import { updateSystemOption } from '../api'
 import type { UpdateOptionRequest } from '../types'
 
 // Configuration keys that require status refresh
-const STATUS_RELATED_KEYS = [
+const STATUS_RELATED_KEYS = new Set([
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',
@@ -36,7 +36,23 @@ const STATUS_RELATED_KEYS = [
   'general_setting.quota_display_type',
   'general_setting.custom_currency_symbol',
   'general_setting.custom_currency_exchange_rate',
-]
+])
+
+const PRICING_RELATED_KEYS = new Set([
+  'ModelRatio',
+  'ModelPrice',
+  'GroupRatio',
+  'GroupGroupRatio',
+  'CompletionRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+  'AutoGroups',
+  'UserUsableGroups',
+  'ExposeRatioEnabled',
+])
 
 export function useUpdateOption() {
   const queryClient = useQueryClient()
@@ -49,13 +65,20 @@ export function useUpdateOption() {
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
 
         // If updating frontend-display-related config, also refresh status
-        if (STATUS_RELATED_KEYS.includes(variables.key)) {
+        if (STATUS_RELATED_KEYS.has(variables.key)) {
           queryClient.invalidateQueries({ queryKey: ['status'] })
           try {
             window.localStorage.removeItem('status')
           } catch {
             /* empty */
           }
+        }
+
+        if (
+          PRICING_RELATED_KEYS.has(variables.key) ||
+          variables.key.startsWith('billing_setting.')
+        ) {
+          queryClient.invalidateQueries({ queryKey: ['pricing'] })
         }
 
         toast.success(i18next.t('Setting updated successfully'))

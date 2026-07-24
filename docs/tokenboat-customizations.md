@@ -4,6 +4,9 @@
 
 最后更新：2026-07-24
 
+模型公开名称、渠道映射和定价键的维护规则见
+[TokenBoat 模型命名与配置一致性规范](./model-naming-conventions.zh_CN.md)。
+
 ## 单前端架构
 
 - 已跟随上游迁移为唯一前端目录 `web/`，不再维护 `web/default`、`web/classic`、`web/tokenboat` 三套副本。

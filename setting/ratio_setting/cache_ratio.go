@@ -5,6 +5,15 @@ import (
 )
 
 var defaultCacheRatio = map[string]float64{
+	"openai/gpt-5.4":                      0.1,
+	"openai/gpt-5.4-mini":                 0.1,
+	"openai/gpt-5.4-nano":                 0.1,
+	"openai/gpt-5.5":                      0.1,
+	"openai/gpt-5.6-sol":                  0.1,
+	"openai/gpt-5.6-terra":                0.1,
+	"openai/gpt-5.6-luna":                 0.1,
+	"z-ai/glm-5.1":                        0.185714285714,
+	"z-ai/glm-5.2":                        0.185714285714,
 	"gemini-3-flash-preview":              0.1,
 	"gemini-3-pro-preview":                0.1,
 	"gemini-3.1-pro-preview":              0.1,
@@ -81,9 +90,9 @@ var defaultCacheRatio = map[string]float64{
 }
 
 var defaultCreateCacheRatio = map[string]float64{
-	"gpt-5.6-sol":                         1.25,
-	"gpt-5.6-terra":                       1.25,
-	"gpt-5.6-luna":                        1.25,
+	"openai/gpt-5.6-sol":                  1.25,
+	"openai/gpt-5.6-terra":                1.25,
+	"openai/gpt-5.6-luna":                 1.25,
 	"claude-3-sonnet-20240229":            1.25,
 	"claude-3-opus-20240229":              1.25,
 	"claude-3-haiku-20240307":             1.25,

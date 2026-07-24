@@ -96,10 +96,15 @@ var defaultModelRatio = map[string]float64{
 	"gpt-5-mini-2025-08-07":                     0.125,
 	"gpt-5-nano":                                0.025,
 	"gpt-5-nano-2025-08-07":                     0.025,
-	"gpt-5.5":                                   2.5, // $5 / 1M tokens
-	"gpt-5.6-sol":                               2.5,
-	"gpt-5.6-terra":                             1.25,
-	"gpt-5.6-luna":                              0.5,
+	"openai/gpt-5.4":                            1.25,  // $2.5 / 1M tokens
+	"openai/gpt-5.4-mini":                       0.375, // $0.75 / 1M tokens
+	"openai/gpt-5.4-nano":                       0.1,   // $0.2 / 1M tokens
+	"openai/gpt-5.5":                            2.5,   // $5 / 1M tokens
+	"openai/gpt-5.6-sol":                        2.5,
+	"openai/gpt-5.6-terra":                      1.25,
+	"openai/gpt-5.6-luna":                       0.5,
+	"z-ai/glm-5.1":                              0.7, // $1.4 / 1M tokens
+	"z-ai/glm-5.2":                              0.7, // $1.4 / 1M tokens
 	"gpt-3.5-turbo":                             0.25,
 	"gpt-3.5-turbo-0613":                        0.75,
 	"gpt-3.5-turbo-16k":                         1.5, // $0.003 / 1K tokens
@@ -326,10 +331,19 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
-	"gpt-4-gizmo-*":  2,
-	"gpt-4o-gizmo-*": 3,
-	"gpt-4-all":      2,
-	"gpt-image-1":    8,
+	"gpt-4-gizmo-*":        2,
+	"gpt-4o-gizmo-*":       3,
+	"gpt-4-all":            2,
+	"gpt-image-1":          8,
+	"openai/gpt-5.4":       6,
+	"openai/gpt-5.4-mini":  6,
+	"openai/gpt-5.4-nano":  6.25,
+	"openai/gpt-5.5":       6,
+	"openai/gpt-5.6-sol":   6,
+	"openai/gpt-5.6-terra": 6,
+	"openai/gpt-5.6-luna":  6,
+	"z-ai/glm-5.1":         3.142857142857,
+	"z-ai/glm-5.2":         3.142857142857,
 }
 
 // InitRatioSettings initializes all model related settings maps
@@ -493,6 +507,7 @@ func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 }
 
 func getHardcodedCompletionModelRatio(name string) (float64, bool) {
+	name = strings.TrimPrefix(name, "openai/")
 
 	isReservedModel := strings.HasSuffix(name, "-all") || strings.HasSuffix(name, "-gizmo-*")
 	if isReservedModel {

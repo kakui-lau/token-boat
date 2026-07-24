@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -39,6 +40,10 @@ const claudeCacheCreation1hMultiplier = 6 / 3.75
 // used for tiered expression pre-consume when the client omits max_tokens, so
 // the pre-consumed quota still reflects a plausible output cost in paid groups.
 const defaultTieredPreConsumeMaxTokens = 8192
+const maxPersistedTaskBillingRequestBytes = 1 << 20
+
+var sensitiveBillingHeaderPattern = regexp.MustCompile(`(?i)header\s*\(\s*["'](?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)["']\s*\)`)
+var timeBillingFunctionPattern = regexp.MustCompile(`(?i)(?:hour|minute|weekday|month|day)\s*\(`)
 
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.GroupRatioInfo {
@@ -245,6 +250,58 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
 	}
+	return priceData, nil
+}
+
+// ModelPriceHelperTask resolves task pricing. Tiered expressions use the same
+// frozen pre-consume contract as synchronous relays; legacy task models keep
+// their existing per-call/ratio behavior.
+func ModelPriceHelperTask(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
+	if info.TieredBillingSnapshot != nil {
+		priceData := types.PriceData{
+			GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: info.TieredBillingSnapshot.GroupRatio},
+			Quota:             info.TieredBillingSnapshot.EstimatedQuotaAfterGroup,
+			QuotaToPreConsume: info.TieredBillingSnapshot.EstimatedQuotaAfterGroup,
+		}
+		info.PriceData = priceData
+		return priceData, nil
+	}
+	if billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeTieredExpr {
+		return ModelPriceHelperPerCall(c, info)
+	}
+	if info.TaskRelayInfo == nil || !info.TaskTieredEstimateReady || info.TaskPreConsumeTokens <= 0 {
+		return types.PriceData{}, fmt.Errorf("model %s task channel does not provide a safe tiered billing estimate", info.OriginModelName)
+	}
+	exprStr, _ := billing_setting.GetBillingExpr(info.OriginModelName)
+	if sensitiveBillingHeaderPattern.MatchString(exprStr) {
+		return types.PriceData{}, fmt.Errorf("task billing expression must not reference sensitive authentication headers")
+	}
+	if timeBillingFunctionPattern.MatchString(exprStr) {
+		return types.PriceData{}, fmt.Errorf("task billing expression must not reference time-dependent functions")
+	}
+	if info.BillingRequestInput != nil {
+		if len(info.BillingRequestInput.Body) > maxPersistedTaskBillingRequestBytes {
+			return types.PriceData{}, fmt.Errorf("task billing expression request body exceeds %d bytes", maxPersistedTaskBillingRequestBytes)
+		}
+		safeHeaders := make(map[string]string, len(info.BillingRequestInput.Headers))
+		for key, value := range info.BillingRequestInput.Headers {
+			switch strings.ToLower(strings.TrimSpace(key)) {
+			case "authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key":
+				continue
+			default:
+				safeHeaders[key] = value
+			}
+		}
+		info.BillingRequestInput.Headers = safeHeaders
+	}
+
+	meta := &types.TokenCountMeta{MaxTokens: info.TaskPreConsumeTokens}
+	priceData, err := modelPriceHelperTiered(c, info, 0, meta, HandleGroupRatio(c, info))
+	if err != nil {
+		return types.PriceData{}, err
+	}
+	priceData.Quota = priceData.QuotaToPreConsume
+	info.PriceData = priceData
 	return priceData, nil
 }
 

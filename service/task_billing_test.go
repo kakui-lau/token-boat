@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
@@ -193,6 +194,115 @@ func TestPriceDataReplaceAndApplyOtherRatios(t *testing.T) {
 	require.False(t, replaced)
 	assert.Nil(t, priceData.OtherRatios())
 	assert.Equal(t, 1.0, priceData.OtherRatioMultiplier())
+}
+
+func TestNewTaskBillingContextFreezesExpressionAndRedactsSecrets(t *testing.T) {
+	snapshot := &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", ExprString: `tier("x", c)`}
+	info := &relaycommon.RelayInfo{
+		OriginModelName:       "bytedance/seedance-2.0",
+		TieredBillingSnapshot: snapshot,
+		BillingRequestInput: &billingexpr.RequestInput{
+			Headers: map[string]string{
+				"Authorization": "Bearer secret",
+				"Cookie":        "session=secret",
+				"X-Plan":        "pro",
+			},
+			Body: []byte(`{"metadata":{"resolution":"1080p"}}`),
+		},
+	}
+
+	bc := NewTaskBillingContext(info)
+	require.Same(t, snapshot, bc.TieredSnapshot)
+	require.NotNil(t, bc.TieredRequest)
+	assert.NotContains(t, bc.TieredRequest.Headers, "Authorization")
+	assert.NotContains(t, bc.TieredRequest.Headers, "Cookie")
+	assert.Equal(t, "pro", bc.TieredRequest.Headers["X-Plan"])
+	assert.JSONEq(t, `{"metadata":{"resolution":"1080p"}}`, string(bc.TieredRequest.Body))
+}
+
+func TestComputeTieredTaskQuotaUsesTotalWithoutDoubleCountingCompletion(t *testing.T) {
+	task := &model.Task{PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+		TieredSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:  "tiered_expr",
+			ExprString:   `tier("video", (p + c) * 31)`,
+			ExprHash:     billingexpr.ExprHashString(`tier("video", (p + c) * 31)`),
+			GroupRatio:   1,
+			QuotaPerUnit: common.QuotaPerUnit,
+			ExprVersion:  1,
+		},
+	}}}
+
+	quota, result, ok := computeTieredTaskQuota(task, &relaycommon.TaskInfo{
+		TotalTokens:      1000,
+		CompletionTokens: 200,
+	})
+	require.True(t, ok)
+	require.NotNil(t, result)
+	assert.Equal(t, 15_500, quota)
+
+	quota, _, ok = computeTieredTaskQuota(task, &relaycommon.TaskInfo{
+		TotalTokens:      1000,
+		CompletionTokens: 1200,
+	})
+	require.True(t, ok)
+	assert.Equal(t, 15_500, quota)
+
+	quota, _, ok = computeTieredTaskQuota(task, &relaycommon.TaskInfo{TotalTokens: 1000})
+	require.True(t, ok)
+	assert.Equal(t, 15_500, quota)
+}
+
+func TestPrepareTieredTaskSettlementRequiresUpstreamUsage(t *testing.T) {
+	task := &model.Task{
+		Quota:            12345,
+		SettlementStatus: model.TaskSettlementStatusCompleted,
+		PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+			TieredSnapshot: &billingexpr.BillingSnapshot{
+				BillingMode:  "tiered_expr",
+				ExprString:   `tier("video", c * 31)`,
+				ExprHash:     billingexpr.ExprHashString(`tier("video", c * 31)`),
+				GroupRatio:   1,
+				QuotaPerUnit: common.QuotaPerUnit,
+				ExprVersion:  1,
+			},
+		}},
+	}
+
+	ok := prepareTieredTaskSettlement(task, &relaycommon.TaskInfo{})
+
+	assert.False(t, ok)
+	assert.Equal(t, model.TaskSettlementStatusManual, task.SettlementStatus)
+	assert.Equal(t, 12345, task.SettlementTargetQuota)
+	assert.Contains(t, task.SettlementError, "usage missing")
+}
+
+func TestHasTaskPollingWorkIncludesSuccessfulPendingSettlement(t *testing.T) {
+	truncate(t)
+	task := makeTask(1, 1, 1000, 0, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusSuccess
+	task.Progress = "100%"
+	task.SettlementStatus = model.TaskSettlementStatusPending
+	task.SettlementTargetQuota = 900
+	require.NoError(t, model.DB.Create(task).Error)
+	assert.True(t, model.HasTaskPollingWork())
+}
+
+func TestRecalculateTaskQuotaCanSettleToZero(t *testing.T) {
+	truncate(t)
+	const userID, tokenID, channelID = 61, 61, 61
+	seedUser(t, userID, 10_000)
+	seedToken(t, tokenID, userID, "sk-zero-settlement", 8_000)
+	seedChannel(t, channelID)
+	task := makeTask(userID, channelID, 5_000, tokenID, BillingSourceWallet, 0)
+	task.SettlementStatus = model.TaskSettlementStatusPending
+	require.NoError(t, model.DB.Create(task).Error)
+
+	RecalculateTaskQuota(context.Background(), task, 0, "free expression")
+
+	assert.Equal(t, 15_000, getUserQuota(t, userID))
+	assert.Equal(t, 13_000, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, task.Quota)
+	assert.Equal(t, model.TaskSettlementStatusCompleted, task.SettlementStatus)
 }
 
 func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {

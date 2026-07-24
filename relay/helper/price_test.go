@@ -142,6 +142,70 @@ func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
 	}
 }
 
+func TestModelPriceHelperTaskUsesExpressionAndProviderEstimate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+
+	const modelName = "bytedance/seedance-task-test"
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"bytedance/seedance-task-test":"tiered_expr"}`,
+		"billing_setting.billing_expr":    `{"bytedance/seedance-task-test":"param(\"metadata.billing_has_video\") == true ? tier(\"video_1080p\", (p + c) * 4.246575) : tier(\"text_1080p\", (p + c) * 6.986301)"}`,
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: modelName,
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{
+			TaskPreConsumeTokens:    1_000_000,
+			TaskTieredEstimateReady: true,
+		},
+		BillingRequestInput: &billingexpr.RequestInput{
+			Body: []byte(`{"metadata":{"content":[{"type":"video_url"}],"resolution":"1080p","billing_has_video":true}}`),
+		},
+	}
+
+	priceData, err := ModelPriceHelperTask(ctx, info)
+	require.NoError(t, err)
+	require.Equal(t, 2_123_288, priceData.Quota)
+	require.Empty(t, priceData.OtherRatios())
+	require.NotNil(t, info.TieredBillingSnapshot)
+	require.Equal(t, "video_1080p", info.TieredBillingSnapshot.EstimatedTier)
+}
+
+func TestModelPriceHelperTaskRejectsSensitiveHeaderExpression(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"sensitive-task":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"sensitive-task":"header(\"Authorization\") == \"x\" ? tier(\"a\", c) : tier(\"b\", c)"}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "sensitive-task",
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{
+			TaskPreConsumeTokens:    1000,
+			TaskTieredEstimateReady: true,
+		},
+	}
+	_, err := ModelPriceHelperTask(ctx, info)
+	require.ErrorContains(t, err, "sensitive authentication headers")
+}
+
 func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
@@ -47,6 +48,7 @@ const (
 	TaskRefundStatusCompleted     = "completed"
 	TaskSettlementStatusPending   = "pending"
 	TaskSettlementStatusCompleted = "completed"
+	TaskSettlementStatusManual    = "manual_review"
 )
 
 // TaskRefundLegacyCutoff separates legacy timeout tasks that intentionally
@@ -133,12 +135,14 @@ type TaskPrivateData struct {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
-	ModelPrice      float64            `json:"model_price,omitempty"`       // 模型单价
-	GroupRatio      float64            `json:"group_ratio,omitempty"`       // 分组倍率
-	ModelRatio      float64            `json:"model_ratio,omitempty"`       // 模型倍率
-	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
-	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
-	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+	ModelPrice      float64                      `json:"model_price,omitempty"`       // 模型单价
+	GroupRatio      float64                      `json:"group_ratio,omitempty"`       // 分组倍率
+	ModelRatio      float64                      `json:"model_ratio,omitempty"`       // 模型倍率
+	OtherRatios     map[string]float64           `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
+	OriginModelName string                       `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
+	PerCallBilling  bool                         `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+	TieredSnapshot  *billingexpr.BillingSnapshot `json:"tiered_snapshot,omitempty"`
+	TieredRequest   *billingexpr.RequestInput    `json:"tiered_request,omitempty"`
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
@@ -386,6 +390,15 @@ func HasTaskPollingWork() bool {
 
 	var id int64
 	err := DB.Model(&Task{}).
+		Where("settlement_status = ? OR billing_audit_status = ?", TaskSettlementStatusPending, TaskSettlementStatusPending).
+		Limit(1).
+		Pluck("id", &id).Error
+	if err == nil && id != 0 {
+		return true
+	}
+
+	id = 0
+	err = DB.Model(&Task{}).
 		Where("status = ?", TaskStatusFailure).
 		Where("quota != ?", 0).
 		Where("(submit_time <= ? OR submit_time >= ?)", 0, TaskRefundLegacyCutoff).
@@ -582,7 +595,7 @@ func ApplyTaskRefund(id int64, expectedQuota int) (applied bool, task *Task, tok
 // billing delta to the funding source, token, usage counters, channel and task
 // marker. The expected quota makes retries idempotent.
 func ApplyTaskSettlement(id int64, expectedQuota, actualQuota int) (applied bool, task *Task, tokenKey string, err error) {
-	if id <= 0 || expectedQuota < 0 || actualQuota <= 0 {
+	if id <= 0 || expectedQuota < 0 || actualQuota < 0 {
 		return false, nil, "", errors.New("invalid task settlement request")
 	}
 
@@ -721,7 +734,7 @@ func ApplyTaskSettlement(id int64, expectedQuota, actualQuota int) (applied bool
 }
 
 func MarkTaskSettlementPending(id int64, targetQuota int, message string) error {
-	if id <= 0 || targetQuota <= 0 {
+	if id <= 0 || targetQuota < 0 {
 		return errors.New("invalid pending task settlement")
 	}
 	return DB.Model(&Task{}).Where("id = ?", id).Updates(map[string]any{
@@ -731,8 +744,19 @@ func MarkTaskSettlementPending(id int64, targetQuota int, message string) error 
 	}).Error
 }
 
+func MarkTaskSettlementManualReview(id int64, targetQuota int, message string) error {
+	if id <= 0 || targetQuota < 0 {
+		return errors.New("invalid manual task settlement")
+	}
+	return DB.Model(&Task{}).Where("id = ?", id).Updates(map[string]any{
+		"settlement_status":       TaskSettlementStatusManual,
+		"settlement_target_quota": targetQuota,
+		"settlement_error":        message,
+	}).Error
+}
+
 func UpdateTaskInitialSettlement(id int64, chargedQuota, targetQuota int, status, message string) error {
-	if id <= 0 || chargedQuota < 0 || targetQuota <= 0 {
+	if id <= 0 || chargedQuota < 0 || targetQuota < 0 {
 		return errors.New("invalid initial task settlement")
 	}
 	return DB.Model(&Task{}).Where("id = ?", id).Updates(map[string]any{
@@ -748,7 +772,7 @@ func GetPendingTaskSettlements(limit int) []*Task {
 		return nil
 	}
 	var tasks []*Task
-	if err := DB.Where("settlement_status = ? AND settlement_target_quota > 0", TaskSettlementStatusPending).
+	if err := DB.Where("settlement_status = ?", TaskSettlementStatusPending).
 		Order("updated_at").
 		Limit(limit).
 		Find(&tasks).Error; err != nil {

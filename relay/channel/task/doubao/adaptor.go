@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,10 +16,12 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -119,7 +123,116 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	if taskErr := relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
+		return taskErr
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
+		return nil
+	}
+	if !strings.Contains(strings.ToLower(req.Model), "seedance-2.0") {
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("tiered expression billing is only supported for Seedance 2.0 on DoubaoVideo"),
+			"unsupported_tiered_billing",
+			http.StatusBadRequest,
+		)
+	}
+
+	estimatedTokens, err := estimateMaxBillingTokens(req)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	info.TaskPreConsumeTokens = estimatedTokens
+	info.TaskTieredEstimateReady = true
+	normalizedRequest := req
+	normalizedRequest.Metadata = make(map[string]interface{}, len(req.Metadata)+2)
+	for key, value := range req.Metadata {
+		normalizedRequest.Metadata[key] = value
+	}
+	resolution := normalizedRequest.Resolution
+	if metadataResolution, ok := normalizedRequest.Metadata["resolution"].(string); resolution == "" && ok {
+		resolution = metadataResolution
+	}
+	if resolution == "" {
+		resolution = "720p"
+	}
+	normalizedRequest.Metadata["resolution"] = strings.ToLower(strings.TrimSpace(resolution))
+	duration := normalizedRequest.Duration
+	if duration == 0 {
+		duration, _ = strconv.Atoi(normalizedRequest.Seconds)
+	}
+	if duration == 0 {
+		if metadataDuration, ok := normalizedRequest.Metadata["duration"].(float64); ok {
+			duration = int(metadataDuration)
+		}
+	}
+	if duration == 0 {
+		duration = 15
+	}
+	normalizedRequest.Metadata["duration"] = duration
+	normalizedRequest.Metadata["billing_has_video"] = hasVideoInMetadata(normalizedRequest.Metadata)
+	if content, ok := billingContentProjection(normalizedRequest.Metadata); ok {
+		// Expressions only need content kinds. Do not persist prompts or signed
+		// media URLs in the task billing snapshot.
+		normalizedRequest.Metadata["content"] = content
+	}
+	body, err := common.Marshal(normalizedRequest)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	info.BillingRequestInput = &billingexpr.RequestInput{
+		Headers: info.RequestHeaders,
+		Body:    body,
+	}
+	return nil
+}
+
+func estimateMaxBillingTokens(req relaycommon.TaskSubmitReq) (int, error) {
+	duration := req.Duration
+	if duration == 0 {
+		duration, _ = strconv.Atoi(req.Seconds)
+	}
+	if metadataDuration, ok := req.Metadata["duration"].(float64); duration == 0 && ok {
+		duration = int(metadataDuration)
+	}
+	if duration == 0 {
+		duration = 15
+	}
+	if duration < 1 || duration > 15 {
+		return 0, fmt.Errorf("duration must be between 1 and 15 seconds")
+	}
+
+	resolution := req.Resolution
+	if metadataResolution, ok := req.Metadata["resolution"].(string); resolution == "" && ok {
+		resolution = metadataResolution
+	}
+	var width, height int
+	switch strings.ToLower(strings.TrimSpace(resolution)) {
+	case "480p":
+		width, height = 854, 480
+	case "", "720p":
+		width, height = 1280, 720
+	case "1080p":
+		width, height = 1920, 1080
+	case "4k":
+		width, height = 3840, 2160
+	default:
+		return 0, fmt.Errorf("unsupported resolution %q", resolution)
+	}
+
+	billableSeconds := duration
+	if hasVideoInMetadata(req.Metadata) {
+		// The provider limits input video to 15 seconds. Reserve that maximum
+		// because a remote URL's media duration is not known before submission.
+		billableSeconds += 15
+	}
+	// Reserve the highest supported output frame rate. Actual usage returned by
+	// the provider replaces this hold at completion.
+	const conservativeFPS = 60
+	return int(math.Ceil(float64(billableSeconds*width*height*conservativeFPS) / 1024)), nil
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -160,23 +273,53 @@ func hasVideoInMetadata(metadata map[string]interface{}) bool {
 	if !ok {
 		return false
 	}
-	contentSlice, ok := contentRaw.([]interface{})
-	if !ok {
+	contentData, err := common.Marshal(contentRaw)
+	if err != nil {
+		return false
+	}
+	var contentSlice []map[string]interface{}
+	if err := common.Unmarshal(contentData, &contentSlice); err != nil {
 		return false
 	}
 	for _, item := range contentSlice {
-		itemMap, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if itemMap["type"] == "video_url" {
+		if item["type"] == "video_url" {
 			return true
 		}
-		if _, has := itemMap["video_url"]; has {
+		if _, has := item["video_url"]; has {
 			return true
 		}
 	}
 	return false
+}
+
+func billingContentProjection(metadata map[string]interface{}) ([]map[string]interface{}, bool) {
+	if metadata == nil {
+		return nil, false
+	}
+	contentRaw, ok := metadata["content"]
+	if !ok {
+		return nil, false
+	}
+	contentData, err := common.Marshal(contentRaw)
+	if err != nil {
+		return nil, false
+	}
+	var content []map[string]interface{}
+	if err := common.Unmarshal(contentData, &content); err != nil {
+		return nil, false
+	}
+	projected := make([]map[string]interface{}, 0, len(content))
+	for _, item := range content {
+		entry := make(map[string]interface{}, 2)
+		if itemType, ok := item["type"].(string); ok && itemType != "" {
+			entry["type"] = itemType
+		}
+		if _, hasVideoURL := item["video_url"]; hasVideoURL {
+			entry["video_url"] = true
+		}
+		projected = append(projected, entry)
+	}
+	return projected, true
 }
 
 // BuildRequestBody converts request into Doubao specific format.
@@ -303,8 +446,16 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	if req.Resolution != "" {
+		r.Resolution = strings.ToLower(strings.TrimSpace(req.Resolution))
+	}
+	if req.AspectRatio != "" {
+		r.Ratio = req.AspectRatio
+	}
 
-	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
+	if req.Duration > 0 {
+		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+	} else if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
 	}
 

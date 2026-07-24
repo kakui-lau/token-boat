@@ -194,7 +194,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 4. 价格计算：基础模型价格
 	info.OriginModelName = modelName
-	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	priceData, err := helper.ModelPriceHelperTask(c, info)
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
@@ -203,9 +203,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
-		for k, v := range estimatedRatios {
-			info.PriceData.AddOtherRatio(k, v)
+	if info.TieredBillingSnapshot == nil {
+		if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+			for k, v := range estimatedRatios {
+				info.PriceData.AddOtherRatio(k, v)
+			}
 		}
 	}
 
@@ -268,7 +270,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
+	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); info.TieredBillingSnapshot == nil && len(adjustedRatios) > 0 {
 		if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
 			// 基于调整后的 ratios 重新计算 quota
 			finalQuota = adjustedQuota
@@ -319,14 +321,7 @@ func persistOpenRouterTaskBeforeSubmit(info *relaycommon.RelayInfo, platform con
 	task.PrivateData.SubscriptionId = info.SubscriptionId
 	task.PrivateData.TokenId = info.TokenId
 	task.PrivateData.NodeName = common.NodeName
-	task.PrivateData.BillingContext = &model.TaskBillingContext{
-		ModelPrice:      info.PriceData.ModelPrice,
-		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
-		ModelRatio:      info.PriceData.ModelRatio,
-		OtherRatios:     info.PriceData.OtherRatios(),
-		OriginModelName: info.OriginModelName,
-		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
-	}
+	task.PrivateData.BillingContext = service.NewTaskBillingContext(info)
 	// BillingSession owns the provisional pre-consume until the provider
 	// accepts the request. A failed submission therefore cannot be picked up by
 	// the asynchronous refund sweep and refunded twice.

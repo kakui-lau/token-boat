@@ -691,6 +691,10 @@ type TaskRelayInfo struct {
 	AcceptedTaskData       []byte
 
 	ConsumeQuota bool
+	// TaskPreConsumeTokens is a provider adaptor's conservative token estimate
+	// for asynchronous expression billing. Completion uses upstream usage.
+	TaskPreConsumeTokens    int
+	TaskTieredEstimateReady bool
 
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any

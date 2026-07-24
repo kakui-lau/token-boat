@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -169,6 +170,39 @@ func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData 
 	return priceData
 }
 
+// NewTaskBillingContext freezes every value required to settle an asynchronous
+// task. Sensitive credentials are deliberately excluded from the persisted
+// request headers.
+func NewTaskBillingContext(info *relaycommon.RelayInfo) *model.TaskBillingContext {
+	bc := &model.TaskBillingContext{
+		ModelPrice:      info.PriceData.ModelPrice,
+		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:      info.PriceData.ModelRatio,
+		OtherRatios:     info.PriceData.OtherRatios(),
+		OriginModelName: info.OriginModelName,
+		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
+		TieredSnapshot:  info.TieredBillingSnapshot,
+	}
+	if info.BillingRequestInput == nil {
+		return bc
+	}
+
+	requestInput := &billingexpr.RequestInput{
+		Headers: make(map[string]string),
+		Body:    append([]byte(nil), info.BillingRequestInput.Body...),
+	}
+	for key, value := range info.BillingRequestInput.Headers {
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key":
+			continue
+		default:
+			requestInput.Headers[key] = value
+		}
+	}
+	bc.TieredRequest = requestInput
+	return bc
+}
+
 // taskModelName 从 BillingContext 或 Properties 中获取模型名称。
 func taskModelName(task *model.Task) string {
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.OriginModelName != "" {
@@ -238,7 +272,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 // clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, clamps ...*common.QuotaClamp) {
-	if actualQuota <= 0 {
+	if actualQuota < 0 {
 		return
 	}
 	preConsumedQuota := task.Quota

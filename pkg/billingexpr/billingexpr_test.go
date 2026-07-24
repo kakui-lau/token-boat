@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/stretchr/testify/require"
 )
 
 // ---------------------------------------------------------------------------
@@ -419,6 +420,23 @@ func TestExprHashString_Deterministic(t *testing.T) {
 	h3 := billingexpr.ExprHashString("p * 0.6")
 	if h1 == h3 {
 		t.Error("different expressions should have different hashes")
+	}
+}
+
+func TestRunExprRejectsInvalidBillingResults(t *testing.T) {
+	tests := []struct {
+		name string
+		expr string
+	}{
+		{name: "negative", expr: `tier("bad", p * -1)`},
+		{name: "positive infinity", expr: `tier("bad", p / 0)`},
+		{name: "nan", expr: `tier("bad", 0 / 0)`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := billingexpr.RunExpr(test.expr, billingexpr.TokenParams{P: 1})
+			require.ErrorContains(t, err, "finite non-negative")
+		})
 	}
 }
 

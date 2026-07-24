@@ -7,7 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateModelPriceAllowsRemovingOpenRouterVideoDefaults(t *testing.T) {
+func TestSeedanceVideoModelsHaveNoBuiltInPrices(t *testing.T) {
+	assert.NotContains(t, GetDefaultModelPriceMap(), "bytedance/seedance-2.0")
+	assert.NotContains(t, GetDefaultModelPriceMap(), "bytedance/seedance-2.0-fast")
+}
+
+func TestUpdateModelPriceAllowsRemovingOpenRouterVideoPrices(t *testing.T) {
 	saved := ModelPrice2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, UpdateModelPriceByJSONString(saved))

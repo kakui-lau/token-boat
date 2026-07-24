@@ -2,7 +2,7 @@
 
 本文记录 TokenBoat 相对上游 `QuantumNous/new-api` 的重要业务定制。同步上游、处理冲突或重构前，应先核对本文。
 
-最后更新：2026-07-23
+最后更新：2026-07-24
 
 ## 单前端架构
 
@@ -31,6 +31,39 @@
 6. `service/task_billing.go` 与 `service/task_polling.go`
 7. `setting/ratio_setting/`
 8. `web/src/features/system-settings/models/` 与全部语言文件
+
+## Stripe 余额充值定价
+
+核心提交：`a68c96b21`。
+
+- 余额充值支持两种 Stripe Checkout 创建模式：
+  - `quantity_price`：兼容上游/旧逻辑，使用 `StripePriceId × amount`。
+  - `inline_price`：TokenBoat 推荐模式，使用 `price_data.unit_amount × 1`，避免 `custom_unit_amount` 国家限制，也不会创建大量 Price。
+- 新增配置项：
+  - `StripeTopupPricingMode`
+  - `StripeTopupProductId`
+  - `StripeCurrency`
+- `TopUp` 新增账务校验字段：
+  - `pay_amount_cents`
+  - `pay_currency`
+  - `stripe_session_id`
+- 新模式会先创建本地 pending 订单，再创建 Stripe Checkout Session。Webhook 到达时，如果订单带有 `pay_amount_cents`，必须校验 Stripe 返回的 `amount_total` 和 `currency` 与本地订单一致，才允许入账。
+- 旧订单和旧模式订单的 `pay_amount_cents=0`，继续按兼容逻辑处理。
+- 新模式不启用 Stripe 端 promotion code，因为 Stripe 端折扣会改变 `amount_total`，导致本地应收金额校验失败。折扣应使用系统内的 `payment_setting.amount_discount`。
+- 当前金额换算按两位小数货币设计，线上建议使用 `usd`。如后续支持 JPY 等零小数货币，必须同步调整 `getStripePayAmountCents` 的 minor unit 计算和后台说明。
+- 订阅套餐仍使用每个套餐自己的 `stripe_price_id`，不要和余额充值 `StripeTopupProductId` 合并。
+
+修改 Stripe 充值能力时必须同时检查：
+
+1. `setting/payment_stripe.go`
+2. `model/option.go`
+3. `model/topup.go`
+4. `controller/topup_stripe.go`
+5. `controller/payment_webhook_availability.go`
+6. `controller/subscription_payment_stripe.go`，确认订阅仍使用套餐 `stripe_price_id`
+7. `web/src/features/system-settings/integrations/payment-settings-section.tsx`
+8. `web/src/features/system-settings/billing/` 与 `web/src/features/system-settings/types.ts`
+9. `web/src/i18n/locales/` 全部语言文件
 
 ## TokenBoat 业务页面
 
@@ -69,5 +102,6 @@
 2. 重点检查认证、任务计费、渠道枚举和 `web/` 品牌文件冲突。
 3. 不要恢复已经删除的 `web/default`、`web/classic` 或 `web/tokenboat`。
 4. OpenRouter 视频改动需覆盖请求、轮询、结算、退款和结果代理完整链路。
-5. 数据库代码必须同时兼容 SQLite、MySQL 和 PostgreSQL。
-6. 执行 Go 核心模块测试、前端 typecheck、目标文件 lint 和生产构建。
+5. Stripe 余额充值改动需保留旧模式兼容、新模式金额校验、订阅 `stripe_price_id` 独立和 promotion code 行为。
+6. 数据库代码必须同时兼容 SQLite、MySQL 和 PostgreSQL。
+7. 执行 Go 核心模块测试、前端 typecheck、目标文件 lint 和生产构建。

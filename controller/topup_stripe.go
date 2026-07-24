@@ -474,7 +474,16 @@ func getStripePayAmountCents(amount float64, group string) int64 {
 }
 
 func normalizeStripeCurrency(currency string) string {
-	return strings.ToLower(strings.TrimSpace(currency))
+	normalized := strings.ToLower(strings.TrimSpace(currency))
+	if len(normalized) != 3 {
+		return ""
+	}
+	for _, r := range normalized {
+		if r < 'a' || r > 'z' {
+			return ""
+		}
+	}
+	return normalized
 }
 
 func parseStripeAmountCents(value string) int64 {

@@ -66,6 +66,23 @@ func insertTopUpForPaymentGuardTest(t *testing.T, tradeNo string, userID int, pa
 	require.NoError(t, topUp.Insert())
 }
 
+func insertStripeTopUpWithExpectedPaymentForTest(t *testing.T, tradeNo string, userID int, payAmountCents int64, payCurrency string) {
+	t.Helper()
+	topUp := &TopUp{
+		UserId:          userID,
+		Amount:          2,
+		Money:           2,
+		PayAmountCents:  payAmountCents,
+		PayCurrency:     payCurrency,
+		TradeNo:         tradeNo,
+		PaymentMethod:   PaymentMethodStripe,
+		PaymentProvider: PaymentProviderStripe,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+}
+
 func getTopUpStatusForPaymentGuardTest(t *testing.T, tradeNo string) string {
 	t.Helper()
 	topUp := GetTopUpByTradeNo(tradeNo)
@@ -100,6 +117,21 @@ func TestRechargeWaffoPancake_RejectsMismatchedPaymentMethod(t *testing.T) {
 	require.NotNil(t, topUp)
 	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 101))
+}
+
+func TestRechargeStripe_RejectsMismatchedPaidAmount(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 120, 0)
+	insertStripeTopUpWithExpectedPaymentForTest(t, "stripe-amount-guard", 120, 200, "usd")
+
+	err := Recharge("stripe-amount-guard", "cus_test", "127.0.0.1", 199, "USD")
+	require.ErrorIs(t, err, ErrTopUpAmountMismatch)
+
+	topUp := GetTopUpByTradeNo("stripe-amount-guard")
+	require.NotNil(t, topUp)
+	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 120))
 }
 
 func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T) {

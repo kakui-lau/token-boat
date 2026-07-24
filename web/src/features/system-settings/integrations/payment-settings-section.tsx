@@ -1517,11 +1517,11 @@ export function PaymentSettingsSection({
                   <FormField
                     control={form.control}
                     name='StripeUnitPrice'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {t('Unit price (local currency / USD)')}
-                        </FormLabel>
+	                    render={({ field }) => (
+	                      <FormItem>
+	                        <FormLabel>
+	                          {t('Stripe charge per top-up unit')}
+	                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1529,10 +1529,12 @@ export function PaymentSettingsSection({
                             min={0}
                             {...safeNumberFieldProps(field)}
                           />
-                        </FormControl>
-                        <FormDescription>
-                          {t('e.g., 8 means 8 local currency per USD')}
-                        </FormDescription>
+	                        </FormControl>
+	                        <FormDescription>
+	                          {t(
+	                            'For example, 1 means Stripe charges $1 for each top-up unit. Group top-up ratios and amount discounts are applied on top.'
+	                          )}
+	                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

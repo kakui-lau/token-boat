@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Loader2 } from 'lucide-react'
+import { CreditCard, Loader2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -30,10 +30,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatLocalCurrencyAmount } from '@/lib/currency'
+import {
+  formatCurrencyFromUSD,
+  formatLocalCurrencyAmount,
+} from '@/lib/currency'
 
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatCurrency, getPaymentIcon } from '../../lib'
+import { getPaymentIcon } from '../../lib'
 import type { PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
@@ -59,7 +62,6 @@ export function PaymentConfirmDialog({
   calculating,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
-  usdExchangeRate = 1,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
@@ -68,84 +70,97 @@ export function PaymentConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
-        <AlertDialogHeader>
-          <AlertDialogTitle className='text-xl font-semibold'>
+      <AlertDialogContent className='gap-0 overflow-hidden p-0 max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
+        <AlertDialogHeader className='grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 border-b px-5 py-5 text-left sm:place-items-start'>
+          <span className='bg-primary/10 text-primary row-span-2 flex size-10 items-center justify-center rounded-lg'>
+            <CreditCard className='size-5' />
+          </span>
+          <AlertDialogTitle className='text-lg font-semibold tracking-tight'>
             {t('Confirm Payment')}
           </AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogDescription className='text-sm'>
             {t('Review your payment details')}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('Topup Amount')}
-            </span>
-            <span className='text-lg font-semibold'>
-              {formatLocalCurrencyAmount(topupAmount * usdExchangeRate, {
-                digitsLarge: 2,
-                digitsSmall: 2,
-                abbreviate: false,
-              })}
-            </span>
-          </div>
+        <div className='space-y-5 px-5 py-5'>
+          <div className='border-border/70 bg-muted/20 rounded-lg border p-4'>
+            <div className='flex items-center justify-between gap-4'>
+              <span className='text-muted-foreground text-sm'>
+                {t('Topup Amount')}
+              </span>
+              <span className='font-semibold tabular-nums'>
+                {formatCurrencyFromUSD(topupAmount)}
+              </span>
+            </div>
 
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('You Pay')}
-            </span>
-            {calculating ? (
-              <Skeleton className='h-6 w-24' />
-            ) : (
-              <div className='flex items-baseline gap-2'>
-                <span className='text-2xl font-semibold'>
-                  {formatCurrency(paymentAmount)}
-                </span>
-                {hasDiscount && (
-                  <span className='text-muted-foreground text-sm line-through'>
-                    {formatCurrency(originalAmount)}
+            <div className='border-border my-3 border-t border-dashed' />
+
+            <div className='flex items-end justify-between gap-4'>
+              <span className='pb-1 text-sm font-medium'>{t('You Pay')}</span>
+              <div className='text-right'>
+                {hasDiscount && !calculating && (
+                  <span className='text-muted-foreground mb-0.5 block text-xs tabular-nums line-through'>
+                    {formatLocalCurrencyAmount(originalAmount)}
+                  </span>
+                )}
+                {calculating ? (
+                  <Skeleton className='h-8 w-28' />
+                ) : (
+                  <span className='text-2xl font-semibold tracking-tight tabular-nums'>
+                    {formatLocalCurrencyAmount(paymentAmount)}
                   </span>
                 )}
               </div>
-            )}
+            </div>
           </div>
 
           {hasDiscount && !calculating && (
-            <div className='bg-muted/50 rounded-lg p-3'>
-              <div className='flex items-center justify-between text-sm'>
-                <span className='text-muted-foreground'>{t('You save')}</span>
-                <span className='font-semibold text-green-600'>
-                  {formatCurrency(discountAmount)}
-                </span>
-              </div>
+            <div className='flex items-center justify-between rounded-lg bg-emerald-500/8 px-3.5 py-3 text-sm'>
+              <span className='text-emerald-700 dark:text-emerald-300'>
+                {t('You save')}
+              </span>
+              <span className='font-semibold text-emerald-600 tabular-nums dark:text-emerald-400'>
+                {formatLocalCurrencyAmount(discountAmount)}
+              </span>
             </div>
           )}
 
-          <div className='border-t pt-4'>
-            <div className='flex items-center justify-between'>
-              <span className='text-muted-foreground text-sm'>
-                {t('Payment Method')}
-              </span>
-              <div className='flex items-center gap-2'>
+          <div>
+            <p className='text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase'>
+              {t('Payment Method')}
+            </p>
+            <div className='border-border/70 flex items-center gap-3 rounded-lg border px-3.5 py-3'>
+              <span className='bg-background flex size-9 items-center justify-center rounded-md border'>
                 {getPaymentIcon(
                   paymentMethod?.type,
-                  'h-4 w-4',
+                  'size-5',
                   paymentMethod?.icon,
                   paymentMethod?.name
                 )}
-                <span className='font-medium'>{paymentMethod?.name}</span>
-              </div>
+              </span>
+              <span className='min-w-0 flex-1 truncate text-sm font-medium'>
+                {paymentMethod?.name}
+              </span>
+              <ShieldCheck className='text-primary size-4' />
             </div>
           </div>
+
+          <p className='text-muted-foreground flex items-center justify-center gap-1.5 text-xs'>
+            <ShieldCheck className='text-primary size-3.5' />
+            {t('Secure payment')}
+          </p>
         </div>
 
-        <AlertDialogFooter className='grid grid-cols-2 gap-2 sm:flex'>
-          <AlertDialogCancel disabled={processing}>
+        <AlertDialogFooter className='bg-muted/30 m-0 grid grid-cols-2 gap-2 rounded-none border-t p-4 sm:grid sm:grid-cols-2'>
+          <AlertDialogCancel className='w-full' disabled={processing}>
             {t('Cancel')}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={processing}>
+          <AlertDialogAction
+            className='w-full'
+            onClick={onConfirm}
+            disabled={processing}
+          >
             {processing && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {t('Confirm Payment')}
           </AlertDialogAction>

@@ -16,11 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import {
+  Activity,
+  BarChart3,
+  CircleDollarSign,
+  WalletCards,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -175,8 +182,20 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
                 </div>
               </div>
 
-              <div className='text-foreground mt-1.5 truncate font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
-                {item.value}
+              <div className='mt-1.5 flex min-w-0 items-center gap-2 sm:mt-2'>
+                <div className='text-foreground min-w-0 truncate font-mono text-lg font-bold tracking-tight tabular-nums sm:text-2xl'>
+                  {item.value}
+                </div>
+                {item.icon === WalletCards && (
+                  <Button
+                    size='xs'
+                    className='shrink-0 gap-1 px-2'
+                    render={<Link to='/recharge' />}
+                  >
+                    <CircleDollarSign className='size-3.5' />
+                    {t('Recharge')}
+                  </Button>
+                )}
               </div>
               <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
                 {item.description}

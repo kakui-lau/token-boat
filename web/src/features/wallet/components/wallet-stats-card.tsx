@@ -16,9 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import {
+  Activity,
+  BarChart3,
+  CircleDollarSign,
+  WalletCards,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
@@ -28,6 +35,7 @@ import type { UserWalletData } from '../types'
 interface WalletStatsCardProps {
   user: UserWalletData | null
   loading?: boolean
+  showRechargeAction?: boolean
 }
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
@@ -38,7 +46,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
         {['balance', 'usage', 'requests'].map((key) => (
           <div
             key={key}
-            className='rounded-2xl border border-border/60 bg-card/60 p-4 shadow-sm backdrop-blur-sm'
+            className='border-border/60 bg-card/60 rounded-2xl border p-4 shadow-sm backdrop-blur-sm'
           >
             <div className='flex items-center gap-3'>
               <Skeleton className='h-10 w-10 rounded-xl' />
@@ -95,7 +103,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       {stats.map((item) => (
         <div
           key={item.label}
-          className='group relative min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-card/65 p-4 shadow-sm backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:bg-card/80 hover:shadow-md sm:p-5'
+          className='group border-border/60 bg-card/65 hover:border-primary/25 hover:bg-card/80 relative min-w-0 overflow-hidden rounded-2xl border p-4 shadow-sm backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-5'
         >
           <div
             className={`pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-br ${item.accentClass}`}
@@ -114,6 +122,16 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
                 </div>
               </div>
             </div>
+            {props.showRechargeAction && item.icon === WalletCards && (
+              <Button
+                size='sm'
+                className='shrink-0 gap-1.5 shadow-sm'
+                render={<Link to='/recharge' />}
+              >
+                <CircleDollarSign className='size-4' />
+                {t('Recharge')}
+              </Button>
+            )}
           </div>
 
           <div className='relative mt-5 font-mono text-2xl font-black tracking-tight break-all tabular-nums sm:text-3xl'>

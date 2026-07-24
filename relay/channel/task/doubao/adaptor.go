@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -198,6 +199,16 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+	logger.LogDebug(
+		c,
+		"DoubaoVideo upstream request: channel_id=%d channel_name=%q url=%q origin_model=%q upstream_model=%q body=%s",
+		info.ChannelId,
+		common.GetContextKeyString(c, constant.ContextKeyChannelName),
+		relaycommon.SanitizeURLForLog(fmt.Sprintf("%s/api/v3/contents/generations/tasks", a.baseURL)),
+		info.OriginModelName,
+		info.UpstreamModelName,
+		data,
+	)
 	return bytes.NewReader(data), nil
 }
 

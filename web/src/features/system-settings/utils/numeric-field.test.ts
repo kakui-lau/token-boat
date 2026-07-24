@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test, vi } from 'vitest'
 import type { ControllerRenderProps } from 'react-hook-form'
+import { describe, expect, test, vi } from 'vitest'
 
 import { safeNumberFieldProps } from './numeric-field'
 

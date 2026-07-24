@@ -1,6 +1,10 @@
 {
   "footer.columns.related.links.newApiKeyTool": "token-boat-key-tool",
+  "New API": "token boat",
+  "New API &lt;noreply@example.com&gt;": "token boat &lt;noreply@example.com&gt;",
   "NewAPI": "token boat",
   "prod_xxx": "prod_xxx",
-  "Token Boat": "Token Boat"
+  "token boat": "token boat",
+  "Token Boat": "Token Boat",
+  "token boat &lt;noreply@example.com&gt;": "token boat &lt;noreply@example.com&gt;"
 }

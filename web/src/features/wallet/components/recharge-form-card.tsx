@@ -120,11 +120,10 @@ export function RechargeFormCard({
   }, [topupAmount])
 
   const handleAmountChange = (value: string) => {
-    setLocalAmount(value)
-    const numValue = Number.parseInt(value) || 0
-    if (numValue >= 0) {
-      onTopupAmountChange(numValue)
-    }
+    const integerPart = value.split(/[.,]/, 1)[0] ?? ''
+    const normalizedValue = integerPart.replace(/\D/g, '')
+    setLocalAmount(normalizedValue)
+    onTopupAmountChange(Number.parseInt(normalizedValue, 10) || 0)
   }
 
   const hasConfigurableTopup =
@@ -288,10 +287,11 @@ export function RechargeFormCard({
                   <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,0.35fr)]'>
                     <Input
                       id='topup-amount'
-                      type='number'
+                      type='text'
+                      inputMode='numeric'
+                      pattern='[0-9]*'
                       value={localAmount}
                       onChange={(e) => handleAmountChange(e.target.value)}
-                      min={minTopup}
                       placeholder={`Minimum ${minTopup}`}
                       className='bg-background/80 h-11 border-transparent text-base shadow-none sm:text-lg'
                     />

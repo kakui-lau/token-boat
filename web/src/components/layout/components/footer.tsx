@@ -185,7 +185,7 @@ export function Footer(props: FooterProps) {
   const { systemName, logo: systemLogo, footerHtml } = useSystemConfig()
 
   const displayLogo = systemLogo || props.logo || '/logo.png'
-  const displayName = systemName || props.name || 'New API'
+  const displayName = systemName || props.name || 'token boat'
   const currentYear = new Date().getFullYear()
 
   const displayColumns = props.columns ?? DEFAULT_COLUMNS
@@ -222,8 +222,8 @@ export function Footer(props: FooterProps) {
                   {displayName}
                 </p>
                 <p className='text-muted-foreground/55 text-xs'>
-              {t('Unified AI Model API Platform')}
-            </p>
+                  {t('Unified AI Model API Platform')}
+                </p>
               </div>
             </div>
             <nav
@@ -234,8 +234,7 @@ export function Footer(props: FooterProps) {
             </nav>
           </div>
           <div className='border-border/35 mt-6 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between'>
-            <p className='text-muted-foreground/55 text-xs'>
-            </p>
+            <p className='text-muted-foreground/55 text-xs'></p>
             <ProjectAttribution currentYear={currentYear} />
           </div>
         </div>

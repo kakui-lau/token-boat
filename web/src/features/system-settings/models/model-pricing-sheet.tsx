@@ -566,9 +566,7 @@ export const ModelPricingEditorPanel = forwardRef<
                     >
                       {t('Video per second')}
                     </TabsTrigger>
-                    <TabsTrigger
-                      value='tiered_expr'
-                    >
+                    <TabsTrigger value='tiered_expr'>
                       {t('Expression')}
                     </TabsTrigger>
                   </TabsList>

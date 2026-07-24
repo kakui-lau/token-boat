@@ -156,12 +156,14 @@ const paymentSchema = z.object({
   StripeApiSecret: z.string(),
   StripeWebhookSecret: z.string(),
   StripePriceId: z.string(),
-  StripeTopupPricingMode: z.string().refine(
-    (value) =>
-      value === STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE ||
-      value === STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE,
-    'Invalid Stripe top-up pricing mode'
-  ),
+  StripeTopupPricingMode: z
+    .string()
+    .refine(
+      (value) =>
+        value === STRIPE_TOPUP_PRICING_MODE_QUANTITY_PRICE ||
+        value === STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE,
+      'Invalid Stripe top-up pricing mode'
+    ),
   StripeTopupProductId: z.string(),
   StripeCurrency: z.string(),
   StripeUnitPrice: z.coerce.number().min(0),
@@ -1517,11 +1519,11 @@ export function PaymentSettingsSection({
                   <FormField
                     control={form.control}
                     name='StripeUnitPrice'
-	                    render={({ field }) => (
-	                      <FormItem>
-	                        <FormLabel>
-	                          {t('Stripe charge per top-up unit')}
-	                        </FormLabel>
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {t('Stripe charge per top-up unit')}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1529,12 +1531,12 @@ export function PaymentSettingsSection({
                             min={0}
                             {...safeNumberFieldProps(field)}
                           />
-	                        </FormControl>
-	                        <FormDescription>
-	                          {t(
-	                            'For example, 1 means Stripe charges $1 for each top-up unit. Group top-up ratios and amount discounts are applied on top.'
-	                          )}
-	                        </FormDescription>
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'For example, 1 means Stripe charges $1 for each top-up unit. Group top-up ratios and amount discounts are applied on top.'
+                          )}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1568,15 +1570,15 @@ export function PaymentSettingsSection({
                     render={({ field }) => (
                       <SettingsSwitchItem>
                         <SettingsSwitchContent>
-	                          <FormLabel>{t('Promotion codes')}</FormLabel>
-	                          <FormDescription>
-	                            {stripeTopupPricingMode ===
-	                            STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE
-	                              ? t(
-	                                  'Stripe promo codes are only applied in fixed Price ID mode.'
-	                                )
-	                              : t('Allow users to enter promo codes')}
-	                          </FormDescription>
+                          <FormLabel>{t('Promotion codes')}</FormLabel>
+                          <FormDescription>
+                            {stripeTopupPricingMode ===
+                            STRIPE_TOPUP_PRICING_MODE_INLINE_PRICE
+                              ? t(
+                                  'Stripe promo codes are only applied in fixed Price ID mode.'
+                                )
+                              : t('Allow users to enter promo codes')}
+                          </FormDescription>
                         </SettingsSwitchContent>
                         <FormControl>
                           <Switch

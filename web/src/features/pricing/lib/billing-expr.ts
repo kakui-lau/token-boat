@@ -253,6 +253,25 @@ function stripExprVersion(exprStr: string): { version: number; body: string } {
 
 function parseTierBody(bodyStr: string): Record<string, number> {
   const coeffs: Record<string, number> = {}
+
+  // Video and other media expressions commonly charge the same rate for a
+  // group of token types, for example `(p + c) * 3.835616`. Parse these
+  // grouped linear terms before the regular `p * rate` form.
+  const groupedTermRe =
+    /\(([^()]*)\)\s*\*\s*(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g
+  let groupedMatch
+  while ((groupedMatch = groupedTermRe.exec(bodyStr)) !== null) {
+    const coefficient = Number(groupedMatch[2])
+    if (!Number.isFinite(coefficient)) continue
+
+    for (const rawTerm of groupedMatch[1].split('+')) {
+      const variable = rawTerm.trim()
+      if (variable in BILLING_VAR_KEY_TO_FIELD && !(variable in coeffs)) {
+        coeffs[variable] = coefficient
+      }
+    }
+  }
+
   const re = new RegExp(BILLING_VAR_REGEX.source, 'g')
   let m
   while ((m = re.exec(bodyStr)) !== null) {
@@ -273,7 +292,10 @@ export function parseTiersFromExpr(exprStr: string): ParsedTier[] {
       `((?:(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)` +
       `(?:\\s*&&\\s*(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)*)`
     const tierRe = new RegExp(
-      `(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*([^)]+)\\)`,
+      // Tier bodies may contain one level of grouped token terms such as
+      // `(p + c) * rate`. The previous `[^)]+` stopped at the group's closing
+      // parenthesis and silently discarded the multiplier.
+      `(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*((?:[^()]|\\([^()]*\\))+?)\\)`,
       'g'
     )
     const tiers: ParsedTier[] = []

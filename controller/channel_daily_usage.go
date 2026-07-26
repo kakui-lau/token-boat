@@ -67,6 +67,18 @@ func AdminSummarizeChannelDailyUsages(c *gin.Context) {
 	common.ApiSuccess(c, summary)
 }
 
+func AdminListChannelDailyUsageFilterOptions(c *gin.Context) {
+	options, err := model.ListChannelDailyUsageFilterOptions(model.ChannelDailyUsageFilter{
+		StartDate: c.Query("start_date"),
+		EndDate:   c.Query("end_date"),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, options)
+}
+
 func AdminExportChannelDailyUsages(c *gin.Context) {
 	filter := channelDailyUsageFilter(c)
 	rows, _, err := model.ListChannelDailyUsages(filter, 0, 1_000_000)
@@ -123,8 +135,29 @@ func AdminRecalculateChannelDailyUsages(c *gin.Context) {
 		common.ApiErrorMsg(c, "only completed UTC days can be recalculated")
 		return
 	}
+	checkedMonths := map[string]bool{}
+	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+		month := day.Format("2006-01")
+		if checkedMonths[month] {
+			continue
+		}
+		settlementMonth, err := model.GetChannelDailyUsageMonth(month)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if settlementMonth.Status == model.ChannelDailyUsageStatusLocked {
+			common.ApiErrorMsg(c, fmt.Sprintf("UTC month %s is locked", month))
+			return
+		}
+		checkedMonths[month] = true
+	}
 	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
 		if err := service.RecalculateChannelDailyUsage(c.Request.Context(), day); err != nil {
+			if errors.Is(err, model.ErrChannelDailyUsageMonthLocked) {
+				common.ApiErrorMsg(c, fmt.Sprintf("UTC month %s is locked", day.Format("2006-01")))
+				return
+			}
 			common.ApiError(c, err)
 			return
 		}
@@ -132,21 +165,54 @@ func AdminRecalculateChannelDailyUsages(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"start_date": request.StartDate, "end_date": request.EndDate, "timezone": "UTC"})
 }
 
+type channelDailyUsageMonthRequest struct {
+	Month string `json:"month"`
+}
+
+func parseUTCMonth(month string) (time.Time, time.Time, error) {
+	start, err := time.ParseInLocation("2006-01", month, time.UTC)
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.New("invalid month, expected YYYY-MM")
+	}
+	return start, start.AddDate(0, 1, 0).AddDate(0, 0, -1), nil
+}
+
+func AdminGetChannelDailyUsageMonth(c *gin.Context) {
+	month := c.Query("month")
+	if _, _, err := parseUTCMonth(month); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	settlementMonth, err := model.GetChannelDailyUsageMonth(month)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, settlementMonth)
+}
+
 func setChannelDailyUsageLock(c *gin.Context, locked bool) {
-	var request channelDailyUsageRangeRequest
+	var request channelDailyUsageMonthRequest
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
 		common.ApiErrorMsg(c, "invalid request body")
 		return
 	}
-	if _, _, err := parseUTCDateRange(request.StartDate, request.EndDate, 366); err != nil {
+	start, end, err := parseUTCMonth(request.Month)
+	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	if err := model.SetChannelDailyUsageLock(request.StartDate, request.EndDate, locked); err != nil {
+	if locked && !end.Before(time.Now().UTC().Truncate(24*time.Hour)) {
+		common.ApiErrorMsg(c, "only completed UTC months can be locked")
+		return
+	}
+	if err := model.SetChannelDailyUsageMonthLock(
+		request.Month, start.Format("2006-01-02"), end.Format("2006-01-02"), locked, c.GetInt("id"),
+	); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"start_date": request.StartDate, "end_date": request.EndDate, "locked": locked})
+	common.ApiSuccess(c, gin.H{"month": request.Month, "timezone": "UTC", "locked": locked})
 }
 
 func AdminLockChannelDailyUsages(c *gin.Context) {

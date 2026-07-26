@@ -36,8 +36,18 @@ export type ChannelDailyUsageFilters = {
   end_date: string
   channel_id?: number
   model_name?: string
+  upstream_model?: string
+  status?: 'open' | 'locked'
   page: number
   page_size: number
+}
+
+export type ChannelDailyUsageMonth = {
+  month: string
+  timezone: 'UTC'
+  status: 'open' | 'locked'
+  locked_at: number
+  locked_by: number
 }
 
 export type ChannelDailyUsageSummary = {
@@ -54,6 +64,15 @@ export type ChannelDailyUsageSummary = {
   missing_usage_count: number
   pending_task_count: number
   manual_review_count: number
+}
+
+export type ChannelDailyUsageFilterOptions = {
+  channels: {
+    channel_id: number
+    channel_name: string
+  }[]
+  model_names: string[]
+  upstream_models: string[]
 }
 
 export type ChannelDailyUsageList = {

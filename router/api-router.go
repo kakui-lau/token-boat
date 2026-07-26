@@ -303,6 +303,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			channelDailyUsageRoute.GET("/", controller.AdminListChannelDailyUsages)
 			channelDailyUsageRoute.GET("/summary", controller.AdminSummarizeChannelDailyUsages)
+			channelDailyUsageRoute.GET("/filter-options", controller.AdminListChannelDailyUsageFilterOptions)
+			channelDailyUsageRoute.GET("/settlement-month", controller.AdminGetChannelDailyUsageMonth)
 			channelDailyUsageRoute.GET("/export", controller.AdminExportChannelDailyUsages)
 			channelDailyUsageRoute.POST("/recalculate", controller.AdminRecalculateChannelDailyUsages)
 			channelDailyUsageRoute.POST("/lock", controller.AdminLockChannelDailyUsages)

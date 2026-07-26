@@ -23,6 +23,7 @@ func setupChannelDailyUsageTestDB(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.Channel{}, &model.Log{}, &model.Task{}, &model.ChannelDailyUsage{},
+		&model.ChannelDailyUsageMonth{},
 	))
 	model.DB = db
 	model.LOG_DB = db
@@ -87,22 +88,19 @@ func TestRecalculateChannelDailyUsageUsesUTCHalfOpenBoundaryAndIsIdempotent(t *t
 	assert.Equal(t, int64(190), summary.TotalTokens)
 }
 
-func TestRecalculateChannelDailyUsageDoesNotOverwriteLockedDay(t *testing.T) {
+func TestRecalculateChannelDailyUsageDoesNotOverwriteLockedMonth(t *testing.T) {
 	setupChannelDailyUsageTestDB(t)
 	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
-	require.NoError(t, model.DB.Create(&model.ChannelDailyUsage{
-		UsageDate: "2026-07-25", Timezone: "UTC", PeriodStart: start.Unix(),
-		PeriodEnd: start.Add(24 * time.Hour).Unix(), ChannelID: 1, ModelName: "model",
-		UpstreamModel: "model", Status: model.ChannelDailyUsageStatusLocked,
-		CustomerRevenueUSD: "0", ProviderReportedCostUSD: "0",
-	}).Error)
+	require.NoError(t, model.SetChannelDailyUsageMonthLock(
+		"2026-07", "2026-07-01", "2026-07-31", true, 1,
+	))
 
 	err := RecalculateChannelDailyUsage(context.Background(), start)
-	require.Error(t, err)
+	require.ErrorIs(t, err, model.ErrChannelDailyUsageMonthLocked)
 
 	var count int64
 	require.NoError(t, model.DB.Model(&model.ChannelDailyUsage{}).Where("usage_date = ?", "2026-07-25").Count(&count).Error)
-	assert.Equal(t, int64(1), count)
+	assert.Zero(t, count)
 }
 
 func TestRecalculateChannelDailyUsageDoesNotFlagPerCallBillingAsMissingUsage(t *testing.T) {
@@ -129,4 +127,36 @@ func TestRecalculateChannelDailyUsageDoesNotFlagPerCallBillingAsMissingUsage(t *
 	require.Len(t, rows, 1)
 	assert.Zero(t, rows[0].MissingUsageCount)
 	assert.Equal(t, int64(1), rows[0].BilledRequestCount)
+}
+
+func TestChannelDailyUsageFilterOptionsUseDistinctValuesWithinDateRange(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	rows := []model.ChannelDailyUsage{
+		{
+			UsageDate: "2026-07-24", Timezone: "UTC", ChannelID: 10, ChannelName: "Alpha",
+			ModelName: "openai/gpt-a", UpstreamModel: "upstream/gpt-a", Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-25", Timezone: "UTC", ChannelID: 10, ChannelName: "Alpha",
+			ModelName: "openai/gpt-a", UpstreamModel: "upstream/gpt-a", Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-25", Timezone: "UTC", ChannelID: 20, ChannelName: "Beta",
+			ModelName: "anthropic/claude-b", UpstreamModel: "upstream/claude-b", Status: model.ChannelDailyUsageStatusOpen,
+		},
+	}
+	require.NoError(t, model.DB.Create(&rows).Error)
+
+	options, err := model.ListChannelDailyUsageFilterOptions(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-25",
+		EndDate:   "2026-07-25",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []model.ChannelDailyUsageChannelOption{
+		{ChannelID: 10, ChannelName: "Alpha"},
+		{ChannelID: 20, ChannelName: "Beta"},
+	}, options.Channels)
+	assert.Equal(t, []string{"anthropic/claude-b", "openai/gpt-a"}, options.ModelNames)
+	assert.Equal(t, []string{"upstream/claude-b", "upstream/gpt-a"}, options.UpstreamModels)
 }

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -13,7 +14,23 @@ import (
 const (
 	ChannelDailyUsageStatusOpen   = "open"
 	ChannelDailyUsageStatusLocked = "locked"
+	channelDailyUsageWriteRetries = 5
 )
+
+var ErrChannelDailyUsageMonthLocked = errors.New("channel daily usage month is locked")
+
+// ChannelDailyUsageMonth stores the settlement state independently from daily
+// rows, so an empty day cannot bypass a locked accounting month.
+type ChannelDailyUsageMonth struct {
+	ID        int64  `json:"id" gorm:"primaryKey"`
+	Month     string `json:"month" gorm:"type:varchar(7);not null;uniqueIndex:uk_channel_daily_usage_month,priority:1"`
+	Timezone  string `json:"timezone" gorm:"type:varchar(32);not null;uniqueIndex:uk_channel_daily_usage_month,priority:2"`
+	Status    string `json:"status" gorm:"type:varchar(24);not null;index"`
+	LockedAt  int64  `json:"locked_at" gorm:"bigint"`
+	LockedBy  int    `json:"locked_by" gorm:"index"`
+	CreatedAt int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64  `json:"updated_at" gorm:"bigint"`
+}
 
 // ChannelDailyUsage is an immutable-after-lock UTC usage aggregate. Money
 // values are decimal strings so all supported databases preserve precision.
@@ -54,6 +71,17 @@ type ChannelDailyUsageFilter struct {
 	ModelName     string
 	UpstreamModel string
 	Status        string
+}
+
+type ChannelDailyUsageChannelOption struct {
+	ChannelID   int    `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+}
+
+type ChannelDailyUsageFilterOptions struct {
+	Channels       []ChannelDailyUsageChannelOption `json:"channels"`
+	ModelNames     []string                         `json:"model_names"`
+	UpstreamModels []string                         `json:"upstream_models"`
 }
 
 type ChannelDailyUsageSummary struct {
@@ -128,37 +156,126 @@ func SummarizeChannelDailyUsages(filter ChannelDailyUsageFilter) (ChannelDailyUs
 	return summary, err
 }
 
+func ListChannelDailyUsageFilterOptions(filter ChannelDailyUsageFilter) (ChannelDailyUsageFilterOptions, error) {
+	baseQuery := func() *gorm.DB {
+		tx := DB.Model(&ChannelDailyUsage{}).Where("timezone = ?", "UTC")
+		if filter.StartDate != "" {
+			tx = tx.Where("usage_date >= ?", filter.StartDate)
+		}
+		if filter.EndDate != "" {
+			tx = tx.Where("usage_date <= ?", filter.EndDate)
+		}
+		return tx
+	}
+
+	options := ChannelDailyUsageFilterOptions{
+		Channels:       []ChannelDailyUsageChannelOption{},
+		ModelNames:     []string{},
+		UpstreamModels: []string{},
+	}
+	if err := baseQuery().
+		Select("channel_id, channel_name").
+		Group("channel_id, channel_name").
+		Order("channel_name ASC, channel_id ASC").
+		Scan(&options.Channels).Error; err != nil {
+		return ChannelDailyUsageFilterOptions{}, err
+	}
+	if err := baseQuery().
+		Distinct("model_name").
+		Where("model_name <> ?", "").
+		Order("model_name ASC").
+		Pluck("model_name", &options.ModelNames).Error; err != nil {
+		return ChannelDailyUsageFilterOptions{}, err
+	}
+	if err := baseQuery().
+		Distinct("upstream_model").
+		Where("upstream_model <> ?", "").
+		Order("upstream_model ASC").
+		Pluck("upstream_model", &options.UpstreamModels).Error; err != nil {
+		return ChannelDailyUsageFilterOptions{}, err
+	}
+	return options, nil
+}
+
 // ReplaceChannelDailyUsages atomically replaces one UTC day's unlocked rows.
 func ReplaceChannelDailyUsages(start, end int64, rows []ChannelDailyUsage) error {
 	date := time.Unix(start, 0).UTC().Format("2006-01-02")
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var locked int64
-		if err := tx.Model(&ChannelDailyUsage{}).
-			Where("usage_date = ? AND timezone = ? AND status = ?", date, "UTC", ChannelDailyUsageStatusLocked).
-			Count(&locked).Error; err != nil {
+	month := date[:7]
+	now := common.GetTimestamp()
+	period := ChannelDailyUsageMonth{
+		Month: month, Timezone: "UTC", Status: ChannelDailyUsageStatusOpen,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&period).Error; err != nil {
+		return err
+	}
+	for attempt := 0; ; attempt++ {
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var settlementMonth ChannelDailyUsageMonth
+			if err := lockForUpdate(tx).
+				Where("month = ? AND timezone = ?", month, "UTC").
+				First(&settlementMonth).Error; err != nil {
+				return err
+			}
+			if settlementMonth.Status == ChannelDailyUsageStatusLocked {
+				return ErrChannelDailyUsageMonthLocked
+			}
+			if err := tx.Where("usage_date = ? AND timezone = ?", date, "UTC").Delete(&ChannelDailyUsage{}).Error; err != nil {
+				return err
+			}
+			if len(rows) == 0 {
+				return nil
+			}
+			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+		})
+		if err == nil || !common.UsingMainDatabase(common.DatabaseTypeSQLite) ||
+			!strings.Contains(err.Error(), "SQLITE_BUSY") || attempt == channelDailyUsageWriteRetries {
 			return err
 		}
-		if locked > 0 {
-			return gorm.ErrInvalidData
-		}
-		if err := tx.Where("usage_date = ? AND timezone = ?", date, "UTC").Delete(&ChannelDailyUsage{}).Error; err != nil {
-			return err
-		}
-		if len(rows) == 0 {
-			return nil
-		}
-		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
-	})
+		time.Sleep(time.Duration(attempt+1) * 25 * time.Millisecond)
+	}
 }
 
-func SetChannelDailyUsageLock(startDate, endDate string, locked bool) error {
-	now := common.GetTimestamp()
-	values := map[string]any{"status": ChannelDailyUsageStatusOpen, "locked_at": int64(0), "updated_at": now}
-	if locked {
-		values["status"] = ChannelDailyUsageStatusLocked
-		values["locked_at"] = now
+func GetChannelDailyUsageMonth(month string) (ChannelDailyUsageMonth, error) {
+	var settlementMonth ChannelDailyUsageMonth
+	err := DB.Where("month = ? AND timezone = ?", month, "UTC").First(&settlementMonth).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ChannelDailyUsageMonth{Month: month, Timezone: "UTC", Status: ChannelDailyUsageStatusOpen}, nil
 	}
-	return DB.Model(&ChannelDailyUsage{}).
-		Where("timezone = ? AND usage_date >= ? AND usage_date <= ?", "UTC", startDate, endDate).
-		Updates(values).Error
+	return settlementMonth, err
+}
+
+func SetChannelDailyUsageMonthLock(month, startDate, endDate string, locked bool, operatorID int) error {
+	now := common.GetTimestamp()
+	period := ChannelDailyUsageMonth{
+		Month: month, Timezone: "UTC", Status: ChannelDailyUsageStatusOpen,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&period).Error; err != nil {
+		return err
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var settlementMonth ChannelDailyUsageMonth
+		if err := lockForUpdate(tx).
+			Where("month = ? AND timezone = ?", month, "UTC").
+			First(&settlementMonth).Error; err != nil {
+			return err
+		}
+		status := ChannelDailyUsageStatusOpen
+		lockedAt := int64(0)
+		lockedBy := 0
+		if locked {
+			status = ChannelDailyUsageStatusLocked
+			lockedAt = now
+			lockedBy = operatorID
+		}
+		if err := tx.Model(&settlementMonth).Updates(map[string]any{
+			"status": status, "locked_at": lockedAt, "locked_by": lockedBy, "updated_at": now,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&ChannelDailyUsage{}).
+			Where("timezone = ? AND usage_date >= ? AND usage_date <= ?", "UTC", startDate, endDate).
+			Updates(map[string]any{"status": status, "locked_at": lockedAt, "updated_at": now}).Error
+	})
 }

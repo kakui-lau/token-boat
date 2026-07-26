@@ -10,10 +10,22 @@ import { api } from '@/lib/api'
 
 import type {
   ApiEnvelope,
+  ChannelDailyUsageFilterOptions,
   ChannelDailyUsageFilters,
   ChannelDailyUsageList,
+  ChannelDailyUsageMonth,
   ChannelDailyUsageSummary,
 } from './types'
+
+export async function getChannelDailyUsageFilterOptions(filters: {
+  start_date: string
+  end_date: string
+}): Promise<ApiEnvelope<ChannelDailyUsageFilterOptions>> {
+  const response = await api.get('/api/channel-daily-usages/filter-options', {
+    params: filters,
+  })
+  return response.data
+}
 
 export async function getChannelDailyUsages(
   filters: ChannelDailyUsageFilters
@@ -52,19 +64,24 @@ export async function recalculateChannelDailyUsages(data: {
   return response.data
 }
 
+export async function getChannelDailyUsageMonth(
+  month: string
+): Promise<ApiEnvelope<ChannelDailyUsageMonth>> {
+  const response = await api.get('/api/channel-daily-usages/settlement-month', {
+    params: { month },
+  })
+  return response.data
+}
+
 export async function lockChannelDailyUsageMonth(data: {
-  start_date: string
-  end_date: string
-  timezone: 'UTC'
+  month: string
 }): Promise<ApiEnvelope<unknown>> {
   const response = await api.post('/api/channel-daily-usages/lock', data)
   return response.data
 }
 
 export async function unlockChannelDailyUsageMonth(data: {
-  start_date: string
-  end_date: string
-  timezone: 'UTC'
+  month: string
 }): Promise<ApiEnvelope<unknown>> {
   const response = await api.post('/api/channel-daily-usages/unlock', data)
   return response.data

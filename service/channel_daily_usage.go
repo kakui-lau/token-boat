@@ -92,6 +92,10 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 
 	aggregates := map[dailyUsageKey]*dailyUsageAccumulator{}
 	offset := 0
+	var lastCreatedAt int64
+	var lastID int
+	hasCursor := false
+	useCursor := !common.UsingLogDatabase(common.DatabaseTypeClickHouse)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -100,7 +104,19 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 		query := model.LOG_DB.Where(
 			"type = ? AND created_at >= ? AND created_at < ?",
 			model.LogTypeConsume, start.Unix(), end.Unix(),
-		).Order("created_at asc, request_id asc").Offset(offset).Limit(channelDailyUsageBatchSize)
+		)
+		if useCursor {
+			if hasCursor {
+				query = query.Where(
+					"(created_at > ? OR (created_at = ? AND id > ?))",
+					lastCreatedAt, lastCreatedAt, lastID,
+				)
+			}
+			query = query.Order("created_at asc, id asc")
+		} else {
+			query = query.Order("created_at asc, request_id asc").Offset(offset)
+		}
+		query = query.Limit(channelDailyUsageBatchSize)
 		if err := query.Find(&logs).Error; err != nil {
 			return err
 		}
@@ -143,6 +159,16 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 			accumulator.row.CompletionTokens += completionTokens
 			accumulator.row.TotalTokens += promptTokens + completionTokens
 			accumulator.row.CustomerQuota += int64(logEntry.Quota)
+			quotaPerUnit, validQuotaPerUnit := jsonNumberAsDecimal(other["quota_per_unit"])
+			if !validQuotaPerUnit || quotaPerUnit.IsZero() {
+				if common.QuotaPerUnit <= 0 {
+					return errors.New("QuotaPerUnit must be positive")
+				}
+				quotaPerUnit = decimal.NewFromFloat(common.QuotaPerUnit)
+			}
+			accumulator.revenue = accumulator.revenue.Add(
+				decimal.NewFromInt(int64(logEntry.Quota)).Div(quotaPerUnit),
+			)
 			accumulator.row.CacheReadTokens += jsonNumberAsInt64(other["cache_tokens"])
 			cacheWriteTokens := jsonNumberAsInt64(other["cache_write_tokens"])
 			if cacheWriteTokens == 0 {
@@ -173,7 +199,14 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 		if len(logs) < channelDailyUsageBatchSize {
 			break
 		}
-		offset += len(logs)
+		if useCursor {
+			lastLog := logs[len(logs)-1]
+			lastCreatedAt = lastLog.CreatedAt
+			lastID = lastLog.Id
+			hasCursor = true
+		} else {
+			offset += len(logs)
+		}
 	}
 
 	now := common.GetTimestamp()
@@ -217,12 +250,7 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 	}
 
 	rows := make([]model.ChannelDailyUsage, 0, len(aggregates))
-	if common.QuotaPerUnit <= 0 {
-		return errors.New("QuotaPerUnit must be positive")
-	}
-	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 	for _, accumulator := range aggregates {
-		accumulator.revenue = decimal.NewFromInt(accumulator.row.CustomerQuota).Div(quotaPerUnit)
 		accumulator.row.CustomerRevenueUSD = accumulator.revenue.StringFixed(12)
 		accumulator.row.ProviderReportedCostUSD = accumulator.providerCost.StringFixed(12)
 		accumulator.row.CalculatedAt = now

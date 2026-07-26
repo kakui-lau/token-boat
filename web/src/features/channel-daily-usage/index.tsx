@@ -62,7 +62,7 @@ import {
   recalculateChannelDailyUsages,
   unlockChannelDailyUsageMonth,
 } from './api'
-import { getUtcDate, getUtcMonthRange } from './lib/date-range'
+import { getDefaultUtcWeekRange, getUtcMonthRange } from './lib/date-range'
 import type { ChannelDailyUsageFilters } from './types'
 
 const PAGE_SIZE = 50
@@ -91,8 +91,9 @@ function previousUtcMonth(): string {
 export function ChannelDailyUsagePage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [startDate, setStartDate] = useState(() => getUtcDate(-7))
-  const [endDate, setEndDate] = useState(() => getUtcDate(-1))
+  const [defaultDateRange] = useState(getDefaultUtcWeekRange)
+  const [startDate, setStartDate] = useState(defaultDateRange.start_date)
+  const [endDate, setEndDate] = useState(defaultDateRange.end_date)
   const [granularity, setGranularity] = useState<'day' | 'month'>('day')
   const [channelId, setChannelId] = useState('')
   const [modelName, setModelName] = useState('')
@@ -319,7 +320,7 @@ export function ChannelDailyUsagePage() {
               </CardHeader>
             </Card>
 
-            <Card>
+            <Card className='relative z-10 overflow-visible'>
               <CardHeader>
                 <CardTitle>{t('Report filters')}</CardTitle>
                 <CardDescription>

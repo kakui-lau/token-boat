@@ -76,6 +76,10 @@ describe('Channel daily usage report filters', () => {
   test('offers channels and model names as report filter choices', () => {
     render(<ChannelDailyUsagePage />)
 
+    expect(
+      screen.getByText('Report filters').closest('[data-slot="card"]')
+    ).toHaveClass('overflow-visible')
+
     const channel = screen.getByRole('combobox', { name: 'Channel' })
     fireEvent.focus(channel)
     expect(

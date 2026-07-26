@@ -77,6 +77,53 @@ func AdminSummarizeChannelDailyUsages(c *gin.Context) {
 	common.ApiSuccess(c, summary)
 }
 
+func AdminListChannelMonthlyUsageSummary(c *gin.Context) {
+	month := c.Query("month")
+	start, end, err := parseUTCMonth(month)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	groupBy := c.Query("group_by")
+	if groupBy != model.ChannelMonthlyUsageGroupByModelName &&
+		groupBy != model.ChannelMonthlyUsageGroupByUpstreamModel {
+		common.ApiErrorMsg(c, "invalid group_by, expected model_name or upstream_model")
+		return
+	}
+	channelID := 0
+	if value := c.Query("channel_id"); value != "" {
+		channelID, err = strconv.Atoi(value)
+		if err != nil || channelID <= 0 {
+			common.ApiErrorMsg(c, "invalid channel_id, expected a positive integer")
+			return
+		}
+	}
+
+	filter := model.ChannelDailyUsageFilter{
+		StartDate: start.Format("2006-01-02"),
+		EndDate:   end.Format("2006-01-02"),
+		ChannelID: channelID,
+	}
+	pageInfo := common.GetPageQuery(c)
+	rows, total, err := model.ListChannelMonthlyUsageSummary(
+		filter, month, groupBy, pageInfo.GetStartIdx(), pageInfo.GetPageSize(),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	summary, err := model.SummarizeChannelDailyUsages(filter)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"page": pageInfo.GetPage(), "page_size": pageInfo.GetPageSize(),
+		"total": total, "items": rows, "summary": summary,
+		"month": month, "group_by": groupBy,
+	})
+}
+
 func AdminListChannelDailyUsageFilterOptions(c *gin.Context) {
 	options, err := model.ListChannelDailyUsageFilterOptions(model.ChannelDailyUsageFilter{
 		StartDate: c.Query("start_date"),

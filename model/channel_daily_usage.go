@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	ChannelDailyUsageStatusOpen   = "open"
-	ChannelDailyUsageStatusLocked = "locked"
-	channelDailyUsageWriteRetries = 5
+	ChannelDailyUsageStatusOpen             = "open"
+	ChannelDailyUsageStatusLocked           = "locked"
+	ChannelMonthlyUsageGroupByModelName     = "model_name"
+	ChannelMonthlyUsageGroupByUpstreamModel = "upstream_model"
+	channelDailyUsageWriteRetries           = 5
 )
 
 var ErrChannelDailyUsageMonthLocked = errors.New("channel daily usage month is locked")
@@ -100,6 +102,30 @@ type ChannelDailyUsageSummary struct {
 	ManualReviewCount       int64  `json:"manual_review_count"`
 }
 
+// ChannelMonthlyUsage is a channel total for one model dimension in a UTC
+// calendar month. Exactly one of ModelName and UpstreamModel identifies the
+// selected group.
+type ChannelMonthlyUsage struct {
+	Month                   string `json:"month"`
+	ChannelID               int    `json:"channel_id"`
+	ChannelName             string `json:"channel_name"`
+	ModelName               string `json:"model_name,omitempty"`
+	UpstreamModel           string `json:"upstream_model,omitempty"`
+	BilledRequestCount      int64  `json:"billed_request_count"`
+	PromptTokens            int64  `json:"prompt_tokens"`
+	CacheReadTokens         int64  `json:"cache_read_tokens"`
+	CacheWriteTokens        int64  `json:"cache_write_tokens"`
+	CompletionTokens        int64  `json:"completion_tokens"`
+	TotalTokens             int64  `json:"total_tokens"`
+	CustomerQuota           int64  `json:"customer_quota"`
+	CustomerRevenueUSD      string `json:"customer_revenue_usd"`
+	ProviderReportedCostUSD string `json:"provider_reported_cost_usd"`
+	ProviderCostKnownCount  int64  `json:"provider_cost_known_count"`
+	MissingUsageCount       int64  `json:"missing_usage_count"`
+	PendingTaskCount        int64  `json:"pending_task_count"`
+	ManualReviewCount       int64  `json:"manual_review_count"`
+}
+
 func channelDailyUsageQuery(filter ChannelDailyUsageFilter) *gorm.DB {
 	tx := DB.Model(&ChannelDailyUsage{}).Where("timezone = ?", "UTC")
 	if filter.StartDate != "" {
@@ -146,7 +172,7 @@ func ListChannelMonthlyUsages(filter ChannelDailyUsageFilter, offset, limit int)
 		"MIN(period_start) AS period_start",
 		"MAX(period_end) AS period_end",
 		"channel_id",
-		"channel_name",
+		"MAX(channel_name) AS channel_name",
 		"model_name",
 		"upstream_model",
 		"SUM(billed_request_count) AS billed_request_count",
@@ -170,7 +196,7 @@ func ListChannelMonthlyUsages(filter ChannelDailyUsageFilter, offset, limit int)
 	}
 	grouped := channelDailyUsageQuery(filter).
 		Select(strings.Join(fields, ", ")).
-		Group("SUBSTRING(usage_date, 1, 7), timezone, channel_id, channel_name, model_name, upstream_model, status")
+		Group("SUBSTRING(usage_date, 1, 7), timezone, channel_id, model_name, upstream_model, status")
 
 	var total int64
 	if err := DB.Table("(?) AS channel_monthly_usages", grouped).Count(&total).Error; err != nil {
@@ -205,6 +231,61 @@ func SummarizeChannelDailyUsages(filter ChannelDailyUsageFilter) (ChannelDailyUs
 	return summary, err
 }
 
+// ListChannelMonthlyUsageSummary groups one month by channel and one explicitly
+// whitelisted model dimension. Keeping the column choice here prevents callers
+// from passing arbitrary SQL identifiers.
+func ListChannelMonthlyUsageSummary(filter ChannelDailyUsageFilter, month, groupBy string, offset, limit int) ([]ChannelMonthlyUsage, int64, error) {
+	groupColumn := ""
+	switch groupBy {
+	case ChannelMonthlyUsageGroupByModelName:
+		groupColumn = "model_name"
+	case ChannelMonthlyUsageGroupByUpstreamModel:
+		groupColumn = "upstream_model"
+	default:
+		return nil, 0, errors.New("invalid group_by")
+	}
+
+	filter.StartDate = month + "-01"
+	monthStart, err := time.ParseInLocation("2006-01-02", filter.StartDate, time.UTC)
+	if err != nil {
+		return nil, 0, errors.New("invalid month")
+	}
+	filter.EndDate = monthStart.AddDate(0, 1, -1).Format("2006-01-02")
+
+	fields := []string{
+		"? AS month",
+		"channel_id",
+		"MAX(channel_name) AS channel_name",
+		groupColumn,
+		"SUM(billed_request_count) AS billed_request_count",
+		"SUM(prompt_tokens) AS prompt_tokens",
+		"SUM(cache_read_tokens) AS cache_read_tokens",
+		"SUM(cache_write_tokens) AS cache_write_tokens",
+		"SUM(completion_tokens) AS completion_tokens",
+		"SUM(total_tokens) AS total_tokens",
+		"SUM(customer_quota) AS customer_quota",
+		"SUM(customer_revenue_usd) AS customer_revenue_usd",
+		"SUM(provider_reported_cost_usd) AS provider_reported_cost_usd",
+		"SUM(provider_cost_known_count) AS provider_cost_known_count",
+		"SUM(missing_usage_count) AS missing_usage_count",
+		"SUM(pending_task_count) AS pending_task_count",
+		"SUM(manual_review_count) AS manual_review_count",
+	}
+	grouped := channelDailyUsageQuery(filter).
+		Select(strings.Join(fields, ", "), month).
+		Group("channel_id, " + groupColumn)
+
+	var total int64
+	if err := DB.Table("(?) AS channel_monthly_summary", grouped).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []ChannelMonthlyUsage
+	err = DB.Table("(?) AS channel_monthly_summary", grouped).
+		Order("channel_id ASC, " + groupColumn + " ASC").
+		Offset(offset).Limit(limit).Scan(&rows).Error
+	return rows, total, err
+}
+
 func ListChannelDailyUsageFilterOptions(filter ChannelDailyUsageFilter) (ChannelDailyUsageFilterOptions, error) {
 	baseQuery := func() *gorm.DB {
 		tx := DB.Model(&ChannelDailyUsage{}).Where("timezone = ?", "UTC")
@@ -223,8 +304,8 @@ func ListChannelDailyUsageFilterOptions(filter ChannelDailyUsageFilter) (Channel
 		UpstreamModels: []string{},
 	}
 	if err := baseQuery().
-		Select("channel_id, channel_name").
-		Group("channel_id, channel_name").
+		Select("channel_id, MAX(channel_name) AS channel_name").
+		Group("channel_id").
 		Order("channel_name ASC, channel_id ASC").
 		Scan(&options.Channels).Error; err != nil {
 		return ChannelDailyUsageFilterOptions{}, err

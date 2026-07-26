@@ -137,6 +137,11 @@ export function useSidebarData(): SidebarData {
             icon: ChartNoAxesCombined,
           },
           {
+            title: t('Channel Monthly Summary'),
+            url: '/channel-monthly-usage',
+            icon: ChartNoAxesCombined,
+          },
+          {
             title: t('Models'),
             url: '/models/metadata',
             icon: Box,

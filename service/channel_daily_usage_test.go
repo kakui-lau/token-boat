@@ -88,6 +88,39 @@ func TestRecalculateChannelDailyUsageUsesUTCHalfOpenBoundaryAndIsIdempotent(t *t
 	assert.Equal(t, int64(190), summary.TotalTokens)
 }
 
+func TestRecalculateChannelDailyUsageScansMultipleLogBatches(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	logs := make([]model.Log, channelDailyUsageBatchSize+1)
+	for index := range logs {
+		logs[index] = model.Log{
+			CreatedAt:    start.Unix(),
+			Type:         model.LogTypeConsume,
+			ChannelId:    14,
+			ModelName:    "openai/gpt-5.4",
+			PromptTokens: 1,
+			RequestId:    "batch-log",
+		}
+	}
+	require.NoError(t, model.LOG_DB.CreateInBatches(&logs, 200).Error)
+
+	require.NoError(t, RecalculateChannelDailyUsage(context.Background(), start))
+
+	rows, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-25", EndDate: "2026-07-25",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	assert.Equal(t, int64(channelDailyUsageBatchSize+1), rows[0].BilledRequestCount)
+	assert.Equal(t, int64(channelDailyUsageBatchSize+1), rows[0].PromptTokens)
+}
+
+func TestChannelDailyUsageLogScanIndexExists(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	assert.True(t, model.LOG_DB.Migrator().HasIndex(&model.Log{}, "idx_logs_type_created_id"))
+}
+
 func TestRecalculateChannelDailyUsageDoesNotOverwriteLockedMonth(t *testing.T) {
 	setupChannelDailyUsageTestDB(t)
 	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
@@ -127,6 +160,43 @@ func TestRecalculateChannelDailyUsageDoesNotFlagPerCallBillingAsMissingUsage(t *
 	require.Len(t, rows, 1)
 	assert.Zero(t, rows[0].MissingUsageCount)
 	assert.Equal(t, int64(1), rows[0].BilledRequestCount)
+}
+
+func TestRecalculateChannelDailyUsageUsesHistoricalQuotaPerUnit(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	logs := []model.Log{
+		{
+			CreatedAt: start.Unix(), Type: model.LogTypeConsume, ChannelId: 15,
+			ModelName: "priced-model", Quota: 500_000,
+			Other: common.MapToJsonStr(map[string]any{
+				"quota_per_unit": 500_000,
+				"model_price":    1,
+			}),
+			RequestId: "historical-rate-1",
+		},
+		{
+			CreatedAt: start.Unix(), Type: model.LogTypeConsume, ChannelId: 15,
+			ModelName: "priced-model", Quota: 500_000,
+			Other: common.MapToJsonStr(map[string]any{
+				"quota_per_unit": 1_000_000,
+				"model_price":    0.5,
+			}),
+			RequestId: "historical-rate-2",
+		},
+	}
+	require.NoError(t, model.LOG_DB.Create(&logs).Error)
+
+	require.NoError(t, RecalculateChannelDailyUsage(context.Background(), start))
+	rows, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-25", EndDate: "2026-07-25",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	revenue, err := decimal.NewFromString(rows[0].CustomerRevenueUSD)
+	require.NoError(t, err)
+	assert.True(t, revenue.Equal(decimal.RequireFromString("1.5")))
 }
 
 func TestChannelDailyUsageFilterOptionsUseDistinctValuesWithinDateRange(t *testing.T) {
@@ -179,7 +249,7 @@ func TestListChannelMonthlyUsagesAggregatesFilteredDailyRows(t *testing.T) {
 		},
 		{
 			UsageDate: "2026-07-31", Timezone: "UTC", PeriodStart: 30, PeriodEnd: 40,
-			ChannelID: 10, ChannelName: "Alpha", ModelName: "gpt-a", UpstreamModel: "upstream-a",
+			ChannelID: 10, ChannelName: "Alpha Renamed", ModelName: "gpt-a", UpstreamModel: "upstream-a",
 			BilledRequestCount: 3, PromptTokens: 30, CompletionTokens: 7, TotalTokens: 37,
 			CustomerQuota: 200, CustomerRevenueUSD: "2.75", ProviderReportedCostUSD: "0.75",
 			ProviderCostKnownCount: 3, MissingUsageCount: 1, Status: model.ChannelDailyUsageStatusOpen,
@@ -202,6 +272,7 @@ func TestListChannelMonthlyUsagesAggregatesFilteredDailyRows(t *testing.T) {
 	require.Len(t, monthly, 1)
 	row := monthly[0]
 	assert.Equal(t, "2026-07", row.UsageDate)
+	assert.Equal(t, "Alpha Renamed", row.ChannelName)
 	assert.Equal(t, int64(10), row.PeriodStart)
 	assert.Equal(t, int64(40), row.PeriodEnd)
 	assert.Equal(t, int64(5), row.BilledRequestCount)
@@ -217,4 +288,72 @@ func TestListChannelMonthlyUsagesAggregatesFilteredDailyRows(t *testing.T) {
 	providerCost, err := decimal.NewFromString(row.ProviderReportedCostUSD)
 	require.NoError(t, err)
 	assert.True(t, providerCost.Equal(decimal.RequireFromString("1.25")))
+}
+
+func TestListChannelMonthlyUsageSummaryGroupsBySelectedModelDimension(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	rows := []model.ChannelDailyUsage{
+		{
+			UsageDate: "2026-07-01", Timezone: "UTC", ChannelID: 10, ChannelName: "Alpha",
+			ModelName: "platform-a", UpstreamModel: "upstream-shared", BilledRequestCount: 2,
+			TotalTokens: 20, CustomerRevenueUSD: "1.25", ProviderReportedCostUSD: "0.5",
+			Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-02", Timezone: "UTC", ChannelID: 10, ChannelName: "Alpha Renamed",
+			ModelName: "platform-b", UpstreamModel: "upstream-shared", BilledRequestCount: 3,
+			TotalTokens: 30, CustomerRevenueUSD: "2.75", ProviderReportedCostUSD: "1",
+			MissingUsageCount: 1, Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-03", Timezone: "UTC", ChannelID: 20, ChannelName: "Beta",
+			ModelName: "platform-a", UpstreamModel: "upstream-other", BilledRequestCount: 4,
+			TotalTokens: 40, CustomerRevenueUSD: "4", ProviderReportedCostUSD: "2",
+			Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-08-01", Timezone: "UTC", ChannelID: 10, ChannelName: "Alpha",
+			ModelName: "platform-a", UpstreamModel: "upstream-shared", BilledRequestCount: 99,
+			TotalTokens: 990, CustomerRevenueUSD: "99", ProviderReportedCostUSD: "50",
+			Status: model.ChannelDailyUsageStatusOpen,
+		},
+	}
+	require.NoError(t, model.DB.Create(&rows).Error)
+
+	byUpstream, total, err := model.ListChannelMonthlyUsageSummary(
+		model.ChannelDailyUsageFilter{}, "2026-07",
+		model.ChannelMonthlyUsageGroupByUpstreamModel, 0, 10,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, byUpstream, 2)
+	assert.Equal(t, "2026-07", byUpstream[0].Month)
+	assert.Equal(t, 10, byUpstream[0].ChannelID)
+	assert.Equal(t, "Alpha Renamed", byUpstream[0].ChannelName)
+	assert.Equal(t, "upstream-shared", byUpstream[0].UpstreamModel)
+	assert.Empty(t, byUpstream[0].ModelName)
+	assert.Equal(t, int64(5), byUpstream[0].BilledRequestCount)
+	assert.Equal(t, int64(50), byUpstream[0].TotalTokens)
+	assert.Equal(t, int64(1), byUpstream[0].MissingUsageCount)
+
+	byPlatform, total, err := model.ListChannelMonthlyUsageSummary(
+		model.ChannelDailyUsageFilter{ChannelID: 10}, "2026-07",
+		model.ChannelMonthlyUsageGroupByModelName, 1, 1,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, byPlatform, 1)
+	assert.Equal(t, "platform-b", byPlatform[0].ModelName)
+	assert.Empty(t, byPlatform[0].UpstreamModel)
+	assert.Equal(t, int64(3), byPlatform[0].BilledRequestCount)
+}
+
+func TestListChannelMonthlyUsageSummaryRejectsUnknownGroup(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+
+	_, _, err := model.ListChannelMonthlyUsageSummary(
+		model.ChannelDailyUsageFilter{}, "2026-07", "status", 0, 10,
+	)
+
+	require.EqualError(t, err, "invalid group_by")
 }

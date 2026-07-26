@@ -8,7 +8,11 @@ License, or (at your option) any later version.
 */
 import { describe, expect, it } from 'vitest'
 
-import { getUtcDate, getUtcMonthRange } from '../lib/date-range'
+import {
+  getDefaultUtcWeekRange,
+  getUtcDate,
+  getUtcMonthRange,
+} from '../lib/date-range'
 
 describe('UTC usage date ranges', () => {
   it('derives dates from UTC instead of the browser timezone', () => {
@@ -20,6 +24,33 @@ describe('UTC usage date ranges', () => {
     expect(getUtcMonthRange('2026-12-15')).toEqual({
       start_date: '2026-12-01',
       end_date: '2026-12-31',
+    })
+  })
+
+  it('defaults to Monday through yesterday during the UTC week', () => {
+    expect(
+      getDefaultUtcWeekRange(new Date('2026-07-23T18:30:00.000Z'))
+    ).toEqual({
+      start_date: '2026-07-20',
+      end_date: '2026-07-22',
+    })
+  })
+
+  it('defaults to the previous complete UTC week on Monday', () => {
+    expect(
+      getDefaultUtcWeekRange(new Date('2026-07-27T00:30:00.000Z'))
+    ).toEqual({
+      start_date: '2026-07-20',
+      end_date: '2026-07-26',
+    })
+  })
+
+  it('uses UTC weekday boundaries near a local-time date change', () => {
+    expect(
+      getDefaultUtcWeekRange(new Date('2026-07-26T23:30:00.000Z'))
+    ).toEqual({
+      start_date: '2026-07-20',
+      end_date: '2026-07-25',
     })
   })
 })

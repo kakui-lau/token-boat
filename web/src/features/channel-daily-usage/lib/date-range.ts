@@ -13,6 +13,26 @@ export function getUtcDate(offsetDays: number, now = new Date()): string {
   return date.toISOString().slice(0, 10)
 }
 
+export function getDefaultUtcWeekRange(now = new Date()): {
+  start_date: string
+  end_date: string
+} {
+  const weekday = now.getUTCDay()
+  const daysSinceMonday = (weekday + 6) % 7
+
+  if (daysSinceMonday === 0) {
+    return {
+      start_date: getUtcDate(-7, now),
+      end_date: getUtcDate(-1, now),
+    }
+  }
+
+  return {
+    start_date: getUtcDate(-daysSinceMonday, now),
+    end_date: getUtcDate(-1, now),
+  }
+}
+
 export function getUtcMonthRange(dateText: string): {
   start_date: string
   end_date: string

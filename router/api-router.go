@@ -298,6 +298,16 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
+		channelDailyUsageRoute := apiRouter.Group("/channel-daily-usages")
+		channelDailyUsageRoute.Use(middleware.AdminAuth())
+		{
+			channelDailyUsageRoute.GET("/", controller.AdminListChannelDailyUsages)
+			channelDailyUsageRoute.GET("/summary", controller.AdminSummarizeChannelDailyUsages)
+			channelDailyUsageRoute.GET("/export", controller.AdminExportChannelDailyUsages)
+			channelDailyUsageRoute.POST("/recalculate", controller.AdminRecalculateChannelDailyUsages)
+			channelDailyUsageRoute.POST("/lock", controller.AdminLockChannelDailyUsages)
+			channelDailyUsageRoute.POST("/unlock", controller.AdminUnlockChannelDailyUsages)
+		}
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())

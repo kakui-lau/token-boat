@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  ChartNoAxesCombined,
   CircleDollarSign,
   CreditCard,
   FileText,
@@ -129,6 +130,11 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Channel Daily Usage'),
+            url: '/channel-daily-usage',
+            icon: ChartNoAxesCombined,
           },
           {
             title: t('Models'),

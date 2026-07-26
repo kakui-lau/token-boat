@@ -160,3 +160,61 @@ func TestChannelDailyUsageFilterOptionsUseDistinctValuesWithinDateRange(t *testi
 	assert.Equal(t, []string{"anthropic/claude-b", "openai/gpt-a"}, options.ModelNames)
 	assert.Equal(t, []string{"upstream/claude-b", "upstream/gpt-a"}, options.UpstreamModels)
 }
+
+func TestListChannelMonthlyUsagesAggregatesFilteredDailyRows(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	rows := []model.ChannelDailyUsage{
+		{
+			UsageDate: "2026-06-30", Timezone: "UTC", PeriodStart: 1, PeriodEnd: 2,
+			ChannelID: 10, ChannelName: "Alpha", ModelName: "gpt-a", UpstreamModel: "upstream-a",
+			BilledRequestCount: 99, TotalTokens: 990, CustomerRevenueUSD: "9.9",
+			ProviderReportedCostUSD: "8.8", Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-01", Timezone: "UTC", PeriodStart: 10, PeriodEnd: 20,
+			ChannelID: 10, ChannelName: "Alpha", ModelName: "gpt-a", UpstreamModel: "upstream-a",
+			BilledRequestCount: 2, PromptTokens: 20, CompletionTokens: 5, TotalTokens: 25,
+			CustomerQuota: 100, CustomerRevenueUSD: "1.25", ProviderReportedCostUSD: "0.5",
+			ProviderCostKnownCount: 2, Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-31", Timezone: "UTC", PeriodStart: 30, PeriodEnd: 40,
+			ChannelID: 10, ChannelName: "Alpha", ModelName: "gpt-a", UpstreamModel: "upstream-a",
+			BilledRequestCount: 3, PromptTokens: 30, CompletionTokens: 7, TotalTokens: 37,
+			CustomerQuota: 200, CustomerRevenueUSD: "2.75", ProviderReportedCostUSD: "0.75",
+			ProviderCostKnownCount: 3, MissingUsageCount: 1, Status: model.ChannelDailyUsageStatusOpen,
+		},
+		{
+			UsageDate: "2026-07-15", Timezone: "UTC", PeriodStart: 21, PeriodEnd: 22,
+			ChannelID: 20, ChannelName: "Beta", ModelName: "gpt-a", UpstreamModel: "upstream-a",
+			BilledRequestCount: 4, TotalTokens: 44, CustomerRevenueUSD: "4",
+			ProviderReportedCostUSD: "2", Status: model.ChannelDailyUsageStatusOpen,
+		},
+	}
+	require.NoError(t, model.DB.Create(&rows).Error)
+
+	monthly, total, err := model.ListChannelMonthlyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-01", EndDate: "2026-07-31", ChannelID: 10,
+	}, 0, 10)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, monthly, 1)
+	row := monthly[0]
+	assert.Equal(t, "2026-07", row.UsageDate)
+	assert.Equal(t, int64(10), row.PeriodStart)
+	assert.Equal(t, int64(40), row.PeriodEnd)
+	assert.Equal(t, int64(5), row.BilledRequestCount)
+	assert.Equal(t, int64(50), row.PromptTokens)
+	assert.Equal(t, int64(12), row.CompletionTokens)
+	assert.Equal(t, int64(62), row.TotalTokens)
+	assert.Equal(t, int64(300), row.CustomerQuota)
+	assert.Equal(t, int64(5), row.ProviderCostKnownCount)
+	assert.Equal(t, int64(1), row.MissingUsageCount)
+	revenue, err := decimal.NewFromString(row.CustomerRevenueUSD)
+	require.NoError(t, err)
+	assert.True(t, revenue.Equal(decimal.RequireFromString("4")))
+	providerCost, err := decimal.NewFromString(row.ProviderReportedCostUSD)
+	require.NoError(t, err)
+	assert.True(t, providerCost.Equal(decimal.RequireFromString("1.25")))
+}

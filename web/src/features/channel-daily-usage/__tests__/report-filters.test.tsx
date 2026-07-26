@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelDailyUsagePage } from '../index'
@@ -104,5 +99,24 @@ describe('Channel daily usage report filters', () => {
     expect(
       screen.getByRole('option', { name: 'vendor/gpt-test' })
     ).toBeVisible()
+  })
+
+  test('switches the report to monthly aggregation with month filters', () => {
+    render(<ChannelDailyUsagePage />)
+
+    const aggregation = screen.getByRole('combobox', { name: 'Aggregation' })
+    fireEvent.click(aggregation)
+    const monthly = screen.getByRole('option', { name: 'Monthly' })
+    fireEvent.pointerDown(monthly, { button: 0 })
+    fireEvent.pointerUp(monthly, { button: 0 })
+    fireEvent.click(monthly)
+
+    expect(screen.getByText('UTC Month', { selector: 'th' })).toBeVisible()
+    expect(screen.getByLabelText('Start Month')).toHaveAttribute(
+      'type',
+      'month'
+    )
+    expect(screen.getByLabelText('End Month')).toHaveAttribute('type', 'month')
+    expect(screen.getByText('No monthly usage data found')).toBeVisible()
   })
 })

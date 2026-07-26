@@ -23,7 +23,6 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ComboboxInput } from '@/components/ui/combobox-input'
 import {
   Card,
   CardAction,
@@ -32,6 +31,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -93,6 +93,7 @@ export function ChannelDailyUsagePage() {
   const queryClient = useQueryClient()
   const [startDate, setStartDate] = useState(() => getUtcDate(-7))
   const [endDate, setEndDate] = useState(() => getUtcDate(-1))
+  const [granularity, setGranularity] = useState<'day' | 'month'>('day')
   const [channelId, setChannelId] = useState('')
   const [modelName, setModelName] = useState('')
   const [upstreamModel, setUpstreamModel] = useState('')
@@ -100,11 +101,14 @@ export function ChannelDailyUsagePage() {
   const [settlementMonth, setSettlementMonth] = useState(previousUtcMonth)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [page, setPage] = useState(1)
+  const startMonth = startDate.slice(0, 7)
+  const endMonth = endDate.slice(0, 7)
 
   const filters = useMemo<ChannelDailyUsageFilters>(
     () => ({
       start_date: startDate,
       end_date: endDate,
+      granularity,
       channel_id: channelId ? Number(channelId) : undefined,
       model_name: modelName.trim() || undefined,
       upstream_model: upstreamModel.trim() || undefined,
@@ -112,7 +116,16 @@ export function ChannelDailyUsagePage() {
       page,
       page_size: PAGE_SIZE,
     }),
-    [channelId, endDate, modelName, page, startDate, status, upstreamModel]
+    [
+      channelId,
+      endDate,
+      granularity,
+      modelName,
+      page,
+      startDate,
+      status,
+      upstreamModel,
+    ]
   )
 
   const usageQuery = useQuery({
@@ -227,7 +240,7 @@ export function ChannelDailyUsagePage() {
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `channel-daily-usage-${startDate}-${endDate}.csv`
+      anchor.download = `channel-${granularity}-usage-${startDate}-${endDate}.csv`
       anchor.click()
       URL.revokeObjectURL(url)
     } catch (error) {
@@ -298,7 +311,9 @@ export function ChannelDailyUsagePage() {
                 <CardTitle>{t('UTC reconciliation report')}</CardTitle>
                 <CardDescription>
                   {t(
-                    'Each row summarizes one channel and model for a completed UTC day. Requests are counted from consumption logs, not upstream retry attempts.'
+                    granularity === 'month'
+                      ? 'Each row summarizes one channel and model for a UTC month. Requests are counted from daily reconciliation data.'
+                      : 'Each row summarizes one channel and model for a completed UTC day. Requests are counted from consumption logs, not upstream retry attempts.'
                   )}
                 </CardDescription>
               </CardHeader>
@@ -313,27 +328,78 @@ export function ChannelDailyUsagePage() {
                   )}
                 </CardDescription>
               </CardHeader>
-              <CardContent className='grid gap-4 sm:grid-cols-2 xl:grid-cols-6'>
+              <CardContent className='grid gap-4 sm:grid-cols-2 xl:grid-cols-7'>
                 <div className='grid gap-1.5'>
-                  <Label htmlFor='usage-start-date'>{t('Start Date')}</Label>
+                  <Label>{t('Aggregation')}</Label>
+                  <Select
+                    items={[
+                      { value: 'day', label: t('Daily') },
+                      { value: 'month', label: t('Monthly') },
+                    ]}
+                    value={granularity}
+                    onValueChange={(value) => {
+                      if (value) {
+                        const nextGranularity = value as typeof granularity
+                        setGranularity(nextGranularity)
+                        if (nextGranularity === 'month') {
+                          const previousMonth = previousUtcMonth()
+                          const range = getUtcMonthRange(`${previousMonth}-01`)
+                          setStartDate(range.start_date)
+                          setEndDate(range.end_date)
+                        }
+                        setPage(1)
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      className='w-full'
+                      aria-label={t('Aggregation')}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='day'>{t('Daily')}</SelectItem>
+                        <SelectItem value='month'>{t('Monthly')}</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className='grid gap-1.5'>
+                  <Label htmlFor='usage-start-date'>
+                    {granularity === 'month'
+                      ? t('Start Month')
+                      : t('Start Date')}
+                  </Label>
                   <Input
                     id='usage-start-date'
-                    type='date'
-                    value={startDate}
+                    type={granularity === 'month' ? 'month' : 'date'}
+                    value={granularity === 'month' ? startMonth : startDate}
                     onChange={(event) => {
-                      setStartDate(event.target.value)
+                      setStartDate(
+                        granularity === 'month'
+                          ? `${event.target.value}-01`
+                          : event.target.value
+                      )
                       setPage(1)
                     }}
                   />
                 </div>
                 <div className='grid gap-1.5'>
-                  <Label htmlFor='usage-end-date'>{t('End Date')}</Label>
+                  <Label htmlFor='usage-end-date'>
+                    {granularity === 'month' ? t('End Month') : t('End Date')}
+                  </Label>
                   <Input
                     id='usage-end-date'
-                    type='date'
-                    value={endDate}
+                    type={granularity === 'month' ? 'month' : 'date'}
+                    value={granularity === 'month' ? endMonth : endDate}
                     onChange={(event) => {
-                      setEndDate(event.target.value)
+                      setEndDate(
+                        granularity === 'month'
+                          ? getUtcMonthRange(`${event.target.value}-01`)
+                              .end_date
+                          : event.target.value
+                      )
                       setPage(1)
                     }}
                   />
@@ -530,7 +596,11 @@ export function ChannelDailyUsagePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t('UTC Date')}</TableHead>
+                      <TableHead>
+                        {granularity === 'month'
+                          ? t('UTC Month')
+                          : t('UTC Date')}
+                      </TableHead>
                       <TableHead>{t('Channel')}</TableHead>
                       <TableHead>{t('Platform Model')}</TableHead>
                       <TableHead>{t('Upstream Model')}</TableHead>
@@ -559,7 +629,13 @@ export function ChannelDailyUsagePage() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => (
-                      <TableRow key={row.id}>
+                      <TableRow
+                        key={
+                          granularity === 'month'
+                            ? `${row.usage_date}:${row.channel_id}:${row.model_name}:${row.upstream_model}:${row.status}`
+                            : row.id
+                        }
+                      >
                         <TableCell>{row.usage_date}</TableCell>
                         <TableCell>
                           {row.channel_name || `#${row.channel_id}`}
@@ -597,7 +673,9 @@ export function ChannelDailyUsagePage() {
                           colSpan={11}
                           className='text-muted-foreground h-24 text-center'
                         >
-                          {t('No daily usage data found')}
+                          {granularity === 'month'
+                            ? t('No monthly usage data found')
+                            : t('No daily usage data found')}
                         </TableCell>
                       </TableRow>
                     )}

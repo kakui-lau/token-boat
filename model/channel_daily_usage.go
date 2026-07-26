@@ -135,6 +135,55 @@ func ListChannelDailyUsages(filter ChannelDailyUsageFilter, offset, limit int) (
 	return rows, total, err
 }
 
+// ListChannelMonthlyUsages rolls the filtered daily rows up by calendar month
+// while preserving the channel and model dimensions used by the daily report.
+// It intentionally reads from ChannelDailyUsage instead of persisting a second
+// aggregate, so recalculation and month locking keep a single source of truth.
+func ListChannelMonthlyUsages(filter ChannelDailyUsageFilter, offset, limit int) ([]ChannelDailyUsage, int64, error) {
+	fields := []string{
+		"SUBSTRING(usage_date, 1, 7) AS usage_date",
+		"timezone",
+		"MIN(period_start) AS period_start",
+		"MAX(period_end) AS period_end",
+		"channel_id",
+		"channel_name",
+		"model_name",
+		"upstream_model",
+		"SUM(billed_request_count) AS billed_request_count",
+		"SUM(prompt_tokens) AS prompt_tokens",
+		"SUM(cache_read_tokens) AS cache_read_tokens",
+		"SUM(cache_write_tokens) AS cache_write_tokens",
+		"SUM(completion_tokens) AS completion_tokens",
+		"SUM(total_tokens) AS total_tokens",
+		"SUM(customer_quota) AS customer_quota",
+		"SUM(customer_revenue_usd) AS customer_revenue_usd",
+		"SUM(provider_reported_cost_usd) AS provider_reported_cost_usd",
+		"SUM(provider_cost_known_count) AS provider_cost_known_count",
+		"SUM(missing_usage_count) AS missing_usage_count",
+		"SUM(pending_task_count) AS pending_task_count",
+		"SUM(manual_review_count) AS manual_review_count",
+		"status",
+		"MAX(calculated_at) AS calculated_at",
+		"MAX(locked_at) AS locked_at",
+		"MIN(created_at) AS created_at",
+		"MAX(updated_at) AS updated_at",
+	}
+	grouped := channelDailyUsageQuery(filter).
+		Select(strings.Join(fields, ", ")).
+		Group("SUBSTRING(usage_date, 1, 7), timezone, channel_id, channel_name, model_name, upstream_model, status")
+
+	var total int64
+	if err := DB.Table("(?) AS channel_monthly_usages", grouped).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []ChannelDailyUsage
+	err := DB.Table("(?) AS channel_monthly_usages", grouped).
+		Order("usage_date DESC, channel_id ASC, model_name ASC, upstream_model ASC").
+		Offset(offset).Limit(limit).Scan(&rows).Error
+	return rows, total, err
+}
+
 func SummarizeChannelDailyUsages(filter ChannelDailyUsageFilter) (ChannelDailyUsageSummary, error) {
 	var summary ChannelDailyUsageSummary
 	fields := []string{

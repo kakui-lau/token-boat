@@ -34,6 +34,7 @@ export type ChannelDailyUsage = {
 export type ChannelDailyUsageFilters = {
   start_date: string
   end_date: string
+  granularity: 'day' | 'month'
   channel_id?: number
   model_name?: string
   upstream_model?: string

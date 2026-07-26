@@ -46,9 +46,19 @@ func parseUTCDateRange(startDate, endDate string, maxDays int) (time.Time, time.
 
 func AdminListChannelDailyUsages(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	rows, total, err := model.ListChannelDailyUsages(
-		channelDailyUsageFilter(c), pageInfo.GetStartIdx(), pageInfo.GetPageSize(),
-	)
+	filter := channelDailyUsageFilter(c)
+	var rows []model.ChannelDailyUsage
+	var total int64
+	var err error
+	if c.Query("granularity") == "month" {
+		rows, total, err = model.ListChannelMonthlyUsages(
+			filter, pageInfo.GetStartIdx(), pageInfo.GetPageSize(),
+		)
+	} else {
+		rows, total, err = model.ListChannelDailyUsages(
+			filter, pageInfo.GetStartIdx(), pageInfo.GetPageSize(),
+		)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -81,7 +91,13 @@ func AdminListChannelDailyUsageFilterOptions(c *gin.Context) {
 
 func AdminExportChannelDailyUsages(c *gin.Context) {
 	filter := channelDailyUsageFilter(c)
-	rows, _, err := model.ListChannelDailyUsages(filter, 0, 1_000_000)
+	var rows []model.ChannelDailyUsage
+	var err error
+	if c.Query("granularity") == "month" {
+		rows, _, err = model.ListChannelMonthlyUsages(filter, 0, 1_000_000)
+	} else {
+		rows, _, err = model.ListChannelDailyUsages(filter, 0, 1_000_000)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

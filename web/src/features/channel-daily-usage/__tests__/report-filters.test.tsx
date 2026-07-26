@@ -50,7 +50,25 @@ vi.mock('@tanstack/react-query', () => ({
       return { data: { data: { items: [], total: 0 } }, isLoading: false }
     }
     if (queryName === 'channel-daily-usages-summary') {
-      return { data: { data: {} } }
+      return {
+        data: {
+          data: {
+            billed_request_count: 12,
+            prompt_tokens: 120,
+            cache_read_tokens: 20,
+            cache_write_tokens: 0,
+            completion_tokens: 40,
+            total_tokens: 180,
+            customer_quota: 0,
+            customer_revenue_usd: '1.25',
+            provider_reported_cost_usd: '0.5',
+            provider_cost_known_count: 10,
+            missing_usage_count: 1,
+            pending_task_count: 1,
+            manual_review_count: 0,
+          },
+        },
+      }
     }
     return {
       data: {
@@ -79,6 +97,7 @@ describe('Channel daily usage report filters', () => {
     expect(
       screen.getByText('Report filters').closest('[data-slot="card"]')
     ).toHaveClass('overflow-visible')
+    expect(screen.getByText('Total')).toBeVisible()
 
     const channel = screen.getByRole('combobox', { name: 'Channel' })
     fireEvent.focus(channel)

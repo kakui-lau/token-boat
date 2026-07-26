@@ -46,6 +46,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -586,6 +587,7 @@ export function ChannelDailyUsagePage() {
                 <CardContent className='text-2xl font-semibold'>
                   {formatInteger(
                     (summary?.missing_usage_count ?? 0) +
+                      (summary?.pending_task_count ?? 0) +
                       (summary?.manual_review_count ?? 0)
                   )}
                 </CardContent>
@@ -663,7 +665,9 @@ export function ChannelDailyUsagePage() {
                         </TableCell>
                         <TableCell className='text-right'>
                           {formatInteger(
-                            row.missing_usage_count + row.manual_review_count
+                            row.missing_usage_count +
+                              row.pending_task_count +
+                              row.manual_review_count
                           )}
                         </TableCell>
                       </TableRow>
@@ -681,6 +685,38 @@ export function ChannelDailyUsagePage() {
                       </TableRow>
                     )}
                   </TableBody>
+                  {summary && (
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={4}>{t('Total')}</TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.billed_request_count)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.prompt_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.cache_read_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.completion_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.total_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatUsd(summary.customer_revenue_usd)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(
+                            summary.missing_usage_count +
+                              summary.pending_task_count +
+                              summary.manual_review_count
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  )}
                 </Table>
               </div>
               <div className='flex items-center justify-between border-t p-3 text-sm'>

@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { CircleCheck, CircleX, Clock3, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { getSelf } from '@/lib/api'
 
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
@@ -28,11 +30,18 @@ import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RedemptionCodeCard } from './components/redemption-code-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
-import { useAffiliate, useRedemption, useTopupInfo } from './hooks'
+import {
+  useAffiliate,
+  usePaymentReturnConfirmation,
+  useRedemption,
+  useTopupInfo,
+} from './hooks'
 import type { UserWalletData } from './types'
 
 interface WalletProps {
   initialShowHistory?: boolean
+  paymentPending?: boolean
+  paymentTradeNo?: string
 }
 
 export function Wallet(props: WalletProps) {
@@ -71,6 +80,12 @@ export function Wallet(props: WalletProps) {
     fetchUser()
   }, [fetchUser])
 
+  const paymentReturnState = usePaymentReturnConfirmation(
+    props.paymentTradeNo,
+    props.paymentPending === true,
+    fetchUser
+  )
+
   useEffect(() => {
     if (!props.initialShowHistory) return
     setBillingDialogOpen(true)
@@ -94,12 +109,56 @@ export function Wallet(props: WalletProps) {
     return success
   }
 
+  let paymentAlertClassName: string | undefined
+  if (paymentReturnState === 'success') {
+    paymentAlertClassName = 'border-emerald-500/40 bg-emerald-500/5'
+  } else if (
+    paymentReturnState === 'failed' ||
+    paymentReturnState === 'expired'
+  ) {
+    paymentAlertClassName = 'border-destructive/40 bg-destructive/5'
+  }
+
   return (
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+            {paymentReturnState !== 'idle' && (
+              <Alert className={paymentAlertClassName}>
+                {paymentReturnState === 'checking' && (
+                  <Loader2 className='animate-spin' aria-hidden='true' />
+                )}
+                {paymentReturnState === 'success' && (
+                  <CircleCheck aria-hidden='true' />
+                )}
+                {(paymentReturnState === 'failed' ||
+                  paymentReturnState === 'expired') && (
+                  <CircleX aria-hidden='true' />
+                )}
+                {paymentReturnState === 'timeout' && (
+                  <Clock3 aria-hidden='true' />
+                )}
+                <AlertDescription aria-live='polite'>
+                  {paymentReturnState === 'checking' &&
+                    t('Confirming your payment...')}
+                  {paymentReturnState === 'success' &&
+                    t(
+                      'Payment confirmed. Your wallet balance has been updated.'
+                    )}
+                  {paymentReturnState === 'failed' &&
+                    t('Payment failed. No balance was added.')}
+                  {paymentReturnState === 'expired' &&
+                    t('Payment session expired. No balance was added.')}
+                  {paymentReturnState === 'timeout' &&
+                    t(
+                      'Payment is still being confirmed. You can safely leave this page and check billing history later.'
+                    )}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <WalletStatsCard
               user={user}
               loading={userLoading}

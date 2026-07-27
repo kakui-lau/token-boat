@@ -69,7 +69,21 @@ vi.mock('@tanstack/react-query', () => ({
 }))
 
 describe('Channel monthly usage grouping', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
+
+  test('selects the current UTC month by default and allows querying it', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-27T08:00:00.000Z'))
+
+    render(<ChannelMonthlyUsagePage />)
+
+    const monthInput = screen.getByLabelText('UTC Month')
+    expect(monthInput).toHaveValue('2026-07')
+    expect(monthInput).toHaveAttribute('max', '2026-07')
+  })
 
   test('switches the grouped model column from upstream to platform', () => {
     render(<ChannelMonthlyUsagePage />)

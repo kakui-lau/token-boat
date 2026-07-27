@@ -49,11 +49,8 @@ import type {
 
 const PAGE_SIZE = 50
 
-function previousUtcMonth(): string {
-  const date = new Date()
-  date.setUTCDate(1)
-  date.setUTCMonth(date.getUTCMonth() - 1)
-  return date.toISOString().slice(0, 7)
+function currentUtcMonth(): string {
+  return new Date().toISOString().slice(0, 7)
 }
 
 function monthDateRange(month: string): {
@@ -83,7 +80,7 @@ function formatUsd(value: string | undefined): string {
 
 export function ChannelMonthlyUsagePage() {
   const { t } = useTranslation()
-  const [month, setMonth] = useState(previousUtcMonth)
+  const [month, setMonth] = useState(currentUtcMonth)
   const [groupBy, setGroupBy] =
     useState<ChannelMonthlyUsageGroupBy>('upstream_model')
   const [channelId, setChannelId] = useState('')
@@ -160,7 +157,7 @@ export function ChannelMonthlyUsagePage() {
                 <Input
                   id='monthly-usage-month'
                   type='month'
-                  max={previousUtcMonth()}
+                  max={currentUtcMonth()}
                   value={month}
                   onChange={(event) => {
                     if (event.target.value) {

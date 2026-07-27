@@ -116,7 +116,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 		ClientReferenceID: stripe.String(referenceId),
 		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
 		CancelURL:         stripe.String(paymentReturnPath("/wallet")),
-		AutomaticTax: &stripe.CheckoutSessionAutomaticTaxParams{
+		AdaptivePricing: &stripe.CheckoutSessionAdaptivePricingParams{
 			Enabled: stripe.Bool(false),
 		},
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
@@ -127,6 +127,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 		},
 		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 	}
+	params.AddExtra("managed_payments[enabled]", "false")
 
 	if "" == customerId {
 		if "" != email {

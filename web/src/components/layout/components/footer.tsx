@@ -72,7 +72,7 @@ const DEFAULT_COLUMNS: FooterColumnProps[] = [
       },
       {
         text: 'footer.columns.docs.links.apiDocs',
-        href: 'http://tokenboat.com/api/',
+        href: 'https://api-docs.tokenboat.com',
       },
     ],
   },

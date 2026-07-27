@@ -66,6 +66,16 @@ describe('Footer layout', () => {
     expect(
       screen.getAllByRole('link', { name: 'Terms of Service' })[0]
     ).toBeVisible()
+    expect(
+      screen.getByRole('link', {
+        name: 'footer.columns.docs.links.apiDocs',
+      })
+    ).toHaveAttribute('href', 'https://api-docs.tokenboat.com')
+    expect(
+      screen.getByRole('link', {
+        name: 'footer.columns.docs.links.apiDocs',
+      })
+    ).toHaveAttribute('target', '_blank')
   })
 
   test('keeps custom footer content inside the branded footer shell', () => {

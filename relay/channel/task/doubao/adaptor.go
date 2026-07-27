@@ -133,7 +133,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
 		return nil
 	}
-	if !strings.Contains(strings.ToLower(req.Model), "seedance-2.0") {
+	if !isSeedance20Model(req.Model) {
 		return service.TaskErrorWrapperLocal(
 			fmt.Errorf("tiered expression billing is only supported for Seedance 2.0 on DoubaoVideo"),
 			"unsupported_tiered_billing",
@@ -188,6 +188,13 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		Body:    body,
 	}
 	return nil
+}
+
+func isSeedance20Model(modelName string) bool {
+	normalized := strings.ToLower(modelName)
+	return strings.Contains(normalized, "seedance-2.0") ||
+		strings.Contains(normalized, "seedance-2-0") ||
+		strings.Contains(normalized, "seedance2")
 }
 
 func estimateMaxBillingTokens(req relaycommon.TaskSubmitReq) (int, error) {

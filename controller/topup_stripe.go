@@ -418,6 +418,9 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		LineItems:           []*stripe.CheckoutSessionLineItemParams{lineItem},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
 		AllowPromotionCodes: stripe.Bool(allowPromotionCodes),
+		AutomaticTax: &stripe.CheckoutSessionAutomaticTaxParams{
+			Enabled: stripe.Bool(false),
+		},
 	}
 
 	if "" == customerId {

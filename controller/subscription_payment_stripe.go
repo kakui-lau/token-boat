@@ -116,6 +116,9 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 		ClientReferenceID: stripe.String(referenceId),
 		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
 		CancelURL:         stripe.String(paymentReturnPath("/wallet")),
+		AutomaticTax: &stripe.CheckoutSessionAutomaticTaxParams{
+			Enabled: stripe.Bool(false),
+		},
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceId),

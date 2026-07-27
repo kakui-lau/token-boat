@@ -126,3 +126,26 @@ func TestValidateOnlyAppliesStrictEstimatorToTieredSeedance20(t *testing.T) {
 	assert.NotContains(t, normalizedBody, "https://example.com/in.mp4")
 	assert.Contains(t, normalizedBody, "video_url")
 }
+
+func TestIsSeedance20ModelRecognizesPublicAndUpstreamNames(t *testing.T) {
+	tests := []struct {
+		name      string
+		modelName string
+		expected  bool
+	}{
+		{name: "public model", modelName: "byteplus/seedance-2.0", expected: true},
+		{name: "official model", modelName: "dreamina-seedance-2-0-260128", expected: true},
+		{name: "official fast model", modelName: "dreamina-seedance-2-0-fast-260128", expected: true},
+		{name: "official mini model", modelName: "dreamina-seedance-2-0-mini-260615", expected: true},
+		{name: "upstream alias", modelName: "seedance2", expected: true},
+		{name: "upstream fast alias", modelName: "seedance2-fast", expected: true},
+		{name: "older seedance", modelName: "seedance-1.5-pro", expected: false},
+		{name: "unrelated model", modelName: "gpt-5.4", expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isSeedance20Model(tt.modelName))
+		})
+	}
+}

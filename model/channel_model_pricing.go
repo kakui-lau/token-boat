@@ -349,3 +349,102 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 	})
 	return result, err
 }
+
+func GetOfficialPriceVersionForUpdate(tx *gorm.DB, id int) (OfficialModelPriceVersion, error) {
+	var version OfficialModelPriceVersion
+	err := lockForUpdate(tx).First(&version, id).Error
+	return version, err
+}
+
+func GetPurchasePriceVersionForUpdate(tx *gorm.DB, id int) (ChannelModelPurchasePriceVersion, error) {
+	var version ChannelModelPurchasePriceVersion
+	err := lockForUpdate(tx).First(&version, id).Error
+	return version, err
+}
+
+func GetRetailPriceVersionForUpdate(tx *gorm.DB, id int) (ChannelModelRetailPriceVersion, error) {
+	var version ChannelModelRetailPriceVersion
+	err := lockForUpdate(tx).First(&version, id).Error
+	return version, err
+}
+
+func ActivateOfficialPriceVersion(tx *gorm.DB, version OfficialModelPriceVersion, now int64) error {
+	if err := tx.Model(&OfficialModelPriceVersion{}).
+		Where("model_id = ? AND status = ? AND id <> ?", version.ModelId, PricingVersionStatusActive, version.Id).
+		UpdateColumns(map[string]any{
+			"status":       PricingVersionStatusExpired,
+			"effective_to": now,
+			"updated_at":   now,
+		}).Error; err != nil {
+		return err
+	}
+	result := tx.Model(&OfficialModelPriceVersion{}).
+		Where("id = ? AND status = ?", version.Id, PricingVersionStatusDraft).
+		UpdateColumns(map[string]any{
+			"status":         PricingVersionStatusActive,
+			"effective_from": now,
+			"effective_to":   0,
+			"updated_at":     now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("official price version is no longer publishable")
+	}
+	return nil
+}
+
+func ActivatePurchasePriceVersion(tx *gorm.DB, version ChannelModelPurchasePriceVersion, now int64) error {
+	if err := tx.Model(&ChannelModelPurchasePriceVersion{}).
+		Where("channel_model_id = ? AND status = ? AND id <> ?", version.ChannelModelId, PricingVersionStatusActive, version.Id).
+		UpdateColumns(map[string]any{
+			"status":       PricingVersionStatusExpired,
+			"effective_to": now,
+			"updated_at":   now,
+		}).Error; err != nil {
+		return err
+	}
+	result := tx.Model(&ChannelModelPurchasePriceVersion{}).
+		Where("id = ? AND status = ?", version.Id, PricingVersionStatusDraft).
+		UpdateColumns(map[string]any{
+			"status":         PricingVersionStatusActive,
+			"effective_from": now,
+			"effective_to":   0,
+			"updated_at":     now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("purchase price version is no longer publishable")
+	}
+	return nil
+}
+
+func ActivateRetailPriceVersion(tx *gorm.DB, version ChannelModelRetailPriceVersion, now int64) error {
+	if err := tx.Model(&ChannelModelRetailPriceVersion{}).
+		Where("channel_model_id = ? AND status = ? AND id <> ?", version.ChannelModelId, PricingVersionStatusActive, version.Id).
+		UpdateColumns(map[string]any{
+			"status":       PricingVersionStatusExpired,
+			"effective_to": now,
+			"updated_at":   now,
+		}).Error; err != nil {
+		return err
+	}
+	result := tx.Model(&ChannelModelRetailPriceVersion{}).
+		Where("id = ? AND status = ?", version.Id, PricingVersionStatusDraft).
+		UpdateColumns(map[string]any{
+			"status":         PricingVersionStatusActive,
+			"effective_from": now,
+			"effective_to":   0,
+			"updated_at":     now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("retail price version is no longer publishable")
+	}
+	return nil
+}

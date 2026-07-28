@@ -374,6 +374,15 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.POST("/channel-models", controller.AdminCreateChannelModel)
 			pricingAdminRoute.PUT("/channel-models/:id", controller.AdminUpdateChannelModel)
 			pricingAdminRoute.POST("/channel-models/sync-legacy", controller.AdminSyncLegacyChannelModels)
+			pricingAdminRoute.GET("/official-prices", controller.AdminListOfficialPriceVersions)
+			pricingAdminRoute.POST("/official-prices", controller.AdminCreateOfficialPriceVersion)
+			pricingAdminRoute.POST("/official-prices/:id/publish", controller.AdminPublishOfficialPriceVersion)
+			pricingAdminRoute.GET("/purchase-prices", controller.AdminListPurchasePriceVersions)
+			pricingAdminRoute.POST("/purchase-prices", controller.AdminCreatePurchasePriceVersion)
+			pricingAdminRoute.POST("/purchase-prices/:id/publish", controller.AdminPublishPurchasePriceVersion)
+			pricingAdminRoute.GET("/retail-prices", controller.AdminListRetailPriceVersions)
+			pricingAdminRoute.POST("/retail-prices", controller.AdminCreateRetailPriceVersion)
+			pricingAdminRoute.POST("/retail-prices/:id/publish", controller.AdminPublishRetailPriceVersion)
 		}
 
 		// Deployments (model deployment management)

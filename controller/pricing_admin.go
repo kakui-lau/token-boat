@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/gin-gonic/gin"
 )
 
@@ -148,6 +149,144 @@ func AdminSyncLegacyChannelModels(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, result)
+}
+
+func AdminListOfficialPriceVersions(c *gin.Context) {
+	modelId, ok := positiveQueryId(c, "model_id")
+	if !ok {
+		return
+	}
+	var versions []model.OfficialModelPriceVersion
+	if err := model.DB.Where("model_id = ?", modelId).
+		Order("version DESC").
+		Find(&versions).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, versions)
+}
+
+func AdminCreateOfficialPriceVersion(c *gin.Context) {
+	var input model.OfficialModelPriceVersion
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.CreateOfficialPriceVersion(&input, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, &input)
+}
+
+func AdminPublishOfficialPriceVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.PublishOfficialPriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminListPurchasePriceVersions(c *gin.Context) {
+	channelModelId, ok := positiveQueryId(c, "channel_model_id")
+	if !ok {
+		return
+	}
+	var versions []model.ChannelModelPurchasePriceVersion
+	if err := model.DB.Where("channel_model_id = ?", channelModelId).
+		Order("version DESC").
+		Find(&versions).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, versions)
+}
+
+func AdminCreatePurchasePriceVersion(c *gin.Context) {
+	var input model.ChannelModelPurchasePriceVersion
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.CreatePurchasePriceVersion(&input, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, &input)
+}
+
+func AdminPublishPurchasePriceVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.PublishPurchasePriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminListRetailPriceVersions(c *gin.Context) {
+	channelModelId, ok := positiveQueryId(c, "channel_model_id")
+	if !ok {
+		return
+	}
+	var versions []model.ChannelModelRetailPriceVersion
+	if err := model.DB.Where("channel_model_id = ?", channelModelId).
+		Order("version DESC").
+		Find(&versions).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, versions)
+}
+
+func AdminCreateRetailPriceVersion(c *gin.Context) {
+	var input model.ChannelModelRetailPriceVersion
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.CreateRetailPriceVersion(&input, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, &input)
+}
+
+func AdminPublishRetailPriceVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.PublishRetailPriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func positivePathId(c *gin.Context) (int, bool) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "价格版本 ID 无效")
+		return 0, false
+	}
+	return id, true
+}
+
+func positiveQueryId(c *gin.Context, name string) (int, bool) {
+	id, err := strconv.Atoi(c.Query(name))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, name+" 无效")
+		return 0, false
+	}
+	return id, true
 }
 
 func requireChannelModelReferences(channelId int, modelId int) error {

@@ -1,0 +1,273 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
+
+import { createPurchaseDraft } from '../api'
+import { purchasePriceSchema, type PurchasePriceForm } from '../lib/schemas'
+import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
+import { PriceInputField } from './price-input-field'
+import { VersionList } from './version-list'
+
+type PurchasePricePanelProps = {
+  channelModelId: number
+  officialVersions: OfficialPriceVersion[]
+  versions: PurchasePriceVersion[]
+  isPublishing: boolean
+  onPublish: (id: number) => void
+  onCreated: () => Promise<void>
+}
+
+const emptyPrices = {
+  input_unit_price: '',
+  output_unit_price: '',
+  cache_read_unit_price: '',
+  cache_write_unit_price: '',
+}
+
+export function PurchasePricePanel(props: PurchasePricePanelProps) {
+  const { t } = useTranslation()
+  const form = useForm<PurchasePriceForm>({
+    resolver: zodResolver(purchasePriceSchema),
+    defaultValues: {
+      pricing_mode: 'official_ratio',
+      official_price_version_id: '',
+      purchase_discount: '',
+      input_discount: '',
+      output_discount: '',
+      cache_read_discount: '',
+      cache_write_discount: '',
+      ...emptyPrices,
+      quote_reference: '',
+      contract_reference: '',
+      remark: '',
+    },
+  })
+  const pricingMode = form.watch('pricing_mode')
+  const createMutation = useMutation({
+    mutationFn: (value: PurchasePriceForm) =>
+      createPurchaseDraft({
+        channel_model_id: props.channelModelId,
+        official_price_version_id: value.official_price_version_id
+          ? Number(value.official_price_version_id)
+          : undefined,
+        pricing_mode: value.pricing_mode,
+        purchase_discount: value.purchase_discount,
+        input_discount: value.input_discount,
+        output_discount: value.output_discount,
+        cache_read_discount: value.cache_read_discount,
+        cache_write_discount: value.cache_write_discount,
+        prices: {
+          input_unit_price: value.input_unit_price,
+          output_unit_price: value.output_unit_price,
+          cache_read_unit_price: value.cache_read_unit_price,
+          cache_write_unit_price: value.cache_write_unit_price,
+        },
+        quote_reference: value.quote_reference,
+        contract_reference: value.contract_reference,
+        remark: value.remark,
+      }),
+    onSuccess: async () => {
+      form.reset()
+      await props.onCreated()
+      toast.success(t('Purchase price draft created'))
+    },
+  })
+
+  return (
+    <div className='space-y-6'>
+      <form
+        className='space-y-4 rounded-lg border p-4'
+        onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
+      >
+        <h3 className='font-medium'>{t('Create purchase price draft')}</h3>
+        <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+          <Field>
+            <FieldLabel htmlFor='purchase-pricing-mode'>
+              {t('Pricing Mode')}
+            </FieldLabel>
+            <NativeSelect
+              id='purchase-pricing-mode'
+              className='w-full'
+              {...form.register('pricing_mode')}
+            >
+              <NativeSelectOption value='official_ratio'>
+                {t('Official price discount')}
+              </NativeSelectOption>
+              <NativeSelectOption value='component_ratio'>
+                {t('Component discounts')}
+              </NativeSelectOption>
+              <NativeSelectOption value='fixed_unit_price'>
+                {t('Fixed unit price')}
+              </NativeSelectOption>
+            </NativeSelect>
+          </Field>
+          {pricingMode !== 'fixed_unit_price' ? (
+            <Field
+              data-invalid={Boolean(
+                form.formState.errors.official_price_version_id
+              )}
+            >
+              <FieldLabel htmlFor='purchase-official-version'>
+                {t('Official price version')}
+              </FieldLabel>
+              <NativeSelect
+                id='purchase-official-version'
+                className='w-full'
+                aria-invalid={Boolean(
+                  form.formState.errors.official_price_version_id
+                )}
+                {...form.register('official_price_version_id')}
+              >
+                <NativeSelectOption value=''>
+                  {t('Select a version')}
+                </NativeSelectOption>
+                {props.officialVersions.map((version) => (
+                  <NativeSelectOption
+                    key={version.id}
+                    value={String(version.id)}
+                  >
+                    {t('Version')} {version.version} · {t(version.status)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <FieldError>
+                {form.formState.errors.official_price_version_id?.message
+                  ? t(form.formState.errors.official_price_version_id.message)
+                  : null}
+              </FieldError>
+            </Field>
+          ) : null}
+          {pricingMode === 'official_ratio' ? (
+            <PriceInputField
+              id='purchase-discount'
+              label='Purchase discount (for example 0.65)'
+              registration={form.register('purchase_discount')}
+              error={form.formState.errors.purchase_discount}
+            />
+          ) : null}
+          {pricingMode === 'component_ratio' ? (
+            <>
+              <PriceInputField
+                id='purchase-input-discount'
+                label='Input discount'
+                registration={form.register('input_discount')}
+                error={form.formState.errors.input_discount}
+              />
+              <PriceInputField
+                id='purchase-output-discount'
+                label='Output discount'
+                registration={form.register('output_discount')}
+                error={form.formState.errors.output_discount}
+              />
+              <PriceInputField
+                id='purchase-cache-read-discount'
+                label='Cache read discount'
+                registration={form.register('cache_read_discount')}
+                error={form.formState.errors.cache_read_discount}
+              />
+              <PriceInputField
+                id='purchase-cache-write-discount'
+                label='Cache write discount'
+                registration={form.register('cache_write_discount')}
+                error={form.formState.errors.cache_write_discount}
+              />
+            </>
+          ) : null}
+          {pricingMode === 'fixed_unit_price' ? (
+            <>
+              <PriceInputField
+                id='purchase-input-price'
+                label='Input price per 1M tokens'
+                registration={form.register('input_unit_price')}
+                error={form.formState.errors.input_unit_price}
+              />
+              <PriceInputField
+                id='purchase-output-price'
+                label='Output price per 1M tokens'
+                registration={form.register('output_unit_price')}
+                error={form.formState.errors.output_unit_price}
+              />
+              <PriceInputField
+                id='purchase-cache-read-price'
+                label='Cache read price per 1M tokens'
+                registration={form.register('cache_read_unit_price')}
+                error={form.formState.errors.cache_read_unit_price}
+              />
+              <PriceInputField
+                id='purchase-cache-write-price'
+                label='Cache write price per 1M tokens'
+                registration={form.register('cache_write_unit_price')}
+                error={form.formState.errors.cache_write_unit_price}
+              />
+            </>
+          ) : null}
+          <Field>
+            <FieldLabel htmlFor='purchase-quote-reference'>
+              {t('Quote reference')}
+            </FieldLabel>
+            <Input
+              id='purchase-quote-reference'
+              {...form.register('quote_reference')}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor='purchase-contract-reference'>
+              {t('Contract reference')}
+            </FieldLabel>
+            <Input
+              id='purchase-contract-reference'
+              {...form.register('contract_reference')}
+            />
+          </Field>
+        </FieldGroup>
+        <Field>
+          <FieldLabel htmlFor='purchase-remark'>{t('Remark')}</FieldLabel>
+          <Textarea id='purchase-remark' {...form.register('remark')} />
+        </Field>
+        <Button type='submit' disabled={createMutation.isPending}>
+          {t('Save Draft')}
+        </Button>
+      </form>
+
+      <section className='space-y-3'>
+        <h3 className='font-medium'>{t('Purchase price versions')}</h3>
+        <VersionList
+          items={props.versions}
+          isPublishing={props.isPublishing}
+          onPublish={props.onPublish}
+        />
+      </section>
+    </div>
+  )
+}

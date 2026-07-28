@@ -18,7 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { ChannelModelListResponse, ImportResponse } from './types'
+import type {
+  ChannelModelListResponse,
+  FlatTokenPrices,
+  ImportResponse,
+  OfficialPriceVersion,
+  PriceVersionResponse,
+  PurchasePriceVersion,
+  RetailPriceVersion,
+} from './types'
 
 export async function getChannelModels(params: {
   keyword?: string
@@ -41,6 +49,87 @@ export async function syncLegacyChannelModels(): Promise<ImportResponse> {
 export async function importLegacyOfficialPrices(): Promise<ImportResponse> {
   const response = await api.post(
     '/api/pricing-admin/official-prices/import-legacy'
+  )
+  return response.data
+}
+
+export async function getOfficialPriceVersions(
+  modelId: number
+): Promise<PriceVersionResponse<OfficialPriceVersion[]>> {
+  const response = await api.get('/api/pricing-admin/official-prices', {
+    params: { model_id: modelId },
+  })
+  return response.data
+}
+
+export async function createOfficialFlatDraft(input: {
+  model_id: number
+  currency: string
+  prices: FlatTokenPrices
+  remark: string
+}): Promise<PriceVersionResponse<OfficialPriceVersion>> {
+  const response = await api.post(
+    '/api/pricing-admin/drafts/official-flat',
+    input
+  )
+  return response.data
+}
+
+export async function getPurchasePriceVersions(
+  channelModelId: number
+): Promise<PriceVersionResponse<PurchasePriceVersion[]>> {
+  const response = await api.get('/api/pricing-admin/purchase-prices', {
+    params: { channel_model_id: channelModelId },
+  })
+  return response.data
+}
+
+export async function createPurchaseDraft(input: {
+  channel_model_id: number
+  official_price_version_id?: number
+  pricing_mode: 'official_ratio' | 'component_ratio' | 'fixed_unit_price'
+  purchase_discount: string
+  input_discount: string
+  output_discount: string
+  cache_read_discount: string
+  cache_write_discount: string
+  prices: FlatTokenPrices
+  quote_reference: string
+  contract_reference: string
+  remark: string
+}): Promise<PriceVersionResponse<PurchasePriceVersion>> {
+  const response = await api.post('/api/pricing-admin/drafts/purchase', input)
+  return response.data
+}
+
+export async function getRetailPriceVersions(
+  channelModelId: number
+): Promise<PriceVersionResponse<RetailPriceVersion[]>> {
+  const response = await api.get('/api/pricing-admin/retail-prices', {
+    params: { channel_model_id: channelModelId },
+  })
+  return response.data
+}
+
+export async function createRetailDraft(input: {
+  channel_model_id: number
+  purchase_price_version_id: number
+  total_variable_cost_rate: string
+  effective_tax_rate: string
+  target_net_margin: string
+  minimum_margin_rate: string
+  remark: string
+}): Promise<PriceVersionResponse<RetailPriceVersion>> {
+  const response = await api.post('/api/pricing-admin/drafts/retail', input)
+  return response.data
+}
+
+export async function publishPriceVersion(
+  kind: 'official' | 'purchase' | 'retail',
+  id: number
+): Promise<PriceVersionResponse<null>> {
+  const response = await api.post(
+    `/api/pricing-admin/${kind}-prices/${id}/publish`
   )
   return response.data
 }

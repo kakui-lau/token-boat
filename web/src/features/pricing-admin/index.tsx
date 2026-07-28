@@ -46,11 +46,15 @@ import {
   importLegacyOfficialPrices,
   syncLegacyChannelModels,
 } from './api'
+import { PriceEditorSheet } from './components/price-editor-sheet'
+import type { ChannelModel } from './types'
 
 export function PricingAdmin() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
+  const [selectedChannelModel, setSelectedChannelModel] =
+    useState<ChannelModel | null>(null)
   const deferredKeyword = useDeferredValue(keyword)
   const channelModelsQuery = useQuery({
     queryKey: ['pricing-admin', 'channel-models', deferredKeyword],
@@ -148,6 +152,7 @@ export function PricingAdmin() {
                   <TableHead>{t('Priority')}</TableHead>
                   <TableHead>{t('Weight')}</TableHead>
                   <TableHead>{t('Runtime Mode')}</TableHead>
+                  <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -170,12 +175,21 @@ export function PricingAdmin() {
                     <TableCell>
                       <Badge variant='outline'>{row.runtime_mode}</Badge>
                     </TableCell>
+                    <TableCell className='text-right'>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => setSelectedChannelModel(row)}
+                      >
+                        {t('Manage Pricing')}
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {!channelModelsQuery.isLoading && rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className='text-muted-foreground h-24 text-center'
                     >
                       {t('No channel models found')}
@@ -185,6 +199,14 @@ export function PricingAdmin() {
               </TableBody>
             </Table>
           </div>
+          <PriceEditorSheet
+            channelModel={selectedChannelModel}
+            onOpenChange={(open) => {
+              if (!open) {
+                setSelectedChannelModel(null)
+              }
+            }}
+          />
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

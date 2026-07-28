@@ -54,3 +54,69 @@ export type ImportResponse = {
   message?: string
   data: ImportResult
 }
+
+export type PriceVersionStatus = 'draft' | 'active' | 'suspended' | 'expired'
+
+export type OfficialPriceVersion = {
+  id: number
+  model_id: number
+  billing_mode: string
+  price_structure: string
+  price_components: string
+  billing_expr: string
+  currency: string
+  version: number
+  status: PriceVersionStatus
+  source: string
+  effective_from: number
+  effective_to: number
+}
+
+export type PurchasePriceVersion = {
+  id: number
+  channel_model_id: number
+  official_price_version_id?: number
+  pricing_mode: string
+  billing_mode: string
+  input_unit_price: string
+  output_unit_price: string
+  cache_read_unit_price: string
+  cache_write_unit_price: string
+  currency: string
+  version: number
+  status: PriceVersionStatus
+  purchase_discount: string
+  purchase_billing_expr: string
+}
+
+export type RetailPriceVersion = {
+  id: number
+  channel_model_id: number
+  purchase_price_version_id: number
+  billing_mode: string
+  input_unit_price: string
+  output_unit_price: string
+  cache_read_unit_price: string
+  cache_write_unit_price: string
+  currency: string
+  version: number
+  status: PriceVersionStatus
+  total_variable_cost_rate: string
+  effective_tax_rate: string
+  target_net_margin: string
+  minimum_margin_rate: string
+  retail_billing_expr: string
+}
+
+export type PriceVersionResponse<T> = {
+  success: boolean
+  message?: string
+  data: T
+}
+
+export type FlatTokenPrices = {
+  input_unit_price: string
+  output_unit_price: string
+  cache_read_unit_price: string
+  cache_write_unit_price: string
+}

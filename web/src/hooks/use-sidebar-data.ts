@@ -65,6 +65,7 @@ export function useSidebarData(): SidebarData {
             title: t('Chat'),
             icon: MessageSquare,
             type: 'chat-presets',
+            requiredRole: ROLE.ADMIN,
           },
         ],
       },

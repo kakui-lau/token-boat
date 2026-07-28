@@ -5525,5 +5525,11 @@
   "Previous": "Назад",
   "Next": "Далее",
   "Page {{page}} of {{total}}": "Страница {{page}} из {{total}}",
-  "Channel, logical model, and upstream model name are immutable after creation.": "Канал, логическая модель и имя вышестоящей модели неизменяемы после создания."
+  "Channel, logical model, and upstream model name are immutable after creation.": "Канал, логическая модель и имя вышестоящей модели неизменяемы после создания.",
+  "Live retail price preview": "Предварительный расчёт розничной цены",
+  "Retail multiplier": "Множитель розничной цены",
+  "Cache Read": "Чтение кэша",
+  "Cache Write": "Запись кэша",
+  "The configured costs, tax, and target margin produce an invalid retail denominator.": "Настроенные расходы, налог и целевая маржа дают недопустимый знаменатель розничной цены.",
+  "This preview is informational. The backend recalculates exact decimal prices when the draft is saved.": "Предпросмотр носит информационный характер. При сохранении черновика сервер пересчитает точные десятичные цены."
 }

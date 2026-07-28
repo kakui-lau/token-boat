@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useMemo } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -64,6 +65,53 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       remark: '',
     },
   })
+  const watchedValues = useWatch({ control: form.control })
+  const selectedPurchase = props.purchaseVersions.find(
+    (version) => version.id === Number(watchedValues.purchase_price_version_id)
+  )
+  const preview = useMemo(() => {
+    if (!selectedPurchase) {
+      return null
+    }
+    const vcr = Number(watchedValues.total_variable_cost_rate)
+    const tax = Number(watchedValues.effective_tax_rate)
+    const margin = Number(watchedValues.target_net_margin)
+    if (
+      !Number.isFinite(vcr) ||
+      !Number.isFinite(tax) ||
+      !Number.isFinite(margin) ||
+      vcr < 0 ||
+      tax < 0 ||
+      margin < 0
+    ) {
+      return null
+    }
+    const denominator = (1 - vcr) * (1 - tax) - margin
+    if (denominator <= 0) {
+      return { valid: false as const }
+    }
+    const factor = (1 - tax) / denominator
+    const scale = (value: string) => {
+      if (value.trim() === '') {
+        return '—'
+      }
+      return Number((Number(value) * factor).toFixed(8)).toString()
+    }
+    return {
+      valid: true as const,
+      factor,
+      input: scale(selectedPurchase.input_unit_price),
+      output: scale(selectedPurchase.output_unit_price),
+      cacheRead: scale(selectedPurchase.cache_read_unit_price),
+      cacheWrite: scale(selectedPurchase.cache_write_unit_price),
+      currency: selectedPurchase.currency,
+    }
+  }, [
+    selectedPurchase,
+    watchedValues.effective_tax_rate,
+    watchedValues.target_net_margin,
+    watchedValues.total_variable_cost_rate,
+  ])
   const createMutation = useMutation({
     mutationFn: (value: RetailPriceForm) =>
       createRetailDraft({
@@ -155,7 +203,49 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             'Retail prices are generated from the selected purchase version and the configured cost and margin rates.'
           )}
         </p>
-        <Button type='submit' disabled={createMutation.isPending}>
+        {preview ? (
+          <div className='bg-muted/40 space-y-3 rounded-lg border p-3'>
+            <div className='flex items-center justify-between gap-3'>
+              <p className='font-medium'>{t('Live retail price preview')}</p>
+              {preview.valid ? (
+                <span className='text-muted-foreground text-xs'>
+                  {t('Retail multiplier')}: {preview.factor.toFixed(6)}
+                </span>
+              ) : null}
+            </div>
+            {preview.valid ? (
+              <div className='grid gap-2 text-sm sm:grid-cols-2'>
+                <p>
+                  {t('Input')}: {preview.input} {preview.currency}
+                </p>
+                <p>
+                  {t('Output')}: {preview.output} {preview.currency}
+                </p>
+                <p>
+                  {t('Cache Read')}: {preview.cacheRead} {preview.currency}
+                </p>
+                <p>
+                  {t('Cache Write')}: {preview.cacheWrite} {preview.currency}
+                </p>
+              </div>
+            ) : (
+              <p className='text-destructive text-sm'>
+                {t(
+                  'The configured costs, tax, and target margin produce an invalid retail denominator.'
+                )}
+              </p>
+            )}
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'This preview is informational. The backend recalculates exact decimal prices when the draft is saved.'
+              )}
+            </p>
+          </div>
+        ) : null}
+        <Button
+          type='submit'
+          disabled={createMutation.isPending || preview?.valid === false}
+        >
           {t('Save Draft')}
         </Button>
       </form>

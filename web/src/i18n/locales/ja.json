@@ -5525,5 +5525,11 @@
   "Previous": "前へ",
   "Next": "次へ",
   "Page {{page}} of {{total}}": "{{page}} / {{total}} ページ",
-  "Channel, logical model, and upstream model name are immutable after creation.": "チャネル、論理モデル、上流モデル名は作成後に変更できません。"
+  "Channel, logical model, and upstream model name are immutable after creation.": "チャネル、論理モデル、上流モデル名は作成後に変更できません。",
+  "Live retail price preview": "販売価格のリアルタイムプレビュー",
+  "Retail multiplier": "販売価格倍率",
+  "Cache Read": "キャッシュ読み取り",
+  "Cache Write": "キャッシュ書き込み",
+  "The configured costs, tax, and target margin produce an invalid retail denominator.": "設定されたコスト、税率、目標利益率では販売価格の分母が無効になります。",
+  "This preview is informational. The backend recalculates exact decimal prices when the draft is saved.": "このプレビューは参考値です。下書き保存時にバックエンドが正確な小数価格を再計算します。"
 }

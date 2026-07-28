@@ -5525,5 +5525,11 @@
   "Previous": "Précédent",
   "Next": "Suivant",
   "Page {{page}} of {{total}}": "Page {{page}} sur {{total}}",
-  "Channel, logical model, and upstream model name are immutable after creation.": "Le canal, le modèle logique et le nom du modèle amont sont immuables après leur création."
+  "Channel, logical model, and upstream model name are immutable after creation.": "Le canal, le modèle logique et le nom du modèle amont sont immuables après leur création.",
+  "Live retail price preview": "Aperçu du prix de vente en direct",
+  "Retail multiplier": "Multiplicateur de vente",
+  "Cache Read": "Lecture du cache",
+  "Cache Write": "Écriture du cache",
+  "The configured costs, tax, and target margin produce an invalid retail denominator.": "Les coûts, la taxe et la marge cible configurés produisent un dénominateur de vente invalide.",
+  "This preview is informational. The backend recalculates exact decimal prices when the draft is saved.": "Cet aperçu est indicatif. Le serveur recalcule les prix décimaux exacts lors de l’enregistrement du brouillon."
 }

@@ -5525,5 +5525,11 @@
   "Previous": "Trước",
   "Next": "Tiếp",
   "Page {{page}} of {{total}}": "Trang {{page}} / {{total}}",
-  "Channel, logical model, and upstream model name are immutable after creation.": "Kênh, mô hình logic và tên mô hình thượng nguồn không thể thay đổi sau khi tạo."
+  "Channel, logical model, and upstream model name are immutable after creation.": "Kênh, mô hình logic và tên mô hình thượng nguồn không thể thay đổi sau khi tạo.",
+  "Live retail price preview": "Xem trước giá bán theo thời gian thực",
+  "Retail multiplier": "Hệ số giá bán",
+  "Cache Read": "Đọc bộ nhớ đệm",
+  "Cache Write": "Ghi bộ nhớ đệm",
+  "The configured costs, tax, and target margin produce an invalid retail denominator.": "Chi phí, thuế và biên lợi nhuận mục tiêu đã cấu hình tạo ra mẫu số giá bán không hợp lệ.",
+  "This preview is informational. The backend recalculates exact decimal prices when the draft is saved.": "Bản xem trước chỉ mang tính tham khảo. Máy chủ sẽ tính lại giá thập phân chính xác khi lưu bản nháp."
 }

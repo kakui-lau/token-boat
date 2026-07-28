@@ -5525,5 +5525,11 @@
   "Previous": "Previous",
   "Next": "Next",
   "Page {{page}} of {{total}}": "Page {{page}} of {{total}}",
-  "Channel, logical model, and upstream model name are immutable after creation.": "Channel, logical model, and upstream model name are immutable after creation."
+  "Channel, logical model, and upstream model name are immutable after creation.": "Channel, logical model, and upstream model name are immutable after creation.",
+  "Live retail price preview": "Live retail price preview",
+  "Retail multiplier": "Retail multiplier",
+  "Cache Read": "Cache Read",
+  "Cache Write": "Cache Write",
+  "The configured costs, tax, and target margin produce an invalid retail denominator.": "The configured costs, tax, and target margin produce an invalid retail denominator.",
+  "This preview is informational. The backend recalculates exact decimal prices when the draft is saved.": "This preview is informational. The backend recalculates exact decimal prices when the draft is saved."
 }

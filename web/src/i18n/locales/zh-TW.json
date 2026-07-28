@@ -5525,5 +5525,11 @@
   "Previous": "上一頁",
   "Next": "下一頁",
   "Page {{page}} of {{total}}": "第 {{page}} / {{total}} 頁",
-  "Channel, logical model, and upstream model name are immutable after creation.": "渠道、邏輯模型和上游模型名稱建立後不可修改。"
+  "Channel, logical model, and upstream model name are immutable after creation.": "渠道、邏輯模型和上游模型名稱建立後不可修改。",
+  "Live retail price preview": "即時銷售價格預覽",
+  "Retail multiplier": "銷售價倍率",
+  "Cache Read": "快取讀取",
+  "Cache Write": "快取寫入",
+  "The configured costs, tax, and target margin produce an invalid retail denominator.": "目前成本、稅率和目標利潤率導致銷售價公式分母無效。",
+  "This preview is informational. The backend recalculates exact decimal prices when the draft is saved.": "此預覽僅供參考，儲存草稿時後端會使用高精度小數重新計算。"
 }

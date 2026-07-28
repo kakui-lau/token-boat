@@ -26,6 +26,14 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 import {
@@ -50,6 +58,46 @@ type OfficialPricePanelProps = {
   onCreated: () => Promise<void>
 }
 
+const billingModeOptions = [
+  { value: 'token', label: 'Token' },
+  { value: 'request', label: 'Per request' },
+  { value: 'image', label: 'Image' },
+  { value: 'audio_duration', label: 'Audio duration' },
+  { value: 'video_duration', label: 'Video duration' },
+  { value: 'character', label: 'Character' },
+  { value: 'mixed', label: 'Mixed' },
+]
+
+const priceStructureOptions = [
+  { value: 'flat', label: 'Flat rate' },
+  { value: 'tiered', label: 'Tiered pricing' },
+  { value: 'expression', label: 'Expression pricing' },
+]
+
+function emptyOfficialConfiguration(
+  modelId: number,
+  billingMode: string,
+  priceStructure: string
+): OfficialPriceVersion {
+  return {
+    id: 0,
+    model_id: modelId,
+    billing_mode: billingMode,
+    price_structure: priceStructure,
+    price_components: '{}',
+    billing_expr: '',
+    expression_source: 'custom',
+    expression_schema_version: 'v1',
+    currency: 'USD',
+    version: 0,
+    status: 'draft',
+    source: 'manual',
+    remark: '',
+    effective_from: 0,
+    effective_to: 0,
+  }
+}
+
 export function OfficialPricePanel(props: OfficialPricePanelProps) {
   const { t } = useTranslation()
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null)
@@ -58,6 +106,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
   const [baseVersion, setBaseVersion] = useState<number | null>(null)
   const [configurationDraft, setConfigurationDraft] =
     useState<OfficialPriceVersion | null>(null)
+  const [newBillingMode, setNewBillingMode] = useState('token')
+  const [newPriceStructure, setNewPriceStructure] = useState('flat')
   const formRef = useRef<HTMLFormElement>(null)
   const defaultValues: OfficialPriceForm = {
     currency: 'USD',
@@ -136,6 +186,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       setEditingDraftId(null)
       setBaseVersion(null)
       setConfigurationDraft(null)
+      setNewBillingMode('token')
+      setNewPriceStructure('flat')
       await props.onCreated()
       toast.success(
         wasEditing
@@ -153,6 +205,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       version.price_structure !== 'flat'
     ) {
       setConfigurationDraft({ ...version })
+      setNewBillingMode(version.billing_mode)
+      setNewPriceStructure(version.price_structure)
       setEditingDraftId(edit ? version.id : null)
       setBaseVersion(version.version)
       requestAnimationFrame(() => {
@@ -166,6 +220,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       return
     }
     setConfigurationDraft(null)
+    setNewBillingMode(version.billing_mode)
+    setNewPriceStructure(version.price_structure)
     let prices: Partial<FlatTokenPrices> = {}
     try {
       prices = JSON.parse(version.price_components) as Partial<FlatTokenPrices>
@@ -199,6 +255,110 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
 
   return (
     <div className='space-y-6'>
+      {editingDraftId === null && baseVersion === null ? (
+        <section className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'>
+          <div>
+            <h3 className='font-medium'>{t('Price Configuration')}</h3>
+            <p className='text-muted-foreground mt-1 text-sm'>
+              {t(
+                'Choose how this model is metered and how its official price is organized.'
+              )}
+            </p>
+          </div>
+          <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+            <Field>
+              <FieldLabel htmlFor='new-official-billing-mode'>
+                {t('Billing Mode')}
+              </FieldLabel>
+              <Select
+                items={billingModeOptions}
+                value={newBillingMode}
+                onValueChange={(value) => {
+                  if (!value) return
+                  setNewBillingMode(value)
+                  if (value === 'token' && newPriceStructure === 'flat') {
+                    setConfigurationDraft(null)
+                    return
+                  }
+                  setConfigurationDraft(
+                    emptyOfficialConfiguration(
+                      props.modelId,
+                      value,
+                      newPriceStructure
+                    )
+                  )
+                }}
+              >
+                <SelectTrigger
+                  id='new-official-billing-mode'
+                  className='w-full'
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {billingModeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {t(option.label)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Billing mode defines what usage is measured, such as tokens, requests, images, audio duration, or video duration.'
+                )}
+              </p>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='new-official-price-structure'>
+                {t('Price Structure')}
+              </FieldLabel>
+              <Select
+                items={priceStructureOptions}
+                value={newPriceStructure}
+                onValueChange={(value) => {
+                  if (!value) return
+                  setNewPriceStructure(value)
+                  if (newBillingMode === 'token' && value === 'flat') {
+                    setConfigurationDraft(null)
+                    return
+                  }
+                  setConfigurationDraft(
+                    emptyOfficialConfiguration(
+                      props.modelId,
+                      newBillingMode,
+                      value
+                    )
+                  )
+                }}
+              >
+                <SelectTrigger
+                  id='new-official-price-structure'
+                  className='w-full'
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {priceStructureOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {t(option.label)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Price structure defines how that usage is priced: one fixed rate, multiple tiers, or a billing expression.'
+                )}
+              </p>
+            </Field>
+          </FieldGroup>
+        </section>
+      ) : null}
       {configurationDraft ? (
         <form
           key='configuration-editor'
@@ -234,32 +394,38 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
                 setEditingDraftId(null)
                 setBaseVersion(null)
                 setConfigurationDraft(null)
+                setNewBillingMode('token')
+                setNewPriceStructure('flat')
               }}
             >
               {t('Cancel')}
             </Button>
           </div>
           <FieldGroup className='grid gap-4 sm:grid-cols-2'>
-            <Field>
-              <FieldLabel htmlFor='official-config-billing-mode'>
-                {t('Billing Mode')}
-              </FieldLabel>
-              <Input
-                id='official-config-billing-mode'
-                value={configurationDraft.billing_mode}
-                disabled
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor='official-config-price-structure'>
-                {t('Price Structure')}
-              </FieldLabel>
-              <Input
-                id='official-config-price-structure'
-                value={configurationDraft.price_structure}
-                disabled
-              />
-            </Field>
+            {baseVersion !== null || editingDraftId !== null ? (
+              <>
+                <Field>
+                  <FieldLabel htmlFor='official-config-billing-mode'>
+                    {t('Billing Mode')}
+                  </FieldLabel>
+                  <Input
+                    id='official-config-billing-mode'
+                    value={configurationDraft.billing_mode}
+                    disabled
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor='official-config-price-structure'>
+                    {t('Price Structure')}
+                  </FieldLabel>
+                  <Input
+                    id='official-config-price-structure'
+                    value={configurationDraft.price_structure}
+                    disabled
+                  />
+                </Field>
+              </>
+            ) : null}
             <Field>
               <FieldLabel htmlFor='official-config-currency'>
                 {t('Currency')}

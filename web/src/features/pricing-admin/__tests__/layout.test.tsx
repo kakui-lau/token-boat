@@ -81,6 +81,19 @@ function renderWithQueryClient(node: React.ReactNode) {
 describe('Pricing admin editor layout', () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn()
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
   })
 
   afterEach(cleanup)
@@ -132,6 +145,45 @@ describe('Pricing admin editor layout', () => {
         .getByRole('heading', { name: 'New Official Version' })
         .closest('form')
     ).toHaveClass('pricing-form-surface')
+    expect(screen.getByText('Price Configuration')).toBeVisible()
+    expect(
+      screen.getByText(
+        'Billing mode defines what usage is measured, such as tokens, requests, images, audio duration, or video duration.'
+      )
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        'Price structure defines how that usage is priced: one fixed rate, multiple tiers, or a billing expression.'
+      )
+    ).toBeVisible()
+  })
+
+  test('switches the new-version editor from token fields to the selected mode', async () => {
+    renderWithQueryClient(
+      <OfficialPricePanel
+        modelId={3}
+        versions={[]}
+        isPublishing={false}
+        isDeleting={false}
+        onPublish={vi.fn()}
+        onDelete={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    const selectors = screen.getAllByRole('combobox')
+    fireEvent.click(selectors[0])
+    const videoOption = await screen.findByRole('option', {
+      name: 'Video duration',
+    })
+    fireEvent.pointerDown(videoOption)
+    fireEvent.pointerUp(videoOption)
+    fireEvent.click(videoOption)
+
+    expect(selectors[0]).toHaveTextContent('Video duration')
+    expect(selectors[1]).toHaveTextContent('Flat rate')
+    expect(screen.getByLabelText('Price Components')).toHaveValue('{}')
+    expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
   })
 
   test('keeps active official revisions as history without a suspend action', () => {

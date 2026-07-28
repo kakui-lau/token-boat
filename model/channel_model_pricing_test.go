@@ -11,6 +11,7 @@ func resetChannelModelPricingTestTables(t *testing.T) {
 	t.Helper()
 	require.NoError(t, DB.AutoMigrate(
 		&Ability{},
+		&Channel{},
 		&Model{},
 		&ChannelModel{},
 		&OfficialModelPriceVersion{},
@@ -26,6 +27,7 @@ func resetChannelModelPricingTestTables(t *testing.T) {
 		"channel_models",
 		"abilities",
 		"models",
+		"channels",
 	} {
 		require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
 	}
@@ -34,6 +36,12 @@ func resetChannelModelPricingTestTables(t *testing.T) {
 func TestInitializeChannelModelsFromAbilitiesKeepsLegacyRuntimeAndAggregatesGroups(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 
+	modelMapping := `{"gpt-test":"provider-gpt-test"}`
+	require.NoError(t, DB.Create(&Channel{
+		Id:           201,
+		Name:         "mapped-channel",
+		ModelMapping: &modelMapping,
+	}).Error)
 	require.NoError(t, DB.Create(&Model{Id: 101, ModelName: "gpt-test"}).Error)
 	priorityLow := int64(5)
 	priorityHigh := int64(20)
@@ -72,11 +80,46 @@ func TestInitializeChannelModelsFromAbilitiesKeepsLegacyRuntimeAndAggregatesGrou
 	require.NoError(t, DB.First(&channelModel).Error)
 	assert.Equal(t, 201, channelModel.ChannelId)
 	assert.Equal(t, 101, channelModel.ModelId)
-	assert.Equal(t, "gpt-test", channelModel.UpstreamModelName)
+	assert.Equal(t, "provider-gpt-test", channelModel.UpstreamModelName)
 	assert.Equal(t, 1, channelModel.Status)
 	assert.Equal(t, int64(20), channelModel.Priority)
 	assert.Equal(t, uint(30), channelModel.Weight)
 	assert.Equal(t, "legacy", channelModel.RuntimeMode)
+}
+
+func TestInitializeChannelModelsFromAbilitiesRepairsLegacyUpstreamModelName(t *testing.T) {
+	resetChannelModelPricingTestTables(t)
+
+	modelMapping := `{"gpt-test":"provider-gpt-test"}`
+	require.NoError(t, DB.Create(&Channel{
+		Id:           201,
+		Name:         "mapped-channel",
+		ModelMapping: &modelMapping,
+	}).Error)
+	require.NoError(t, DB.Create(&Model{Id: 101, ModelName: "gpt-test"}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		Group:     "default",
+		Model:     "gpt-test",
+		ChannelId: 201,
+		Enabled:   true,
+	}).Error)
+	require.NoError(t, DB.Create(&ChannelModel{
+		ChannelId:         201,
+		ModelId:           101,
+		UpstreamModelName: "gpt-test",
+		Status:            1,
+		RuntimeMode:       "legacy",
+	}).Error)
+
+	result, err := InitializeChannelModelsFromAbilities()
+	require.NoError(t, err)
+	assert.Zero(t, result.Created)
+	assert.Equal(t, 1, result.Updated)
+
+	var channelModels []ChannelModel
+	require.NoError(t, DB.Find(&channelModels).Error)
+	require.Len(t, channelModels, 1)
+	assert.Equal(t, "provider-gpt-test", channelModels[0].UpstreamModelName)
 }
 
 func TestPublishedOfficialPriceVersionCannotBeMutated(t *testing.T) {

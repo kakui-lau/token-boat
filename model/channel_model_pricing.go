@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -247,6 +248,22 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 		return result, err
 	}
 
+	var channels []Channel
+	if err := DB.Select("id", "model_mapping").Find(&channels).Error; err != nil {
+		return result, err
+	}
+	modelMappings := make(map[int]map[string]string, len(channels))
+	for _, channel := range channels {
+		if channel.ModelMapping == nil || strings.TrimSpace(*channel.ModelMapping) == "" {
+			continue
+		}
+		var mapping map[string]string
+		if err := common.UnmarshalJsonStr(*channel.ModelMapping, &mapping); err != nil {
+			return result, fmt.Errorf("parse model mapping for channel %d: %w", channel.Id, err)
+		}
+		modelMappings[channel.Id] = mapping
+	}
+
 	var models []Model
 	if err := DB.Find(&models).Error; err != nil {
 		return result, err
@@ -257,12 +274,13 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 	}
 
 	type candidate struct {
-		channelId int
-		modelId   int
-		modelName string
-		enabled   bool
-		priority  int64
-		weight    uint
+		channelId         int
+		modelId           int
+		modelName         string
+		upstreamModelName string
+		enabled           bool
+		priority          int64
+		weight            uint
 	}
 	candidates := make(map[string]candidate)
 	unknownNames := make(map[string]struct{})
@@ -277,10 +295,15 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 		key := strconv.Itoa(ability.ChannelId) + "\x00" + modelName
 		current, exists := candidates[key]
 		if !exists {
+			upstreamModelName := modelName
+			if mappedName := strings.TrimSpace(modelMappings[ability.ChannelId][modelName]); mappedName != "" {
+				upstreamModelName = mappedName
+			}
 			current = candidate{
-				channelId: ability.ChannelId,
-				modelId:   modelId,
-				modelName: modelName,
+				channelId:         ability.ChannelId,
+				modelId:           modelId,
+				modelName:         modelName,
+				upstreamModelName: upstreamModelName,
 			}
 		}
 		current.enabled = current.enabled || ability.Enabled
@@ -307,8 +330,24 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 				"channel_id = ? AND model_id = ? AND upstream_model_name = ?",
 				item.channelId,
 				item.modelId,
-				item.modelName,
+				item.upstreamModelName,
 			).First(&existing).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) && item.upstreamModelName != item.modelName {
+				err = tx.Where(
+					"channel_id = ? AND model_id = ? AND upstream_model_name = ?",
+					item.channelId,
+					item.modelId,
+					item.modelName,
+				).First(&existing).Error
+				if err == nil {
+					if err := tx.Model(&existing).Update(
+						"upstream_model_name",
+						item.upstreamModelName,
+					).Error; err != nil {
+						return err
+					}
+				}
+			}
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				status := 0
 				if item.enabled {
@@ -317,7 +356,7 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 				if err := tx.Create(&ChannelModel{
 					ChannelId:         item.channelId,
 					ModelId:           item.modelId,
-					UpstreamModelName: item.modelName,
+					UpstreamModelName: item.upstreamModelName,
 					Status:            status,
 					Priority:          item.priority,
 					Weight:            item.weight,

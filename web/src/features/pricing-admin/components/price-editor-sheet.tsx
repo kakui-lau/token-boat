@@ -133,7 +133,7 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
 
   return (
     <Sheet open={Boolean(channelModel)} onOpenChange={props.onOpenChange}>
-      <SheetContent className='w-full sm:max-w-3xl'>
+      <SheetContent className='w-full sm:w-[92vw] sm:max-w-6xl'>
         <SheetHeader>
           <SheetTitle>{t('Manage Pricing')}</SheetTitle>
           <SheetDescription>
@@ -143,8 +143,11 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
           </SheetDescription>
         </SheetHeader>
         {channelModel ? (
-          <Tabs defaultValue='official' className='min-h-0 px-4 pb-4'>
-            <TabsList>
+          <Tabs
+            defaultValue='official'
+            className='min-h-0 overflow-hidden px-4 pb-4'
+          >
+            <TabsList className='grid h-auto w-full grid-cols-2 sm:grid-cols-4'>
               <TabsTrigger value='official'>{t('Official Price')}</TabsTrigger>
               <TabsTrigger value='purchase'>{t('Purchase Price')}</TabsTrigger>
               <TabsTrigger value='retail'>{t('Retail Price')}</TabsTrigger>

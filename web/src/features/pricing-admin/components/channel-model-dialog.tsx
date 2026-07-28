@@ -116,7 +116,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent>
+      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-2xl'>
         <DialogHeader>
           <DialogTitle>
             {props.channelModel

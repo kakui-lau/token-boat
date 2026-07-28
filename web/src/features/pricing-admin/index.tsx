@@ -167,7 +167,7 @@ export function PricingAdmin() {
           />
 
           <h2 className='font-medium'>{t('Channel Model List')}</h2>
-          <div className='overflow-hidden rounded-lg border'>
+          <div className='overflow-x-auto rounded-lg border'>
             <Table>
               <TableHeader>
                 <TableRow>

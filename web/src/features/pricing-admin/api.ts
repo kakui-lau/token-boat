@@ -209,6 +209,7 @@ export async function createPurchaseDraft(input: {
   channel_model_id: number
   official_price_version_id?: number
   pricing_mode: 'official_ratio' | 'component_ratio' | 'fixed_unit_price'
+  currency: string
   purchase_discount: string
   input_discount: string
   output_discount: string
@@ -298,6 +299,12 @@ export async function simulatePrice(input: {
   image_output_tokens: number
   audio_input_tokens: number
   audio_output_tokens: number
+  request_count: number
+  image_count: number
+  audio_seconds: number
+  video_seconds: number
+  character_count: number
+  request_body: string
 }): Promise<PriceVersionResponse<PriceSimulationResult>> {
   const response = await api.post('/api/pricing-admin/simulate', input)
   return response.data

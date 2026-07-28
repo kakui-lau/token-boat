@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -51,6 +52,9 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
 	)
+	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
+		return err
+	}
 	if err := validateCommonPrice(
 		input.ModelId,
 		input.BillingMode,
@@ -60,7 +64,11 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	); err != nil {
 		return err
 	}
-	if err := validatePriceComponents(input.PriceComponents); err != nil {
+	if err := validatePriceComponents(
+		input.BillingMode,
+		input.PriceStructure,
+		input.PriceComponents,
+	); err != nil {
 		return err
 	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
@@ -94,6 +102,9 @@ func UpdateOfficialPriceVersionDraft(
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
 	)
+	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
+		return updated, err
+	}
 	if err := validateCommonPrice(
 		input.ModelId,
 		input.BillingMode,
@@ -103,7 +114,11 @@ func UpdateOfficialPriceVersionDraft(
 	); err != nil {
 		return updated, err
 	}
-	if err := validatePriceComponents(input.PriceComponents); err != nil {
+	if err := validatePriceComponents(
+		input.BillingMode,
+		input.PriceStructure,
+		input.PriceComponents,
+	); err != nil {
 		return updated, err
 	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
@@ -156,6 +171,9 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
 	)
+	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.PurchaseBillingExpr); err != nil {
+		return err
+	}
 	if err := validateCommonPrice(
 		input.ChannelModelId,
 		input.BillingMode,
@@ -226,6 +244,9 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
 	)
+	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.RetailBillingExpr); err != nil {
+		return err
+	}
 	if err := validateCommonPrice(
 		input.ChannelModelId,
 		input.BillingMode,
@@ -328,6 +349,9 @@ func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
 	if version.Status != model.PricingVersionStatusDraft {
 		return errors.New("only draft official prices can be published")
 	}
+	if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.BillingExpr); err != nil {
+		return err
+	}
 	if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
 		return err
 	}
@@ -366,7 +390,11 @@ func officialPriceContentHash(version model.OfficialModelPriceVersion) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(payload)))
 }
 
-func validatePriceComponents(components string) error {
+func validatePriceComponents(
+	billingMode string,
+	priceStructure string,
+	components string,
+) error {
 	components = strings.TrimSpace(components)
 	if components == "" {
 		return nil
@@ -375,7 +403,7 @@ func validatePriceComponents(components string) error {
 	if err := common.UnmarshalJsonStr(components, &parsed); err != nil {
 		return fmt.Errorf("price_components must be a JSON object: %w", err)
 	}
-	return nil
+	return validateBusinessPriceRules(billingMode, priceStructure, parsed)
 }
 
 func PublishPurchasePriceVersion(id int) error {
@@ -386,6 +414,9 @@ func PublishPurchasePriceVersion(id int) error {
 		}
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only draft purchase prices can be published")
+		}
+		if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.PurchaseBillingExpr); err != nil {
+			return err
 		}
 		var channelModel model.ChannelModel
 		if err := tx.First(&channelModel, version.ChannelModelId).Error; err != nil {
@@ -455,6 +486,9 @@ func PublishRetailPriceVersion(id int) error {
 		}
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only draft retail prices can be published")
+		}
+		if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.RetailBillingExpr); err != nil {
+			return err
 		}
 		var purchase model.ChannelModelPurchasePriceVersion
 		if err := tx.First(&purchase, version.PurchasePriceVersionId).Error; err != nil {
@@ -600,6 +634,23 @@ func normalizeExpressionMetadata(source *string, schemaVersion *string, currency
 		*schemaVersion = "v1"
 	}
 	*currency = strings.ToUpper(strings.TrimSpace(*currency))
+}
+
+func validateExpressionMetadata(schemaVersion string, expression string) error {
+	schemaVersion = strings.TrimSpace(schemaVersion)
+	if schemaVersion != "v1" && schemaVersion != "v2" {
+		return fmt.Errorf("unsupported expression schema version %q", schemaVersion)
+	}
+	actualVersion := billingexpr.ExprVersion(expression)
+	expectedVersion := "v" + strconv.Itoa(actualVersion)
+	if schemaVersion != expectedVersion {
+		return fmt.Errorf(
+			"expression schema version %q does not match expression prefix %q",
+			schemaVersion,
+			expectedVersion,
+		)
+	}
+	return nil
 }
 
 func validateCommonPrice(scopeId int, billingMode string, priceStructure string, currency string, expression string) error {

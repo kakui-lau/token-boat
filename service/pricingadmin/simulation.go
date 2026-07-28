@@ -4,13 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/shopspring/decimal"
 )
 
 const maxSimulationTokens = 1_000_000_000
+const maxSimulationRequestBodyBytes = 64 * 1024
 
 type PriceSimulationInput struct {
 	ChannelModelId         int     `json:"channel_model_id"`
@@ -24,6 +27,12 @@ type PriceSimulationInput struct {
 	ImageOutputTokens      float64 `json:"image_output_tokens"`
 	AudioInputTokens       float64 `json:"audio_input_tokens"`
 	AudioOutputTokens      float64 `json:"audio_output_tokens"`
+	RequestCount           float64 `json:"request_count"`
+	ImageCount             float64 `json:"image_count"`
+	AudioSeconds           float64 `json:"audio_seconds"`
+	VideoSeconds           float64 `json:"video_seconds"`
+	CharacterCount         float64 `json:"character_count"`
+	RequestBody            string  `json:"request_body"`
 }
 
 type PriceSimulationResult struct {
@@ -51,10 +60,23 @@ func SimulatePrice(input PriceSimulationInput) (PriceSimulationResult, error) {
 		"cache_read_tokens": input.CacheReadTokens, "cache_write_tokens": input.CacheWriteTokens,
 		"image_input_tokens": input.ImageInputTokens, "image_output_tokens": input.ImageOutputTokens,
 		"audio_input_tokens": input.AudioInputTokens, "audio_output_tokens": input.AudioOutputTokens,
+		"request_count": input.RequestCount, "image_count": input.ImageCount,
+		"audio_seconds": input.AudioSeconds, "video_seconds": input.VideoSeconds,
+		"character_count": input.CharacterCount,
 	}
 	for name, value := range values {
 		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > maxSimulationTokens {
 			return PriceSimulationResult{}, fmt.Errorf("%s must be between 0 and %d", name, maxSimulationTokens)
+		}
+	}
+	requestBody := strings.TrimSpace(input.RequestBody)
+	if len(requestBody) > maxSimulationRequestBodyBytes {
+		return PriceSimulationResult{}, fmt.Errorf("request_body must not exceed %d bytes", maxSimulationRequestBodyBytes)
+	}
+	if requestBody != "" {
+		var parsed any
+		if err := common.UnmarshalJsonStr(requestBody, &parsed); err != nil {
+			return PriceSimulationResult{}, fmt.Errorf("request_body must be valid JSON: %w", err)
 		}
 	}
 
@@ -81,25 +103,35 @@ func SimulatePrice(input PriceSimulationInput) (PriceSimulationResult, error) {
 		CR: input.CacheReadTokens, CC: input.CacheWriteTokens,
 		Img: input.ImageInputTokens, ImgO: input.ImageOutputTokens,
 		AI: input.AudioInputTokens, AO: input.AudioOutputTokens,
+		Req: input.RequestCount, Imgs: input.ImageCount,
+		AudS: input.AudioSeconds, VidS: input.VideoSeconds,
+		Chars: input.CharacterCount,
 	}
-	purchaseRaw, purchaseTrace, err := billingexpr.RunExprByHash(
+	request := billingexpr.RequestInput{Body: []byte(requestBody)}
+	purchaseRaw, purchaseTrace, err := billingexpr.RunExprByHashWithRequest(
 		purchase.PurchaseBillingExpr,
 		purchase.PurchaseExprHash,
 		params,
+		request,
 	)
 	if err != nil {
 		return PriceSimulationResult{}, fmt.Errorf("evaluate purchase price: %w", err)
 	}
-	retailRaw, retailTrace, err := billingexpr.RunExprByHash(
+	retailRaw, retailTrace, err := billingexpr.RunExprByHashWithRequest(
 		retail.RetailBillingExpr,
 		retail.RetailExprHash,
 		params,
+		request,
 	)
 	if err != nil {
 		return PriceSimulationResult{}, fmt.Errorf("evaluate retail price: %w", err)
 	}
-	purchaseCost := decimal.NewFromFloat(purchaseRaw).Div(decimal.NewFromInt(1_000_000))
-	retailAmount := decimal.NewFromFloat(retailRaw).Div(decimal.NewFromInt(1_000_000))
+	purchaseCost := decimal.NewFromFloat(
+		billingexpr.CurrencyAmount(purchase.PurchaseBillingExpr, purchaseRaw),
+	)
+	retailAmount := decimal.NewFromFloat(
+		billingexpr.CurrencyAmount(retail.RetailBillingExpr, retailRaw),
+	)
 	vcr, err := decimal.NewFromString(retail.TotalVariableCostRate)
 	if err != nil {
 		return PriceSimulationResult{}, err

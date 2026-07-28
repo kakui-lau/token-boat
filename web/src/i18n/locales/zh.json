@@ -5687,6 +5687,18 @@
     "Zoom": "缩放",
     "Token input": "Token 输入",
     "Token output": "Token 输出",
-    "Cache read": "缓存读取"
+    "Cache read": "缓存读取",
+    "Default rule": "默认规则",
+    "Business usage": "业务用量",
+    "Request count": "请求次数",
+    "Image count": "图片数量",
+    "Audio seconds": "音频秒数",
+    "Video seconds": "视频秒数",
+    "Character count": "字符数量",
+    "Request parameters": "请求参数",
+    "Matched pricing tiers": "命中的价格档位",
+    "These normalized values are used by V2 request, image, audio, video, character, and mixed pricing expressions.": "这些标准化用量用于 V2 请求、图片、音频、视频、字符和混合计费表达式。",
+    "Enter the request fields used by param(\"path\") conditions. The backend validates this JSON before simulation.": "填写 param(\"path\") 条件所读取的请求字段；后端会在模拟前校验此 JSON。",
+    "Publish a compatible active official price before creating a discount-based purchase version.": "创建折扣采购版本前，请先发布兼容的有效官方价格。"
   }
 }

@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
 
 import { simulatePrice } from '../api'
 import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
@@ -46,6 +47,14 @@ const tokenFields = [
   ['audio_output_tokens', 'Audio output tokens'],
 ] as const
 
+const businessUsageFields = [
+  ['request_count', 'Request count'],
+  ['image_count', 'Image count'],
+  ['audio_seconds', 'Audio seconds'],
+  ['video_seconds', 'Video seconds'],
+  ['character_count', 'Character count'],
+] as const
+
 export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
   const { t } = useTranslation()
   const [retailVersionId, setRetailVersionId] = useState('')
@@ -58,7 +67,13 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
     image_output_tokens: '0',
     audio_input_tokens: '0',
     audio_output_tokens: '0',
+    request_count: '1',
+    image_count: '0',
+    audio_seconds: '0',
+    video_seconds: '0',
+    character_count: '0',
   })
+  const [requestBody, setRequestBody] = useState('{}')
   const selectedRetail = props.retailVersions.find(
     (version) => version.id === Number(retailVersionId)
   )
@@ -79,6 +94,12 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
         image_output_tokens: Number(tokenValues.image_output_tokens),
         audio_input_tokens: Number(tokenValues.audio_input_tokens),
         audio_output_tokens: Number(tokenValues.audio_output_tokens),
+        request_count: Number(tokenValues.request_count),
+        image_count: Number(tokenValues.image_count),
+        audio_seconds: Number(tokenValues.audio_seconds),
+        video_seconds: Number(tokenValues.video_seconds),
+        character_count: Number(tokenValues.character_count),
+        request_body: requestBody,
       }),
   })
   const result = mutation.data?.data
@@ -136,6 +157,51 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
               />
             </Field>
           ))}
+          <div className='border-border border-t pt-4 sm:col-span-2'>
+            <p className='font-medium'>{t('Business usage')}</p>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t(
+                'These normalized values are used by V2 request, image, audio, video, character, and mixed pricing expressions.'
+              )}
+            </p>
+          </div>
+          {businessUsageFields.map(([name, label]) => (
+            <Field key={name}>
+              <FieldLabel htmlFor={`simulation-${name}`}>{t(label)}</FieldLabel>
+              <Input
+                id={`simulation-${name}`}
+                type='number'
+                min={0}
+                max={1_000_000_000}
+                step={1}
+                value={tokenValues[name]}
+                onChange={(event) =>
+                  setTokenValues((current) => ({
+                    ...current,
+                    [name]: event.target.value,
+                  }))
+                }
+              />
+            </Field>
+          ))}
+          <Field className='sm:col-span-2'>
+            <FieldLabel htmlFor='simulation-request-body'>
+              {t('Request parameters')}
+            </FieldLabel>
+            <Textarea
+              id='simulation-request-body'
+              className='min-h-28 font-mono text-xs'
+              maxLength={65_536}
+              value={requestBody}
+              onChange={(event) => setRequestBody(event.target.value)}
+              placeholder='{"resolution":"1080p","quality":"high","with_audio":true}'
+            />
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Enter the request fields used by param("path") conditions. The backend validates this JSON before simulation.'
+              )}
+            </p>
+          </Field>
         </FieldGroup>
         <Button
           disabled={
@@ -163,6 +229,18 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
             </Badge>
           </div>
           <div className='grid gap-3 sm:grid-cols-2'>
+            {result.purchase_matched_tier || result.retail_matched_tier ? (
+              <div className='bg-muted/30 rounded-lg border p-3 sm:col-span-2'>
+                <p className='text-muted-foreground text-xs'>
+                  {t('Matched pricing tiers')}
+                </p>
+                <p className='mt-1 font-mono text-sm'>
+                  {t('Purchase')}: {result.purchase_matched_tier || '—'}
+                  {' · '}
+                  {t('Retail')}: {result.retail_matched_tier || '—'}
+                </p>
+              </div>
+            ) : null}
             {[
               ['Purchase cost', result.purchase_cost],
               ['Retail amount', result.retail_amount],

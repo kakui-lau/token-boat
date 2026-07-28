@@ -189,7 +189,11 @@ func synchronizeOfficialPriceItem(
 	); err != nil {
 		return err
 	}
-	if err := validatePriceComponents(version.PriceComponents); err != nil {
+	if err := validatePriceComponents(
+		version.BillingMode,
+		version.PriceStructure,
+		version.PriceComponents,
+	); err != nil {
 		return err
 	}
 	if input.AutoActivate {

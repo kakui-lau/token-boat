@@ -75,6 +75,7 @@ export const purchasePriceSchema = z
       'component_ratio',
       'fixed_unit_price',
     ]),
+    currency: z.string().trim().min(3).max(8),
     official_price_version_id: z.string(),
     purchase_discount: optionalNonNegativeDecimal,
     input_discount: optionalNonNegativeDecimal,

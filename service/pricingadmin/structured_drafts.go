@@ -35,6 +35,7 @@ type PurchaseDraftInput struct {
 	ChannelModelId         int                 `json:"channel_model_id"`
 	OfficialPriceVersionId *int                `json:"official_price_version_id"`
 	PricingMode            string              `json:"pricing_mode"`
+	Currency               string              `json:"currency"`
 	PurchaseDiscount       string              `json:"purchase_discount"`
 	InputDiscount          string              `json:"input_discount"`
 	OutputDiscount         string              `json:"output_discount"`
@@ -205,6 +206,9 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 	if _, err := calculator.SellingFactor(); err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
+	if purchase.PriceStructure != "flat" {
+		return createExpressionRetailDraft(input, purchase, calculator, userId)
+	}
 	purchasePrices, err := unmarshalFlatPriceComponents(purchase.PriceComponents)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
@@ -281,6 +285,47 @@ func calculateRetailFlatPrices(
 	return result, nil
 }
 
+func createExpressionRetailDraft(
+	input RetailDraftInput,
+	purchase model.ChannelModelPurchasePriceVersion,
+	calculator RetailPriceCalculator,
+	userId int,
+) (model.ChannelModelRetailPriceVersion, error) {
+	factor, err := calculator.SellingFactor()
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	expression, err := scaleBillingExpression(purchase.PurchaseBillingExpr, factor)
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	componentsJSON, err := scalePriceComponents(purchase.PriceComponents, factor)
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	version := model.ChannelModelRetailPriceVersion{
+		ChannelModelId:          input.ChannelModelId,
+		PurchasePriceVersionId:  input.PurchasePriceVersionId,
+		BillingMode:             purchase.BillingMode,
+		PriceStructure:          purchase.PriceStructure,
+		PriceComponents:         componentsJSON,
+		PriceUnit:               purchase.PriceUnit,
+		RetailBillingExpr:       expression,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: purchase.ExpressionSchemaVersion,
+		Currency:                purchase.Currency,
+		TotalVariableCostRate:   input.TotalVariableCostRate,
+		EffectiveTaxRate:        input.EffectiveTaxRate,
+		TargetNetMargin:         input.TargetNetMargin,
+		MinimumMarginRate:       input.MinimumMarginRate,
+		Remark:                  strings.TrimSpace(input.Remark),
+	}
+	if err := CreateRetailPriceVersion(&version, userId); err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	return version, nil
+}
+
 func createOfficialRatioPurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {
 	official, err := requireOfficialPrice(input.OfficialPriceVersionId)
 	if err != nil {
@@ -293,6 +338,20 @@ func createOfficialRatioPurchaseDraft(input PurchaseDraftInput, userId int) (mod
 	expression, err := scaleBillingExpression(official.BillingExpr, discount)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	if official.PriceStructure != "flat" {
+		componentsJSON, err := scalePriceComponents(official.PriceComponents, discount)
+		if err != nil {
+			return model.ChannelModelPurchasePriceVersion{}, err
+		}
+		return persistExpressionPurchaseDraft(
+			input,
+			official,
+			componentsJSON,
+			expression,
+			discount.String(),
+			userId,
+		)
 	}
 	officialPrices, err := unmarshalFlatPriceComponents(official.PriceComponents)
 	if err != nil {
@@ -325,6 +384,37 @@ func createComponentRatioPurchaseDraft(input PurchaseDraftInput, userId int) (mo
 	return persistPurchaseDraft(input, official, prices, expression, "", userId)
 }
 
+func persistExpressionPurchaseDraft(
+	input PurchaseDraftInput,
+	official model.OfficialModelPriceVersion,
+	componentsJSON string,
+	expression string,
+	discount string,
+	userId int,
+) (model.ChannelModelPurchasePriceVersion, error) {
+	version := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId:          input.ChannelModelId,
+		OfficialPriceVersionId:  input.OfficialPriceVersionId,
+		BillingMode:             official.BillingMode,
+		PricingMode:             input.PricingMode,
+		PriceStructure:          official.PriceStructure,
+		PriceComponents:         componentsJSON,
+		PurchaseDiscount:        discount,
+		PriceUnit:               "expression",
+		PurchaseBillingExpr:     expression,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: official.ExpressionSchemaVersion,
+		Currency:                official.Currency,
+		QuoteReference:          strings.TrimSpace(input.QuoteReference),
+		ContractReference:       strings.TrimSpace(input.ContractReference),
+		Remark:                  strings.TrimSpace(input.Remark),
+	}
+	if err := CreatePurchasePriceVersion(&version, userId); err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	return version, nil
+}
+
 func createFixedPurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {
 	prices, expression, _, err := normalizeFlatTokenPrices(input.Prices)
 	if err != nil {
@@ -334,7 +424,10 @@ func createFixedPurchaseDraft(input PurchaseDraftInput, userId int) (model.Chann
 		BillingMode:             "token",
 		PriceStructure:          "flat",
 		ExpressionSchemaVersion: "v1",
-		Currency:                "USD",
+		Currency:                strings.ToUpper(strings.TrimSpace(input.Currency)),
+	}
+	if official.Currency == "" {
+		official.Currency = "USD"
 	}
 	if input.OfficialPriceVersionId != nil {
 		if err := model.DB.First(&official, *input.OfficialPriceVersionId).Error; err != nil {
@@ -567,18 +660,20 @@ func requireOfficialPrice(id *int) (model.OfficialModelPriceVersion, error) {
 	if official.Status != model.PricingVersionStatusActive {
 		return official, errors.New("official price version must be active")
 	}
-	if official.BillingMode != "token" || official.PriceStructure != "flat" {
-		return official, errors.New("structured ratio form requires a flat token official price")
+	if official.BillingMode != "token" {
+		return official, errors.New("purchase publishing currently requires a token-billed official price")
 	}
 	return official, nil
 }
 
 func scaleBillingExpression(expression string, factor decimal.Decimal) (string, error) {
-	if strings.Contains(expression, "|||") {
-		return "", errors.New("request-rule expressions cannot be scaled by the structured form")
+	parts := strings.SplitN(expression, "|||", 2)
+	version, body := billingexpr.ParseExprVersion(parts[0])
+	scaled := fmt.Sprintf("v%d:(%s) * %s", version, body, factor.String())
+	if len(parts) == 2 {
+		scaled += "|||" + parts[1]
 	}
-	version, body := billingexpr.ParseExprVersion(expression)
-	return fmt.Sprintf("v%d:(%s) * %s", version, body, factor.String()), nil
+	return scaled, nil
 }
 
 func normalizeOptionalPrice(name string, value string) (string, error) {
@@ -605,6 +700,53 @@ func scaleOptionalPrice(value string, factor decimal.Decimal) (string, error) {
 		return "", err
 	}
 	return number.Mul(factor).String(), nil
+}
+
+func scalePriceComponents(raw string, factor decimal.Decimal) (string, error) {
+	var components map[string]any
+	if err := common.UnmarshalJsonStr(raw, &components); err != nil {
+		return "", fmt.Errorf("price components are invalid: %w", err)
+	}
+	var scaleValue func(value any, key string) (any, error)
+	scaleValue = func(value any, key string) (any, error) {
+		switch typed := value.(type) {
+		case map[string]any:
+			for childKey, childValue := range typed {
+				scaled, err := scaleValue(childValue, childKey)
+				if err != nil {
+					return nil, err
+				}
+				typed[childKey] = scaled
+			}
+			return typed, nil
+		case []any:
+			for index, childValue := range typed {
+				scaled, err := scaleValue(childValue, key)
+				if err != nil {
+					return nil, err
+				}
+				typed[index] = scaled
+			}
+			return typed, nil
+		case string:
+			if key != "unit_price" && !strings.HasSuffix(key, "_unit_price") {
+				return typed, nil
+			}
+			number, err := decimal.NewFromString(strings.TrimSpace(typed))
+			if err != nil {
+				return nil, fmt.Errorf("%s is invalid: %w", key, err)
+			}
+			return number.Mul(factor).String(), nil
+		default:
+			return typed, nil
+		}
+	}
+	scaled, err := scaleValue(components, "")
+	if err != nil {
+		return "", err
+	}
+	encoded, err := common.Marshal(scaled)
+	return string(encoded), err
 }
 
 func parseRequiredPositiveDecimal(name string, value string) (decimal.Decimal, error) {

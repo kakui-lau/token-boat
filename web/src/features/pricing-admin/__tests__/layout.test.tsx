@@ -190,7 +190,8 @@ describe('Pricing admin editor layout', () => {
       model_id: 3,
       billing_mode: 'request',
       price_structure: 'tiered',
-      price_components: '{}',
+      price_components:
+        '{"rules":[{"id":"tier-1","name":"standard","component":"request","unit":"request","unit_size":"1","unit_price":"1","upper_bound":"100"},{"id":"tier-2","name":"default","component":"request","unit":"request","unit_size":"1","unit_price":"2","upper_bound":""}]}',
       billing_expr: '',
       currency: 'USD',
       version: 0,
@@ -204,10 +205,11 @@ describe('Pricing admin editor layout', () => {
       <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
     )
 
-    expect(screen.getByText('Tier name')).toBeVisible()
+    expect(screen.getByText('Tier 1')).toBeVisible()
+    expect(screen.getByText('Default rule')).toBeVisible()
     expect(screen.getByText('Usage upper bound')).toBeVisible()
-    expect(screen.getByText('Unit price')).toBeVisible()
-    expect(screen.getByText('Billing component')).toBeVisible()
+    expect(screen.getAllByText('Unit price')).toHaveLength(2)
+    expect(screen.getAllByText('Billing component')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Add tier' })).toBeEnabled()
   })
 

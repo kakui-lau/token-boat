@@ -17,3 +17,8 @@ func TestV2UsageVariablesEvaluateNormalizedBusinessUnits(t *testing.T) {
 	assert.Equal(t, 41.0, result)
 	assert.Equal(t, "media", trace.MatchedTier)
 }
+
+func TestCurrencyAmountUsesVersionSpecificUnits(t *testing.T) {
+	assert.Equal(t, 2.5, CurrencyAmount(`v1:tier("base", p * 2.5)`, 2_500_000))
+	assert.Equal(t, 2.5, CurrencyAmount(`v2:tier("base", images * 2.5)`, 2.5))
+}

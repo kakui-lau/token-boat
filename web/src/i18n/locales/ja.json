@@ -5687,6 +5687,18 @@
     "Zoom": "ズーム",
     "Token input": "入力トークン",
     "Token output": "出力トークン",
-    "Cache read": "キャッシュ読み取り"
+    "Cache read": "キャッシュ読み取り",
+    "Default rule": "デフォルトルール",
+    "Business usage": "ビジネス使用量",
+    "Request count": "リクエスト数",
+    "Image count": "画像数",
+    "Audio seconds": "音声秒数",
+    "Video seconds": "動画秒数",
+    "Character count": "文字数",
+    "Request parameters": "リクエストパラメータ",
+    "Matched pricing tiers": "適用された料金階層",
+    "These normalized values are used by V2 request, image, audio, video, character, and mixed pricing expressions.": "これらの正規化された値は、V2 のリクエスト、画像、音声、動画、文字、混合料金式で使用されます。",
+    "Enter the request fields used by param(\"path\") conditions. The backend validates this JSON before simulation.": "param(\"path\") 条件で参照するリクエスト項目を入力します。シミュレーション前にバックエンドが JSON を検証します。",
+    "Publish a compatible active official price before creating a discount-based purchase version.": "割引ベースの仕入価格を作成する前に、互換性のある有効な公式価格を公開してください。"
   }
 }

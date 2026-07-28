@@ -5687,6 +5687,18 @@
     "Zoom": "Zoom",
     "Token input": "Token đầu vào",
     "Token output": "Token đầu ra",
-    "Cache read": "Đọc bộ nhớ đệm"
+    "Cache read": "Đọc bộ nhớ đệm",
+    "Default rule": "Quy tắc mặc định",
+    "Business usage": "Mức sử dụng nghiệp vụ",
+    "Request count": "Số yêu cầu",
+    "Image count": "Số ảnh",
+    "Audio seconds": "Số giây âm thanh",
+    "Video seconds": "Số giây video",
+    "Character count": "Số ký tự",
+    "Request parameters": "Tham số yêu cầu",
+    "Matched pricing tiers": "Bậc giá phù hợp",
+    "These normalized values are used by V2 request, image, audio, video, character, and mixed pricing expressions.": "Các giá trị chuẩn hóa này được biểu thức định giá V2 sử dụng cho yêu cầu, hình ảnh, âm thanh, video, ký tự và chế độ hỗn hợp.",
+    "Enter the request fields used by param(\"path\") conditions. The backend validates this JSON before simulation.": "Nhập các trường yêu cầu được điều kiện param(\"path\") sử dụng. Máy chủ sẽ kiểm tra JSON trước khi mô phỏng.",
+    "Publish a compatible active official price before creating a discount-based purchase version.": "Hãy phát hành giá chính thức đang hoạt động và tương thích trước khi tạo phiên bản giá mua theo chiết khấu."
   }
 }

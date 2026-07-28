@@ -5687,6 +5687,18 @@
     "Zoom": "Zoom",
     "Token input": "Входные токены",
     "Token output": "Выходные токены",
-    "Cache read": "Чтение кэша"
+    "Cache read": "Чтение кэша",
+    "Default rule": "Правило по умолчанию",
+    "Business usage": "Бизнес-потребление",
+    "Request count": "Количество запросов",
+    "Image count": "Количество изображений",
+    "Audio seconds": "Секунды аудио",
+    "Video seconds": "Секунды видео",
+    "Character count": "Количество символов",
+    "Request parameters": "Параметры запроса",
+    "Matched pricing tiers": "Сопоставленные ценовые уровни",
+    "These normalized values are used by V2 request, image, audio, video, character, and mixed pricing expressions.": "Эти нормализованные значения используются выражениями V2 для запросов, изображений, аудио, видео, символов и смешанного тарифа.",
+    "Enter the request fields used by param(\"path\") conditions. The backend validates this JSON before simulation.": "Введите поля запроса для условий param(\"path\"). Сервер проверит JSON перед моделированием.",
+    "Publish a compatible active official price before creating a discount-based purchase version.": "Перед созданием закупочной версии со скидкой опубликуйте совместимую активную официальную цену."
   }
 }

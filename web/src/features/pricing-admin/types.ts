@@ -178,6 +178,8 @@ export type PriceSimulationResult = {
   minimum_margin_rate: string
   meets_minimum_margin: boolean
   currency: string
+  purchase_matched_tier: string
+  retail_matched_tier: string
 }
 
 export type PricingCatalogOption = {

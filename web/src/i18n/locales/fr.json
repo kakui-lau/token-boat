@@ -5687,6 +5687,18 @@
     "Zoom": "Zoom",
     "Token input": "Jetons en entrée",
     "Token output": "Jetons en sortie",
-    "Cache read": "Lecture du cache"
+    "Cache read": "Lecture du cache",
+    "Default rule": "Règle par défaut",
+    "Business usage": "Utilisation métier",
+    "Request count": "Nombre de requêtes",
+    "Image count": "Nombre d’images",
+    "Audio seconds": "Secondes audio",
+    "Video seconds": "Secondes vidéo",
+    "Character count": "Nombre de caractères",
+    "Request parameters": "Paramètres de requête",
+    "Matched pricing tiers": "Paliers tarifaires correspondants",
+    "These normalized values are used by V2 request, image, audio, video, character, and mixed pricing expressions.": "Ces valeurs normalisées sont utilisées par les expressions tarifaires V2 pour les requêtes, images, contenus audio, vidéos, caractères et modes mixtes.",
+    "Enter the request fields used by param(\"path\") conditions. The backend validates this JSON before simulation.": "Saisissez les champs lus par les conditions param(\"path\"). Le serveur valide ce JSON avant la simulation.",
+    "Publish a compatible active official price before creating a discount-based purchase version.": "Publiez un prix officiel actif et compatible avant de créer une version d’achat remisée."
   }
 }

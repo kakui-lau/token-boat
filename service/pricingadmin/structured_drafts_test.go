@@ -193,3 +193,50 @@ func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
 	assert.Contains(t, retail.PriceComponents, `"image_input_unit_price":"2"`)
 	assert.Contains(t, retail.PriceComponents, `"audio_output_unit_price":"12"`)
 }
+
+func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 31, ModelName: "tiered-chain"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 32, ChannelId: 33, ModelId: 31, UpstreamModelName: "tiered-chain",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official := model.OfficialModelPriceVersion{
+		ModelId: 31, BillingMode: "token", PriceStructure: "tiered",
+		PriceComponents: `{"rules":[` +
+			`{"name":"short","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"2","upper_bound":"100000"},` +
+			`{"name":"default","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"4"}` +
+			`]}`,
+		BillingExpr:      `v1:len <= 100000 ? tier("short", p * 2) : tier("default", p * 4)`,
+		ExpressionSource: "custom", ExpressionSchemaVersion: "v1",
+		Currency: "USD", Source: "manual",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&official, 1))
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 32, OfficialPriceVersionId: &official.Id,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "tiered", purchase.PriceStructure)
+	assert.Contains(t, purchase.PurchaseBillingExpr, "* 0.5")
+	assert.Contains(t, purchase.PriceComponents, `"unit_price":"1"`)
+
+	retail, err := CreateRetailDraft(RetailDraftInput{
+		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.5", MinimumMarginRate: "0.4",
+	}, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "tiered", retail.PriceStructure)
+	assert.Contains(t, retail.RetailBillingExpr, "* 2")
+
+	result, err := SimulatePrice(PriceSimulationInput{
+		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,
+		RetailPriceVersionId: retail.Id, PromptTokens: 200_000,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "0.4", result.PurchaseCost)
+	assert.Equal(t, "0.8", result.RetailAmount)
+}

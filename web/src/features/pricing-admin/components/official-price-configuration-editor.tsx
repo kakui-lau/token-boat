@@ -224,6 +224,20 @@ function businessRuleExpression(rules: BusinessPriceRule[]): string {
     .join(' : ')}`
 }
 
+function priceRuleTitle(
+  index: number,
+  total: number,
+  tiered: boolean,
+  translate: (key: string) => string
+): string {
+  if (index === total - 1) {
+    return translate('Default rule')
+  }
+  return tiered
+    ? `${translate('Tier')} ${index + 1}`
+    : `${translate('Price rule')} ${index + 1}`
+}
+
 function readComponents(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown
@@ -421,9 +435,7 @@ export function OfficialPriceConfigurationEditor(
           <div key={rule.id} className='space-y-3 rounded-lg border p-3'>
             <div className='flex items-center justify-between gap-3'>
               <p className='font-medium'>
-                {showTierConditions
-                  ? `${t('Tier')} ${index + 1}`
-                  : `${t('Price rule')} ${index + 1}`}
+                {priceRuleTitle(index, rules.length, showTierConditions, t)}
               </p>
               <Button
                 type='button'
@@ -470,9 +482,9 @@ export function OfficialPriceConfigurationEditor(
                       component: value,
                       unit: option?.unit ?? rule.unit,
                       unit_size:
-                        option?.unit === 'character'
+                        option?.unit === 'character' || option?.unit === 'token'
                           ? '1000000'
-                          : rule.unit_size,
+                          : '1',
                     }
                     updateRules(next)
                   }}
@@ -515,6 +527,7 @@ export function OfficialPriceConfigurationEditor(
                   type='number'
                   min={0}
                   step='any'
+                  required
                   value={rule.unit_price}
                   onChange={(event) => {
                     const next = [...rules]
@@ -523,13 +536,14 @@ export function OfficialPriceConfigurationEditor(
                   }}
                 />
               </Field>
-              {showTierConditions ? (
+              {showTierConditions && index < rules.length - 1 ? (
                 <Field>
                   <FieldLabel>{t('Usage upper bound')}</FieldLabel>
                   <Input
                     type='number'
                     min={0}
                     step='any'
+                    required
                     value={rule.upper_bound}
                     placeholder={t('No limit')}
                     onChange={(event) => {
@@ -543,9 +557,10 @@ export function OfficialPriceConfigurationEditor(
                   />
                 </Field>
               ) : null}
-              {props.version.billing_mode === 'image' ||
-              props.version.billing_mode === 'video_duration' ||
-              props.version.billing_mode === 'mixed' ? (
+              {index < rules.length - 1 &&
+              (props.version.billing_mode === 'image' ||
+                props.version.billing_mode === 'video_duration' ||
+                props.version.billing_mode === 'mixed') ? (
                 <>
                   <Field>
                     <FieldLabel>{t('Operation')}</FieldLabel>
@@ -594,8 +609,9 @@ export function OfficialPriceConfigurationEditor(
                   </Field>
                 </>
               ) : null}
-              {props.version.billing_mode === 'video_duration' ||
-              props.version.billing_mode === 'mixed' ? (
+              {index < rules.length - 1 &&
+              (props.version.billing_mode === 'video_duration' ||
+                props.version.billing_mode === 'mixed') ? (
                 <Field>
                   <FieldLabel>{t('Audio option')}</FieldLabel>
                   <Select

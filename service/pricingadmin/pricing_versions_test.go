@@ -495,3 +495,45 @@ func TestCreateOfficialPriceDraftRejectsInvalidPriceComponents(t *testing.T) {
 		Where("model_id = ?", 16).Count(&count).Error)
 	assert.Zero(t, count)
 }
+
+func TestCreateOfficialPriceDraftRejectsConditionalFallbackRule(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 17, ModelName: "invalid-fallback"}).Error)
+
+	version := model.OfficialModelPriceVersion{
+		ModelId:        17,
+		BillingMode:    "video_duration",
+		PriceStructure: "tiered",
+		PriceComponents: `{"schema_version":"v2","rules":[` +
+			`{"name":"1080p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.4","upper_bound":"60"},` +
+			`{"name":"fallback","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.2","resolution":"720p"}` +
+			`]}`,
+		BillingExpr:             `v2:video_s <= 60 ? tier("1080p", video_s * 0.4) : tier("fallback", video_s * 0.2)`,
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD",
+		Source:                  "manual",
+	}
+	err := CreateOfficialPriceVersion(&version, 1)
+	require.ErrorContains(t, err, "final price rule is the default fallback")
+}
+
+func TestCreateOfficialPriceDraftAcceptsValidatedBusinessRules(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 18, ModelName: "valid-video-rules"}).Error)
+
+	version := model.OfficialModelPriceVersion{
+		ModelId:        18,
+		BillingMode:    "video_duration",
+		PriceStructure: "tiered",
+		PriceComponents: `{"schema_version":"v2","rules":[` +
+			`{"name":"short","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.4","upper_bound":"60"},` +
+			`{"name":"default","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.2"}` +
+			`]}`,
+		BillingExpr:             `v2:video_s <= 60 ? tier("short", video_s * 0.4) : tier("default", video_s * 0.2)`,
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD",
+		Source:                  "manual",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&version, 1))
+	assert.NotZero(t, version.Id)
+}

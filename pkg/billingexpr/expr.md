@@ -254,6 +254,12 @@ v2:param("resolution") == "1080p"
   : tier("720p", video_s * 0.20)
 ```
 
+V2 expressions return the actual currency amount for the request. Token
+components therefore include their own unit divisor, for example
+`p / 1000000 * 2.5`. V1 continues to return a per-million-token weighted
+value and is divided by 1,000,000 during quota conversion. This distinction is
+versioned and must not be inferred from `billing_mode`.
+
 These variables are available to draft validation and expression tooling.
 Runtime publishing remains gated by billing-mode support; an adapter must
 normalize and bound the corresponding usage before a non-token mode is enabled.

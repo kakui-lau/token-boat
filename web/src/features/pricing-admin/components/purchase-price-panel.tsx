@@ -70,6 +70,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
     resolver: zodResolver(purchasePriceSchema),
     defaultValues: {
       pricing_mode: 'official_ratio',
+      currency: 'USD',
       official_price_version_id: '',
       purchase_discount: '',
       input_discount: '',
@@ -93,9 +94,10 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         (version) =>
           version.status === 'active' &&
           version.billing_mode === 'token' &&
-          version.price_structure === 'flat'
+          (pricingMode === 'official_ratio' ||
+            version.price_structure === 'flat')
       ),
-    [props.officialVersions]
+    [pricingMode, props.officialVersions]
   )
   const createMutation = useMutation({
     mutationFn: (value: PurchasePriceForm) =>
@@ -105,6 +107,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           ? Number(value.official_price_version_id)
           : undefined,
         pricing_mode: value.pricing_mode,
+        currency: value.currency,
         purchase_discount: value.purchase_discount,
         input_discount: value.input_discount,
         output_discount: value.output_discount,
@@ -189,6 +192,8 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
                     value={String(version.id)}
                   >
                     {t('Version')} {version.version} · {t(version.status)}
+                    {' · '}
+                    {t(version.price_structure)}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
@@ -200,10 +205,22 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               {eligibleOfficialVersions.length === 0 ? (
                 <p className='text-muted-foreground text-xs'>
                   {t(
-                    'Publish an active flat token official price before creating a discount-based purchase version.'
+                    'Publish a compatible active official price before creating a discount-based purchase version.'
                   )}
                 </p>
               ) : null}
+            </Field>
+          ) : null}
+          {pricingMode === 'fixed_unit_price' ? (
+            <Field>
+              <FieldLabel htmlFor='purchase-currency'>
+                {t('Currency')}
+              </FieldLabel>
+              <Input
+                id='purchase-currency'
+                maxLength={8}
+                {...form.register('currency')}
+              />
             </Field>
           ) : null}
           {pricingMode === 'official_ratio' ? (

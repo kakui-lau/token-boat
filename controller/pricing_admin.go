@@ -246,16 +246,28 @@ func AdminPublishLatestOfficialPriceDrafts(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
-func AdminSuspendOfficialPriceVersion(c *gin.Context) {
-	id, ok := positivePathId(c)
-	if !ok {
-		return
-	}
-	if err := pricingadmin.SuspendOfficialPriceVersion(id); err != nil {
+func AdminSyncOfficialPrices(c *gin.Context) {
+	var input pricingadmin.OfficialPriceSyncInput
+	if err := c.ShouldBindJSON(&input); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	result, err := pricingadmin.SyncOfficialPrices(input, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminListOfficialPriceSyncBatches(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	batches, err := pricingadmin.ListOfficialPriceSyncBatches(limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, batches)
 }
 
 func AdminDeleteOfficialPriceDraft(c *gin.Context) {

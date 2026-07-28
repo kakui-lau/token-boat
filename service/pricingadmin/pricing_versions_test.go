@@ -1,6 +1,7 @@
 package pricingadmin
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -20,7 +21,9 @@ func setupPricingAdminTestDB(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(
 		&model.Model{},
 		&model.ChannelModel{},
+		&model.ModelOfficialPrice{},
 		&model.OfficialModelPriceVersion{},
+		&model.OfficialPriceSyncBatch{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 	))
@@ -99,12 +102,21 @@ func TestPublishOfficialPricePreservesActivePurchaseChain(t *testing.T) {
 	}, 1)
 	require.NoError(t, err)
 
-	err = PublishOfficialPriceVersion(next.Id)
-	require.ErrorContains(t, err, "active purchase price references")
+	require.NoError(t, PublishOfficialPriceVersion(next.Id))
 
 	var storedCurrent model.OfficialModelPriceVersion
 	require.NoError(t, model.DB.First(&storedCurrent, current.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
+	assert.Equal(t, model.PricingVersionStatusExpired, storedCurrent.Status)
+
+	var storedPurchase model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.Where("official_price_version_id = ?", current.Id).
+		First(&storedPurchase).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedPurchase.Status)
+	assert.Equal(t, current.Id, *storedPurchase.OfficialPriceVersionId)
+
+	var catalog model.ModelOfficialPrice
+	require.NoError(t, model.DB.First(&catalog, 21).Error)
+	assert.Equal(t, next.Id, catalog.CurrentRevisionId)
 }
 
 func TestPublishLatestOfficialPriceDraftsPublishesNewestDraftPerModel(t *testing.T) {
@@ -143,7 +155,7 @@ func TestPublishLatestOfficialPriceDraftsPublishesNewestDraftPerModel(t *testing
 	assert.Equal(t, model.PricingVersionStatusActive, storedOther.Status)
 }
 
-func TestPublishLatestOfficialPriceDraftsRollsBackEntireBatch(t *testing.T) {
+func TestPublishLatestOfficialPriceDraftsDoesNotRewritePurchaseSnapshots(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 71, ModelName: "batch-first"}).Error)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 72, ModelName: "batch-blocked"}).Error)
@@ -170,15 +182,89 @@ func TestPublishLatestOfficialPriceDraftsRollsBackEntireBatch(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := PublishLatestOfficialPriceDrafts()
-	require.ErrorContains(t, err, "active purchase price references")
-	assert.Zero(t, result.Published)
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Published)
 
 	var storedFirst model.OfficialModelPriceVersion
 	require.NoError(t, model.DB.First(&storedFirst, first.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusDraft, storedFirst.Status)
+	assert.Equal(t, model.PricingVersionStatusActive, storedFirst.Status)
 	var storedCurrent model.OfficialModelPriceVersion
 	require.NoError(t, model.DB.First(&storedCurrent, current.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
+	assert.Equal(t, model.PricingVersionStatusExpired, storedCurrent.Status)
+}
+
+func TestSyncOfficialPricesIsIdempotentAndKeepsOnlyChangedRevisions(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 81, ModelName: "sync-model"}).Error)
+
+	input := OfficialPriceSyncInput{
+		Source: "official_api", IdempotencyKey: "batch-2026-07-28T00:00Z",
+		AutoActivate: true,
+		Items: []OfficialPriceSynchronizationItem{{
+			ModelId: 81, BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{"input_unit_price":"1"}`,
+			BillingExpr:     `v1:tier("base", p * 1)`, Currency: "USD",
+			SourceVersion: "upstream-1",
+		}},
+	}
+	first, err := SyncOfficialPrices(input, 9)
+	require.NoError(t, err)
+	assert.False(t, first.Idempotent)
+	assert.Equal(t, 1, first.Batch.ChangedCount)
+	assert.Equal(t, 1, first.Batch.ActivatedCount)
+
+	replay, err := SyncOfficialPrices(input, 9)
+	require.NoError(t, err)
+	assert.True(t, replay.Idempotent)
+	assert.Equal(t, first.Batch.Id, replay.Batch.Id)
+
+	input.IdempotencyKey = "batch-2026-07-28T01:00Z"
+	unchanged, err := SyncOfficialPrices(input, 9)
+	require.NoError(t, err)
+	assert.Equal(t, 0, unchanged.Batch.ChangedCount)
+	assert.Equal(t, 1, unchanged.Batch.UnchangedCount)
+
+	var revisionCount int64
+	require.NoError(t, model.DB.Model(&model.OfficialModelPriceVersion{}).
+		Where("model_id = ?", 81).Count(&revisionCount).Error)
+	assert.Equal(t, int64(1), revisionCount)
+}
+
+func TestSyncOfficialPricesAdvancesCatalogWithoutChangingPurchaseReference(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 91, ModelName: "sync-chain"}).Error)
+
+	syncInput := func(key string, price string) OfficialPriceSyncInput {
+		return OfficialPriceSyncInput{
+			Source: "official_api", IdempotencyKey: key, AutoActivate: true,
+			Items: []OfficialPriceSynchronizationItem{{
+				ModelId: 91, BillingMode: "token", PriceStructure: "flat",
+				PriceComponents: fmt.Sprintf(`{"input_unit_price":"%s"}`, price),
+				BillingExpr:     fmt.Sprintf(`v1:tier("base", p * %s)`, price),
+				Currency:        "USD",
+			}},
+		}
+	}
+	_, err := SyncOfficialPrices(syncInput("first", "1"), 9)
+	require.NoError(t, err)
+	var first model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.Where("model_id = ? AND status = ?", 91, model.PricingVersionStatusActive).
+		First(&first).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 92, OfficialPriceVersionId: &first.Id, Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
+
+	_, err = SyncOfficialPrices(syncInput("second", "2"), 9)
+	require.NoError(t, err)
+	var catalog model.ModelOfficialPrice
+	require.NoError(t, model.DB.First(&catalog, 91).Error)
+	assert.NotEqual(t, first.Id, catalog.CurrentRevisionId)
+
+	var purchase model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.Where("channel_model_id = ?", 92).First(&purchase).Error)
+	assert.Equal(t, first.Id, *purchase.OfficialPriceVersionId)
+	assert.Equal(t, model.PricingVersionStatusActive, purchase.Status)
 }
 
 func TestPublishPurchasePricePreservesActiveRetailChain(t *testing.T) {

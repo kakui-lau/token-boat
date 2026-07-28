@@ -73,6 +73,10 @@ type OfficialModelPriceVersion struct {
 	Currency                string `json:"currency" gorm:"type:varchar(8);not null"`
 	Source                  string `json:"source" gorm:"type:varchar(32);not null"`
 	SourceVersion           string `json:"source_version" gorm:"type:varchar(64)"`
+	ContentHash             string `json:"content_hash" gorm:"type:varchar(64);index"`
+	SyncBatchId             *int   `json:"sync_batch_id" gorm:"index"`
+	SourceUpdatedAt         int64  `json:"source_updated_at" gorm:"bigint;index"`
+	ChangeType              string `json:"change_type" gorm:"type:varchar(16)"`
 	Version                 int64  `json:"version" gorm:"bigint;not null;uniqueIndex:uk_official_model_price_version,priority:2"`
 	Status                  string `json:"status" gorm:"type:varchar(16);not null;index"`
 	EffectiveFrom           int64  `json:"effective_from" gorm:"bigint;not null;index"`
@@ -81,6 +85,29 @@ type OfficialModelPriceVersion struct {
 	CreatedAt               int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt               int64  `json:"updated_at" gorm:"bigint"`
 	Remark                  string `json:"remark" gorm:"type:varchar(255)"`
+}
+
+// ModelOfficialPrice is the fast-read catalog entry for a logical model. The
+// referenced revision is immutable; synchronization only advances this pointer.
+type ModelOfficialPrice struct {
+	ModelId           int   `json:"model_id" gorm:"primaryKey;autoIncrement:false"`
+	CurrentRevisionId int   `json:"current_revision_id" gorm:"not null;uniqueIndex"`
+	UpdatedAt         int64 `json:"updated_at" gorm:"bigint;not null;index"`
+}
+
+type OfficialPriceSyncBatch struct {
+	Id             int    `json:"id"`
+	Source         string `json:"source" gorm:"type:varchar(32);not null;uniqueIndex:uk_official_price_sync_batch,priority:1"`
+	IdempotencyKey string `json:"idempotency_key" gorm:"type:varchar(128);not null;uniqueIndex:uk_official_price_sync_batch,priority:2"`
+	Status         string `json:"status" gorm:"type:varchar(16);not null;index"`
+	ReceivedCount  int    `json:"received_count"`
+	ChangedCount   int    `json:"changed_count"`
+	UnchangedCount int    `json:"unchanged_count"`
+	ActivatedCount int    `json:"activated_count"`
+	StartedAt      int64  `json:"started_at" gorm:"bigint;not null;index"`
+	CompletedAt    int64  `json:"completed_at" gorm:"bigint"`
+	CreatedBy      int    `json:"created_by"`
+	ErrorMessage   string `json:"error_message" gorm:"type:text"`
 }
 
 type ChannelModelPurchasePriceVersion struct {
@@ -443,7 +470,51 @@ func ActivateOfficialPriceVersion(tx *gorm.DB, version OfficialModelPriceVersion
 	if result.RowsAffected != 1 {
 		return errors.New("official price version is no longer publishable")
 	}
-	return nil
+	current := ModelOfficialPrice{
+		ModelId:           version.ModelId,
+		CurrentRevisionId: version.Id,
+		UpdatedAt:         now,
+	}
+	return tx.Where("model_id = ?", version.ModelId).
+		Assign(map[string]any{
+			"current_revision_id": version.Id,
+			"updated_at":          now,
+		}).
+		FirstOrCreate(&current).Error
+}
+
+// InitializeModelOfficialPrices backfills the current catalog for installations
+// that already had active official revisions before the catalog table existed.
+func InitializeModelOfficialPrices() error {
+	var active []OfficialModelPriceVersion
+	if err := DB.Where("status = ?", PricingVersionStatusActive).
+		Order("model_id ASC, version DESC").
+		Find(&active).Error; err != nil {
+		return err
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		seen := make(map[int]struct{}, len(active))
+		for _, revision := range active {
+			if _, exists := seen[revision.ModelId]; exists {
+				continue
+			}
+			seen[revision.ModelId] = struct{}{}
+			current := ModelOfficialPrice{
+				ModelId:           revision.ModelId,
+				CurrentRevisionId: revision.Id,
+				UpdatedAt:         revision.UpdatedAt,
+			}
+			if err := tx.Where("model_id = ?", revision.ModelId).
+				Assign(map[string]any{
+					"current_revision_id": revision.Id,
+					"updated_at":          revision.UpdatedAt,
+				}).
+				FirstOrCreate(&current).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func ActivatePurchasePriceVersion(tx *gorm.DB, version ChannelModelPurchasePriceVersion, now int64) error {

@@ -295,12 +295,17 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&ChannelModel{},
+		&ModelOfficialPrice{},
 		&OfficialModelPriceVersion{},
+		&OfficialPriceSyncBatch{},
 		&ChannelModelPurchasePriceVersion{},
 		&ChannelModelRetailPriceVersion{},
 		&RequestPricingSnapshot{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
@@ -363,7 +368,9 @@ func migrateDBFast() error {
 		{&ChannelDailyUsage{}, "ChannelDailyUsage"},
 		{&ChannelDailyUsageMonth{}, "ChannelDailyUsageMonth"},
 		{&ChannelModel{}, "ChannelModel"},
+		{&ModelOfficialPrice{}, "ModelOfficialPrice"},
 		{&OfficialModelPriceVersion{}, "OfficialModelPriceVersion"},
+		{&OfficialPriceSyncBatch{}, "OfficialPriceSyncBatch"},
 		{&ChannelModelPurchasePriceVersion{}, "ChannelModelPurchasePriceVersion"},
 		{&ChannelModelRetailPriceVersion{}, "ChannelModelRetailPriceVersion"},
 		{&RequestPricingSnapshot{}, "RequestPricingSnapshot"},
@@ -390,6 +397,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := InitializeModelOfficialPrices(); err != nil {
+		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err

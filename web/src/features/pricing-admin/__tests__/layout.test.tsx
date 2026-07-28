@@ -118,10 +118,8 @@ describe('Pricing admin editor layout', () => {
         modelId={3}
         versions={[]}
         isPublishing={false}
-        isSuspending={false}
         isDeleting={false}
         onPublish={vi.fn()}
-        onSuspend={vi.fn()}
         onDelete={vi.fn()}
         onCreated={vi.fn().mockResolvedValue(undefined)}
       />
@@ -132,6 +130,41 @@ describe('Pricing admin editor layout', () => {
         .getByRole('heading', { name: 'New Official Version' })
         .closest('form')
     ).toHaveClass('pricing-form-surface')
+  })
+
+  test('keeps active official revisions as history without a suspend action', () => {
+    renderWithQueryClient(
+      <OfficialPricePanel
+        modelId={3}
+        versions={[
+          {
+            id: 13,
+            model_id: 3,
+            billing_mode: 'token',
+            price_structure: 'flat',
+            price_components: '{"input_unit_price":"2"}',
+            billing_expr: 'p * 2',
+            currency: 'USD',
+            version: 3,
+            status: 'active',
+            source: 'official_api',
+            remark: '',
+            effective_from: 1,
+            effective_to: 0,
+          },
+        ]}
+        isPublishing={false}
+        isDeleting={false}
+        onPublish={vi.fn()}
+        onDelete={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Suspend' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View' })).toBeEnabled()
   })
 
   test('copies historical prices and updates an existing draft', async () => {
@@ -172,10 +205,8 @@ describe('Pricing admin editor layout', () => {
         modelId={3}
         versions={versions}
         isPublishing={false}
-        isSuspending={false}
         isDeleting={false}
         onPublish={vi.fn()}
-        onSuspend={vi.fn()}
         onDelete={vi.fn()}
         onCreated={vi.fn().mockResolvedValue(undefined)}
       />

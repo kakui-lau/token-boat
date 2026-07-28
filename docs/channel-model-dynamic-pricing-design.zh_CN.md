@@ -3,7 +3,7 @@
 > 状态：企业级方案设计稿
 > 适用项目：token-boat / new-api 二次开发
 > 核心规则：客户售价由最终实际成功的渠道模型决定
-> 价格层次：官方基准价 → 渠道采购价 → 渠道销售价 → 请求结算快照
+> 价格层次：官方价目录/修订 → 渠道采购快照 → 渠道销售快照 → 请求结算快照
 
 ## 1. 方案摘要
 
@@ -34,7 +34,7 @@
 1. `models` 只表示逻辑模型身份。
 2. `channels` 只表示上游渠道或账号。
 3. `channel_models` 表示某渠道具体提供某模型。
-4. 官方价、采购价、销售价分表、不可变版本化。
+4. 官方价采用“当前目录 + 不可变修订 + 同步批次”；采购价、销售价采用不可变版本。
 5. 客户售价跟随最终实际渠道模型变化。
 6. 失败尝试的上游成本计入平台采购成本。
 7. 请求开始时冻结价格候选，结算后历史价格不可改变。
@@ -46,7 +46,7 @@
 
 ### 2.1 本期范围
 
-- 官方价格表化和版本化；
+- 官方价格当前目录、不可变修订和同步批次；
 - 渠道模型实体；
 - 渠道报价录入和导入；
 - 统一折扣、分项折扣、明确净价、混合报价和自定义报价；
@@ -120,7 +120,9 @@
 | `channels` | 一个上游渠道、账号或 Key 池 | 主数据 |
 | `channel_models` | 某渠道提供的某个模型 | 核心主数据 |
 | `abilities` | 用户分组能否使用某个渠道模型 | 权限/路由配置 |
-| `official_model_price_versions` | 模型官方基准价格 | 版本配置 |
+| `model_official_prices` | 每个模型当前官方价的读取入口 | 当前目录 |
+| `official_model_price_versions` | 官方价不可变修订与来源证据 | 修订历史 |
+| `official_price_sync_batches` | 定时同步的幂等、结果和错误审计 | 同步审计 |
 | `channel_model_purchase_price_versions` | 渠道模型采购价格、常用分项和执行表达式 | 版本配置 |
 | `channel_model_retail_price_versions` | 渠道模型销售价格、常用分项和计算参数快照 | 版本配置 |
 | `request_pricing_snapshots` | 一次请求的预扣、最终价格和利润 | 请求流水 |
@@ -544,7 +546,30 @@ expression_source:
 
 ## 6. 数据表设计
 
-### 6.1 `official_model_price_versions`
+### 6.1 官方价目录、修订和同步批次
+
+官方价不是运行时账单快照，也不需要采购/销售那样的复杂生命周期。为兼顾定时同步、快速读取和审计，拆成三层：
+
+```text
+model_official_prices（每个模型一行）
+└── current_revision_id
+    └── official_model_price_versions（只追加修订）
+
+official_price_sync_batches
+└── official_model_price_versions.sync_batch_id
+```
+
+`model_official_prices` 是业务读取入口；`official_model_price_versions` 是来源证据。同步时只有内容哈希变化才新增修订并推进当前指针，完全相同的报价不会制造空版本。
+
+#### `model_official_prices`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `model_id` | int | 主键，一模型一行 |
+| `current_revision_id` | int | 当前生效修订 |
+| `updated_at` | bigint | 当前指针更新时间 |
+
+#### `official_model_price_versions`
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -556,11 +581,14 @@ expression_source:
 | `currency` | varchar(8) | 币种 |
 | `source` | varchar(32) | manual、official_api、legacy_import |
 | `source_version` | varchar(64) | 官方版本 |
+| `content_hash` | varchar(64) | 价格语义内容 SHA-256，用于幂等去重 |
+| `sync_batch_id` | int nullable | 来源同步批次；人工维护可空 |
+| `source_updated_at` | bigint | 上游报价更新时间 |
+| `change_type` | varchar(16) | initial、updated |
 | `version` | bigint | 模型内版本 |
-| `status` | varchar(16) | draft、scheduled、active、expired |
+| `status` | varchar(16) | 兼容字段：draft、active、expired；业务语义分别为待审、生效、已替代 |
 | `effective_from/to` | bigint | 生效区间 |
-| `release_id` | bigint | 发布批次 |
-| `created_by/approved_by` | int | 操作人 |
+| `created_by` | int | 操作人或同步任务身份 |
 | `created_at/updated_at` | bigint | 时间 |
 | `remark` | varchar(255) | 备注 |
 
@@ -569,7 +597,26 @@ expression_source:
 ```text
 UNIQUE(model_id, version)
 INDEX(model_id, status, effective_from, effective_to)
+INDEX(content_hash)
 ```
+
+#### `official_price_sync_batches`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | int | 主键 |
+| `source` | varchar(32) | official_api、vendor_feed 等 |
+| `idempotency_key` | varchar(128) | 来源批次唯一键 |
+| `status` | varchar(16) | running、completed、failed |
+| `received_count` | int | 接收模型数 |
+| `changed_count` | int | 新增修订数 |
+| `unchanged_count` | int | 内容未变化数 |
+| `activated_count` | int | 自动推进当前指针数 |
+| `started_at/completed_at` | bigint | 批次耗时审计 |
+| `created_by` | int | 操作人或任务身份 |
+| `error_message` | text | 失败原因 |
+
+唯一索引 `UNIQUE(source, idempotency_key)` 保证调度器重试不会重复生成价格修订。
 
 ### 6.2 `channel_models`
 
@@ -1186,15 +1233,18 @@ ID 502 → ChannelModel 102 → Purchase Version 302
 
 ## 8. 官方价格变化
 
-### 8.1 不覆盖旧版本
+### 8.1 当前目录与不可变修订
 
 官方价格变化时：
 
 ```text
-新官方价格版本
-→ 新采购价格版本
-→ 新销售价格版本
-→ 同一 release_id 审批和定时生效
+定时任务拉取报价
+→ 创建 official_price_sync_batches
+→ 标准化并计算 content_hash
+→ 相同：记录 unchanged，不写新修订
+→ 变化：写入不可变修订
+→ 可信来源且通过阈值：推进 model_official_prices.current_revision_id
+→ 非可信来源或异常变化：保留 draft，等待人工确认
 ```
 
 不修改：
@@ -1206,29 +1256,33 @@ ID 502 → ChannelModel 102 → Purchase Version 302
 - 历史请求快照；
 - 历史尝试流水。
 
+尤其不会自动修改已有 `channel_model_purchase_price_versions`。采购版本已经冻结了采购表达式和分项净价，`official_price_version_id` 只保留来源血缘。官方价变更后：
+
+- 新建的折扣采购草稿默认读取当前官方价；
+- 已有采购版本继续按自己的快照执行；
+- 管理端可派生展示 `current`、`outdated`、`independent`；
+- `fixed_unit_price` 等独立净价显示为 `independent`，不参与官方价过期判断。
+
 ### 8.2 不同采购模式的处理
 
 | 采购模式 | 官方调价后的处理 |
 |---|---|
-| `official_ratio` | 自动生成新采购版本 |
-| `component_ratio` | 使用各分项折扣重新生成 |
+| `official_ratio` | 标记 outdated，可一键基于最新官方价生成新采购草稿 |
+| `component_ratio` | 标记 outdated，可按分项折扣生成新采购草稿 |
 | `fixed_unit_price` | 标记待复核，净价默认不变 |
-| `hybrid` | 仅重新计算继承官方价的分项 |
+| `hybrid` | 仅将继承官方价的分项标记 outdated |
 | `custom_expr` | 标记待人工或规则复核 |
 
-### 8.3 原子发布
+### 8.3 发布边界
 
-使用 `release_id` 将同一受影响价格链中的以下版本组成一个发布批次：
+官方价发布只切换官方当前目录，不与采购、销售组成强制原子发布：
 
 ```text
-official price
-purchase prices
-retail prices
+官方价修订 A → 被既有采购版本引用，长期保留
+官方价修订 B → 当前目录，供新采购草稿读取
 ```
 
-生效时整体切换对应渠道模型的 `ActivePriceBundle` 和不可变缓存快照，禁止同一价格链中的采购版本和销售版本失配。
-
-该规则只适用于依赖该官方价格版本的价格链。完全独立的 `fixed_unit_price` 或 `custom_expr` 采购价格不参与此次官方价格发布，也不应被自动过期。
+因此发布新官方价不得因旧官方价仍被生效采购版本引用而阻塞。采购与销售之间仍保持独立的发布一致性保护：销售版本必须引用有效采购快照，切换运行时价格链时再原子更新 `ActivePriceBundle`。
 
 ### 8.4 进行中请求
 
@@ -1544,6 +1598,8 @@ type RouteAttemptRecorder interface {
 GET/POST /api/models/:id/official-prices
 POST     /api/official-prices/:id/approve
 POST     /api/official-prices/:id/publish
+POST     /api/pricing-admin/official-prices/sync
+GET      /api/pricing-admin/official-prices/sync-batches
 
 GET/POST /api/channels/:id/models
 PUT      /api/channel-models/:id
@@ -1565,6 +1621,33 @@ GET      /api/channel-models/:id/metrics
 GET      /api/circuit-breakers
 POST     /api/circuit-breakers/:id/reset
 ```
+
+官方价同步请求示例：
+
+```json
+{
+  "source": "official_api",
+  "idempotency_key": "openai-pricing-2026-07-28T00:00:00Z",
+  "auto_activate": true,
+  "items": [
+    {
+      "model_id": 52,
+      "billing_mode": "token",
+      "price_structure": "flat",
+      "price_components": "{\"input_unit_price\":\"1.25\",\"output_unit_price\":\"10\"}",
+      "billing_expr": "v1:tier(\"base\", p * 1.25 + c * 10)",
+      "expression_source": "generated",
+      "expression_schema_version": "v1",
+      "currency": "USD",
+      "source_version": "2026-07-28",
+      "source_updated_at": 1785196800,
+      "remark": "OpenAI public pricing"
+    }
+  ]
+}
+```
+
+同步接口采用整批事务：任一模型校验失败，本批价格修订全部回滚，同时批次保留为 `failed` 供审计。调度器使用相同 `source + idempotency_key` 重试时只返回原批次，不重复写入。`auto_activate=false` 只生成待审修订；`auto_activate=true` 仍必须通过当前计费模式、表达式和内容哈希校验。
 
 `GET /api/pricing/models` 返回当前用户分组下的可售价格摘要。复杂模型必须返回展示类型、基准规格和可选维度，例如：
 
@@ -1856,7 +1939,7 @@ retail_billing_expr
     └── 模拟结果
 ```
 
-官方价格页面负责逻辑模型级版本管理；渠道模型页面只引用官方版本并管理渠道采购与销售价格。必须支持按模型和渠道搜索、创建渠道模型、录入统一折扣/分项折扣/固定净价、录入常用多模态规格价格、自动计算销售价格和利润率、保存草稿、发布新版本、停用价格、查看历史版本和运行价格模拟。
+官方价格页面负责逻辑模型的当前价和修订历史；渠道模型页面只引用官方修订并管理渠道采购与销售价格。必须支持按模型和渠道搜索、创建渠道模型、录入统一折扣/分项折扣/固定净价、录入常用多模态规格价格、自动计算销售价格和利润率、保存草稿、发布新版本、停用采购/销售价格、查看历史版本和运行价格模拟。官方价不提供“停用”，只允许由新修订替代。
 
 第一版表达式由结构化表单或受控模板生成，不向普通管理员开放自由编辑。
 
@@ -1876,8 +1959,9 @@ retail_billing_expr
 10. 销售价公式封装在 `RetailPriceCalculator` 领域对象中，统一提供销售倍率和单个采购成本的售价计算；结构化销售草稿只能调用该对象，禁止在控制器或其他服务中复制公式。销售单价统一保留两位小数并向上取整（`RoundCeil(2)`），生成的 `retail_billing_expr` 必须使用同一取整后单价，确保后台展示、预扣和结算一致。销售倍率本身仍保留高精度，不允许先截断倍率。
 11. 官方价格已拆为独立的“官方模型价格”页面；渠道模型定价抽屉只保留采购、销售和模拟，并提供跳转到对应逻辑模型官方价格的入口，避免把全局官方基准误认为渠道私有配置。
 12. 渠道模型定价抽屉展示当前生效价格链，明确列出官方价、采购价、销售价版本和不可变 revision；发布或停用采购价、销售价后立即重新查询，便于管理员确认运行时将读取的完整 Bundle。价格链不完整时明确显示“未配置”，不得用草稿冒充当前生效价格。
-13. 发布链路执行反向依赖保护：仍有生效采购价引用当前官方价时，禁止发布替代官方价；仍有生效销售价引用当前采购价时，禁止发布替代采购价。管理员必须按“停用销售价 → 停用采购价 → 发布官方价 → 发布采购价 → 发布销售价”的顺序换版，避免产生悬空但状态仍为 active 的价格版本。
-14. 官方价格一级页面支持“一键发布所有模型最新草稿”。批量发布只选择每个逻辑模型版本号最高的草稿，在单一数据库事务内逐项锁定、校验和发布；全部通过才提交，任一模型因表达式、计费模式、引用关系或并发状态变化而失败时整批回滚。旧草稿不会被隐式删除，仍可继续审查或手动删除。
+13. 官方价已经改为“当前目录 + 不可变修订”语义：发布新官方修订会推进当前指针，但不会修改或停用引用旧修订的采购快照。采购与销售之间继续执行反向依赖保护。
+14. 官方价格一级页面支持“一键发布所有模型最新草稿”。批量发布只选择每个逻辑模型版本号最高的草稿，在单一数据库事务内逐项锁定、校验和发布；旧草稿不会被隐式删除。
+15. 后台提供官方价同步接入：`source + idempotency_key` 全局防重；同步批次记录接收、变化、未变化、自动生效和失败数量；价格语义 `content_hash` 未变化时不新增修订。自动生效仅推进官方价目录，既有采购、销售及请求快照保持不变。
 
 阶段 A 对“多模态”的交付边界是 Token 计量的图片和音频价格。按张、按秒、按分辨率或视频规格计量需要 Day 3 接入运行时标准化用量后再开放发布，不能在缺少结算口径时仅增加后台输入框。
 
@@ -2034,8 +2118,8 @@ pricing_runtime_mode:
 4. 分项净价场景逐项计算销售价格，不强行使用单一折扣。
 5. 客户按最终成功渠道模型结算。
 6. 所有上游尝试累计平台采购成本。
-7. 官方调价创建新版本链，不覆盖历史。
-8. 同一受影响价格链的采购、销售版本和 `ActivePriceBundle` 原子切换。
+7. 官方调价只追加修订并推进当前目录，不覆盖历史，不反向改写采购快照。
+8. 采购、销售版本和 `ActivePriceBundle` 在运行时启用阶段保持一致切换。
 9. 配置表不进入请求数据库热查询。
 10. 所有财务金额使用 Decimal。
 11. 发布前必须审批、模拟和检查负毛利。

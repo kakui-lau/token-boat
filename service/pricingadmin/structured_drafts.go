@@ -105,6 +105,7 @@ func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.Offici
 		replacement.CreatedBy = current.CreatedBy
 		replacement.CreatedAt = current.CreatedAt
 		replacement.Source = current.Source
+		replacement.ContentHash = officialPriceContentHash(replacement)
 		if err := tx.Model(&replacement).Select(
 			"billing_mode",
 			"price_structure",
@@ -115,6 +116,7 @@ func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.Offici
 			"expression_schema_version",
 			"currency",
 			"source",
+			"content_hash",
 			"remark",
 			"updated_at",
 		).Updates(&replacement).Error; err != nil {

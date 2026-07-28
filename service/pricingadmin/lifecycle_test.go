@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSuspendPriceChainRequiresRetailFirst(t *testing.T) {
+func TestSuspendPurchaseAndRetailChainRequiresRetailFirst(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 101, ModelName: "lifecycle"}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
@@ -44,7 +44,9 @@ func TestSuspendPriceChainRequiresRetailFirst(t *testing.T) {
 	require.ErrorContains(t, SuspendPurchasePriceVersion(purchase.Id), "active retail")
 	require.NoError(t, SuspendRetailPriceVersion(retail.Id))
 	require.NoError(t, SuspendPurchasePriceVersion(purchase.Id))
-	require.NoError(t, SuspendOfficialPriceVersion(official.Id))
+	var storedOfficial model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedOfficial, official.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedOfficial.Status)
 }
 
 func TestDeleteDraftRejectsPublishedAndReferencedVersions(t *testing.T) {

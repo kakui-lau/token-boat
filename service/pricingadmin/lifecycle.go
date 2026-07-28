@@ -78,28 +78,6 @@ func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 	return bundle, nil
 }
 
-func SuspendOfficialPriceVersion(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
-		version, err := model.GetOfficialPriceVersionForUpdate(tx, id)
-		if err != nil {
-			return err
-		}
-		if version.Status != model.PricingVersionStatusActive {
-			return errors.New("only active official prices can be suspended")
-		}
-		var dependent int64
-		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
-			Where("official_price_version_id = ? AND status = ?", id, model.PricingVersionStatusActive).
-			Count(&dependent).Error; err != nil {
-			return err
-		}
-		if dependent > 0 {
-			return errors.New("official price is referenced by an active purchase price")
-		}
-		return suspendVersion(tx, &model.OfficialModelPriceVersion{}, id)
-	})
-}
-
 func SuspendPurchasePriceVersion(id int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)

@@ -43,6 +43,7 @@ type VersionListProps = {
   onView?: (id: number) => void
   onEdit?: (id: number) => void
   onFill?: (id: number) => void
+  allowSuspend?: boolean
 }
 
 export function VersionList(props: VersionListProps) {
@@ -140,7 +141,7 @@ export function VersionList(props: VersionListProps) {
                   </Button>
                 </>
               ) : null}
-              {item.status === 'active' ? (
+              {item.status === 'active' && props.allowSuspend !== false ? (
                 <Button
                   size='sm'
                   variant='destructive'

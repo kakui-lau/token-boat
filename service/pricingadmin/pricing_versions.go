@@ -1,6 +1,7 @@
 package pricingadmin
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sort"
@@ -60,6 +61,7 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 		return err
 	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
+	input.ContentHash = officialPriceContentHash(*input)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		if _, err := model.GetLogicalModelForUpdate(tx, input.ModelId); err != nil {
 			return err
@@ -272,30 +274,27 @@ func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
 	if version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
 		return errors.New("official price expression hash does not match")
 	}
-	activeOfficialIds := tx.Model(&model.OfficialModelPriceVersion{}).
-		Select("id").
-		Where(
-			"model_id = ? AND status = ? AND id <> ?",
-			version.ModelId,
-			model.PricingVersionStatusActive,
-			version.Id,
-		)
-	var activePurchaseCount int64
-	if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
-		Where(
-			"status = ? AND official_price_version_id IN (?)",
-			model.PricingVersionStatusActive,
-			activeOfficialIds,
-		).
-		Count(&activePurchaseCount).Error; err != nil {
-		return err
-	}
-	if activePurchaseCount > 0 {
-		return errors.New(
-			"cannot replace official price while an active purchase price references the current version",
-		)
-	}
 	return model.ActivateOfficialPriceVersion(tx, version, common.GetTimestamp())
+}
+
+func officialPriceContentHash(version model.OfficialModelPriceVersion) string {
+	components := strings.TrimSpace(version.PriceComponents)
+	if components != "" {
+		var canonical any
+		if err := common.UnmarshalJsonStr(components, &canonical); err == nil {
+			if encoded, err := common.Marshal(canonical); err == nil {
+				components = string(encoded)
+			}
+		}
+	}
+	payload := strings.Join([]string{
+		strings.TrimSpace(version.BillingMode),
+		strings.TrimSpace(version.PriceStructure),
+		components,
+		strings.TrimSpace(version.BillingExpr),
+		strings.ToUpper(strings.TrimSpace(version.Currency)),
+	}, "\x00")
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(payload)))
 }
 
 func PublishPurchasePriceVersion(id int) error {

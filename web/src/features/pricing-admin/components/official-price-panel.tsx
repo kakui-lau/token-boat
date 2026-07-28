@@ -39,10 +39,8 @@ type OfficialPricePanelProps = {
   modelId: number
   versions: OfficialPriceVersion[]
   isPublishing: boolean
-  isSuspending: boolean
   isDeleting: boolean
   onPublish: (id: number) => void
-  onSuspend: (id: number) => void
   onDelete: (id: number) => void
   onCreated: () => Promise<void>
 }
@@ -253,11 +251,12 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         <VersionList
           items={props.versions}
           isPublishing={props.isPublishing}
-          isSuspending={props.isSuspending}
+          isSuspending={false}
           isDeleting={props.isDeleting}
           onPublish={props.onPublish}
-          onSuspend={props.onSuspend}
+          onSuspend={() => undefined}
           onDelete={props.onDelete}
+          allowSuspend={false}
           onView={(id) =>
             setSelectedVersion(
               props.versions.find((item) => item.id === id) ?? null

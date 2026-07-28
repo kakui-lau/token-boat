@@ -38,7 +38,6 @@ import {
   importLegacyOfficialPrices,
   publishLatestOfficialPriceDrafts,
   publishPriceVersion,
-  suspendPriceVersion,
 } from '@/features/pricing-admin/api'
 import { OfficialPricePanel } from '@/features/pricing-admin/components/official-price-panel'
 import type { OfficialPriceOverview } from '@/features/pricing-admin/types'
@@ -89,19 +88,6 @@ export function OfficialPricing(props: OfficialPricingProps) {
         queryKey: ['pricing-admin', 'official-price-overview'],
       })
       toast.success(t('Price version published'))
-    },
-  })
-  const suspendMutation = useMutation({
-    mutationFn: (id: number) => suspendPriceVersion('official', id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: officialQueryKey })
-      await queryClient.invalidateQueries({
-        queryKey: ['pricing-admin', 'model-price-overview'],
-      })
-      await queryClient.invalidateQueries({
-        queryKey: ['pricing-admin', 'official-price-overview'],
-      })
-      toast.success(t('Price version suspended'))
     },
   })
   const deleteMutation = useMutation({
@@ -223,10 +209,8 @@ export function OfficialPricing(props: OfficialPricingProps) {
                 modelId={selectedModel.model_id}
                 versions={officialQuery.data?.data ?? []}
                 isPublishing={publishMutation.isPending}
-                isSuspending={suspendMutation.isPending}
                 isDeleting={deleteMutation.isPending}
                 onPublish={(id) => publishMutation.mutate(id)}
-                onSuspend={(id) => suspendMutation.mutate(id)}
                 onDelete={(id) => deleteMutation.mutate(id)}
                 onCreated={async () => {
                   await officialQuery.refetch()

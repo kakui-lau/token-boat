@@ -1,3 +1,4 @@
+import { useState } from 'react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -18,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -34,12 +36,15 @@ type VersionListProps = {
   items: VersionListItem[]
   isPublishing: boolean
   isSuspending: boolean
+  isDeleting: boolean
   onPublish: (id: number) => void
   onSuspend: (id: number) => void
+  onDelete: (id: number) => void
 }
 
 export function VersionList(props: VersionListProps) {
   const { t } = useTranslation()
+  const [deleteId, setDeleteId] = useState<number | null>(null)
   if (props.items.length === 0) {
     return (
       <p className='text-muted-foreground rounded-lg border border-dashed p-4 text-center'>
@@ -73,13 +78,23 @@ export function VersionList(props: VersionListProps) {
             ) : null}
           </div>
           {item.status === 'draft' ? (
-            <Button
-              size='sm'
-              disabled={props.isPublishing}
-              onClick={() => props.onPublish(item.id)}
-            >
-              {t('Publish')}
-            </Button>
+            <div className='flex gap-2'>
+              <Button
+                size='sm'
+                variant='ghost'
+                disabled={props.isDeleting}
+                onClick={() => setDeleteId(item.id)}
+              >
+                {t('Delete Draft')}
+              </Button>
+              <Button
+                size='sm'
+                disabled={props.isPublishing}
+                onClick={() => props.onPublish(item.id)}
+              >
+                {t('Publish')}
+              </Button>
+            </div>
           ) : null}
           {item.status === 'active' ? (
             <Button
@@ -93,6 +108,27 @@ export function VersionList(props: VersionListProps) {
           ) : null}
         </div>
       ))}
+      <ConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteId(null)
+          }
+        }}
+        title={t('Delete price draft?')}
+        desc={t(
+          'This draft will be permanently deleted. Published price history is never deleted.'
+        )}
+        confirmText={t('Delete Draft')}
+        destructive
+        isLoading={props.isDeleting}
+        handleConfirm={() => {
+          if (deleteId !== null) {
+            props.onDelete(deleteId)
+          }
+          setDeleteId(null)
+        }}
+      />
     </div>
   )
 }

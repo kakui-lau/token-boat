@@ -5516,5 +5516,9 @@
   "Edit Channel Model": "Изменить модель канала",
   "Channel model updated": "Модель канала обновлена",
   "Edit": "Изменить",
-  "Save": "Сохранить"
+  "Save": "Сохранить",
+  "Delete Draft": "Удалить черновик",
+  "Delete price draft?": "Удалить черновик цены?",
+  "This draft will be permanently deleted. Published price history is never deleted.": "Черновик будет удалён безвозвратно. История опубликованных цен никогда не удаляется.",
+  "Price draft deleted": "Черновик цены удалён"
 }

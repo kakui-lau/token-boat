@@ -115,6 +115,63 @@ func SuspendRetailPriceVersion(id int) error {
 	})
 }
 
+func DeleteOfficialPriceDraft(id int) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		version, err := model.GetOfficialPriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if version.Status != model.PricingVersionStatusDraft {
+			return errors.New("only official price drafts can be deleted")
+		}
+		var dependent int64
+		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+			Where("official_price_version_id = ?", id).
+			Count(&dependent).Error; err != nil {
+			return err
+		}
+		if dependent > 0 {
+			return errors.New("official price draft is referenced by a purchase price")
+		}
+		return tx.Delete(&version).Error
+	})
+}
+
+func DeletePurchasePriceDraft(id int) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if version.Status != model.PricingVersionStatusDraft {
+			return errors.New("only purchase price drafts can be deleted")
+		}
+		var dependent int64
+		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
+			Where("purchase_price_version_id = ?", id).
+			Count(&dependent).Error; err != nil {
+			return err
+		}
+		if dependent > 0 {
+			return errors.New("purchase price draft is referenced by a retail price")
+		}
+		return tx.Delete(&version).Error
+	})
+}
+
+func DeleteRetailPriceDraft(id int) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		version, err := model.GetRetailPriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if version.Status != model.PricingVersionStatusDraft {
+			return errors.New("only retail price drafts can be deleted")
+		}
+		return tx.Delete(&version).Error
+	})
+}
+
 func suspendVersion(tx *gorm.DB, target any, id int) error {
 	now := common.GetTimestamp()
 	result := tx.Model(target).

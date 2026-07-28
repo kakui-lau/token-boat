@@ -46,3 +46,36 @@ func TestSuspendPriceChainRequiresRetailFirst(t *testing.T) {
 	require.NoError(t, SuspendPurchasePriceVersion(purchase.Id))
 	require.NoError(t, SuspendOfficialPriceVersion(official.Id))
 }
+
+func TestDeleteDraftRejectsPublishedAndReferencedVersions(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 111, ModelName: "delete-draft"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 112, ChannelId: 113, ModelId: 111, UpstreamModelName: "delete-draft",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 111, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	officialId := official.Id
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 112, OfficialPriceVersionId: &officialId,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.ErrorContains(t, err, "must be active")
+
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+	purchase, err = CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 112, OfficialPriceVersionId: &officialId,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.NoError(t, err)
+	require.ErrorContains(t, DeleteOfficialPriceDraft(official.Id), "only official price drafts")
+	require.NoError(t, DeletePurchasePriceDraft(purchase.Id))
+	var count int64
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", purchase.Id).Count(&count).Error)
+	assert.Zero(t, count)
+}

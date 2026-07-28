@@ -68,6 +68,7 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
           <TableHeader>
             <TableRow>
               <TableHead>{t('Model')}</TableHead>
+              <TableHead>{t('Currency')}</TableHead>
               <TableHead>{t('Active Channels')}</TableHead>
               <TableHead>{t('Lowest Input Price')}</TableHead>
               <TableHead>{t('Lowest Output Price')}</TableHead>
@@ -77,12 +78,13 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
           </TableHeader>
           <TableBody>
             {props.items.map((item) => (
-              <TableRow key={item.model_id}>
+              <TableRow key={`${item.model_id}-${item.currency}`}>
                 <TableCell className='font-medium'>{item.model_name}</TableCell>
                 <TableCell>{item.active_channel_count}</TableCell>
                 <TableCell>
                   <LowestPrice value={item.input} />
                 </TableCell>
+                <TableCell>{item.currency}</TableCell>
                 <TableCell>
                   <LowestPrice value={item.output} />
                 </TableCell>
@@ -97,7 +99,7 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
             {!props.isLoading && props.items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No active retail prices found')}

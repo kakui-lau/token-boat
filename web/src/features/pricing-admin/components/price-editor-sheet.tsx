@@ -30,6 +30,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
+  deletePriceDraft,
   getOfficialPriceVersions,
   getPurchasePriceVersions,
   getRetailPriceVersions,
@@ -114,6 +115,21 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       toast.success(t('Price version suspended'))
     },
   })
+  const deleteMutation = useMutation({
+    mutationFn: ({ kind, id }: { kind: PriceKind; id: number }) =>
+      deletePriceDraft(kind, id),
+    onSuccess: async (_, variables) => {
+      const queryKeys: Record<PriceKind, (number | string | undefined)[]> = {
+        official: officialQueryKey,
+        purchase: purchaseQueryKey,
+        retail: retailQueryKey,
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys[variables.kind],
+      })
+      toast.success(t('Price draft deleted'))
+    },
+  })
 
   return (
     <Sheet open={Boolean(channelModel)} onOpenChange={props.onOpenChange}>
@@ -141,11 +157,15 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   versions={officialQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}
                   isSuspending={suspendMutation.isPending}
+                  isDeleting={deleteMutation.isPending}
                   onPublish={(id) =>
                     publishMutation.mutate({ kind: 'official', id })
                   }
                   onSuspend={(id) =>
                     suspendMutation.mutate({ kind: 'official', id })
+                  }
+                  onDelete={(id) =>
+                    deleteMutation.mutate({ kind: 'official', id })
                   }
                   onCreated={async () => {
                     await officialQuery.refetch()
@@ -159,11 +179,15 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   versions={purchaseQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}
                   isSuspending={suspendMutation.isPending}
+                  isDeleting={deleteMutation.isPending}
                   onPublish={(id) =>
                     publishMutation.mutate({ kind: 'purchase', id })
                   }
                   onSuspend={(id) =>
                     suspendMutation.mutate({ kind: 'purchase', id })
+                  }
+                  onDelete={(id) =>
+                    deleteMutation.mutate({ kind: 'purchase', id })
                   }
                   onCreated={async () => {
                     await purchaseQuery.refetch()
@@ -177,11 +201,15 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   versions={retailQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}
                   isSuspending={suspendMutation.isPending}
+                  isDeleting={deleteMutation.isPending}
                   onPublish={(id) =>
                     publishMutation.mutate({ kind: 'retail', id })
                   }
                   onSuspend={(id) =>
                     suspendMutation.mutate({ kind: 'retail', id })
+                  }
+                  onDelete={(id) =>
+                    deleteMutation.mutate({ kind: 'retail', id })
                   }
                   onCreated={async () => {
                     await retailQuery.refetch()

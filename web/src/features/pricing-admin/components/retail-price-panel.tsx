@@ -44,8 +44,10 @@ type RetailPricePanelProps = {
   versions: RetailPriceVersion[]
   isPublishing: boolean
   isSuspending: boolean
+  isDeleting: boolean
   onPublish: (id: number) => void
   onSuspend: (id: number) => void
+  onDelete: (id: number) => void
   onCreated: () => Promise<void>
 }
 
@@ -164,8 +166,10 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
           items={props.versions}
           isPublishing={props.isPublishing}
           isSuspending={props.isSuspending}
+          isDeleting={props.isDeleting}
           onPublish={props.onPublish}
           onSuspend={props.onSuspend}
+          onDelete={props.onDelete}
         />
       </section>
     </div>

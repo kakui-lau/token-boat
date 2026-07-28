@@ -5516,5 +5516,9 @@
   "Edit Channel Model": "Modifier le modèle de canal",
   "Channel model updated": "Modèle de canal mis à jour",
   "Edit": "Modifier",
-  "Save": "Enregistrer"
+  "Save": "Enregistrer",
+  "Delete Draft": "Supprimer le brouillon",
+  "Delete price draft?": "Supprimer le brouillon de prix ?",
+  "This draft will be permanently deleted. Published price history is never deleted.": "Ce brouillon sera définitivement supprimé. L'historique des prix publiés n'est jamais supprimé.",
+  "Price draft deleted": "Brouillon de prix supprimé"
 }

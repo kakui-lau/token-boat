@@ -5516,5 +5516,9 @@
   "Edit Channel Model": "Edit Channel Model",
   "Channel model updated": "Channel model updated",
   "Edit": "Edit",
-  "Save": "Save"
+  "Save": "Save",
+  "Delete Draft": "Delete Draft",
+  "Delete price draft?": "Delete price draft?",
+  "This draft will be permanently deleted. Published price history is never deleted.": "This draft will be permanently deleted. Published price history is never deleted.",
+  "Price draft deleted": "Price draft deleted"
 }

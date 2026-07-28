@@ -1,6 +1,7 @@
 package pricingadmin
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -18,6 +19,7 @@ type LowestPriceComponent struct {
 type ModelPriceOverview struct {
 	ModelId            int                   `json:"model_id"`
 	ModelName          string                `json:"model_name"`
+	Currency           string                `json:"currency"`
 	ActiveChannelCount int                   `json:"active_channel_count"`
 	Input              *LowestPriceComponent `json:"input,omitempty"`
 	Output             *LowestPriceComponent `json:"output,omitempty"`
@@ -56,30 +58,35 @@ func ListModelPriceOverview(keyword string) ([]ModelPriceOverview, error) {
 		return nil, err
 	}
 
-	overviewByModel := make(map[int]*ModelPriceOverview)
-	channelsByModel := make(map[int]map[int]struct{})
+	overviewByModelCurrency := make(map[string]*ModelPriceOverview)
+	channelsByModelCurrency := make(map[string]map[int]struct{})
 	for _, candidate := range candidates {
-		overview := overviewByModel[candidate.ModelId]
+		key := fmt.Sprintf("%d\x00%s", candidate.ModelId, candidate.Currency)
+		overview := overviewByModelCurrency[key]
 		if overview == nil {
 			overview = &ModelPriceOverview{
 				ModelId: candidate.ModelId, ModelName: candidate.ModelName,
+				Currency: candidate.Currency,
 			}
-			overviewByModel[candidate.ModelId] = overview
-			channelsByModel[candidate.ModelId] = make(map[int]struct{})
+			overviewByModelCurrency[key] = overview
+			channelsByModelCurrency[key] = make(map[int]struct{})
 		}
-		channelsByModel[candidate.ModelId][candidate.ChannelModelId] = struct{}{}
+		channelsByModelCurrency[key][candidate.ChannelModelId] = struct{}{}
 		updateLowestPrice(&overview.Input, candidate.InputUnitPrice, candidate)
 		updateLowestPrice(&overview.Output, candidate.OutputUnitPrice, candidate)
 		updateLowestPrice(&overview.CacheRead, candidate.CacheReadUnitPrice, candidate)
 		updateLowestPrice(&overview.CacheWrite, candidate.CacheWriteUnitPrice, candidate)
 	}
-	result := make([]ModelPriceOverview, 0, len(overviewByModel))
-	for modelId, overview := range overviewByModel {
-		overview.ActiveChannelCount = len(channelsByModel[modelId])
+	result := make([]ModelPriceOverview, 0, len(overviewByModelCurrency))
+	for key, overview := range overviewByModelCurrency {
+		overview.ActiveChannelCount = len(channelsByModelCurrency[key])
 		result = append(result, *overview)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].ModelName == result[j].ModelName {
+			if result[i].ModelId == result[j].ModelId {
+				return result[i].Currency < result[j].Currency
+			}
 			return result[i].ModelId < result[j].ModelId
 		}
 		return result[i].ModelName < result[j].ModelName

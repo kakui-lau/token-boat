@@ -198,6 +198,14 @@ export async function suspendPriceVersion(
   return response.data
 }
 
+export async function deletePriceDraft(
+  kind: 'official' | 'purchase' | 'retail',
+  id: number
+): Promise<PriceVersionResponse<null>> {
+  const response = await api.delete(`/api/pricing-admin/${kind}-prices/${id}`)
+  return response.data
+}
+
 export async function simulatePrice(input: {
   channel_model_id: number
   purchase_price_version_id: number

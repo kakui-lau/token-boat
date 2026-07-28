@@ -237,6 +237,18 @@ func AdminSuspendOfficialPriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminDeleteOfficialPriceDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.DeleteOfficialPriceDraft(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminImportLegacyOfficialPriceDrafts(c *gin.Context) {
 	result, err := pricingadmin.ImportLegacyOfficialPriceDrafts(c.GetInt("id"))
 	if err != nil {
@@ -312,6 +324,18 @@ func AdminSuspendPurchasePriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminDeletePurchasePriceDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.DeletePurchasePriceDraft(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminCreateStructuredPurchasePriceDraft(c *gin.Context) {
 	var input pricingadmin.PurchaseDraftInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -372,6 +396,18 @@ func AdminSuspendRetailPriceVersion(c *gin.Context) {
 		return
 	}
 	if err := pricingadmin.SuspendRetailPriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminDeleteRetailPriceDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.DeleteRetailPriceDraft(id); err != nil {
 		common.ApiError(c, err)
 		return
 	}

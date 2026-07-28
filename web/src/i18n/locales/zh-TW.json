@@ -5516,5 +5516,9 @@
   "Edit Channel Model": "編輯渠道模型",
   "Channel model updated": "渠道模型已更新",
   "Edit": "編輯",
-  "Save": "儲存"
+  "Save": "儲存",
+  "Delete Draft": "刪除草稿",
+  "Delete price draft?": "刪除價格草稿？",
+  "This draft will be permanently deleted. Published price history is never deleted.": "此草稿將被永久刪除。已發布的價格歷史永遠不會被刪除。",
+  "Price draft deleted": "價格草稿已刪除"
 }

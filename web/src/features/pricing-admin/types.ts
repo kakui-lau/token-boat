@@ -22,6 +22,7 @@ export type ChannelModel = {
   channel_name: string
   model_id: number
   model_name: string
+  currency: string
   upstream_model_name: string
   status: number
   priority: number
@@ -162,6 +163,7 @@ export type LowestPriceComponent = {
 export type ModelPriceOverview = {
   model_id: number
   model_name: string
+  currency: string
   active_channel_count: number
   input?: LowestPriceComponent
   output?: LowestPriceComponent

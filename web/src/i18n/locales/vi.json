@@ -5516,5 +5516,9 @@
   "Edit Channel Model": "Chỉnh sửa mô hình kênh",
   "Channel model updated": "Đã cập nhật mô hình kênh",
   "Edit": "Chỉnh sửa",
-  "Save": "Lưu"
+  "Save": "Lưu",
+  "Delete Draft": "Xóa bản nháp",
+  "Delete price draft?": "Xóa bản nháp giá?",
+  "This draft will be permanently deleted. Published price history is never deleted.": "Bản nháp này sẽ bị xóa vĩnh viễn. Lịch sử giá đã xuất bản không bao giờ bị xóa.",
+  "Price draft deleted": "Đã xóa bản nháp giá"
 }

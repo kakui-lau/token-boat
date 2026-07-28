@@ -5516,5 +5516,9 @@
   "Edit Channel Model": "チャネルモデルを編集",
   "Channel model updated": "チャネルモデルを更新しました",
   "Edit": "編集",
-  "Save": "保存"
+  "Save": "保存",
+  "Delete Draft": "下書きを削除",
+  "Delete price draft?": "価格の下書きを削除しますか？",
+  "This draft will be permanently deleted. Published price history is never deleted.": "この下書きは完全に削除されます。公開済みの価格履歴は削除されません。",
+  "Price draft deleted": "価格の下書きを削除しました"
 }

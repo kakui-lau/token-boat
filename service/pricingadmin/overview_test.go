@@ -48,3 +48,43 @@ func TestListModelPriceOverviewChoosesEachComponentMinimum(t *testing.T) {
 	assert.Equal(t, "8", result[0].Output.UnitPrice)
 	assert.Equal(t, "channel-b", result[0].Output.ChannelName)
 }
+
+func TestListModelPriceOverviewDoesNotCompareDifferentCurrencies(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Channel{}))
+	require.NoError(t, model.DB.Create(&model.Model{Id: 301, ModelName: "currency-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 311, Name: "usd-channel"}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 312, Name: "cny-channel"}).Error)
+	for _, channelModel := range []model.ChannelModel{
+		{Id: 321, ChannelId: 311, ModelId: 301, UpstreamModelName: "usd", Status: 1, RuntimeMode: "legacy"},
+		{Id: 322, ChannelId: 312, ModelId: 301, UpstreamModelName: "cny", Status: 1, RuntimeMode: "legacy"},
+	} {
+		require.NoError(t, model.DB.Create(&channelModel).Error)
+	}
+	for _, retail := range []model.ChannelModelRetailPriceVersion{
+		{
+			ChannelModelId: 321, PurchasePriceVersionId: 1, BillingMode: "token",
+			PriceStructure: "flat", RetailBillingExpr: "p * 1", RetailExprHash: "usd",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			Currency: "USD", InputUnitPrice: "1", TotalVariableCostRate: "0",
+			EffectiveTaxRate: "0", TargetNetMargin: "0", MinimumMarginRate: "0",
+			Version: 1, Status: model.PricingVersionStatusActive,
+		},
+		{
+			ChannelModelId: 322, PurchasePriceVersionId: 2, BillingMode: "token",
+			PriceStructure: "flat", RetailBillingExpr: "p * 0.8", RetailExprHash: "cny",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			Currency: "CNY", InputUnitPrice: "0.8", TotalVariableCostRate: "0",
+			EffectiveTaxRate: "0", TargetNetMargin: "0", MinimumMarginRate: "0",
+			Version: 1, Status: model.PricingVersionStatusActive,
+		},
+	} {
+		require.NoError(t, model.DB.Create(&retail).Error)
+	}
+
+	result, err := ListModelPriceOverview("currency")
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	assert.Equal(t, "CNY", result[0].Currency)
+	assert.Equal(t, "USD", result[1].Currency)
+}

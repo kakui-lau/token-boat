@@ -367,6 +367,15 @@ func SetApiRouter(router *gin.Engine) {
 			modelsRoute.DELETE("/:id", controller.DeleteModelMeta)
 		}
 
+		pricingAdminRoute := apiRouter.Group("/pricing-admin")
+		pricingAdminRoute.Use(middleware.RootAuth())
+		{
+			pricingAdminRoute.GET("/channel-models", controller.AdminListChannelModels)
+			pricingAdminRoute.POST("/channel-models", controller.AdminCreateChannelModel)
+			pricingAdminRoute.PUT("/channel-models/:id", controller.AdminUpdateChannelModel)
+			pricingAdminRoute.POST("/channel-models/sync-legacy", controller.AdminSyncLegacyChannelModels)
+		}
+
 		// Deployments (model deployment management)
 		deploymentsRoute := apiRouter.Group("/deployments")
 		deploymentsRoute.Use(middleware.AdminAuth())

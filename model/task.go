@@ -10,9 +10,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
@@ -51,9 +51,9 @@ const (
 	TaskSettlementStatusManual    = "manual_review"
 )
 
-// TaskRefundLegacyCutoff separates legacy timeout tasks that intentionally
-// do not receive automatic refunds from tasks covered by reconciliation.
-const TaskRefundLegacyCutoff int64 = 1740182400 // 2025-02-22 00:00:00 UTC
+// TaskRefundLegacyCutoff separates tasks created before timeout refunds were
+// introduced. Those legacy tasks are failed without an automatic refund.
+const TaskRefundLegacyCutoff int64 = 1771718400 // 2026-02-22 00:00:00 UTC
 
 type Task struct {
 	ID                    int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
@@ -324,28 +324,6 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
-		Limit(limit).
-		Find(&tasks).Error
-	if err != nil {
-		return nil
-	}
-	return tasks
-}
-
-// GetUnrefundedFailedTasks returns failed tasks whose non-zero quota marks a
-// pending refund. Legacy timeout tasks are excluded before LIMIT is applied so
-// they cannot starve refundable tasks from the reconciliation sweep.
-func GetUnrefundedFailedTasks(updatedBefore int64, limit int) []*Task {
-	if limit <= 0 {
-		return nil
-	}
-
-	var tasks []*Task
-	err := DB.Where("status = ?", TaskStatusFailure).
-		Where("quota != ?", 0).
-		Where("updated_at <= ?", updatedBefore).
-		Where("(submit_time <= ? OR submit_time >= ?)", 0, TaskRefundLegacyCutoff).
-		Order("id").
 		Limit(limit).
 		Find(&tasks).Error
 	if err != nil {
@@ -849,39 +827,6 @@ func (t *Task) UpdateQuota() error {
 	return DB.Model(t).Update("quota", t.Quota).Error
 }
 
-// ClaimQuotaForRefund atomically clears an expected non-zero quota. A true
-// result grants the caller ownership of the corresponding refund attempt.
-func ClaimQuotaForRefund(id int64, expectedQuota int) (bool, error) {
-	if expectedQuota == 0 {
-		return false, nil
-	}
-
-	result := DB.Model(&Task{}).
-		Where("id = ? AND quota = ?", id, expectedQuota).
-		Update("quota", 0)
-	if result.Error != nil {
-		return false, result.Error
-	}
-	return result.RowsAffected > 0, nil
-}
-
-// RestoreQuotaAfterFailedRefund restores a claimed quota marker only while it
-// is still zero. It is used when the observable funding adjustment fails, so a
-// later reconciliation pass can retry without overwriting another writer.
-func RestoreQuotaAfterFailedRefund(id int64, quota int) (bool, error) {
-	if quota == 0 {
-		return false, nil
-	}
-
-	result := DB.Model(&Task{}).
-		Where("id = ? AND quota = ?", id, 0).
-		Update("quota", quota)
-	if result.Error != nil {
-		return false, result.Error
-	}
-	return result.RowsAffected > 0, nil
-}
-
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
 // Returns (true, nil) if this caller won the update, (false, nil) if
 // another process already moved the task out of fromStatus. MySQL commonly
@@ -897,17 +842,6 @@ func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
 		return false, result.Error
 	}
 	return result.RowsAffected > 0, nil
-}
-
-// TaskBulkUpdate performs an unconditional bulk UPDATE by upstream task_id strings.
-// Same caveats as TaskBulkUpdateByID — no CAS guard.
-func TaskBulkUpdate(taskIds []string, params map[string]any) error {
-	if len(taskIds) == 0 {
-		return nil
-	}
-	return DB.Model(&Task{}).
-		Where("task_id in (?)", taskIds).
-		Updates(params).Error
 }
 
 // TaskBulkUpdateByID performs an unconditional bulk UPDATE by primary key IDs.

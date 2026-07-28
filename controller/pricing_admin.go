@@ -225,6 +225,24 @@ func AdminCreateOfficialPriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, &input)
 }
 
+func AdminUpdateOfficialPriceVersionDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input model.OfficialModelPriceVersion
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	updated, err := pricingadmin.UpdateOfficialPriceVersionDraft(id, &input)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, &updated)
+}
+
 func AdminPublishOfficialPriceVersion(c *gin.Context) {
 	id, ok := positivePathId(c)
 	if !ok {

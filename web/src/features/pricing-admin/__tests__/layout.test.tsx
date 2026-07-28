@@ -31,6 +31,7 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('../api', () => ({
   createChannelModel: vi.fn(),
   createOfficialFlatDraft: vi.fn(),
+  createOfficialPriceDraft: vi.fn().mockResolvedValue({ data: {} }),
   deletePriceDraft: vi.fn(),
   getActivePriceBundle: vi.fn().mockResolvedValue({
     data: {
@@ -50,6 +51,7 @@ vi.mock('../api', () => ({
   suspendPriceVersion: vi.fn(),
   updateChannelModel: vi.fn(),
   updateOfficialFlatDraft: vi.fn().mockResolvedValue({ data: {} }),
+  updateOfficialPriceDraft: vi.fn().mockResolvedValue({ data: {} }),
 }))
 
 const channelModel: ChannelModel = {
@@ -165,6 +167,48 @@ describe('Pricing admin editor layout', () => {
       screen.queryByRole('button', { name: 'Suspend' })
     ).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View' })).toBeEnabled()
+  })
+
+  test('adapts the editor when duplicating a non-token official revision', () => {
+    renderWithQueryClient(
+      <OfficialPricePanel
+        modelId={3}
+        versions={[
+          {
+            id: 14,
+            model_id: 3,
+            billing_mode: 'video_duration',
+            price_structure: 'expression',
+            price_components: '{"video_second_unit_price":"0.2"}',
+            billing_expr: 'v1:tier("base", 0.2)',
+            currency: 'USD',
+            version: 4,
+            status: 'expired',
+            source: 'official_api',
+            remark: 'video pricing',
+            effective_from: 1,
+            effective_to: 2,
+          },
+        ]}
+        isPublishing={false}
+        isDeleting={false}
+        onPublish={vi.fn()}
+        onDelete={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+
+    expect(screen.getByLabelText('Billing Mode')).toHaveValue('video_duration')
+    expect(screen.getByLabelText('Price Structure')).toHaveValue('expression')
+    expect(screen.getByLabelText('Price Components')).toHaveValue(
+      '{"video_second_unit_price":"0.2"}'
+    )
+    expect(screen.getByLabelText('Billing Expression')).toHaveValue(
+      'v1:tier("base", 0.2)'
+    )
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled()
   })
 
   test('copies historical prices and updates an existing draft', async () => {

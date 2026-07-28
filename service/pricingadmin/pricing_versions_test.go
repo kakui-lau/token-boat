@@ -406,3 +406,62 @@ func TestPublishNonTokenOfficialPriceWaitsForRuntimeEvaluator(t *testing.T) {
 	err := PublishOfficialPriceVersion(version.Id)
 	require.ErrorContains(t, err, "cannot be published until its V2 runtime evaluator is enabled")
 }
+
+func TestUpdateOfficialPriceDraftSupportsNonTokenConfiguration(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 15, ModelName: "adaptive-video"}).Error)
+
+	version := model.OfficialModelPriceVersion{
+		ModelId:         15,
+		BillingMode:     "video_duration",
+		PriceStructure:  "expression",
+		PriceComponents: `{"video_second_unit_price":"0.2"}`,
+		BillingExpr:     `v1:tier("base", 0.2)`,
+		Currency:        "USD",
+		Source:          "official_api",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&version, 1))
+
+	updated, err := UpdateOfficialPriceVersionDraft(version.Id, &model.OfficialModelPriceVersion{
+		ModelId:                 15,
+		BillingMode:             "video_duration",
+		PriceStructure:          "expression",
+		PriceComponents:         `{"video_second_unit_price":"0.3"}`,
+		BillingExpr:             `v1:tier("base", 0.3)`,
+		ExpressionSource:        "custom",
+		ExpressionSchemaVersion: "v1",
+		Currency:                "usd",
+		Remark:                  "updated video price",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "video_duration", updated.BillingMode)
+	assert.Equal(t, "expression", updated.PriceStructure)
+	assert.Equal(t, `{"video_second_unit_price":"0.3"}`, updated.PriceComponents)
+	assert.Equal(t, `v1:tier("base", 0.3)`, updated.BillingExpr)
+	assert.Equal(t, "USD", updated.Currency)
+	assert.NotEmpty(t, updated.ExprHash)
+	assert.NotEmpty(t, updated.ContentHash)
+	assert.Equal(t, model.PricingVersionStatusDraft, updated.Status)
+}
+
+func TestCreateOfficialPriceDraftRejectsInvalidPriceComponents(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 16, ModelName: "invalid-components"}).Error)
+
+	version := model.OfficialModelPriceVersion{
+		ModelId:         16,
+		BillingMode:     "token",
+		PriceStructure:  "expression",
+		PriceComponents: "{invalid",
+		BillingExpr:     `v1:tier("base", p * 1)`,
+		Currency:        "USD",
+		Source:          "manual",
+	}
+	err := CreateOfficialPriceVersion(&version, 1)
+	require.ErrorContains(t, err, "price_components must be a JSON object")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OfficialModelPriceVersion{}).
+		Where("model_id = ?", 16).Count(&count).Error)
+	assert.Zero(t, count)
+}

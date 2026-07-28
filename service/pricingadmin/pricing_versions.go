@@ -60,6 +60,9 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	); err != nil {
 		return err
 	}
+	if err := validatePriceComponents(input.PriceComponents); err != nil {
+		return err
+	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
 	input.ContentHash = officialPriceContentHash(*input)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
@@ -76,6 +79,67 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 		input.Version = maxVersion + 1
 		return tx.Create(input).Error
 	})
+}
+
+func UpdateOfficialPriceVersionDraft(
+	id int,
+	input *model.OfficialModelPriceVersion,
+) (model.OfficialModelPriceVersion, error) {
+	var updated model.OfficialModelPriceVersion
+	if input == nil {
+		return updated, errors.New("official price is required")
+	}
+	normalizeExpressionMetadata(
+		&input.ExpressionSource,
+		&input.ExpressionSchemaVersion,
+		&input.Currency,
+	)
+	if err := validateCommonPrice(
+		input.ModelId,
+		input.BillingMode,
+		input.PriceStructure,
+		input.Currency,
+		input.BillingExpr,
+	); err != nil {
+		return updated, err
+	}
+	if err := validatePriceComponents(input.PriceComponents); err != nil {
+		return updated, err
+	}
+	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
+	input.ContentHash = officialPriceContentHash(*input)
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		current, err := model.GetOfficialPriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if current.Status != model.PricingVersionStatusDraft {
+			return errors.New("only official price drafts can be updated")
+		}
+		if current.ModelId != input.ModelId {
+			return errors.New("official price draft model cannot be changed")
+		}
+		updates := map[string]any{
+			"billing_mode":              input.BillingMode,
+			"price_structure":           input.PriceStructure,
+			"price_components":          input.PriceComponents,
+			"billing_expr":              input.BillingExpr,
+			"expr_hash":                 input.ExprHash,
+			"expression_source":         input.ExpressionSource,
+			"expression_schema_version": input.ExpressionSchemaVersion,
+			"currency":                  input.Currency,
+			"content_hash":              input.ContentHash,
+			"remark":                    strings.TrimSpace(input.Remark),
+			"updated_at":                common.GetTimestamp(),
+		}
+		if err := tx.Model(&model.OfficialModelPriceVersion{}).
+			Where("id = ? AND status = ?", id, model.PricingVersionStatusDraft).
+			UpdateColumns(updates).Error; err != nil {
+			return err
+		}
+		return tx.First(&updated, id).Error
+	})
+	return updated, err
 }
 
 func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, userId int) error {
@@ -295,6 +359,18 @@ func officialPriceContentHash(version model.OfficialModelPriceVersion) string {
 		strings.ToUpper(strings.TrimSpace(version.Currency)),
 	}, "\x00")
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(payload)))
+}
+
+func validatePriceComponents(components string) error {
+	components = strings.TrimSpace(components)
+	if components == "" {
+		return nil
+	}
+	var parsed map[string]any
+	if err := common.UnmarshalJsonStr(components, &parsed); err != nil {
+		return fmt.Errorf("price_components must be a JSON object: %w", err)
+	}
+	return nil
 }
 
 func PublishPurchasePriceVersion(id int) error {

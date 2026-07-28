@@ -131,6 +131,42 @@ export async function getOfficialPriceOverview(
   return response.data
 }
 
+export async function createOfficialPriceDraft(
+  input: Omit<
+    OfficialPriceVersion,
+    | 'id'
+    | 'version'
+    | 'status'
+    | 'effective_from'
+    | 'effective_to'
+    | 'created_at'
+    | 'updated_at'
+  >
+): Promise<PriceVersionResponse<OfficialPriceVersion>> {
+  const response = await api.post('/api/pricing-admin/official-prices', input)
+  return response.data
+}
+
+export async function updateOfficialPriceDraft(
+  id: number,
+  input: Omit<
+    OfficialPriceVersion,
+    | 'id'
+    | 'version'
+    | 'status'
+    | 'effective_from'
+    | 'effective_to'
+    | 'created_at'
+    | 'updated_at'
+  >
+): Promise<PriceVersionResponse<OfficialPriceVersion>> {
+  const response = await api.put(
+    `/api/pricing-admin/official-prices/${id}`,
+    input
+  )
+  return response.data
+}
+
 export async function createOfficialFlatDraft(input: {
   model_id: number
   currency: string

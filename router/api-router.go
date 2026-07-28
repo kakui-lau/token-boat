@@ -379,6 +379,7 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.POST("/channel-models/sync-legacy", controller.AdminSyncLegacyChannelModels)
 			pricingAdminRoute.GET("/official-prices", controller.AdminListOfficialPriceVersions)
 			pricingAdminRoute.POST("/official-prices", controller.AdminCreateOfficialPriceVersion)
+			pricingAdminRoute.PUT("/official-prices/:id", controller.AdminUpdateOfficialPriceVersionDraft)
 			pricingAdminRoute.POST("/official-prices/sync", controller.AdminSyncOfficialPrices)
 			pricingAdminRoute.GET("/official-prices/sync-batches", controller.AdminListOfficialPriceSyncBatches)
 			pricingAdminRoute.POST("/official-prices/publish-latest", controller.AdminPublishLatestOfficialPriceDrafts)

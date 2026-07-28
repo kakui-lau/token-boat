@@ -99,7 +99,7 @@ export function VersionList(props: VersionListProps) {
                   variant='outline'
                   onClick={() => props.onFill?.(item.id)}
                 >
-                  {t('Use as Template')}
+                  {t('Duplicate')}
                 </Button>
               ) : null}
               {item.status === 'draft' && props.onEdit ? (
@@ -108,7 +108,7 @@ export function VersionList(props: VersionListProps) {
                   variant='outline'
                   onClick={() => props.onEdit?.(item.id)}
                 >
-                  {t('Edit Draft')}
+                  {t('Edit')}
                 </Button>
               ) : null}
               {item.status === 'draft' ? (
@@ -119,7 +119,7 @@ export function VersionList(props: VersionListProps) {
                     disabled={props.isDeleting}
                     onClick={() => setDeleteId(item.id)}
                   >
-                    {t('Delete Draft')}
+                    {t('Delete')}
                   </Button>
                   <Button
                     size='sm'

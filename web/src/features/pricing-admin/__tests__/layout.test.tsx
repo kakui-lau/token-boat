@@ -125,7 +125,7 @@ describe('Pricing admin editor layout', () => {
 
     expect(
       screen
-        .getByRole('heading', { name: 'Create official price draft' })
+        .getByRole('heading', { name: 'New Official Version' })
         .closest('form')
     ).toHaveClass('pricing-form-surface')
   })
@@ -177,20 +177,18 @@ describe('Pricing admin editor layout', () => {
       />
     )
 
-    const templateButtons = screen.getAllByRole('button', {
-      name: 'Use as Template',
-    })
+    const templateButtons = screen.getAllByRole('button', { name: 'Duplicate' })
     fireEvent.click(templateButtons[1])
     expect(screen.getByLabelText('Input price per 1M tokens')).toHaveValue('2')
     expect(screen.getByLabelText('Output price per 1M tokens')).toHaveValue('8')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Draft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(
-      screen.getByRole('heading', { name: 'Edit official price draft' })
+      screen.getByRole('heading', { name: 'Edit Official Version' })
     ).toBeVisible()
     const inputPrice = screen.getByLabelText('Input price per 1M tokens')
     fireEvent.change(inputPrice, { target: { value: '3' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Update Draft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(updateOfficialFlatDraft).toHaveBeenCalledWith(

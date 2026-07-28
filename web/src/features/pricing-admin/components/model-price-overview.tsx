@@ -56,7 +56,7 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
   return (
     <section className='space-y-3'>
       <div>
-        <h2 className='font-medium'>{t('Model Price Overview')}</h2>
+        <h2 className='font-medium'>{t('Best Available Prices')}</h2>
         <p className='text-muted-foreground text-sm'>
           {t(
             'Lowest active retail price for each component across available channels.'

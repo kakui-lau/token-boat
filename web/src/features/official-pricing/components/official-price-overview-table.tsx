@@ -89,9 +89,9 @@ export function OfficialPriceOverviewTable(
   }
   const stats = [
     { label: t('Total models'), value: props.allRows.length },
-    { label: t('Models with prices'), value: pricedCount },
-    { label: t('Active official prices'), value: activeCount },
-    { label: t('Pending price drafts'), value: draftCount },
+    { label: t('Priced Models'), value: pricedCount },
+    { label: t('Active Prices'), value: activeCount },
+    { label: t('Drafts'), value: draftCount },
   ]
 
   return (
@@ -111,7 +111,7 @@ export function OfficialPriceOverviewTable(
 
       <Card className='gap-0 py-0'>
         <CardHeader className='border-b py-4'>
-          <CardTitle>{t('Official price coverage')}</CardTitle>
+          <CardTitle>{t('Catalog Coverage')}</CardTitle>
           <CardDescription>
             {t(
               'Review active prices, pending drafts, billing modes, and multimodal price components.'
@@ -128,7 +128,7 @@ export function OfficialPriceOverviewTable(
                 <TableHead className='min-w-40'>{t('Input price')}</TableHead>
                 <TableHead className='min-w-40'>{t('Output price')}</TableHead>
                 <TableHead className='min-w-64'>
-                  {t('Additional pricing')}
+                  {t('Additional Components')}
                 </TableHead>
                 <TableHead className='min-w-36'>{t('Version')}</TableHead>
                 <TableHead className='text-right'>{t('Actions')}</TableHead>
@@ -328,7 +328,7 @@ export function OfficialPriceOverviewTable(
                                     props.onPublishDraft(row.latest_draft_id)
                                   }
                                 >
-                                  {t('Publish Latest Draft')}
+                                  {t('Publish')}
                                 </Button>
                                 <Button
                                   size='sm'
@@ -338,7 +338,7 @@ export function OfficialPriceOverviewTable(
                                     setDeleteDraftId(row.latest_draft_id)
                                   }
                                 >
-                                  {t('Delete Draft')}
+                                  {t('Delete')}
                                 </Button>
                               </>
                             ) : null}
@@ -351,7 +351,7 @@ export function OfficialPriceOverviewTable(
                               }
                               onClick={() => props.onManage(row.model_id)}
                             >
-                              {t('Manage Official Price')}
+                              {t('Versions')}
                             </Button>
                           </div>
                         </TableCell>

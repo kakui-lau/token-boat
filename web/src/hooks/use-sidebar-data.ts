@@ -135,13 +135,13 @@ export function useSidebarData(): SidebarData {
             icon: Radio,
           },
           {
-            title: t('Official Model Prices'),
+            title: t('Official Pricing'),
             url: '/official-pricing',
             icon: BadgeDollarSign,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {
-            title: t('Channel Model Pricing'),
+            title: t('Channel Pricing'),
             url: '/pricing-admin',
             icon: Coins,
             requiredRole: ROLE.SUPER_ADMIN,

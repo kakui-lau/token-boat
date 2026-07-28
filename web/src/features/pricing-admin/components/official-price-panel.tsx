@@ -139,8 +139,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <h3 className='font-medium'>
             {editingDraftId === null
-              ? t('Create official price draft')
-              : t('Edit official price draft')}
+              ? t('New Official Version')
+              : t('Edit Official Version')}
           </h3>
           {editingDraftId !== null ? (
             <Button
@@ -152,7 +152,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
                 form.reset(defaultValues)
               }}
             >
-              {t('Cancel Editing')}
+              {t('Cancel')}
             </Button>
           ) : null}
         </div>
@@ -219,12 +219,12 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           <Textarea id='official-remark' {...form.register('remark')} />
         </Field>
         <Button type='submit' disabled={saveMutation.isPending}>
-          {editingDraftId === null ? t('Save Draft') : t('Update Draft')}
+          {editingDraftId === null ? t('Save Draft') : t('Save Changes')}
         </Button>
       </form>
 
       <section className='space-y-3'>
-        <h3 className='font-medium'>{t('Official price versions')}</h3>
+        <h3 className='font-medium'>{t('Version History')}</h3>
         <VersionList
           items={props.versions}
           isPublishing={props.isPublishing}

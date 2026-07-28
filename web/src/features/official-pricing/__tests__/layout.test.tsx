@@ -82,35 +82,35 @@ describe('Official pricing page layout', () => {
     )
 
     expect(
-      screen.getByRole('heading', { name: 'Official Model Prices' })
+      screen.getByRole('heading', { name: 'Official Pricing' })
     ).toBeVisible()
     expect(await screen.findByText('openai/gpt-test')).toBeVisible()
     expect(screen.getByText('USD 1.25')).toBeVisible()
     expect(screen.getByText('USD 5')).toBeVisible()
-    expect(screen.getByText('Active official prices')).toBeVisible()
+    expect(screen.getByText('Active Prices')).toBeVisible()
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Publish All Latest Drafts',
+        name: 'Publish Latest',
       })
     )
     const bulkPublishDialog = screen.getByRole('alertdialog', {
-      name: 'Publish all latest official price drafts?',
+      name: 'Publish latest drafts?',
     })
     fireEvent.click(
       within(bulkPublishDialog).getByRole('button', {
-        name: 'Publish All Latest Drafts',
+        name: 'Publish Latest',
       })
     )
     await waitFor(() => {
       expect(publishLatestOfficialPriceDrafts).toHaveBeenCalledTimes(1)
     })
     const manageButton = screen.getByRole('button', {
-      name: 'Manage Official Price',
+      name: 'Versions',
     })
     expect(manageButton).toBeEnabled()
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Publish Latest Draft',
+        name: 'Publish',
       })
     )
     await waitFor(() => {
@@ -118,7 +118,7 @@ describe('Official pricing page layout', () => {
     })
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Delete Draft',
+        name: 'Delete',
       })
     )
     expect(

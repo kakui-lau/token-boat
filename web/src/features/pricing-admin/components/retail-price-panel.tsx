@@ -137,7 +137,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
         onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
       >
-        <h3 className='font-medium'>{t('Create retail price draft')}</h3>
+        <h3 className='font-medium'>{t('New Retail Version')}</h3>
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field
             data-invalid={Boolean(
@@ -252,7 +252,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       </form>
 
       <section className='space-y-3'>
-        <h3 className='font-medium'>{t('Retail price versions')}</h3>
+        <h3 className='font-medium'>{t('Version History')}</h3>
         <VersionList
           items={props.versions}
           isPublishing={props.isPublishing}

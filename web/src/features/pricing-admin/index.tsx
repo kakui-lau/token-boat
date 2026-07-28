@@ -100,16 +100,14 @@ export function PricingAdmin() {
   const totalPages = Math.max(1, Math.ceil(total / 50))
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>
-        {t('Channel Model Pricing')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button
           variant='outline'
           render={<Link to='/official-pricing' search={{}} />}
         >
           <BadgeDollarSign data-icon='inline-start' />
-          {t('View Official Price')}
+          {t('Official Pricing')}
         </Button>
         <Button variant='outline' onClick={() => setCreateDialogOpen(true)}>
           <Plus data-icon='inline-start' />
@@ -214,7 +212,7 @@ export function PricingAdmin() {
                           variant='outline'
                           onClick={() => setSelectedChannelModel(row)}
                         >
-                          {t('Manage Pricing')}
+                          {t('Configure')}
                         </Button>
                       </div>
                     </TableCell>

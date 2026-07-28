@@ -165,16 +165,14 @@ export function OfficialPricing(props: OfficialPricingProps) {
 
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>
-        {t('Official Model Prices')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Official Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button
           disabled={totalDraftCount === 0 || bulkPublishMutation.isPending}
           onClick={() => setBulkPublishOpen(true)}
         >
           <CheckCheck data-icon='inline-start' />
-          {t('Publish All Latest Drafts')}
+          {t('Publish Latest')}
         </Button>
         <Button
           variant='outline'
@@ -182,16 +180,16 @@ export function OfficialPricing(props: OfficialPricingProps) {
           onClick={() => importMutation.mutate()}
         >
           <DatabaseZap data-icon='inline-start' />
-          {t('Import Legacy Prices as Drafts')}
+          {t('Import Legacy Pricing')}
         </Button>
         <ConfirmDialog
           open={bulkPublishOpen}
           onOpenChange={setBulkPublishOpen}
-          title={t('Publish all latest official price drafts?')}
+          title={t('Publish latest drafts?')}
           desc={t(
             "All models' latest drafts will be validated and published atomically. If any draft fails validation, no prices will be changed."
           )}
-          confirmText={t('Publish All Latest Drafts')}
+          confirmText={t('Publish Latest')}
           isLoading={bulkPublishMutation.isPending}
           handleConfirm={() => {
             bulkPublishMutation.mutate()
@@ -213,7 +211,7 @@ export function OfficialPricing(props: OfficialPricingProps) {
               </Button>
               <div className='min-w-0'>
                 <h3 className='truncate font-semibold'>
-                  {t('Manage Official Price')}
+                  {t('Version Details')}
                 </h3>
                 <p className='text-muted-foreground truncate text-sm'>
                   {selectedModel.model_name}

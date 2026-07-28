@@ -140,7 +140,7 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
     <Sheet open={Boolean(channelModel)} onOpenChange={props.onOpenChange}>
       <SheetContent className='w-full sm:w-[92vw] sm:max-w-6xl'>
         <SheetHeader>
-          <SheetTitle>{t('Manage Pricing')}</SheetTitle>
+          <SheetTitle>{t('Pricing Configuration')}</SheetTitle>
           <SheetDescription>
             {channelModel
               ? `${channelModel.channel_name} · ${channelModel.model_name}`
@@ -158,7 +158,7 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                 />
               }
             >
-              {t('View Official Price')}
+              {t('Official Pricing')}
             </Button>
           ) : null}
         </SheetHeader>

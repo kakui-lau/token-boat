@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleAlert, Plus, RefreshCw, Search } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import {
+  BadgeDollarSign,
+  CircleAlert,
+  Plus,
+  RefreshCw,
+  Search,
+} from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -97,6 +104,13 @@ export function PricingAdmin() {
         {t('Channel Model Pricing')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <Button
+          variant='outline'
+          render={<Link to='/official-pricing' search={{}} />}
+        >
+          <BadgeDollarSign data-icon='inline-start' />
+          {t('View Official Price')}
+        </Button>
         <Button variant='outline' onClick={() => setCreateDialogOpen(true)}>
           <Plus data-icon='inline-start' />
           {t('Create Channel Model')}

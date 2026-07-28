@@ -7,6 +7,7 @@ import { ROLE } from '@/lib/roles'
 import { useSidebarView } from '../use-sidebar-view'
 
 let currentUserRole: number = ROLE.USER
+let sidebarModulesAdmin: string | undefined
 
 vi.mock('@tanstack/react-router', () => ({
   useLocation: ({
@@ -23,7 +24,11 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('@/hooks/use-status', () => ({
-  useStatus: () => ({ status: undefined }),
+  useStatus: () => ({
+    status: sidebarModulesAdmin
+      ? { SidebarModulesAdmin: sidebarModulesAdmin }
+      : undefined,
+  }),
 }))
 
 vi.mock('@/stores/auth-store', () => ({
@@ -55,6 +60,7 @@ vi.mock('@/stores/auth-store', () => ({
 describe('sidebar chat preset visibility', () => {
   beforeEach(() => {
     currentUserRole = ROLE.USER
+    sidebarModulesAdmin = undefined
   })
 
   test('hides configured chat clients from non-admin users', () => {
@@ -85,6 +91,44 @@ describe('sidebar chat preset visibility', () => {
           title: 'Chat',
           type: 'chat-presets',
         }),
+      ])
+    )
+  })
+
+  test('keeps root-only pricing entries visible when channel navigation is disabled', () => {
+    currentUserRole = ROLE.SUPER_ADMIN
+    sidebarModulesAdmin = JSON.stringify({
+      admin: {
+        enabled: true,
+        channel: false,
+      },
+    })
+
+    const { result } = renderHook(() => useSidebarView())
+    const adminGroup = result.current.navGroups.find(
+      (group) => group.id === 'admin'
+    )
+
+    expect(adminGroup?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: '/official-pricing' }),
+        expect.objectContaining({ url: '/pricing-admin' }),
+      ])
+    )
+  })
+
+  test('hides root-only pricing entries from ordinary admins', () => {
+    currentUserRole = ROLE.ADMIN
+
+    const { result } = renderHook(() => useSidebarView())
+    const adminGroup = result.current.navGroups.find(
+      (group) => group.id === 'admin'
+    )
+
+    expect(adminGroup?.items).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: '/official-pricing' }),
+        expect.objectContaining({ url: '/pricing-admin' }),
       ])
     )
   })

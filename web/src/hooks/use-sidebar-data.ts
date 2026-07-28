@@ -138,11 +138,13 @@ export function useSidebarData(): SidebarData {
             title: t('Official Model Prices'),
             url: '/official-pricing',
             icon: BadgeDollarSign,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('Channel Model Pricing'),
             url: '/pricing-admin',
             icon: Coins,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('Channel Daily Usage'),

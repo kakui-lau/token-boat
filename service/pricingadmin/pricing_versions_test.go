@@ -70,6 +70,76 @@ func TestPublishOfficialPriceExpiresPreviousVersion(t *testing.T) {
 	assert.NotEmpty(t, storedSecond.ExprHash)
 }
 
+func TestPublishOfficialPricePreservesActivePurchaseChain(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 21, ModelName: "chain-model"}).Error)
+
+	current, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId:  21,
+		Currency: "USD",
+		Prices: FlatTokenPriceInput{
+			InputUnitPrice: "1",
+		},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(current.Id))
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		ChannelModelId:         22,
+		OfficialPriceVersionId: &current.Id,
+		Version:                1,
+		Status:                 model.PricingVersionStatusActive,
+	}).Error)
+
+	next, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId:  21,
+		Currency: "USD",
+		Prices: FlatTokenPriceInput{
+			InputUnitPrice: "2",
+		},
+	}, 1)
+	require.NoError(t, err)
+
+	err = PublishOfficialPriceVersion(next.Id)
+	require.ErrorContains(t, err, "active purchase price references")
+
+	var storedCurrent model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedCurrent, current.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
+}
+
+func TestPublishPurchasePricePreservesActiveRetailChain(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 31, ChannelId: 32, ModelId: 33, UpstreamModelName: "chain-model",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		Id: 34, ChannelModelId: 31, Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
+		ChannelModelId: 31, PurchasePriceVersionId: 34, Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
+
+	next := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId:      31,
+		BillingMode:         "token",
+		PricingMode:         "fixed_unit_price",
+		PriceStructure:      "flat",
+		PurchaseBillingExpr: `v1:tier("base", p * 1)`,
+		Currency:            "USD",
+	}
+	require.NoError(t, CreatePurchasePriceVersion(&next, 1))
+
+	err := PublishPurchasePriceVersion(next.Id)
+	require.ErrorContains(t, err, "active retail price references")
+
+	var storedCurrent model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.First(&storedCurrent, 34).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
+}
+
 func TestPurchasePriceRejectsOfficialPriceFromDifferentLogicalModel(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 401, ModelName: "model-a"}).Error)

@@ -193,3 +193,11 @@ export type ModelPriceOverview = {
   cache_read?: LowestPriceComponent
   cache_write?: LowestPriceComponent
 }
+
+export type ActivePriceBundle = {
+  channel_model: ChannelModel
+  official_price?: OfficialPriceVersion
+  purchase_price: PurchasePriceVersion
+  retail_price: RetailPriceVersion
+  revision: string
+}

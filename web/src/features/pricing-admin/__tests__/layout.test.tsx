@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelModelDialog } from '../components/channel-model-dialog'
@@ -23,6 +23,14 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('../api', () => ({
   createChannelModel: vi.fn(),
   deletePriceDraft: vi.fn(),
+  getActivePriceBundle: vi.fn().mockResolvedValue({
+    data: {
+      official_price: { version: 4 },
+      purchase_price: { version: 5 },
+      retail_price: { version: 6 },
+      revision: 'revision-123',
+    },
+  }),
   getOfficialPriceVersions: vi.fn().mockResolvedValue({ data: [] }),
   getPricingCatalogOptions: vi.fn().mockResolvedValue({
     data: { channels: [], models: [] },
@@ -88,5 +96,18 @@ describe('Pricing admin editor layout', () => {
       'max-h-[90vh]',
       'overflow-y-auto'
     )
+  })
+
+  test('shows the active official, purchase, and retail version chain', async () => {
+    renderWithQueryClient(
+      <PriceEditorSheet channelModel={channelModel} onOpenChange={vi.fn()} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/revision-123/)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Version 4')).toBeInTheDocument()
+    expect(screen.getByText('Version 5')).toBeInTheDocument()
+    expect(screen.getByText('Version 6')).toBeInTheDocument()
   })
 })

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  ActivePriceBundle,
   ChannelModel,
   ChannelModelListResponse,
   FlatTokenPrices,
@@ -170,6 +171,15 @@ export async function getRetailPriceVersions(
   channelModelId: number
 ): Promise<PriceVersionResponse<RetailPriceVersion[]>> {
   const response = await api.get('/api/pricing-admin/retail-prices', {
+    params: { channel_model_id: channelModelId },
+  })
+  return response.data
+}
+
+export async function getActivePriceBundle(
+  channelModelId: number
+): Promise<PriceVersionResponse<ActivePriceBundle>> {
+  const response = await api.get('/api/pricing-admin/active-price-bundle', {
     params: { channel_model_id: channelModelId },
   })
   return response.data

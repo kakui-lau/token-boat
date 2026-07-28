@@ -40,6 +40,7 @@ import {
   suspendPriceVersion,
 } from '../api'
 import type { ChannelModel } from '../types'
+import { ActivePriceBundlePanel } from './active-price-bundle-panel'
 import { PriceSimulationPanel } from './price-simulation-panel'
 import { PurchasePricePanel } from './purchase-price-panel'
 import { RetailPricePanel } from './retail-price-panel'
@@ -94,6 +95,9 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
       })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'active-price-bundle', channelModel?.id],
+      })
       toast.success(t('Price version published'))
     },
   })
@@ -110,6 +114,9 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       })
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'active-price-bundle', channelModel?.id],
       })
       toast.success(t('Price version suspended'))
     },
@@ -156,16 +163,16 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
           ) : null}
         </SheetHeader>
         {channelModel ? (
-          <Tabs
-            defaultValue='purchase'
-            className='min-h-0 overflow-hidden px-4 pb-4'
-          >
-            <TabsList className='grid h-auto w-full grid-cols-3'>
-              <TabsTrigger value='purchase'>{t('Purchase Price')}</TabsTrigger>
-              <TabsTrigger value='retail'>{t('Retail Price')}</TabsTrigger>
-              <TabsTrigger value='simulation'>{t('Simulation')}</TabsTrigger>
-            </TabsList>
-            <div className='min-h-0 flex-1 overflow-auto pt-3'>
+          <div className='min-h-0 flex-1 space-y-3 overflow-auto px-4 pb-4'>
+            <ActivePriceBundlePanel channelModelId={channelModel.id} />
+            <Tabs defaultValue='purchase' className='min-h-0'>
+              <TabsList className='grid h-auto w-full grid-cols-3'>
+                <TabsTrigger value='purchase'>
+                  {t('Purchase Price')}
+                </TabsTrigger>
+                <TabsTrigger value='retail'>{t('Retail Price')}</TabsTrigger>
+                <TabsTrigger value='simulation'>{t('Simulation')}</TabsTrigger>
+              </TabsList>
               <TabsContent value='purchase'>
                 <PurchasePricePanel
                   channelModelId={channelModel.id}
@@ -217,8 +224,8 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   retailVersions={retailQuery.data?.data ?? []}
                 />
               </TabsContent>
-            </div>
-          </Tabs>
+            </Tabs>
+          </div>
         ) : null}
       </SheetContent>
     </Sheet>

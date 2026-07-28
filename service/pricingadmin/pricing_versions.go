@@ -231,6 +231,29 @@ func PublishOfficialPriceVersion(id int) error {
 		if version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
 			return errors.New("official price expression hash does not match")
 		}
+		activeOfficialIds := tx.Model(&model.OfficialModelPriceVersion{}).
+			Select("id").
+			Where(
+				"model_id = ? AND status = ? AND id <> ?",
+				version.ModelId,
+				model.PricingVersionStatusActive,
+				version.Id,
+			)
+		var activePurchaseCount int64
+		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+			Where(
+				"status = ? AND official_price_version_id IN (?)",
+				model.PricingVersionStatusActive,
+				activeOfficialIds,
+			).
+			Count(&activePurchaseCount).Error; err != nil {
+			return err
+		}
+		if activePurchaseCount > 0 {
+			return errors.New(
+				"cannot replace official price while an active purchase price references the current version",
+			)
+		}
 		return model.ActivateOfficialPriceVersion(tx, version, common.GetTimestamp())
 	})
 }
@@ -265,6 +288,22 @@ func PublishPurchasePriceVersion(id int) error {
 		}
 		if version.PurchaseExprHash != billingexpr.ExprHashString(version.PurchaseBillingExpr) {
 			return errors.New("purchase price expression hash does not match")
+		}
+		var activeRetailCount int64
+		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
+			Where(
+				"channel_model_id = ? AND status = ? AND purchase_price_version_id <> ?",
+				version.ChannelModelId,
+				model.PricingVersionStatusActive,
+				version.Id,
+			).
+			Count(&activeRetailCount).Error; err != nil {
+			return err
+		}
+		if activeRetailCount > 0 {
+			return errors.New(
+				"cannot replace purchase price while an active retail price references the current version",
+			)
 		}
 		requiresOfficialPrice := version.PricingMode == "official_ratio" ||
 			version.PricingMode == "component_ratio" ||

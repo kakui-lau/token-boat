@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { DatabaseZap, Search } from 'lucide-react'
+import { ArrowLeft, DatabaseZap, Search } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -30,13 +30,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from '@/components/ui/input-group'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import {
   Table,
   TableBody,
@@ -149,79 +142,27 @@ export function OfficialPricing(props: OfficialPricingProps) {
         </Button>
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='h-full space-y-4 overflow-auto'>
-          <p className='text-muted-foreground text-sm'>
-            {t(
-              'Official prices are shared by all channels that reference the same logical model.'
-            )}
-          </p>
-          <Field className='max-w-md'>
-            <FieldLabel htmlFor='official-pricing-search' className='sr-only'>
-              {t('Search models')}
-            </FieldLabel>
-            <InputGroup>
-              <InputGroupAddon>
-                <Search aria-hidden='true' />
-              </InputGroupAddon>
-              <InputGroupInput
-                id='official-pricing-search'
-                value={keyword}
-                placeholder={t('Search models')}
-                onChange={(event) => setKeyword(event.target.value)}
-              />
-            </InputGroup>
-          </Field>
-          <div className='overflow-x-auto rounded-lg border'>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('Model')}</TableHead>
-                  <TableHead className='text-right'>{t('Actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredModels.map((model) => (
-                  <TableRow key={model.id}>
-                    <TableCell className='font-medium'>{model.name}</TableCell>
-                    <TableCell className='text-right'>
-                      <Button
-                        size='sm'
-                        variant='outline'
-                        onClick={() => setSelectedModelId(model.id)}
-                      >
-                        {t('Manage Official Price')}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!catalogQuery.isLoading && filteredModels.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={2} className='py-8 text-center'>
-                      {t('No models found')}
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </SectionPageLayout.Content>
-
-      <Sheet
-        open={selectedModel !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedModelId(null)
-          }
-        }}
-      >
-        <SheetContent className='w-full sm:w-[92vw] sm:max-w-5xl'>
-          <SheetHeader>
-            <SheetTitle>{t('Manage Official Price')}</SheetTitle>
-            <SheetDescription>{selectedModel?.name ?? ''}</SheetDescription>
-          </SheetHeader>
-          {selectedModel ? (
-            <div className='min-h-0 flex-1 overflow-auto px-4 pb-4'>
+        {selectedModel ? (
+          <div className='flex h-full min-h-0 flex-col gap-4 overflow-hidden'>
+            <div className='flex shrink-0 items-center gap-3'>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() => setSelectedModelId(null)}
+              >
+                <ArrowLeft data-icon='inline-start' />
+                {t('Back')}
+              </Button>
+              <div className='min-w-0'>
+                <h3 className='truncate font-semibold'>
+                  {t('Manage Official Price')}
+                </h3>
+                <p className='text-muted-foreground truncate text-sm'>
+                  {selectedModel.name}
+                </p>
+              </div>
+            </div>
+            <div className='min-h-0 flex-1 overflow-auto rounded-lg border p-4'>
               <OfficialPricePanel
                 modelId={selectedModel.id}
                 versions={officialQuery.data?.data ?? []}
@@ -236,9 +177,68 @@ export function OfficialPricing(props: OfficialPricingProps) {
                 }}
               />
             </div>
-          ) : null}
-        </SheetContent>
-      </Sheet>
+          </div>
+        ) : (
+          <div className='h-full space-y-4 overflow-auto'>
+            <p className='text-muted-foreground text-sm'>
+              {t(
+                'Official prices are shared by all channels that reference the same logical model.'
+              )}
+            </p>
+            <Field className='max-w-md'>
+              <FieldLabel htmlFor='official-pricing-search' className='sr-only'>
+                {t('Search models')}
+              </FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <Search aria-hidden='true' />
+                </InputGroupAddon>
+                <InputGroupInput
+                  id='official-pricing-search'
+                  value={keyword}
+                  placeholder={t('Search models')}
+                  onChange={(event) => setKeyword(event.target.value)}
+                />
+              </InputGroup>
+            </Field>
+            <div className='overflow-x-auto rounded-lg border'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('Model')}</TableHead>
+                    <TableHead className='text-right'>{t('Actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredModels.map((model) => (
+                    <TableRow key={model.id}>
+                      <TableCell className='font-medium'>
+                        {model.name}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() => setSelectedModelId(model.id)}
+                        >
+                          {t('Manage Official Price')}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!catalogQuery.isLoading && filteredModels.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={2} className='py-8 text-center'>
+                        {t('No models found')}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </SectionPageLayout.Content>
     </SectionPageLayout>
   )
 }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { OfficialPricing } from '..'
@@ -49,8 +49,13 @@ describe('Official pricing page layout', () => {
       screen.getByRole('heading', { name: 'Official Model Prices' })
     ).toBeVisible()
     expect(await screen.findByText('openai/gpt-test')).toBeVisible()
-    expect(
-      screen.getByRole('button', { name: 'Manage Official Price' })
-    ).toBeEnabled()
+    const manageButton = screen.getByRole('button', {
+      name: 'Manage Official Price',
+    })
+    expect(manageButton).toBeEnabled()
+
+    fireEvent.click(manageButton)
+
+    expect(await screen.findByText('Official price editor for 7')).toBeVisible()
   })
 })

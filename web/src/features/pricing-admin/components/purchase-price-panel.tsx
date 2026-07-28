@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -86,6 +87,16 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
     },
   })
   const pricingMode = form.watch('pricing_mode')
+  const eligibleOfficialVersions = useMemo(
+    () =>
+      props.officialVersions.filter(
+        (version) =>
+          version.status === 'active' &&
+          version.billing_mode === 'token' &&
+          version.price_structure === 'flat'
+      ),
+    [props.officialVersions]
+  )
   const createMutation = useMutation({
     mutationFn: (value: PurchasePriceForm) =>
       createPurchaseDraft({
@@ -172,7 +183,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
                 <NativeSelectOption value=''>
                   {t('Select a version')}
                 </NativeSelectOption>
-                {props.officialVersions.map((version) => (
+                {eligibleOfficialVersions.map((version) => (
                   <NativeSelectOption
                     key={version.id}
                     value={String(version.id)}
@@ -186,6 +197,13 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
                   ? t(form.formState.errors.official_price_version_id.message)
                   : null}
               </FieldError>
+              {eligibleOfficialVersions.length === 0 ? (
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Publish an active flat token official price before creating a discount-based purchase version.'
+                  )}
+                </p>
+              ) : null}
             </Field>
           ) : null}
           {pricingMode === 'official_ratio' ? (
@@ -323,7 +341,14 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           <FieldLabel htmlFor='purchase-remark'>{t('Remark')}</FieldLabel>
           <Textarea id='purchase-remark' {...form.register('remark')} />
         </Field>
-        <Button type='submit' disabled={createMutation.isPending}>
+        <Button
+          type='submit'
+          disabled={
+            createMutation.isPending ||
+            (pricingMode !== 'fixed_unit_price' &&
+              eligibleOfficialVersions.length === 0)
+          }
+        >
           {t('Save Draft')}
         </Button>
       </form>

@@ -66,7 +66,14 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     },
   })
   const watchedValues = useWatch({ control: form.control })
-  const selectedPurchase = props.purchaseVersions.find(
+  const eligiblePurchaseVersions = useMemo(
+    () =>
+      props.purchaseVersions.filter(
+        (version) => version.status === 'active' || version.status === 'draft'
+      ),
+    [props.purchaseVersions]
+  )
+  const selectedPurchase = eligiblePurchaseVersions.find(
     (version) => version.id === Number(watchedValues.purchase_price_version_id)
   )
   const preview = useMemo(() => {
@@ -158,7 +165,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
               <NativeSelectOption value=''>
                 {t('Select a version')}
               </NativeSelectOption>
-              {props.purchaseVersions.map((version) => (
+              {eligiblePurchaseVersions.map((version) => (
                 <NativeSelectOption key={version.id} value={String(version.id)}>
                   {t('Version')} {version.version} · {t(version.status)}
                 </NativeSelectOption>
@@ -169,6 +176,13 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
                 ? t(form.formState.errors.purchase_price_version_id.message)
                 : null}
             </FieldError>
+            {eligiblePurchaseVersions.length === 0 ? (
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Create or activate a purchase price version before creating a retail version.'
+                )}
+              </p>
+            ) : null}
           </Field>
           <PriceInputField
             id='retail-vcr'
@@ -245,7 +259,11 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         ) : null}
         <Button
           type='submit'
-          disabled={createMutation.isPending || preview?.valid === false}
+          disabled={
+            createMutation.isPending ||
+            preview?.valid === false ||
+            eligiblePurchaseVersions.length === 0
+          }
         >
           {t('Save Draft')}
         </Button>

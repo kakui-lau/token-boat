@@ -193,7 +193,11 @@ export function PricingAdmin() {
                     <TableCell>{row.priority}</TableCell>
                     <TableCell>{row.weight}</TableCell>
                     <TableCell>
-                      <Badge variant='outline'>{row.runtime_mode}</Badge>
+                      <Badge variant='outline'>
+                        {row.runtime_mode === 'v2'
+                          ? t('V2 Pricing')
+                          : t('Legacy Billing')}
+                      </Badge>
                     </TableCell>
                     <TableCell className='text-right'>
                       <div className='flex justify-end gap-2'>

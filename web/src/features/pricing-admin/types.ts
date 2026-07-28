@@ -61,6 +61,7 @@ export type PublishLatestOfficialPriceDraftsResponse = {
   message?: string
   data: {
     published: number
+    skipped_unsupported: number
   }
 }
 

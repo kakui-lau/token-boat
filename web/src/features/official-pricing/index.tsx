@@ -139,8 +139,16 @@ export function OfficialPricing(props: OfficialPricingProps) {
             count: response.data.published,
           })
         )
-      } else {
+      } else if (response.data.skipped_unsupported === 0) {
         toast.info(t('No official price drafts to publish'))
+      }
+      if (response.data.skipped_unsupported > 0) {
+        toast.warning(
+          t(
+            '{{count}} drafts were skipped because their billing modes are not enabled for runtime publishing.',
+            { count: response.data.skipped_unsupported }
+          )
+        )
       }
     },
   })
@@ -173,7 +181,7 @@ export function OfficialPricing(props: OfficialPricingProps) {
           onOpenChange={setBulkPublishOpen}
           title={t('Publish latest drafts?')}
           desc={t(
-            "All models' latest drafts will be validated and published atomically. If any draft fails validation, no prices will be changed."
+            'The latest publishable draft for each model will be validated and published atomically. Drafts for billing modes not yet enabled at runtime will be skipped.'
           )}
           confirmText={t('Publish Latest')}
           isLoading={bulkPublishMutation.isPending}

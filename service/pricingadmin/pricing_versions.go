@@ -280,7 +280,8 @@ func PublishOfficialPriceVersion(id int) error {
 }
 
 type PublishLatestOfficialPriceDraftsResult struct {
-	Published int `json:"published"`
+	Published          int `json:"published"`
+	SkippedUnsupported int `json:"skipped_unsupported"`
 }
 
 func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult, error) {
@@ -299,6 +300,10 @@ func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult,
 				continue
 			}
 			seenModels[draft.ModelId] = struct{}{}
+			if validateV1PublishableBillingMode(draft.BillingMode) != nil {
+				result.SkippedUnsupported++
+				continue
+			}
 			latestDraftIds = append(latestDraftIds, draft.Id)
 		}
 		for _, id := range latestDraftIds {

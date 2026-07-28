@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -77,25 +78,38 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {props.items.map((item) => (
-              <TableRow key={`${item.model_id}-${item.currency}`}>
-                <TableCell className='font-medium'>{item.model_name}</TableCell>
-                <TableCell>{item.currency}</TableCell>
-                <TableCell>{item.active_channel_count}</TableCell>
-                <TableCell>
-                  <LowestPrice value={item.input} />
-                </TableCell>
-                <TableCell>
-                  <LowestPrice value={item.output} />
-                </TableCell>
-                <TableCell>
-                  <LowestPrice value={item.cache_read} />
-                </TableCell>
-                <TableCell>
-                  <LowestPrice value={item.cache_write} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {props.isLoading
+              ? Array.from({ length: 3 }, (_, index) => (
+                  <TableRow key={`price-overview-skeleton-${index}`}>
+                    <TableCell colSpan={7}>
+                      <Skeleton className='h-10 w-full' />
+                    </TableCell>
+                  </TableRow>
+                ))
+              : null}
+            {!props.isLoading
+              ? props.items.map((item) => (
+                  <TableRow key={`${item.model_id}-${item.currency}`}>
+                    <TableCell className='font-medium'>
+                      {item.model_name}
+                    </TableCell>
+                    <TableCell>{item.currency}</TableCell>
+                    <TableCell>{item.active_channel_count}</TableCell>
+                    <TableCell>
+                      <LowestPrice value={item.input} />
+                    </TableCell>
+                    <TableCell>
+                      <LowestPrice value={item.output} />
+                    </TableCell>
+                    <TableCell>
+                      <LowestPrice value={item.cache_read} />
+                    </TableCell>
+                    <TableCell>
+                      <LowestPrice value={item.cache_write} />
+                    </TableCell>
+                  </TableRow>
+                ))
+              : null}
             {!props.isLoading && props.items.length === 0 ? (
               <TableRow>
                 <TableCell

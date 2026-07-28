@@ -155,6 +155,36 @@ func TestPublishLatestOfficialPriceDraftsPublishesNewestDraftPerModel(t *testing
 	assert.Equal(t, model.PricingVersionStatusActive, storedOther.Status)
 }
 
+func TestPublishLatestOfficialPriceDraftsSkipsUnsupportedBillingModes(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 63, ModelName: "batch-token"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 64, ModelName: "batch-video"}).Error)
+
+	token, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 63, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	video := model.OfficialModelPriceVersion{
+		ModelId: 64, BillingMode: "video_duration", PriceStructure: "flat",
+		PriceComponents: `{"video_second_unit_price":"0.2"}`,
+		BillingExpr:     "v1:0.2", Currency: "USD",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&video, 1))
+
+	result, err := PublishLatestOfficialPriceDrafts()
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Published)
+	assert.Equal(t, 1, result.SkippedUnsupported)
+
+	var storedToken model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedToken, token.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedToken.Status)
+	var storedVideo model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedVideo, video.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusDraft, storedVideo.Status)
+}
+
 func TestPublishLatestOfficialPriceDraftsDoesNotRewritePurchaseSnapshots(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 71, ModelName: "batch-first"}).Error)

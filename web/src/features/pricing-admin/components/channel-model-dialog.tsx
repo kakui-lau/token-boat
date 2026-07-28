@@ -111,7 +111,8 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
     Number(channelId) > 0 &&
     Number(modelId) > 0 &&
     upstreamModelName.trim() !== '' &&
-    Number.isFinite(Number(priority)) &&
+    Number.isInteger(Number(priority)) &&
+    Number.isInteger(Number(weight)) &&
     Number(weight) >= 0
 
   return (
@@ -224,6 +225,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
             <Input
               id='channel-model-priority'
               type='number'
+              step={1}
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
             />
@@ -236,6 +238,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               id='channel-model-weight'
               type='number'
               min={0}
+              step={1}
               value={weight}
               onChange={(event) => setWeight(event.target.value)}
             />

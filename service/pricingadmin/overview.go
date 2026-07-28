@@ -168,6 +168,7 @@ func ListOfficialPriceOverview(keyword string) ([]OfficialPriceOverview, error) 
 			Status: "unconfigured", VersionCount: len(modelVersions),
 		}
 		var selected *model.OfficialModelPriceVersion
+		hasActive := false
 		for index := range modelVersions {
 			version := &modelVersions[index]
 			if version.Status == model.PricingVersionStatusDraft {
@@ -176,8 +177,12 @@ func ListOfficialPriceOverview(keyword string) ([]OfficialPriceOverview, error) 
 					overview.LatestDraftId = version.Id
 				}
 			}
-			if selected == nil || version.Status == model.PricingVersionStatusActive {
+			if selected == nil {
 				selected = version
+			}
+			if !hasActive && version.Status == model.PricingVersionStatusActive {
+				selected = version
+				hasActive = true
 			}
 		}
 		if selected != nil {

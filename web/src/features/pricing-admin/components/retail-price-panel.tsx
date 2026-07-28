@@ -95,7 +95,8 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       if (value.trim() === '') {
         return '—'
       }
-      return Number((Number(value) * factor).toFixed(8)).toString()
+      const unrounded = Number((Number(value) * factor).toFixed(12))
+      return (Math.ceil(unrounded * 100) / 100).toFixed(2)
     }
     return {
       valid: true as const,

@@ -57,11 +57,9 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 	}, 3)
 	require.NoError(t, err)
 
-	factor := decimal.RequireFromString("0.835").Div(decimal.RequireFromString("0.6515"))
-	expectedInput := decimal.RequireFromString("1.3").Mul(factor)
 	actualInput := decimal.RequireFromString(retail.InputUnitPrice)
-	assert.True(t, expectedInput.Equal(actualInput))
-	assert.Contains(t, retail.RetailBillingExpr, factor.String())
+	assert.True(t, decimal.RequireFromString("1.67").Equal(actualInput))
+	assert.Contains(t, retail.RetailBillingExpr, "p * 1.67")
 	require.NoError(t, PublishRetailPriceVersion(retail.Id))
 }
 

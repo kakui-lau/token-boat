@@ -134,23 +134,18 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 	if _, err := validateRate("minimum_margin_rate", input.MinimumMarginRate); err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	factor, err := calculator.SellingFactor()
-	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	retailExpression, err := scaleBillingExpression(purchase.PurchaseBillingExpr, factor)
-	if err != nil {
+	if _, err := calculator.SellingFactor(); err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
 	purchasePrices, err := unmarshalFlatPriceComponents(purchase.PriceComponents)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	retailPrices, err := scaleFlatPrices(purchasePrices, factor)
+	retailPrices, err := calculateRetailFlatPrices(purchasePrices, calculator)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	componentsJSON, err := marshalFlatPriceComponents(retailPrices)
+	_, retailExpression, componentsJSON, err := normalizeFlatTokenPrices(retailPrices)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
@@ -179,6 +174,43 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
 	return version, nil
+}
+
+func calculateRetailFlatPrices(
+	input FlatTokenPriceInput,
+	calculator RetailPriceCalculator,
+) (FlatTokenPriceInput, error) {
+	result := FlatTokenPriceInput{}
+	type component struct {
+		name   string
+		value  string
+		target *string
+	}
+	components := []component{
+		{"input_unit_price", input.InputUnitPrice, &result.InputUnitPrice},
+		{"output_unit_price", input.OutputUnitPrice, &result.OutputUnitPrice},
+		{"cache_read_unit_price", input.CacheReadUnitPrice, &result.CacheReadUnitPrice},
+		{"cache_write_unit_price", input.CacheWriteUnitPrice, &result.CacheWriteUnitPrice},
+		{"image_input_unit_price", input.ImageInputUnitPrice, &result.ImageInputUnitPrice},
+		{"image_output_unit_price", input.ImageOutputUnitPrice, &result.ImageOutputUnitPrice},
+		{"audio_input_unit_price", input.AudioInputUnitPrice, &result.AudioInputUnitPrice},
+		{"audio_output_unit_price", input.AudioOutputUnitPrice, &result.AudioOutputUnitPrice},
+	}
+	for _, item := range components {
+		if strings.TrimSpace(item.value) == "" {
+			continue
+		}
+		procurementCost, err := decimal.NewFromString(item.value)
+		if err != nil {
+			return result, fmt.Errorf("%s is invalid: %w", item.name, err)
+		}
+		sellingPrice, err := calculator.CalculateSellingPrice(procurementCost)
+		if err != nil {
+			return result, err
+		}
+		*item.target = sellingPrice.StringFixed(retailSellingPriceDecimalPlaces)
+	}
+	return result, nil
 }
 
 func createOfficialRatioPurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {

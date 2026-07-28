@@ -12,6 +12,8 @@ type RetailPriceCalculator struct {
 	TargetNetMargin  decimal.Decimal
 }
 
+const retailSellingPriceDecimalPlaces int32 = 2
+
 func NewRetailPriceCalculator(
 	variableCostRate string,
 	taxRate string,
@@ -62,5 +64,5 @@ func (c RetailPriceCalculator) CalculateSellingPrice(
 	if err != nil {
 		return decimal.Zero, err
 	}
-	return procurementCost.Mul(factor), nil
+	return procurementCost.Mul(factor).RoundCeil(retailSellingPriceDecimalPlaces), nil
 }

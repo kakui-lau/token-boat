@@ -14,8 +14,7 @@ func TestRetailPriceCalculatorCalculatesExactSellingPrice(t *testing.T) {
 
 	price, err := calculator.CalculateSellingPrice(decimal.NewFromInt(100))
 	require.NoError(t, err)
-	assert.Equal(t, "156.13313388182498", price.String())
-	assert.Equal(t, "156.13", price.Round(2).StringFixed(2))
+	assert.Equal(t, "156.14", price.StringFixed(2))
 }
 
 func TestRetailPriceCalculatorRejectsImpossibleMargin(t *testing.T) {

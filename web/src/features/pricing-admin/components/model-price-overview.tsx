@@ -69,11 +69,11 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
             <TableRow>
               <TableHead>{t('Model')}</TableHead>
               <TableHead>{t('Currency')}</TableHead>
-              <TableHead>{t('Active Channels')}</TableHead>
-              <TableHead>{t('Lowest Input Price')}</TableHead>
-              <TableHead>{t('Lowest Output Price')}</TableHead>
-              <TableHead>{t('Lowest Cache Read Price')}</TableHead>
-              <TableHead>{t('Lowest Cache Write Price')}</TableHead>
+              <TableHead>{t('Channels')}</TableHead>
+              <TableHead>{t('Min Input')}</TableHead>
+              <TableHead>{t('Min Output')}</TableHead>
+              <TableHead>{t('Min Cache Read')}</TableHead>
+              <TableHead>{t('Min Cache Write')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

@@ -167,10 +167,8 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
             <ActivePriceBundlePanel channelModelId={channelModel.id} />
             <Tabs defaultValue='purchase' className='min-h-0'>
               <TabsList className='grid h-auto w-full grid-cols-3'>
-                <TabsTrigger value='purchase'>
-                  {t('Purchase Price')}
-                </TabsTrigger>
-                <TabsTrigger value='retail'>{t('Retail Price')}</TabsTrigger>
+                <TabsTrigger value='purchase'>{t('Purchase')}</TabsTrigger>
+                <TabsTrigger value='retail'>{t('Retail')}</TabsTrigger>
                 <TabsTrigger value='simulation'>{t('Simulation')}</TabsTrigger>
               </TabsList>
               <TabsContent value='purchase'>

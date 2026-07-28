@@ -121,7 +121,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
           <DialogTitle>
             {props.channelModel
               ? t('Edit Channel Model')
-              : t('Create Channel Model')}
+              : t('Add Channel Model')}
           </DialogTitle>
           <DialogDescription>
             {props.channelModel
@@ -184,7 +184,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
           </Field>
           <Field className='sm:col-span-2'>
             <FieldLabel htmlFor='channel-model-upstream-name'>
-              {t('Upstream Model')}
+              {t('Provider Model')}
             </FieldLabel>
             <Input
               id='channel-model-upstream-name'

@@ -167,49 +167,49 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           </Field>
           <PriceInputField
             id='official-input-price'
-            label='Input price per 1M tokens'
+            label='Input / 1M tokens'
             registration={form.register('input_unit_price')}
             error={form.formState.errors.input_unit_price}
           />
           <PriceInputField
             id='official-output-price'
-            label='Output price per 1M tokens'
+            label='Output / 1M tokens'
             registration={form.register('output_unit_price')}
             error={form.formState.errors.output_unit_price}
           />
           <PriceInputField
             id='official-cache-read-price'
-            label='Cache read price per 1M tokens'
+            label='Cache Read / 1M tokens'
             registration={form.register('cache_read_unit_price')}
             error={form.formState.errors.cache_read_unit_price}
           />
           <PriceInputField
             id='official-cache-write-price'
-            label='Cache write price per 1M tokens'
+            label='Cache Write / 1M tokens'
             registration={form.register('cache_write_unit_price')}
             error={form.formState.errors.cache_write_unit_price}
           />
           <PriceInputField
             id='official-image-input-price'
-            label='Image input price per 1M tokens'
+            label='Image Input / 1M tokens'
             registration={form.register('image_input_unit_price')}
             error={form.formState.errors.image_input_unit_price}
           />
           <PriceInputField
             id='official-image-output-price'
-            label='Image output price per 1M tokens'
+            label='Image Output / 1M tokens'
             registration={form.register('image_output_unit_price')}
             error={form.formState.errors.image_output_unit_price}
           />
           <PriceInputField
             id='official-audio-input-price'
-            label='Audio input price per 1M tokens'
+            label='Audio Input / 1M tokens'
             registration={form.register('audio_input_unit_price')}
             error={form.formState.errors.audio_input_unit_price}
           />
           <PriceInputField
             id='official-audio-output-price'
-            label='Audio output price per 1M tokens'
+            label='Audio Output / 1M tokens'
             registration={form.register('audio_output_unit_price')}
             error={form.formState.errors.audio_output_unit_price}
           />

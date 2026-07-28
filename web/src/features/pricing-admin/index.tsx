@@ -111,21 +111,21 @@ export function PricingAdmin() {
         </Button>
         <Button variant='outline' onClick={() => setCreateDialogOpen(true)}>
           <Plus data-icon='inline-start' />
-          {t('Create Channel Model')}
+          {t('Add Model')}
         </Button>
         <Button
           disabled={syncMutation.isPending}
           onClick={() => syncMutation.mutate()}
         >
           <RefreshCw data-icon='inline-start' />
-          {t('Sync Channel Models')}
+          {t('Sync Catalog')}
         </Button>
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='h-full space-y-4 overflow-auto'>
           <Alert>
             <CircleAlert />
-            <AlertTitle>{t('Legacy runtime remains active')}</AlertTitle>
+            <AlertTitle>{t('Legacy Billing Active')}</AlertTitle>
             <AlertDescription>
               {t(
                 'The pricing catalog is isolated from routing and billing until V2 is enabled per model.'
@@ -160,18 +160,18 @@ export function PricingAdmin() {
             isLoading={overviewQuery.isLoading}
           />
 
-          <h2 className='font-medium'>{t('Channel Model List')}</h2>
+          <h2 className='font-medium'>{t('Channel Models')}</h2>
           <div className='overflow-x-auto rounded-lg border'>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('Channel')}</TableHead>
                   <TableHead>{t('Model')}</TableHead>
-                  <TableHead>{t('Upstream Model')}</TableHead>
+                  <TableHead>{t('Provider Model')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead>{t('Priority')}</TableHead>
                   <TableHead>{t('Weight')}</TableHead>
-                  <TableHead>{t('Runtime Mode')}</TableHead>
+                  <TableHead>{t('Runtime')}</TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>

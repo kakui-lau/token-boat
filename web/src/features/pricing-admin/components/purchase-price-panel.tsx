@@ -134,7 +134,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field>
             <FieldLabel htmlFor='purchase-pricing-mode'>
-              {t('Pricing Mode')}
+              {t('Cost Basis')}
             </FieldLabel>
             <NativeSelect
               id='purchase-pricing-mode'
@@ -142,13 +142,13 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               {...form.register('pricing_mode')}
             >
               <NativeSelectOption value='official_ratio'>
-                {t('Official price discount')}
+                {t('Official Discount')}
               </NativeSelectOption>
               <NativeSelectOption value='component_ratio'>
-                {t('Component discounts')}
+                {t('Component Discounts')}
               </NativeSelectOption>
               <NativeSelectOption value='fixed_unit_price'>
-                {t('Fixed unit price')}
+                {t('Fixed Prices')}
               </NativeSelectOption>
             </NativeSelect>
           </Field>
@@ -159,7 +159,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               )}
             >
               <FieldLabel htmlFor='purchase-official-version'>
-                {t('Official price version')}
+                {t('Official Version')}
               </FieldLabel>
               <NativeSelect
                 id='purchase-official-version'
@@ -191,7 +191,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           {pricingMode === 'official_ratio' ? (
             <PriceInputField
               id='purchase-discount'
-              label='Purchase discount (for example 0.65)'
+              label='Purchase Discount (0–1)'
               registration={form.register('purchase_discount')}
               error={form.formState.errors.purchase_discount}
             />
@@ -252,49 +252,49 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
             <>
               <PriceInputField
                 id='purchase-input-price'
-                label='Input price per 1M tokens'
+                label='Input / 1M tokens'
                 registration={form.register('input_unit_price')}
                 error={form.formState.errors.input_unit_price}
               />
               <PriceInputField
                 id='purchase-output-price'
-                label='Output price per 1M tokens'
+                label='Output / 1M tokens'
                 registration={form.register('output_unit_price')}
                 error={form.formState.errors.output_unit_price}
               />
               <PriceInputField
                 id='purchase-cache-read-price'
-                label='Cache read price per 1M tokens'
+                label='Cache Read / 1M tokens'
                 registration={form.register('cache_read_unit_price')}
                 error={form.formState.errors.cache_read_unit_price}
               />
               <PriceInputField
                 id='purchase-cache-write-price'
-                label='Cache write price per 1M tokens'
+                label='Cache Write / 1M tokens'
                 registration={form.register('cache_write_unit_price')}
                 error={form.formState.errors.cache_write_unit_price}
               />
               <PriceInputField
                 id='purchase-image-input-price'
-                label='Image input price per 1M tokens'
+                label='Image Input / 1M tokens'
                 registration={form.register('image_input_unit_price')}
                 error={form.formState.errors.image_input_unit_price}
               />
               <PriceInputField
                 id='purchase-image-output-price'
-                label='Image output price per 1M tokens'
+                label='Image Output / 1M tokens'
                 registration={form.register('image_output_unit_price')}
                 error={form.formState.errors.image_output_unit_price}
               />
               <PriceInputField
                 id='purchase-audio-input-price'
-                label='Audio input price per 1M tokens'
+                label='Audio Input / 1M tokens'
                 registration={form.register('audio_input_unit_price')}
                 error={form.formState.errors.audio_input_unit_price}
               />
               <PriceInputField
                 id='purchase-audio-output-price'
-                label='Audio output price per 1M tokens'
+                label='Audio Output / 1M tokens'
                 registration={form.register('audio_output_unit_price')}
                 error={form.formState.errors.audio_output_unit_price}
               />
@@ -302,7 +302,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           ) : null}
           <Field>
             <FieldLabel htmlFor='purchase-quote-reference'>
-              {t('Quote reference')}
+              {t('Quote ID')}
             </FieldLabel>
             <Input
               id='purchase-quote-reference'
@@ -311,7 +311,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           </Field>
           <Field>
             <FieldLabel htmlFor='purchase-contract-reference'>
-              {t('Contract reference')}
+              {t('Contract ID')}
             </FieldLabel>
             <Input
               id='purchase-contract-reference'

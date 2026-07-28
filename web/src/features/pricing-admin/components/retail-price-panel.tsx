@@ -145,7 +145,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             )}
           >
             <FieldLabel htmlFor='retail-purchase-version'>
-              {t('Purchase price version')}
+              {t('Purchase Version')}
             </FieldLabel>
             <NativeSelect
               id='retail-purchase-version'
@@ -172,25 +172,25 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
           </Field>
           <PriceInputField
             id='retail-vcr'
-            label='Total variable cost rate (VCR)'
+            label='Variable Cost Rate (VCR)'
             registration={form.register('total_variable_cost_rate')}
             error={form.formState.errors.total_variable_cost_rate}
           />
           <PriceInputField
             id='retail-tax'
-            label='Effective tax rate (TR)'
+            label='Tax Rate (TR)'
             registration={form.register('effective_tax_rate')}
             error={form.formState.errors.effective_tax_rate}
           />
           <PriceInputField
             id='retail-target-margin'
-            label='Target net margin (TM)'
+            label='Target Margin (TM)'
             registration={form.register('target_net_margin')}
             error={form.formState.errors.target_net_margin}
           />
           <PriceInputField
             id='retail-minimum-margin'
-            label='Minimum margin rate'
+            label='Margin Floor'
             registration={form.register('minimum_margin_rate')}
             error={form.formState.errors.minimum_margin_rate}
           />
@@ -207,10 +207,10 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         {preview ? (
           <div className='bg-muted/40 space-y-3 rounded-lg border p-3'>
             <div className='flex items-center justify-between gap-3'>
-              <p className='font-medium'>{t('Live retail price preview')}</p>
+              <p className='font-medium'>{t('Price Preview')}</p>
               {preview.valid ? (
                 <span className='text-muted-foreground text-xs'>
-                  {t('Retail multiplier')}: {preview.factor.toFixed(6)}
+                  {t('Selling Factor')}: {preview.factor.toFixed(6)}
                 </span>
               ) : null}
             </div>

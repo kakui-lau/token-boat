@@ -99,7 +99,7 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field className='sm:col-span-2'>
             <FieldLabel htmlFor='simulation-retail-version'>
-              {t('Retail price version')}
+              {t('Retail Version')}
             </FieldLabel>
             <NativeSelect
               id='simulation-retail-version'
@@ -153,13 +153,13 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
       {result ? (
         <section className='space-y-3'>
           <div className='flex items-center justify-between'>
-            <h3 className='font-medium'>{t('Simulation result')}</h3>
+            <h3 className='font-medium'>{t('Results')}</h3>
             <Badge
               variant={result.meets_minimum_margin ? 'default' : 'destructive'}
             >
               {result.meets_minimum_margin
-                ? t('Margin threshold met')
-                : t('Below margin threshold')}
+                ? t('Margin Passed')
+                : t('Below Margin Floor')}
             </Badge>
           </div>
           <div className='grid gap-3 sm:grid-cols-2'>
@@ -180,16 +180,14 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
             ))}
             <div className='rounded-lg border p-3'>
               <p className='text-muted-foreground text-xs'>
-                {t('Gross margin rate')}
+                {t('Gross Margin')}
               </p>
               <p className='font-mono text-base'>
                 {(Number(result.gross_margin_rate) * 100).toFixed(2)}%
               </p>
             </div>
             <div className='rounded-lg border p-3'>
-              <p className='text-muted-foreground text-xs'>
-                {t('Net margin rate')}
-              </p>
+              <p className='text-muted-foreground text-xs'>{t('Net Margin')}</p>
               <p className='font-mono text-base'>
                 {(Number(result.net_margin_rate) * 100).toFixed(2)}%
               </p>

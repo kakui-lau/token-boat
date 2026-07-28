@@ -41,7 +41,7 @@ export function ActivePriceBundlePanel(props: ActivePriceBundlePanelProps) {
   return (
     <Card size='sm'>
       <CardHeader className='flex-row items-center justify-between'>
-        <CardTitle>{t('Active price chain')}</CardTitle>
+        <CardTitle>{t('Active Version Chain')}</CardTitle>
         <Badge variant={bundle ? 'default' : 'outline'}>
           {bundle ? t('active') : t('Not configured')}
         </Badge>
@@ -54,7 +54,7 @@ export function ActivePriceBundlePanel(props: ActivePriceBundlePanelProps) {
         {bundle ? (
           <div className='grid gap-3 text-sm sm:grid-cols-3'>
             <div>
-              <p className='text-muted-foreground'>{t('Official Price')}</p>
+              <p className='text-muted-foreground'>{t('Official')}</p>
               <p className='font-medium'>
                 {bundle.official_price
                   ? `${t('Version')} ${bundle.official_price.version}`
@@ -62,13 +62,13 @@ export function ActivePriceBundlePanel(props: ActivePriceBundlePanelProps) {
               </p>
             </div>
             <div>
-              <p className='text-muted-foreground'>{t('Purchase Price')}</p>
+              <p className='text-muted-foreground'>{t('Purchase')}</p>
               <p className='font-medium'>
                 {t('Version')} {bundle.purchase_price.version}
               </p>
             </div>
             <div>
-              <p className='text-muted-foreground'>{t('Retail Price')}</p>
+              <p className='text-muted-foreground'>{t('Retail')}</p>
               <p className='font-medium'>
                 {t('Version')} {bundle.retail_price.version}
               </p>

@@ -179,14 +179,14 @@ describe('Pricing admin editor layout', () => {
 
     const templateButtons = screen.getAllByRole('button', { name: 'Duplicate' })
     fireEvent.click(templateButtons[1])
-    expect(screen.getByLabelText('Input price per 1M tokens')).toHaveValue('2')
-    expect(screen.getByLabelText('Output price per 1M tokens')).toHaveValue('8')
+    expect(screen.getByLabelText('Input / 1M tokens')).toHaveValue('2')
+    expect(screen.getByLabelText('Output / 1M tokens')).toHaveValue('8')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(
       screen.getByRole('heading', { name: 'Edit Official Version' })
     ).toBeVisible()
-    const inputPrice = screen.getByLabelText('Input price per 1M tokens')
+    const inputPrice = screen.getByLabelText('Input / 1M tokens')
     fireEvent.change(inputPrice, { target: { value: '3' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 

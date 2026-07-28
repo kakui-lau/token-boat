@@ -51,6 +51,7 @@ import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authentica
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
+import { Route as AuthenticatedPricingAdminIndexRouteImport } from './routes/_authenticated/pricing-admin/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRechargeIndexRouteImport } from './routes/_authenticated/recharge/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
@@ -297,6 +298,12 @@ const AuthenticatedPlaygroundIndexRoute =
     path: '/playground/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPricingAdminIndexRoute =
+  AuthenticatedPricingAdminIndexRouteImport.update({
+    id: '/pricing-admin/',
+    path: '/pricing-admin/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProfileIndexRoute =
   AuthenticatedProfileIndexRouteImport.update({
     id: '/profile/',
@@ -488,6 +495,7 @@ export interface FileRoutesByFullPath {
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
+  '/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -554,6 +562,7 @@ export interface FileRoutesByTo {
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
+  '/pricing-admin': typeof AuthenticatedPricingAdminIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/recharge': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -624,6 +633,7 @@ export interface FileRoutesById {
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
+  '/_authenticated/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -693,6 +703,7 @@ export interface FileRouteTypes {
     | '/keys/'
     | '/models/'
     | '/playground/'
+    | '/pricing-admin/'
     | '/profile/'
     | '/recharge/'
     | '/redemption-codes/'
@@ -759,6 +770,7 @@ export interface FileRouteTypes {
     | '/keys'
     | '/models'
     | '/playground'
+    | '/pricing-admin'
     | '/profile'
     | '/recharge'
     | '/redemption-codes'
@@ -828,6 +840,7 @@ export interface FileRouteTypes {
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
+    | '/_authenticated/pricing-admin/'
     | '/_authenticated/profile/'
     | '/_authenticated/recharge/'
     | '/_authenticated/redemption-codes/'
@@ -1175,6 +1188,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlaygroundIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/pricing-admin/': {
+      id: '/_authenticated/pricing-admin/'
+      path: '/pricing-admin'
+      fullPath: '/pricing-admin/'
+      preLoaderRoute: typeof AuthenticatedPricingAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile/': {
       id: '/_authenticated/profile/'
       path: '/profile'
@@ -1451,6 +1471,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
+  AuthenticatedPricingAdminIndexRoute: typeof AuthenticatedPricingAdminIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRechargeIndexRoute: typeof AuthenticatedRechargeIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
@@ -1479,6 +1500,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
+  AuthenticatedPricingAdminIndexRoute: AuthenticatedPricingAdminIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRechargeIndexRoute: AuthenticatedRechargeIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:

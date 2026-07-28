@@ -21,6 +21,7 @@ import {
   Box,
   ChartNoAxesCombined,
   CircleDollarSign,
+  Coins,
   CreditCard,
   FileText,
   FlaskConical,
@@ -131,6 +132,11 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Channel Model Pricing'),
+            url: '/pricing-admin',
+            icon: Coins,
           },
           {
             title: t('Channel Daily Usage'),

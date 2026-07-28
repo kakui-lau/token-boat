@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { publishPriceVersion } from '@/features/pricing-admin/api'
 
 import { OfficialPricing } from '..'
 
@@ -43,7 +51,7 @@ vi.mock('@/features/pricing-admin/api', () => ({
     ],
   }),
   importLegacyOfficialPrices: vi.fn(),
-  publishPriceVersion: vi.fn(),
+  publishPriceVersion: vi.fn().mockResolvedValue({ data: null }),
   suspendPriceVersion: vi.fn(),
 }))
 
@@ -77,6 +85,14 @@ describe('Official pricing page layout', () => {
       name: 'Manage Official Price',
     })
     expect(manageButton).toBeEnabled()
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Publish Latest Draft',
+      })
+    )
+    await waitFor(() => {
+      expect(publishPriceVersion).toHaveBeenCalledWith('official', 8)
+    })
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Delete Draft',

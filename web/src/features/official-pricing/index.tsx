@@ -214,8 +214,10 @@ export function OfficialPricing(props: OfficialPricingProps) {
               rows={filteredRows}
               isLoading={overviewQuery.isLoading}
               isDeleting={deleteMutation.isPending}
+              isPublishing={publishMutation.isPending}
               onManage={setSelectedModelId}
               onDeleteDraft={(id) => deleteMutation.mutate(id)}
+              onPublishDraft={(id) => publishMutation.mutate(id)}
             />
           </div>
         )}

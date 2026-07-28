@@ -46,8 +46,10 @@ type OfficialPriceOverviewTableProps = {
   rows: OfficialPriceOverview[]
   isLoading: boolean
   isDeleting: boolean
+  isPublishing: boolean
   onManage: (modelId: number) => void
   onDeleteDraft: (draftId: number) => void
+  onPublishDraft: (draftId: number) => void
 }
 
 function PriceValue(props: { currency: string; value: string; unit?: string }) {
@@ -318,16 +320,27 @@ export function OfficialPriceOverviewTable(
                         <TableCell className='text-right'>
                           <div className='flex justify-end gap-2'>
                             {row.latest_draft_id > 0 ? (
-                              <Button
-                                size='sm'
-                                variant='destructive'
-                                disabled={props.isDeleting}
-                                onClick={() =>
-                                  setDeleteDraftId(row.latest_draft_id)
-                                }
-                              >
-                                {t('Delete Draft')}
-                              </Button>
+                              <>
+                                <Button
+                                  size='sm'
+                                  disabled={props.isPublishing}
+                                  onClick={() =>
+                                    props.onPublishDraft(row.latest_draft_id)
+                                  }
+                                >
+                                  {t('Publish Latest Draft')}
+                                </Button>
+                                <Button
+                                  size='sm'
+                                  variant='destructive'
+                                  disabled={props.isDeleting}
+                                  onClick={() =>
+                                    setDeleteDraftId(row.latest_draft_id)
+                                  }
+                                >
+                                  {t('Delete Draft')}
+                                </Button>
+                              </>
                             ) : null}
                             <Button
                               size='sm'

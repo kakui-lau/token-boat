@@ -44,6 +44,7 @@ import {
 } from '../api'
 import { officialPriceSchema, type OfficialPriceForm } from '../lib/schemas'
 import type { FlatTokenPrices, OfficialPriceVersion } from '../types'
+import { OfficialPriceConfigurationEditor } from './official-price-configuration-editor'
 import { OfficialPriceVersionDialog } from './official-price-version-dialog'
 import { PriceInputField } from './price-input-field'
 import { VersionList } from './version-list'
@@ -443,38 +444,10 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
               />
             </Field>
           </FieldGroup>
-          <Field>
-            <FieldLabel htmlFor='official-config-components'>
-              {t('Price Components')}
-            </FieldLabel>
-            <Textarea
-              id='official-config-components'
-              className='min-h-36 font-mono text-xs'
-              value={configurationDraft.price_components}
-              onChange={(event) =>
-                setConfigurationDraft({
-                  ...configurationDraft,
-                  price_components: event.target.value,
-                })
-              }
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor='official-config-expression'>
-              {t('Billing Expression')}
-            </FieldLabel>
-            <Textarea
-              id='official-config-expression'
-              className='min-h-36 font-mono text-xs'
-              value={configurationDraft.billing_expr}
-              onChange={(event) =>
-                setConfigurationDraft({
-                  ...configurationDraft,
-                  billing_expr: event.target.value,
-                })
-              }
-            />
-          </Field>
+          <OfficialPriceConfigurationEditor
+            version={configurationDraft}
+            onChange={setConfigurationDraft}
+          />
           <Field>
             <FieldLabel htmlFor='official-config-remark'>
               {t('Remark')}

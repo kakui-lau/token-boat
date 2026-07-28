@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { updateOfficialFlatDraft } from '../api'
 import { ChannelModelDialog } from '../components/channel-model-dialog'
+import { OfficialPriceConfigurationEditor } from '../components/official-price-configuration-editor'
 import { OfficialPricePanel } from '../components/official-price-panel'
 import { PriceEditorSheet } from '../components/price-editor-sheet'
 import type { ChannelModel, OfficialPriceVersion } from '../types'
@@ -158,6 +159,56 @@ describe('Pricing admin editor layout', () => {
     ).toBeVisible()
   })
 
+  test('adapts official flat-price fields to the selected billing mode', () => {
+    const version: OfficialPriceVersion = {
+      id: 0,
+      model_id: 3,
+      billing_mode: 'video_duration',
+      price_structure: 'flat',
+      price_components: '{}',
+      billing_expr: '',
+      currency: 'USD',
+      version: 0,
+      status: 'draft',
+      source: 'manual',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+    render(
+      <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
+    )
+
+    expect(screen.getByLabelText('Price per video second')).toBeVisible()
+    expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
+  })
+
+  test('provides a structured tier editor for non-token billing', () => {
+    const version: OfficialPriceVersion = {
+      id: 0,
+      model_id: 3,
+      billing_mode: 'request',
+      price_structure: 'tiered',
+      price_components: '{}',
+      billing_expr: '',
+      currency: 'USD',
+      version: 0,
+      status: 'draft',
+      source: 'manual',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+    render(
+      <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
+    )
+
+    expect(screen.getByText('Tier name')).toBeVisible()
+    expect(screen.getByText('Upper bound')).toBeVisible()
+    expect(screen.getByText('Unit price')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add tier' })).toBeEnabled()
+  })
+
   test('switches the new-version editor from token fields to the selected mode', async () => {
     renderWithQueryClient(
       <OfficialPricePanel
@@ -182,7 +233,7 @@ describe('Pricing admin editor layout', () => {
 
     expect(selectors[0]).toHaveTextContent('Video duration')
     expect(selectors[1]).toHaveTextContent('Flat rate')
-    expect(screen.getByLabelText('Price Components')).toHaveValue('{}')
+    expect(screen.getByLabelText('Price per video second')).toBeVisible()
     expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
   })
 

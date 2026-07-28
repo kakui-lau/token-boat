@@ -200,6 +200,20 @@ func AdminImportLegacyOfficialPriceDrafts(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
+func AdminCreateOfficialFlatPriceDraft(c *gin.Context) {
+	var input pricingadmin.OfficialFlatDraftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.CreateOfficialFlatDraft(input, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
+}
+
 func AdminListPurchasePriceVersions(c *gin.Context) {
 	channelModelId, ok := positiveQueryId(c, "channel_model_id")
 	if !ok {
@@ -240,6 +254,20 @@ func AdminPublishPurchasePriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminCreateStructuredPurchasePriceDraft(c *gin.Context) {
+	var input pricingadmin.PurchaseDraftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.CreatePurchaseDraft(input, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
+}
+
 func AdminListRetailPriceVersions(c *gin.Context) {
 	channelModelId, ok := positiveQueryId(c, "channel_model_id")
 	if !ok {
@@ -278,6 +306,20 @@ func AdminPublishRetailPriceVersion(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminCreateStructuredRetailPriceDraft(c *gin.Context) {
+	var input pricingadmin.RetailDraftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.CreateRetailDraft(input, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
 }
 
 func positivePathId(c *gin.Context) (int, bool) {

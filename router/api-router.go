@@ -378,12 +378,15 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.POST("/official-prices", controller.AdminCreateOfficialPriceVersion)
 			pricingAdminRoute.POST("/official-prices/:id/publish", controller.AdminPublishOfficialPriceVersion)
 			pricingAdminRoute.POST("/official-prices/import-legacy", controller.AdminImportLegacyOfficialPriceDrafts)
+			pricingAdminRoute.POST("/drafts/official-flat", controller.AdminCreateOfficialFlatPriceDraft)
 			pricingAdminRoute.GET("/purchase-prices", controller.AdminListPurchasePriceVersions)
 			pricingAdminRoute.POST("/purchase-prices", controller.AdminCreatePurchasePriceVersion)
 			pricingAdminRoute.POST("/purchase-prices/:id/publish", controller.AdminPublishPurchasePriceVersion)
+			pricingAdminRoute.POST("/drafts/purchase", controller.AdminCreateStructuredPurchasePriceDraft)
 			pricingAdminRoute.GET("/retail-prices", controller.AdminListRetailPriceVersions)
 			pricingAdminRoute.POST("/retail-prices", controller.AdminCreateRetailPriceVersion)
 			pricingAdminRoute.POST("/retail-prices/:id/publish", controller.AdminPublishRetailPriceVersion)
+			pricingAdminRoute.POST("/drafts/retail", controller.AdminCreateStructuredRetailPriceDraft)
 		}
 
 		// Deployments (model deployment management)

@@ -26,7 +26,8 @@ vi.mock('@/features/pricing-admin/api', () => ({
         price_structure: 'flat',
         version: 2,
         version_count: 2,
-        draft_count: 0,
+        draft_count: 1,
+        latest_draft_id: 8,
         effective_from: 1_700_000_000,
         input_unit_price: '1.25',
         output_unit_price: '5',
@@ -76,6 +77,15 @@ describe('Official pricing page layout', () => {
       name: 'Manage Official Price',
     })
     expect(manageButton).toBeEnabled()
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Delete Draft',
+      })
+    )
+    expect(
+      screen.getByRole('alertdialog', { name: 'Delete price draft?' })
+    ).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     fireEvent.click(manageButton)
 

@@ -17,8 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import dayjs from 'dayjs'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -43,7 +45,9 @@ type OfficialPriceOverviewTableProps = {
   allRows: OfficialPriceOverview[]
   rows: OfficialPriceOverview[]
   isLoading: boolean
+  isDeleting: boolean
   onManage: (modelId: number) => void
+  onDeleteDraft: (draftId: number) => void
 }
 
 function PriceValue(props: { currency: string; value: string; unit?: string }) {
@@ -68,6 +72,7 @@ export function OfficialPriceOverviewTable(
   props: OfficialPriceOverviewTableProps
 ) {
   const { t } = useTranslation()
+  const [deleteDraftId, setDeleteDraftId] = useState<number | null>(null)
   let pricedCount = 0
   let activeCount = 0
   let draftCount = 0
@@ -311,17 +316,31 @@ export function OfficialPriceOverviewTable(
                           )}
                         </TableCell>
                         <TableCell className='text-right'>
-                          <Button
-                            size='sm'
-                            variant={
-                              row.status === 'unconfigured'
-                                ? 'default'
-                                : 'outline'
-                            }
-                            onClick={() => props.onManage(row.model_id)}
-                          >
-                            {t('Manage Official Price')}
-                          </Button>
+                          <div className='flex justify-end gap-2'>
+                            {row.latest_draft_id > 0 ? (
+                              <Button
+                                size='sm'
+                                variant='destructive'
+                                disabled={props.isDeleting}
+                                onClick={() =>
+                                  setDeleteDraftId(row.latest_draft_id)
+                                }
+                              >
+                                {t('Delete Draft')}
+                              </Button>
+                            ) : null}
+                            <Button
+                              size='sm'
+                              variant={
+                                row.status === 'unconfigured'
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              onClick={() => props.onManage(row.model_id)}
+                            >
+                              {t('Manage Official Price')}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -341,6 +360,27 @@ export function OfficialPriceOverviewTable(
           </Table>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={deleteDraftId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteDraftId(null)
+          }
+        }}
+        title={t('Delete price draft?')}
+        desc={t(
+          'This draft will be permanently deleted. Published price history is never deleted.'
+        )}
+        confirmText={t('Delete Draft')}
+        destructive
+        isLoading={props.isDeleting}
+        handleConfirm={() => {
+          if (deleteDraftId !== null) {
+            props.onDeleteDraft(deleteDraftId)
+          }
+          setDeleteDraftId(null)
+        }}
+      />
     </div>
   )
 }

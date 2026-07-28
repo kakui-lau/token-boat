@@ -38,6 +38,7 @@ type OfficialPriceOverview struct {
 	Version              int64  `json:"version"`
 	VersionCount         int    `json:"version_count"`
 	DraftCount           int    `json:"draft_count"`
+	LatestDraftId        int    `json:"latest_draft_id"`
 	EffectiveFrom        int64  `json:"effective_from"`
 	InputUnitPrice       string `json:"input_unit_price"`
 	OutputUnitPrice      string `json:"output_unit_price"`
@@ -171,12 +172,12 @@ func ListOfficialPriceOverview(keyword string) ([]OfficialPriceOverview, error) 
 			version := &modelVersions[index]
 			if version.Status == model.PricingVersionStatusDraft {
 				overview.DraftCount++
+				if overview.LatestDraftId == 0 {
+					overview.LatestDraftId = version.Id
+				}
 			}
 			if selected == nil || version.Status == model.PricingVersionStatusActive {
 				selected = version
-			}
-			if version.Status == model.PricingVersionStatusActive {
-				break
 			}
 		}
 		if selected != nil {

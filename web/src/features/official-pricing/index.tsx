@@ -105,6 +105,9 @@ export function OfficialPricing(props: OfficialPricingProps) {
     mutationFn: (id: number) => deletePriceDraft('official', id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: officialQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'official-price-overview'],
+      })
       toast.success(t('Price draft deleted'))
     },
   })
@@ -210,7 +213,9 @@ export function OfficialPricing(props: OfficialPricingProps) {
               allRows={rows}
               rows={filteredRows}
               isLoading={overviewQuery.isLoading}
+              isDeleting={deleteMutation.isPending}
               onManage={setSelectedModelId}
+              onDeleteDraft={(id) => deleteMutation.mutate(id)}
             />
           </div>
         )}

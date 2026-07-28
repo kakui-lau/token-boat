@@ -83,6 +83,7 @@ export type OfficialPriceOverview = {
   version: number
   version_count: number
   draft_count: number
+  latest_draft_id: number
   effective_from: number
   input_unit_price: string
   output_unit_price: string

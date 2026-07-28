@@ -123,6 +123,13 @@ func TestListOfficialPriceOverviewPrefersActiveVersionAndIncludesCoverage(t *tes
 	assert.Equal(t, "0.2", result[0].CacheReadUnitPrice)
 	assert.Equal(t, 2, result[0].VersionCount)
 	assert.Equal(t, 1, result[0].DraftCount)
+	var draft model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.Where(
+		"model_id = ? AND status = ?",
+		401,
+		model.PricingVersionStatusDraft,
+	).First(&draft).Error)
+	assert.Equal(t, draft.Id, result[0].LatestDraftId)
 	assert.Equal(t, "unconfigured", result[1].Status)
 	assert.Zero(t, result[1].VersionCount)
 }

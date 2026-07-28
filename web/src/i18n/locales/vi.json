@@ -5503,5 +5503,18 @@
   "Bind one logical model to the upstream model name exposed by a channel.": "Liên kết một mô hình logic với tên mô hình thượng nguồn của kênh.",
   "Select a channel": "Chọn kênh",
   "Select a model": "Chọn mô hình",
-  "Channel model created": "Đã tạo mô hình kênh"
+  "Channel model created": "Đã tạo mô hình kênh",
+  "Model Price Overview": "Tổng quan giá mô hình",
+  "Lowest active retail price for each component across available channels.": "Giá bán đang hoạt động thấp nhất cho từng thành phần trên các kênh khả dụng.",
+  "Active Channels": "Kênh đang hoạt động",
+  "Lowest Input Price": "Giá đầu vào thấp nhất",
+  "Lowest Output Price": "Giá đầu ra thấp nhất",
+  "Lowest Cache Read Price": "Giá đọc bộ nhớ đệm thấp nhất",
+  "Lowest Cache Write Price": "Giá ghi bộ nhớ đệm thấp nhất",
+  "No active retail prices found": "Không tìm thấy giá bán đang hoạt động",
+  "Channel Model List": "Danh sách mô hình kênh",
+  "Edit Channel Model": "Chỉnh sửa mô hình kênh",
+  "Channel model updated": "Đã cập nhật mô hình kênh",
+  "Edit": "Chỉnh sửa",
+  "Save": "Lưu"
 }

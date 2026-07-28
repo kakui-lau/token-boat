@@ -5503,5 +5503,18 @@
   "Bind one logical model to the upstream model name exposed by a channel.": "Свяжите логическую модель с именем вышестоящей модели канала.",
   "Select a channel": "Выберите канал",
   "Select a model": "Выберите модель",
-  "Channel model created": "Модель канала создана"
+  "Channel model created": "Модель канала создана",
+  "Model Price Overview": "Обзор цен моделей",
+  "Lowest active retail price for each component across available channels.": "Минимальная активная розничная цена каждого компонента среди доступных каналов.",
+  "Active Channels": "Активные каналы",
+  "Lowest Input Price": "Минимальная цена входа",
+  "Lowest Output Price": "Минимальная цена выхода",
+  "Lowest Cache Read Price": "Минимальная цена чтения кэша",
+  "Lowest Cache Write Price": "Минимальная цена записи кэша",
+  "No active retail prices found": "Активные розничные цены не найдены",
+  "Channel Model List": "Список моделей каналов",
+  "Edit Channel Model": "Изменить модель канала",
+  "Channel model updated": "Модель канала обновлена",
+  "Edit": "Изменить",
+  "Save": "Сохранить"
 }

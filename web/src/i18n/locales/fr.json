@@ -5503,5 +5503,18 @@
   "Bind one logical model to the upstream model name exposed by a channel.": "Associez un modèle logique au nom de modèle amont exposé par un canal.",
   "Select a channel": "Sélectionner un canal",
   "Select a model": "Sélectionner un modèle",
-  "Channel model created": "Modèle de canal créé"
+  "Channel model created": "Modèle de canal créé",
+  "Model Price Overview": "Aperçu des prix des modèles",
+  "Lowest active retail price for each component across available channels.": "Prix de vente actif le plus bas pour chaque composant parmi les canaux disponibles.",
+  "Active Channels": "Canaux actifs",
+  "Lowest Input Price": "Prix d'entrée le plus bas",
+  "Lowest Output Price": "Prix de sortie le plus bas",
+  "Lowest Cache Read Price": "Prix de lecture du cache le plus bas",
+  "Lowest Cache Write Price": "Prix d'écriture du cache le plus bas",
+  "No active retail prices found": "Aucun prix de vente actif",
+  "Channel Model List": "Liste des modèles de canal",
+  "Edit Channel Model": "Modifier le modèle de canal",
+  "Channel model updated": "Modèle de canal mis à jour",
+  "Edit": "Modifier",
+  "Save": "Enregistrer"
 }

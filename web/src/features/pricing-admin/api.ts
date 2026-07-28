@@ -23,6 +23,7 @@ import type {
   ChannelModelListResponse,
   FlatTokenPrices,
   ImportResponse,
+  ModelPriceOverview,
   OfficialPriceVersion,
   PriceSimulationResult,
   PricingCatalogOptionsResponse,
@@ -54,6 +55,15 @@ export async function getPricingCatalogOptions(): Promise<PricingCatalogOptionsR
   return response.data
 }
 
+export async function getModelPriceOverview(
+  keyword?: string
+): Promise<PriceVersionResponse<ModelPriceOverview[]>> {
+  const response = await api.get('/api/pricing-admin/model-price-overview', {
+    params: { keyword },
+  })
+  return response.data
+}
+
 export async function createChannelModel(input: {
   channel_id: number
   model_id: number
@@ -64,6 +74,25 @@ export async function createChannelModel(input: {
   region: string
 }): Promise<PriceVersionResponse<ChannelModel>> {
   const response = await api.post('/api/pricing-admin/channel-models', input)
+  return response.data
+}
+
+export async function updateChannelModel(
+  id: number,
+  input: {
+    channel_id: number
+    model_id: number
+    upstream_model_name: string
+    status: number
+    priority: number
+    weight: number
+    region: string
+  }
+): Promise<PriceVersionResponse<ChannelModel>> {
+  const response = await api.put(
+    `/api/pricing-admin/channel-models/${id}`,
+    input
+  )
   return response.data
 }
 

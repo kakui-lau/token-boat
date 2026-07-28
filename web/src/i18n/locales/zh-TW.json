@@ -5503,5 +5503,18 @@
   "Bind one logical model to the upstream model name exposed by a channel.": "將一個邏輯模型綁定至渠道提供的上游模型名稱。",
   "Select a channel": "選擇渠道",
   "Select a model": "選擇模型",
-  "Channel model created": "渠道模型已建立"
+  "Channel model created": "渠道模型已建立",
+  "Model Price Overview": "模型價格總覽",
+  "Lowest active retail price for each component across available channels.": "各可用渠道中每個計費分項的最低生效銷售價。",
+  "Active Channels": "生效渠道數",
+  "Lowest Input Price": "最低輸入價格",
+  "Lowest Output Price": "最低輸出價格",
+  "Lowest Cache Read Price": "最低快取讀取價格",
+  "Lowest Cache Write Price": "最低快取寫入價格",
+  "No active retail prices found": "暫無生效銷售價格",
+  "Channel Model List": "渠道模型列表",
+  "Edit Channel Model": "編輯渠道模型",
+  "Channel model updated": "渠道模型已更新",
+  "Edit": "編輯",
+  "Save": "儲存"
 }

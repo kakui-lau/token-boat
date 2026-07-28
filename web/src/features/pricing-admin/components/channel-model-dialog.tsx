@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -34,10 +34,16 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
-import { createChannelModel, getPricingCatalogOptions } from '../api'
+import {
+  createChannelModel,
+  getPricingCatalogOptions,
+  updateChannelModel,
+} from '../api'
+import type { ChannelModel } from '../types'
 
 type ChannelModelDialogProps = {
   open: boolean
+  channelModel?: ChannelModel | null
   onOpenChange: (open: boolean) => void
   onCreated: () => Promise<void>
 }
@@ -51,6 +57,20 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
   const [priority, setPriority] = useState('0')
   const [weight, setWeight] = useState('0')
   const [region, setRegion] = useState('')
+  useEffect(() => {
+    if (!props.open) {
+      return
+    }
+    setChannelId(
+      props.channelModel ? String(props.channelModel.channel_id) : ''
+    )
+    setModelId(props.channelModel ? String(props.channelModel.model_id) : '')
+    setUpstreamModelName(props.channelModel?.upstream_model_name ?? '')
+    setStatus(String(props.channelModel?.status ?? 1))
+    setPriority(String(props.channelModel?.priority ?? 0))
+    setWeight(String(props.channelModel?.weight ?? 0))
+    setRegion(props.channelModel?.region ?? '')
+  }, [props.channelModel, props.open])
   const optionsQuery = useQuery({
     queryKey: ['pricing-admin', 'catalog-options'],
     queryFn: getPricingCatalogOptions,
@@ -58,19 +78,33 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
   })
   const mutation = useMutation({
     mutationFn: () =>
-      createChannelModel({
-        channel_id: Number(channelId),
-        model_id: Number(modelId),
-        upstream_model_name: upstreamModelName.trim(),
-        status: Number(status),
-        priority: Number(priority),
-        weight: Number(weight),
-        region: region.trim(),
-      }),
+      props.channelModel
+        ? updateChannelModel(props.channelModel.id, {
+            channel_id: Number(channelId),
+            model_id: Number(modelId),
+            upstream_model_name: upstreamModelName.trim(),
+            status: Number(status),
+            priority: Number(priority),
+            weight: Number(weight),
+            region: region.trim(),
+          })
+        : createChannelModel({
+            channel_id: Number(channelId),
+            model_id: Number(modelId),
+            upstream_model_name: upstreamModelName.trim(),
+            status: Number(status),
+            priority: Number(priority),
+            weight: Number(weight),
+            region: region.trim(),
+          }),
     onSuccess: async () => {
       await props.onCreated()
       props.onOpenChange(false)
-      toast.success(t('Channel model created'))
+      toast.success(
+        props.channelModel
+          ? t('Channel model updated')
+          : t('Channel model created')
+      )
     },
   })
   const canSubmit =
@@ -84,7 +118,11 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('Create Channel Model')}</DialogTitle>
+          <DialogTitle>
+            {props.channelModel
+              ? t('Edit Channel Model')
+              : t('Create Channel Model')}
+          </DialogTitle>
           <DialogDescription>
             {t(
               'Bind one logical model to the upstream model name exposed by a channel.'
@@ -204,7 +242,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
             disabled={!canSubmit || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            {t('Create')}
+            {props.channelModel ? t('Save') : t('Create')}
           </Button>
         </DialogFooter>
       </DialogContent>

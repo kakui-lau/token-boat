@@ -5503,5 +5503,18 @@
   "Bind one logical model to the upstream model name exposed by a channel.": "Bind one logical model to the upstream model name exposed by a channel.",
   "Select a channel": "Select a channel",
   "Select a model": "Select a model",
-  "Channel model created": "Channel model created"
+  "Channel model created": "Channel model created",
+  "Model Price Overview": "Model Price Overview",
+  "Lowest active retail price for each component across available channels.": "Lowest active retail price for each component across available channels.",
+  "Active Channels": "Active Channels",
+  "Lowest Input Price": "Lowest Input Price",
+  "Lowest Output Price": "Lowest Output Price",
+  "Lowest Cache Read Price": "Lowest Cache Read Price",
+  "Lowest Cache Write Price": "Lowest Cache Write Price",
+  "No active retail prices found": "No active retail prices found",
+  "Channel Model List": "Channel Model List",
+  "Edit Channel Model": "Edit Channel Model",
+  "Channel model updated": "Channel model updated",
+  "Edit": "Edit",
+  "Save": "Save"
 }

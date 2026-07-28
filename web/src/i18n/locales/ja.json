@@ -5503,5 +5503,18 @@
   "Bind one logical model to the upstream model name exposed by a channel.": "論理モデルをチャネルが公開する上流モデル名に関連付けます。",
   "Select a channel": "チャネルを選択",
   "Select a model": "モデルを選択",
-  "Channel model created": "チャネルモデルを作成しました"
+  "Channel model created": "チャネルモデルを作成しました",
+  "Model Price Overview": "モデル価格概要",
+  "Lowest active retail price for each component across available channels.": "利用可能なチャネル全体で各項目の最安有効販売価格を表示します。",
+  "Active Channels": "有効なチャネル",
+  "Lowest Input Price": "最低入力価格",
+  "Lowest Output Price": "最低出力価格",
+  "Lowest Cache Read Price": "最低キャッシュ読み取り価格",
+  "Lowest Cache Write Price": "最低キャッシュ書き込み価格",
+  "No active retail prices found": "有効な販売価格がありません",
+  "Channel Model List": "チャネルモデル一覧",
+  "Edit Channel Model": "チャネルモデルを編集",
+  "Channel model updated": "チャネルモデルを更新しました",
+  "Edit": "編集",
+  "Save": "保存"
 }

@@ -151,3 +151,20 @@ export type PricingCatalogOptionsResponse = {
     models: PricingCatalogOption[]
   }
 }
+
+export type LowestPriceComponent = {
+  unit_price: string
+  currency: string
+  channel_model_id: number
+  channel_name: string
+}
+
+export type ModelPriceOverview = {
+  model_id: number
+  model_name: string
+  active_channel_count: number
+  input?: LowestPriceComponent
+  output?: LowestPriceComponent
+  cache_read?: LowestPriceComponent
+  cache_write?: LowestPriceComponent
+}

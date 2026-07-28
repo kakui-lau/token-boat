@@ -90,6 +90,9 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       }
       const queryKey = queryKeys[variables.kind]
       await queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'model-price-overview'],
+      })
       toast.success(t('Price version published'))
     },
   })
@@ -104,6 +107,9 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       }
       await queryClient.invalidateQueries({
         queryKey: queryKeys[variables.kind],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'model-price-overview'],
       })
       toast.success(t('Price version suspended'))
     },

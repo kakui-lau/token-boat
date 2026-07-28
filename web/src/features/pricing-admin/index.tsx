@@ -43,10 +43,12 @@ import {
 
 import {
   getChannelModels,
+  getModelPriceOverview,
   importLegacyOfficialPrices,
   syncLegacyChannelModels,
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
+import { ModelPriceOverview } from './components/model-price-overview'
 import { PriceEditorSheet } from './components/price-editor-sheet'
 import type { ChannelModel } from './types'
 
@@ -57,6 +59,8 @@ export function PricingAdmin() {
   const [selectedChannelModel, setSelectedChannelModel] =
     useState<ChannelModel | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editingChannelModel, setEditingChannelModel] =
+    useState<ChannelModel | null>(null)
   const deferredKeyword = useDeferredValue(keyword)
   const channelModelsQuery = useQuery({
     queryKey: ['pricing-admin', 'channel-models', deferredKeyword],
@@ -66,6 +70,10 @@ export function PricingAdmin() {
         page: 1,
         page_size: 100,
       }),
+  })
+  const overviewQuery = useQuery({
+    queryKey: ['pricing-admin', 'model-price-overview', deferredKeyword],
+    queryFn: () => getModelPriceOverview(deferredKeyword.trim() || undefined),
   })
   const syncMutation = useMutation({
     mutationFn: syncLegacyChannelModels,
@@ -147,6 +155,12 @@ export function PricingAdmin() {
             </Field>
           </FieldGroup>
 
+          <ModelPriceOverview
+            items={overviewQuery.data?.data ?? []}
+            isLoading={overviewQuery.isLoading}
+          />
+
+          <h2 className='font-medium'>{t('Channel Model List')}</h2>
           <div className='overflow-hidden rounded-lg border'>
             <Table>
               <TableHeader>
@@ -182,13 +196,25 @@ export function PricingAdmin() {
                       <Badge variant='outline'>{row.runtime_mode}</Badge>
                     </TableCell>
                     <TableCell className='text-right'>
-                      <Button
-                        size='sm'
-                        variant='outline'
-                        onClick={() => setSelectedChannelModel(row)}
-                      >
-                        {t('Manage Pricing')}
-                      </Button>
+                      <div className='flex justify-end gap-2'>
+                        <Button
+                          size='sm'
+                          variant='ghost'
+                          onClick={() => {
+                            setEditingChannelModel(row)
+                            setCreateDialogOpen(true)
+                          }}
+                        >
+                          {t('Edit')}
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() => setSelectedChannelModel(row)}
+                        >
+                          {t('Manage Pricing')}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -215,7 +241,13 @@ export function PricingAdmin() {
           />
           <ChannelModelDialog
             open={createDialogOpen}
-            onOpenChange={setCreateDialogOpen}
+            channelModel={editingChannelModel}
+            onOpenChange={(open) => {
+              setCreateDialogOpen(open)
+              if (!open) {
+                setEditingChannelModel(null)
+              }
+            }}
             onCreated={async () => {
               await channelModelsQuery.refetch()
             }}

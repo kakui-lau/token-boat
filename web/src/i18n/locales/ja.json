@@ -5524,5 +5524,6 @@
   "{{total}} channel models": "{{total}} 件のチャネルモデル",
   "Previous": "前へ",
   "Next": "次へ",
-  "Page {{page}} of {{total}}": "{{page}} / {{total}} ページ"
+  "Page {{page}} of {{total}}": "{{page}} / {{total}} ページ",
+  "Channel, logical model, and upstream model name are immutable after creation.": "チャネル、論理モデル、上流モデル名は作成後に変更できません。"
 }

@@ -124,9 +124,13 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               : t('Create Channel Model')}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              'Bind one logical model to the upstream model name exposed by a channel.'
-            )}
+            {props.channelModel
+              ? t(
+                  'Channel, logical model, and upstream model name are immutable after creation.'
+                )
+              : t(
+                  'Bind one logical model to the upstream model name exposed by a channel.'
+                )}
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
@@ -138,6 +142,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               id='channel-model-channel'
               className='w-full'
               value={channelId}
+              disabled={Boolean(props.channelModel)}
               onChange={(event) => setChannelId(event.target.value)}
             >
               <NativeSelectOption value=''>
@@ -156,6 +161,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               id='channel-model-model'
               className='w-full'
               value={modelId}
+              disabled={Boolean(props.channelModel)}
               onChange={(event) => {
                 setModelId(event.target.value)
                 const selected = optionsQuery.data?.data.models.find(
@@ -183,6 +189,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
             <Input
               id='channel-model-upstream-name'
               value={upstreamModelName}
+              disabled={Boolean(props.channelModel)}
               onChange={(event) => setUpstreamModelName(event.target.value)}
             />
           </Field>

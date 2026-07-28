@@ -5524,5 +5524,6 @@
   "{{total}} channel models": "{{total}} modèles de canal",
   "Previous": "Précédent",
   "Next": "Suivant",
-  "Page {{page}} of {{total}}": "Page {{page}} sur {{total}}"
+  "Page {{page}} of {{total}}": "Page {{page}} sur {{total}}",
+  "Channel, logical model, and upstream model name are immutable after creation.": "Le canal, le modèle logique et le nom du modèle amont sont immuables après leur création."
 }

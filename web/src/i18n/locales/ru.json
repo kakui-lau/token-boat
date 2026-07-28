@@ -5524,5 +5524,6 @@
   "{{total}} channel models": "Моделей каналов: {{total}}",
   "Previous": "Назад",
   "Next": "Далее",
-  "Page {{page}} of {{total}}": "Страница {{page}} из {{total}}"
+  "Page {{page}} of {{total}}": "Страница {{page}} из {{total}}",
+  "Channel, logical model, and upstream model name are immutable after creation.": "Канал, логическая модель и имя вышестоящей модели неизменяемы после создания."
 }

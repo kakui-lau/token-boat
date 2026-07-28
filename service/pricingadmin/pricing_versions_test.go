@@ -70,6 +70,29 @@ func TestPublishOfficialPriceExpiresPreviousVersion(t *testing.T) {
 	assert.NotEmpty(t, storedSecond.ExprHash)
 }
 
+func TestPurchasePriceRejectsOfficialPriceFromDifferentLogicalModel(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 401, ModelName: "model-a"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 402, ModelName: "model-b"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 403, ChannelId: 404, ModelId: 402, UpstreamModelName: "model-b",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 401, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+	officialId := official.Id
+
+	_, err = CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 403, OfficialPriceVersionId: &officialId,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.ErrorContains(t, err, "different logical models")
+}
+
 func TestCreateRetailPriceRejectsImpossibleMarginFormula(t *testing.T) {
 	setupPricingAdminTestDB(t)
 

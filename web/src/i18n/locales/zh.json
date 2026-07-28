@@ -5524,5 +5524,6 @@
   "{{total}} channel models": "{{total}} 个渠道模型",
   "Previous": "上一页",
   "Next": "下一页",
-  "Page {{page}} of {{total}}": "第 {{page}} / {{total}} 页"
+  "Page {{page}} of {{total}}": "第 {{page}} / {{total}} 页",
+  "Channel, logical model, and upstream model name are immutable after creation.": "渠道、逻辑模型和上游模型名称创建后不可修改。"
 }

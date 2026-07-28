@@ -356,6 +356,18 @@ func GetOfficialPriceVersionForUpdate(tx *gorm.DB, id int) (OfficialModelPriceVe
 	return version, err
 }
 
+func GetLogicalModelForUpdate(tx *gorm.DB, id int) (Model, error) {
+	var logicalModel Model
+	err := lockForUpdate(tx).First(&logicalModel, id).Error
+	return logicalModel, err
+}
+
+func GetChannelModelForUpdate(tx *gorm.DB, id int) (ChannelModel, error) {
+	var channelModel ChannelModel
+	err := lockForUpdate(tx).First(&channelModel, id).Error
+	return channelModel, err
+}
+
 func GetPurchasePriceVersionForUpdate(tx *gorm.DB, id int) (ChannelModelPurchasePriceVersion, error) {
 	var version ChannelModelPurchasePriceVersion
 	err := lockForUpdate(tx).First(&version, id).Error

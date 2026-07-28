@@ -5524,5 +5524,6 @@
   "{{total}} channel models": "{{total}} mô hình kênh",
   "Previous": "Trước",
   "Next": "Tiếp",
-  "Page {{page}} of {{total}}": "Trang {{page}} / {{total}}"
+  "Page {{page}} of {{total}}": "Trang {{page}} / {{total}}",
+  "Channel, logical model, and upstream model name are immutable after creation.": "Kênh, mô hình logic và tên mô hình thượng nguồn không thể thay đổi sau khi tạo."
 }

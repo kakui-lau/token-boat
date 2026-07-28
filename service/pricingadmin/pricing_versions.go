@@ -61,8 +61,7 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
-		var logicalModel model.Model
-		if err := tx.First(&logicalModel, input.ModelId).Error; err != nil {
+		if _, err := model.GetLogicalModelForUpdate(tx, input.ModelId); err != nil {
 			return err
 		}
 		var maxVersion int64
@@ -122,14 +121,17 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 	}
 	input.PurchaseExprHash = billingexpr.ExprHashString(input.PurchaseBillingExpr)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
-		var channelModel model.ChannelModel
-		if err := tx.First(&channelModel, input.ChannelModelId).Error; err != nil {
+		channelModel, err := model.GetChannelModelForUpdate(tx, input.ChannelModelId)
+		if err != nil {
 			return err
 		}
 		if input.OfficialPriceVersionId != nil {
 			var official model.OfficialModelPriceVersion
 			if err := tx.First(&official, *input.OfficialPriceVersionId).Error; err != nil {
 				return err
+			}
+			if official.ModelId != channelModel.ModelId {
+				return errors.New("official price and channel model belong to different logical models")
 			}
 		}
 		var maxVersion int64
@@ -183,6 +185,9 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 	}
 	input.RetailExprHash = billingexpr.ExprHashString(input.RetailBillingExpr)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := model.GetChannelModelForUpdate(tx, input.ChannelModelId); err != nil {
+			return err
+		}
 		var purchase model.ChannelModelPurchasePriceVersion
 		if err := tx.First(&purchase, input.PurchasePriceVersionId).Error; err != nil {
 			return err
@@ -274,6 +279,9 @@ func PublishPurchasePriceVersion(id int) error {
 			}
 			if official.Status != model.PricingVersionStatusActive {
 				return errors.New("referenced official price is not active")
+			}
+			if official.ModelId != channelModel.ModelId {
+				return errors.New("official price and channel model belong to different logical models")
 			}
 		}
 		return model.ActivatePurchasePriceVersion(tx, version, common.GetTimestamp())

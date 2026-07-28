@@ -151,19 +151,22 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if input.ChannelId != current.ChannelId ||
+		input.ModelId != current.ModelId ||
+		strings.TrimSpace(input.UpstreamModelName) != current.UpstreamModelName {
+		common.ApiErrorMsg(c, "渠道模型标识创建后不可修改，请新建渠道模型")
+		return
+	}
 	updates := map[string]any{
-		"channel_id":          input.ChannelId,
-		"model_id":            input.ModelId,
-		"upstream_model_name": strings.TrimSpace(input.UpstreamModelName),
-		"status":              input.Status,
-		"priority":            input.Priority,
-		"weight":              input.Weight,
-		"region":              input.Region,
-		"data_policy":         input.DataPolicy,
-		"capability_config":   input.CapabilityConfig,
-		"routing_tags":        input.RoutingTags,
-		"runtime_mode":        "legacy",
-		"updated_at":          common.GetTimestamp(),
+		"status":            input.Status,
+		"priority":          input.Priority,
+		"weight":            input.Weight,
+		"region":            input.Region,
+		"data_policy":       input.DataPolicy,
+		"capability_config": input.CapabilityConfig,
+		"routing_tags":      input.RoutingTags,
+		"runtime_mode":      "legacy",
+		"updated_at":        common.GetTimestamp(),
 	}
 	if err := model.DB.Model(&current).Updates(updates).Error; err != nil {
 		common.ApiError(c, err)

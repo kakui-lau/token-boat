@@ -119,6 +119,8 @@ export type PurchasePriceVersion = {
   official_price_version_id?: number
   pricing_mode: string
   billing_mode: string
+  price_structure: string
+  price_components: string
   input_unit_price: string
   output_unit_price: string
   cache_read_unit_price: string
@@ -128,6 +130,17 @@ export type PurchasePriceVersion = {
   status: PriceVersionStatus
   purchase_discount: string
   purchase_billing_expr: string
+  expression_source: string
+  expression_schema_version: string
+  price_unit: string
+  quote_reference: string
+  contract_reference: string
+  conditions: string
+  remark: string
+  effective_from: number
+  effective_to: number
+  created_at?: number
+  updated_at?: number
 }
 
 export type RetailPriceVersion = {
@@ -135,6 +148,8 @@ export type RetailPriceVersion = {
   channel_model_id: number
   purchase_price_version_id: number
   billing_mode: string
+  price_structure: string
+  price_components: string
   input_unit_price: string
   output_unit_price: string
   cache_read_unit_price: string
@@ -147,6 +162,14 @@ export type RetailPriceVersion = {
   target_net_margin: string
   minimum_margin_rate: string
   retail_billing_expr: string
+  expression_source: string
+  expression_schema_version: string
+  price_unit: string
+  remark: string
+  effective_from: number
+  effective_to: number
+  created_at?: number
+  updated_at?: number
 }
 
 export type PriceVersionResponse<T> = {

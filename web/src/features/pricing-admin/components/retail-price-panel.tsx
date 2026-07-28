@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -36,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { createRetailDraft } from '../api'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
 import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
+import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
 import { PriceInputField } from './price-input-field'
 import { VersionList } from './version-list'
 
@@ -54,6 +55,9 @@ type RetailPricePanelProps = {
 
 export function RetailPricePanel(props: RetailPricePanelProps) {
   const { t } = useTranslation()
+  const [detailVersion, setDetailVersion] = useState<RetailPriceVersion | null>(
+    null
+  )
   const form = useForm<RetailPriceForm>({
     resolver: zodResolver(retailPriceSchema),
     defaultValues: {
@@ -137,6 +141,21 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       toast.success(t('Retail price draft created'))
     },
   })
+  const fillFromVersion = (id: number) => {
+    const version = props.versions.find((item) => item.id === id)
+    if (!version) {
+      return
+    }
+    form.reset({
+      purchase_price_version_id: String(version.purchase_price_version_id),
+      total_variable_cost_rate: version.total_variable_cost_rate,
+      effective_tax_rate: version.effective_tax_rate,
+      target_net_margin: version.target_net_margin,
+      minimum_margin_rate: version.minimum_margin_rate,
+      remark: '',
+    })
+    toast.success(t('Historical version copied into the new draft'))
+  }
 
   return (
     <div className='space-y-6'>
@@ -279,8 +298,23 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
           onPublish={props.onPublish}
           onSuspend={props.onSuspend}
           onDelete={props.onDelete}
+          onView={(id) =>
+            setDetailVersion(
+              props.versions.find((version) => version.id === id) ?? null
+            )
+          }
+          onFill={fillFromVersion}
         />
       </section>
+      <ChannelPriceVersionDialog
+        kind='retail'
+        version={detailVersion}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailVersion(null)
+          }
+        }}
+      />
     </div>
   )
 }

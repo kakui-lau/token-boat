@@ -49,6 +49,10 @@ type VersionListProps = {
 export function VersionList(props: VersionListProps) {
   const { t } = useTranslation()
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [pendingAction, setPendingAction] = useState<{
+    id: number
+    kind: 'publish' | 'suspend'
+  } | null>(null)
   if (props.items.length === 0) {
     return (
       <p className='text-muted-foreground rounded-lg border border-dashed p-4 text-center'>
@@ -135,7 +139,9 @@ export function VersionList(props: VersionListProps) {
                   <Button
                     size='sm'
                     disabled={props.isPublishing}
-                    onClick={() => props.onPublish(item.id)}
+                    onClick={() =>
+                      setPendingAction({ id: item.id, kind: 'publish' })
+                    }
                   >
                     {t('Publish')}
                   </Button>
@@ -146,7 +152,9 @@ export function VersionList(props: VersionListProps) {
                   size='sm'
                   variant='destructive'
                   disabled={props.isSuspending}
-                  onClick={() => props.onSuspend(item.id)}
+                  onClick={() =>
+                    setPendingAction({ id: item.id, kind: 'suspend' })
+                  }
                 >
                   {t('Suspend')}
                 </Button>
@@ -174,6 +182,47 @@ export function VersionList(props: VersionListProps) {
             props.onDelete(deleteId)
           }
           setDeleteId(null)
+        }}
+      />
+      <ConfirmDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingAction(null)
+          }
+        }}
+        title={
+          pendingAction?.kind === 'suspend'
+            ? t('Suspend price version?')
+            : t('Publish price version?')
+        }
+        desc={
+          pendingAction?.kind === 'suspend'
+            ? t(
+                'This active price will stop being available. Dependent version checks still apply.'
+              )
+            : t(
+                'This draft will become active and replace the current active version for this scope.'
+              )
+        }
+        confirmText={
+          pendingAction?.kind === 'suspend'
+            ? t('Confirm Suspend')
+            : t('Confirm Publish')
+        }
+        destructive={pendingAction?.kind === 'suspend'}
+        isLoading={
+          pendingAction?.kind === 'suspend'
+            ? props.isSuspending
+            : props.isPublishing
+        }
+        handleConfirm={() => {
+          if (pendingAction?.kind === 'suspend') {
+            props.onSuspend(pendingAction.id)
+          } else if (pendingAction) {
+            props.onPublish(pendingAction.id)
+          }
+          setPendingAction(null)
         }}
       />
     </div>

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -37,6 +37,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { createPurchaseDraft } from '../api'
 import { purchasePriceSchema, type PurchasePriceForm } from '../lib/schemas'
 import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
+import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
 import { PriceInputField } from './price-input-field'
 import { VersionList } from './version-list'
 
@@ -66,6 +67,8 @@ const emptyPrices = {
 
 export function PurchasePricePanel(props: PurchasePricePanelProps) {
   const { t } = useTranslation()
+  const [detailVersion, setDetailVersion] =
+    useState<PurchasePriceVersion | null>(null)
   const form = useForm<PurchasePriceForm>({
     resolver: zodResolver(purchasePriceSchema),
     defaultValues: {
@@ -137,6 +140,47 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       toast.success(t('Purchase price draft created'))
     },
   })
+  const fillFromVersion = (id: number) => {
+    const version = props.versions.find((item) => item.id === id)
+    if (!version) {
+      return
+    }
+    let componentPrices: Record<string, string> = {}
+    try {
+      componentPrices = JSON.parse(version.price_components || '{}') as Record<
+        string,
+        string
+      >
+    } catch {
+      componentPrices = {}
+    }
+    form.reset({
+      pricing_mode: 'fixed_unit_price',
+      currency: version.currency,
+      official_price_version_id: '',
+      purchase_discount: '',
+      input_discount: '',
+      output_discount: '',
+      cache_read_discount: '',
+      cache_write_discount: '',
+      image_input_discount: '',
+      image_output_discount: '',
+      audio_input_discount: '',
+      audio_output_discount: '',
+      input_unit_price: version.input_unit_price || '',
+      output_unit_price: version.output_unit_price || '',
+      cache_read_unit_price: version.cache_read_unit_price || '',
+      cache_write_unit_price: version.cache_write_unit_price || '',
+      image_input_unit_price: componentPrices.image_input_unit_price || '',
+      image_output_unit_price: componentPrices.image_output_unit_price || '',
+      audio_input_unit_price: componentPrices.audio_input_unit_price || '',
+      audio_output_unit_price: componentPrices.audio_output_unit_price || '',
+      quote_reference: version.quote_reference || '',
+      contract_reference: version.contract_reference || '',
+      remark: '',
+    })
+    toast.success(t('Historical version copied into the new draft'))
+  }
 
   return (
     <div className='space-y-6'>
@@ -380,8 +424,23 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           onPublish={props.onPublish}
           onSuspend={props.onSuspend}
           onDelete={props.onDelete}
+          onView={(id) =>
+            setDetailVersion(
+              props.versions.find((version) => version.id === id) ?? null
+            )
+          }
+          onFill={fillFromVersion}
         />
       </section>
+      <ChannelPriceVersionDialog
+        kind='purchase'
+        version={detailVersion}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailVersion(null)
+          }
+        }}
+      />
     </div>
   )
 }

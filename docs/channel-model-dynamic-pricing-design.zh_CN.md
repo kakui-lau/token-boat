@@ -571,34 +571,49 @@ official_price_sync_batches
 
 #### `official_model_price_versions`
 
+> 本节描述当前代码中 `model.OfficialModelPriceVersion` 已实际落地的字段，不包含规划字段。
+
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | int | 主键 |
-| `model_id` | int | 逻辑模型 |
+| `model_id` | int，非空 | 逻辑模型 ID；与 `version` 组成唯一索引 |
 | `billing_mode` | varchar(32) | token、request、image、audio_duration、video_duration、mixed 等 |
-| `billing_expr` | text | 官方价格表达式 |
-| `expr_hash` | varchar(64) | SHA-256 |
-| `currency` | varchar(8) | 币种 |
-| `source` | varchar(32) | manual、official_api、legacy_import |
+| `price_structure` | varchar(16)，非空 | flat、tiered、expression |
+| `price_components` | text | 结构化价格分项 JSON；用于管理端展示、复制和同步比较 |
+| `billing_expr` | text，非空 | 官方价格执行表达式 |
+| `expr_hash` | varchar(64)，非空 | `billing_expr` 的 SHA-256，用于表达式完整性校验 |
+| `expression_source` | varchar(16)，非空 | generated、template、custom |
+| `expression_schema_version` | varchar(16)，非空 | 表达式环境和语义版本，当前为 v1 |
+| `currency` | varchar(8)，非空 | 币种，保存时标准化为大写 |
+| `source` | varchar(32)，非空 | manual、official_api、legacy_import 等 |
 | `source_version` | varchar(64) | 官方版本 |
-| `content_hash` | varchar(64) | 价格语义内容 SHA-256，用于幂等去重 |
-| `sync_batch_id` | int nullable | 来源同步批次；人工维护可空 |
+| `content_hash` | varchar(64) | 计费模式、价格结构、价格分项、表达式和币种的语义哈希，用于同步去重 |
+| `sync_batch_id` | int，可空 | `official_price_sync_batches.id`；人工维护时为空 |
 | `source_updated_at` | bigint | 上游报价更新时间 |
-| `change_type` | varchar(16) | initial、updated |
-| `version` | bigint | 模型内版本 |
-| `status` | varchar(16) | 兼容字段：draft、active、expired；业务语义分别为待审、生效、已替代 |
-| `effective_from/to` | bigint | 生效区间 |
+| `change_type` | varchar(16) | initial、updated；人工草稿当前可为空 |
+| `version` | bigint，非空 | 模型内递增版本；与 `model_id` 组成唯一索引 |
+| `status` | varchar(16)，非空 | draft、active、expired；旧数据可能存在 suspended |
+| `effective_from` | bigint，非空 | 生效时间；草稿为 0 |
+| `effective_to` | bigint | 被替代时间；当前生效版本为 0 |
 | `created_by` | int | 操作人或同步任务身份 |
-| `created_at/updated_at` | bigint | 时间 |
+| `created_at` | bigint | 创建时间 |
+| `updated_at` | bigint | 更新时间 |
 | `remark` | varchar(255) | 备注 |
 
-索引：
+当前 GORM 索引：
 
 ```text
-UNIQUE(model_id, version)
-INDEX(model_id, status, effective_from, effective_to)
+UNIQUE uk_official_model_price_version(model_id, version)
+INDEX(model_id)
+INDEX(status)
+INDEX(effective_from)
+INDEX(effective_to)
 INDEX(content_hash)
+INDEX(sync_batch_id)
+INDEX(source_updated_at)
 ```
+
+以下字段不在当前表中：`release_id`、`approved_by`、`approved_at`、`scheduled_at`、`is_structured`。其中结构化与否由 `price_structure + price_components` 表达；当前官方价由 `model_official_prices.current_revision_id` 指向，不在修订表增加 `is_current`。
 
 #### `official_price_sync_batches`
 

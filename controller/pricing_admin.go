@@ -191,6 +191,15 @@ func AdminPublishOfficialPriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminImportLegacyOfficialPriceDrafts(c *gin.Context) {
+	result, err := pricingadmin.ImportLegacyOfficialPriceDrafts(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func AdminListPurchasePriceVersions(c *gin.Context) {
 	channelModelId, ok := positiveQueryId(c, "channel_model_id")
 	if !ok {

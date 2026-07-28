@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -111,4 +112,44 @@ func TestPublishOfficialPriceRejectsExpressionHashMismatch(t *testing.T) {
 	var stored model.OfficialModelPriceVersion
 	require.NoError(t, model.DB.First(&stored, version.Id).Error)
 	assert.Equal(t, model.PricingVersionStatusDraft, stored.Status)
+}
+
+func TestImportLegacyOfficialPriceCreatesReviewableDraftWithoutRuntimeActivation(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	ratio_setting.InitRatioSettings()
+	require.NoError(t, model.DB.Create(&model.Model{Id: 13, ModelName: "gpt-4o"}).Error)
+
+	result, err := ImportLegacyOfficialPriceDrafts(7)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Created)
+
+	var version model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&version).Error)
+	assert.Equal(t, model.PricingVersionStatusDraft, version.Status)
+	assert.Equal(t, "legacy_import", version.Source)
+	assert.Equal(t, "token", version.BillingMode)
+	assert.Contains(t, version.BillingExpr, "p * 2.5")
+	assert.Zero(t, version.EffectiveFrom)
+
+	secondResult, err := ImportLegacyOfficialPriceDrafts(7)
+	require.NoError(t, err)
+	assert.Equal(t, 0, secondResult.Created)
+	assert.Equal(t, 1, secondResult.SkippedExisting)
+}
+
+func TestPublishNonTokenOfficialPriceWaitsForRuntimeEvaluator(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 14, ModelName: "video-test"}).Error)
+
+	version := model.OfficialModelPriceVersion{
+		ModelId:        14,
+		BillingMode:    "video_duration",
+		PriceStructure: "flat",
+		BillingExpr:    `v1:tier("base", 0.2)`,
+		Currency:       "USD",
+		Source:         "manual",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&version, 1))
+	err := PublishOfficialPriceVersion(version.Id)
+	require.ErrorContains(t, err, "cannot be published until its V2 runtime evaluator is enabled")
 }

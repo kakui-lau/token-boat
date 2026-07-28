@@ -3,15 +3,24 @@ package pricingadmin
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
+
+type LegacyOfficialPriceImportResult struct {
+	Created           int      `json:"created"`
+	SkippedExisting   int      `json:"skipped_existing"`
+	SkippedUnpriced   int      `json:"skipped_unpriced"`
+	SkippedModelNames []string `json:"skipped_model_names,omitempty"`
+}
 
 var (
 	validBillingModes = map[string]struct{}{
@@ -202,6 +211,9 @@ func PublishOfficialPriceVersion(id int) error {
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only draft official prices can be published")
 		}
+		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
+			return err
+		}
 		if err := validateCommonPrice(
 			version.ModelId,
 			version.BillingMode,
@@ -233,6 +245,9 @@ func PublishPurchasePriceVersion(id int) error {
 		}
 		if channelModel.Status == 0 {
 			return errors.New("disabled channel model cannot publish a purchase price")
+		}
+		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
+			return err
 		}
 		if err := validateCommonPrice(
 			version.ChannelModelId,
@@ -284,6 +299,9 @@ func PublishRetailPriceVersion(id int) error {
 		if purchase.ChannelModelId != version.ChannelModelId {
 			return errors.New("purchase and retail versions belong to different channel models")
 		}
+		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
+			return err
+		}
 		if err := validateCommonPrice(
 			version.ChannelModelId,
 			version.BillingMode,
@@ -301,6 +319,108 @@ func PublishRetailPriceVersion(id int) error {
 		}
 		return model.ActivateRetailPriceVersion(tx, version, common.GetTimestamp())
 	})
+}
+
+// ImportLegacyOfficialPriceDrafts snapshots the current legacy pricing config
+// into reviewable drafts. It never activates a price or changes legacy runtime.
+func ImportLegacyOfficialPriceDrafts(userId int) (LegacyOfficialPriceImportResult, error) {
+	result := LegacyOfficialPriceImportResult{}
+	var models []model.Model
+	if err := model.DB.Order("id ASC").Find(&models).Error; err != nil {
+		return result, err
+	}
+	for _, logicalModel := range models {
+		var existing int64
+		if err := model.DB.Model(&model.OfficialModelPriceVersion{}).
+			Where("model_id = ?", logicalModel.Id).
+			Count(&existing).Error; err != nil {
+			return result, err
+		}
+		if existing > 0 {
+			result.SkippedExisting++
+			continue
+		}
+
+		version, ok := buildLegacyOfficialPriceDraft(logicalModel)
+		if !ok {
+			result.SkippedUnpriced++
+			result.SkippedModelNames = append(result.SkippedModelNames, logicalModel.ModelName)
+			continue
+		}
+		if err := CreateOfficialPriceVersion(&version, userId); err != nil {
+			return result, fmt.Errorf("import model %q: %w", logicalModel.ModelName, err)
+		}
+		result.Created++
+	}
+	sort.Strings(result.SkippedModelNames)
+	return result, nil
+}
+
+func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialModelPriceVersion, bool) {
+	mode := billing_setting.GetBillingMode(logicalModel.ModelName)
+	expression, hasExpression := billing_setting.GetBillingExpr(logicalModel.ModelName)
+	billingMode := "token"
+	priceStructure := "flat"
+	priceComponents := map[string]any{
+		"legacy_model_name": logicalModel.ModelName,
+		"legacy_mode":       mode,
+	}
+
+	switch mode {
+	case billing_setting.BillingModeTieredExpr:
+		if !hasExpression || strings.TrimSpace(expression) == "" {
+			return model.OfficialModelPriceVersion{}, false
+		}
+		priceStructure = "tiered"
+	case billing_setting.BillingModePerRequest:
+		price, ok := ratio_setting.GetModelPrice(logicalModel.ModelName, false)
+		if !ok {
+			return model.OfficialModelPriceVersion{}, false
+		}
+		billingMode = "request"
+		expression = fmt.Sprintf(`v1:tier("legacy_import", %s)`, decimal.NewFromFloat(price).String())
+		priceComponents["request_unit_price"] = decimal.NewFromFloat(price).String()
+	case billing_setting.BillingModeVideoSecond:
+		price, ok := ratio_setting.GetModelPrice(logicalModel.ModelName, false)
+		if !ok {
+			return model.OfficialModelPriceVersion{}, false
+		}
+		billingMode = "video_duration"
+		expression = fmt.Sprintf(`v1:tier("legacy_import", %s)`, decimal.NewFromFloat(price).String())
+		priceComponents["video_second_unit_price"] = decimal.NewFromFloat(price).String()
+	default:
+		ratio, ok, _ := ratio_setting.GetModelRatio(logicalModel.ModelName)
+		if !ok {
+			return model.OfficialModelPriceVersion{}, false
+		}
+		inputPrice := decimal.NewFromFloat(ratio).Mul(decimal.NewFromInt(2))
+		outputPrice := inputPrice.Mul(decimal.NewFromFloat(ratio_setting.GetCompletionRatio(logicalModel.ModelName)))
+		expression = fmt.Sprintf(
+			`v1:tier("legacy_import", p * %s + c * %s)`,
+			inputPrice.String(),
+			outputPrice.String(),
+		)
+		priceComponents["input_unit_price"] = inputPrice.String()
+		priceComponents["output_unit_price"] = outputPrice.String()
+	}
+
+	componentsJSON, err := common.Marshal(priceComponents)
+	if err != nil {
+		return model.OfficialModelPriceVersion{}, false
+	}
+	return model.OfficialModelPriceVersion{
+		ModelId:                 logicalModel.Id,
+		BillingMode:             billingMode,
+		PriceStructure:          priceStructure,
+		PriceComponents:         string(componentsJSON),
+		BillingExpr:             expression,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: "v1",
+		Currency:                "USD",
+		Source:                  "legacy_import",
+		SourceVersion:           "new-api-legacy",
+		Remark:                  "Imported as draft; financial confirmation required before publication.",
+	}, true
 }
 
 func normalizeExpressionMetadata(source *string, schemaVersion *string, currency *string) {
@@ -393,6 +513,16 @@ func validateRetailEconomics(input model.ChannelModelRetailPriceVersion) error {
 		Sub(margin)
 	if !denominator.IsPositive() {
 		return errors.New("VCR, tax rate and target margin produce a non-positive retail denominator")
+	}
+	return nil
+}
+
+func validateV1PublishableBillingMode(billingMode string) error {
+	if billingMode != "token" {
+		return fmt.Errorf(
+			"billing mode %q can be saved as draft but cannot be published until its V2 runtime evaluator is enabled",
+			billingMode,
+		)
 	}
 	return nil
 }

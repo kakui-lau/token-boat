@@ -385,6 +385,7 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.DELETE("/official-prices/:id", controller.AdminDeleteOfficialPriceDraft)
 			pricingAdminRoute.POST("/official-prices/import-legacy", controller.AdminImportLegacyOfficialPriceDrafts)
 			pricingAdminRoute.POST("/drafts/official-flat", controller.AdminCreateOfficialFlatPriceDraft)
+			pricingAdminRoute.PUT("/drafts/official-flat/:id", controller.AdminUpdateOfficialFlatPriceDraft)
 			pricingAdminRoute.GET("/purchase-prices", controller.AdminListPurchasePriceVersions)
 			pricingAdminRoute.POST("/purchase-prices", controller.AdminCreatePurchasePriceVersion)
 			pricingAdminRoute.POST("/purchase-prices/:id/publish", controller.AdminPublishPurchasePriceVersion)

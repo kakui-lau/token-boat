@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -27,9 +28,9 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
-import { createOfficialFlatDraft } from '../api'
+import { createOfficialFlatDraft, updateOfficialFlatDraft } from '../api'
 import { officialPriceSchema, type OfficialPriceForm } from '../lib/schemas'
-import type { OfficialPriceVersion } from '../types'
+import type { FlatTokenPrices, OfficialPriceVersion } from '../types'
 import { PriceInputField } from './price-input-field'
 import { VersionList } from './version-list'
 
@@ -47,24 +48,26 @@ type OfficialPricePanelProps = {
 
 export function OfficialPricePanel(props: OfficialPricePanelProps) {
   const { t } = useTranslation()
+  const [editingDraftId, setEditingDraftId] = useState<number | null>(null)
+  const defaultValues: OfficialPriceForm = {
+    currency: 'USD',
+    input_unit_price: '',
+    output_unit_price: '',
+    cache_read_unit_price: '',
+    cache_write_unit_price: '',
+    image_input_unit_price: '',
+    image_output_unit_price: '',
+    audio_input_unit_price: '',
+    audio_output_unit_price: '',
+    remark: '',
+  }
   const form = useForm<OfficialPriceForm>({
     resolver: zodResolver(officialPriceSchema),
-    defaultValues: {
-      currency: 'USD',
-      input_unit_price: '',
-      output_unit_price: '',
-      cache_read_unit_price: '',
-      cache_write_unit_price: '',
-      image_input_unit_price: '',
-      image_output_unit_price: '',
-      audio_input_unit_price: '',
-      audio_output_unit_price: '',
-      remark: '',
-    },
+    defaultValues,
   })
-  const createMutation = useMutation({
-    mutationFn: (value: OfficialPriceForm) =>
-      createOfficialFlatDraft({
+  const saveMutation = useMutation({
+    mutationFn: (value: OfficialPriceForm) => {
+      const input = {
         model_id: props.modelId,
         currency: value.currency,
         prices: {
@@ -78,21 +81,81 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           audio_output_unit_price: value.audio_output_unit_price,
         },
         remark: value.remark,
-      }),
+      }
+      if (editingDraftId !== null) {
+        return updateOfficialFlatDraft(editingDraftId, input)
+      }
+      return createOfficialFlatDraft(input)
+    },
     onSuccess: async () => {
-      form.reset()
+      const wasEditing = editingDraftId !== null
+      setEditingDraftId(null)
+      form.reset(defaultValues)
       await props.onCreated()
-      toast.success(t('Official price draft created'))
+      toast.success(
+        wasEditing
+          ? t('Official price draft updated')
+          : t('Official price draft created')
+      )
     },
   })
+
+  const fillFromVersion = (versionId: number, edit: boolean) => {
+    const version = props.versions.find((item) => item.id === versionId)
+    if (!version) return
+    let prices: Partial<FlatTokenPrices> = {}
+    try {
+      prices = JSON.parse(version.price_components) as Partial<FlatTokenPrices>
+    } catch {
+      toast.error(t('Unable to read price components from this version'))
+      return
+    }
+    form.reset({
+      currency: version.currency,
+      input_unit_price: prices.input_unit_price ?? '',
+      output_unit_price: prices.output_unit_price ?? '',
+      cache_read_unit_price: prices.cache_read_unit_price ?? '',
+      cache_write_unit_price: prices.cache_write_unit_price ?? '',
+      image_input_unit_price: prices.image_input_unit_price ?? '',
+      image_output_unit_price: prices.image_output_unit_price ?? '',
+      audio_input_unit_price: prices.audio_input_unit_price ?? '',
+      audio_output_unit_price: prices.audio_output_unit_price ?? '',
+      remark: edit ? version.remark : '',
+    })
+    setEditingDraftId(edit ? version.id : null)
+    toast.success(
+      edit
+        ? t('Draft loaded for editing')
+        : t('Historical version copied into the new draft')
+    )
+  }
 
   return (
     <div className='space-y-6'>
       <form
         className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
-        onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
+        onSubmit={form.handleSubmit((value) => saveMutation.mutate(value))}
       >
-        <h3 className='font-medium'>{t('Create official price draft')}</h3>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <h3 className='font-medium'>
+            {editingDraftId === null
+              ? t('Create official price draft')
+              : t('Edit official price draft')}
+          </h3>
+          {editingDraftId !== null ? (
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() => {
+                setEditingDraftId(null)
+                form.reset(defaultValues)
+              }}
+            >
+              {t('Cancel Editing')}
+            </Button>
+          ) : null}
+        </div>
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field>
             <FieldLabel htmlFor='official-currency'>{t('Currency')}</FieldLabel>
@@ -155,8 +218,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           <FieldLabel htmlFor='official-remark'>{t('Remark')}</FieldLabel>
           <Textarea id='official-remark' {...form.register('remark')} />
         </Field>
-        <Button type='submit' disabled={createMutation.isPending}>
-          {t('Save Draft')}
+        <Button type='submit' disabled={saveMutation.isPending}>
+          {editingDraftId === null ? t('Save Draft') : t('Update Draft')}
         </Button>
       </form>
 
@@ -170,6 +233,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           onPublish={props.onPublish}
           onSuspend={props.onSuspend}
           onDelete={props.onDelete}
+          onEdit={(id) => fillFromVersion(id, true)}
+          onFill={(id) => fillFromVersion(id, false)}
         />
       </section>
     </div>

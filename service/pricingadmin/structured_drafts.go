@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 type FlatTokenPriceInput struct {
@@ -72,6 +73,59 @@ type flatTokenPriceComponents struct {
 }
 
 func CreateOfficialFlatDraft(input OfficialFlatDraftInput, userId int) (model.OfficialModelPriceVersion, error) {
+	version, err := buildOfficialFlatDraft(input)
+	if err != nil {
+		return model.OfficialModelPriceVersion{}, err
+	}
+	if err := CreateOfficialPriceVersion(&version, userId); err != nil {
+		return model.OfficialModelPriceVersion{}, err
+	}
+	return version, nil
+}
+
+func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.OfficialModelPriceVersion, error) {
+	replacement, err := buildOfficialFlatDraft(input)
+	if err != nil {
+		return model.OfficialModelPriceVersion{}, err
+	}
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		current, err := model.GetOfficialPriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if current.Status != model.PricingVersionStatusDraft {
+			return errors.New("only official price drafts can be updated")
+		}
+		if current.ModelId != replacement.ModelId {
+			return errors.New("official price draft model cannot be changed")
+		}
+		replacement.Id = current.Id
+		replacement.Version = current.Version
+		replacement.Status = current.Status
+		replacement.CreatedBy = current.CreatedBy
+		replacement.CreatedAt = current.CreatedAt
+		replacement.Source = current.Source
+		if err := tx.Model(&replacement).Select(
+			"billing_mode",
+			"price_structure",
+			"price_components",
+			"billing_expr",
+			"expr_hash",
+			"expression_source",
+			"expression_schema_version",
+			"currency",
+			"source",
+			"remark",
+			"updated_at",
+		).Updates(&replacement).Error; err != nil {
+			return err
+		}
+		return tx.First(&replacement, id).Error
+	})
+	return replacement, err
+}
+
+func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPriceVersion, error) {
 	_, expression, components, err := normalizeFlatTokenPrices(input.Prices)
 	if err != nil {
 		return model.OfficialModelPriceVersion{}, err
@@ -91,9 +145,21 @@ func CreateOfficialFlatDraft(input OfficialFlatDraftInput, userId int) (model.Of
 	if version.Source == "" {
 		version.Source = "manual"
 	}
-	if err := CreateOfficialPriceVersion(&version, userId); err != nil {
+	normalizeExpressionMetadata(
+		&version.ExpressionSource,
+		&version.ExpressionSchemaVersion,
+		&version.Currency,
+	)
+	if err := validateCommonPrice(
+		version.ModelId,
+		version.BillingMode,
+		version.PriceStructure,
+		version.Currency,
+		version.BillingExpr,
+	); err != nil {
 		return model.OfficialModelPriceVersion{}, err
 	}
+	version.ExprHash = billingexpr.ExprHashString(version.BillingExpr)
 	return version, nil
 }
 

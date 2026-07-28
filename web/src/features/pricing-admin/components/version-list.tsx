@@ -40,6 +40,8 @@ type VersionListProps = {
   onPublish: (id: number) => void
   onSuspend: (id: number) => void
   onDelete: (id: number) => void
+  onEdit?: (id: number) => void
+  onFill?: (id: number) => void
 }
 
 export function VersionList(props: VersionListProps) {
@@ -90,35 +92,55 @@ export function VersionList(props: VersionListProps) {
                 </p>
               ) : null}
             </div>
-            {item.status === 'draft' ? (
-              <div className='flex gap-2'>
+            <div className='flex flex-wrap justify-end gap-2'>
+              {props.onFill ? (
                 <Button
                   size='sm'
-                  variant='ghost'
-                  disabled={props.isDeleting}
-                  onClick={() => setDeleteId(item.id)}
+                  variant='outline'
+                  onClick={() => props.onFill?.(item.id)}
                 >
-                  {t('Delete Draft')}
+                  {t('Use as Template')}
                 </Button>
+              ) : null}
+              {item.status === 'draft' && props.onEdit ? (
                 <Button
                   size='sm'
-                  disabled={props.isPublishing}
-                  onClick={() => props.onPublish(item.id)}
+                  variant='outline'
+                  onClick={() => props.onEdit?.(item.id)}
                 >
-                  {t('Publish')}
+                  {t('Edit Draft')}
                 </Button>
-              </div>
-            ) : null}
-            {item.status === 'active' ? (
-              <Button
-                size='sm'
-                variant='destructive'
-                disabled={props.isSuspending}
-                onClick={() => props.onSuspend(item.id)}
-              >
-                {t('Suspend')}
-              </Button>
-            ) : null}
+              ) : null}
+              {item.status === 'draft' ? (
+                <>
+                  <Button
+                    size='sm'
+                    variant='ghost'
+                    disabled={props.isDeleting}
+                    onClick={() => setDeleteId(item.id)}
+                  >
+                    {t('Delete Draft')}
+                  </Button>
+                  <Button
+                    size='sm'
+                    disabled={props.isPublishing}
+                    onClick={() => props.onPublish(item.id)}
+                  >
+                    {t('Publish')}
+                  </Button>
+                </>
+              ) : null}
+              {item.status === 'active' ? (
+                <Button
+                  size='sm'
+                  variant='destructive'
+                  disabled={props.isSuspending}
+                  onClick={() => props.onSuspend(item.id)}
+                >
+                  {t('Suspend')}
+                </Button>
+              ) : null}
+            </div>
           </div>
         )
       })}

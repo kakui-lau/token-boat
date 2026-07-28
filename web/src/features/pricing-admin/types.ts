@@ -77,6 +77,7 @@ export type OfficialPriceVersion = {
   version: number
   status: PriceVersionStatus
   source: string
+  remark: string
   effective_from: number
   effective_to: number
 }

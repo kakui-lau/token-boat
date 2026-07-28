@@ -63,6 +63,64 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 	require.NoError(t, PublishRetailPriceVersion(retail.Id))
 }
 
+func TestUpdateOfficialFlatDraftChangesPricesWithoutCreatingVersion(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 24, ModelName: "editable-draft"}).Error)
+
+	draft, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 24, Currency: "USD",
+		Prices: FlatTokenPriceInput{
+			InputUnitPrice:  "1",
+			OutputUnitPrice: "4",
+		},
+		Source: "legacy_import",
+		Remark: "initial",
+	}, 7)
+	require.NoError(t, err)
+
+	updated, err := UpdateOfficialFlatDraft(draft.Id, OfficialFlatDraftInput{
+		ModelId: 24, Currency: "eur",
+		Prices: FlatTokenPriceInput{
+			InputUnitPrice:       "1.25",
+			OutputUnitPrice:      "5",
+			AudioOutputUnitPrice: "12",
+		},
+		Remark: "revised",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, draft.Id, updated.Id)
+	assert.Equal(t, draft.Version, updated.Version)
+	assert.Equal(t, "EUR", updated.Currency)
+	assert.Equal(t, "legacy_import", updated.Source)
+	assert.Equal(t, "revised", updated.Remark)
+	assert.Contains(t, updated.PriceComponents, `"input_unit_price":"1.25"`)
+	assert.Contains(t, updated.PriceComponents, `"audio_output_unit_price":"12"`)
+	assert.NotEmpty(t, updated.ExprHash)
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OfficialModelPriceVersion{}).
+		Where("model_id = ?", 24).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+}
+
+func TestUpdateOfficialFlatDraftRejectsPublishedVersion(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 25, ModelName: "published-price"}).Error)
+
+	version, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 25, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(version.Id))
+
+	_, err = UpdateOfficialFlatDraft(version.Id, OfficialFlatDraftInput{
+		ModelId: 25, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2"},
+	})
+	require.ErrorContains(t, err, "only official price drafts")
+}
+
 func TestComponentDiscountRequiresEveryPricedOfficialComponent(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 22, ModelName: "component-test"}).Error)

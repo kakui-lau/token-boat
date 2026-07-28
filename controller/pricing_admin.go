@@ -293,6 +293,24 @@ func AdminCreateOfficialFlatPriceDraft(c *gin.Context) {
 	common.ApiSuccess(c, version)
 }
 
+func AdminUpdateOfficialFlatPriceDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input pricingadmin.OfficialFlatDraftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.UpdateOfficialFlatDraft(id, input)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
+}
+
 func AdminListPurchasePriceVersions(c *gin.Context) {
 	channelModelId, ok := positiveQueryId(c, "channel_model_id")
 	if !ok {

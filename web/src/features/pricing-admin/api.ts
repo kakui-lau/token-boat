@@ -144,6 +144,22 @@ export async function createOfficialFlatDraft(input: {
   return response.data
 }
 
+export async function updateOfficialFlatDraft(
+  id: number,
+  input: {
+    model_id: number
+    currency: string
+    prices: FlatTokenPrices
+    remark: string
+  }
+): Promise<PriceVersionResponse<OfficialPriceVersion>> {
+  const response = await api.put(
+    `/api/pricing-admin/drafts/official-flat/${id}`,
+    input
+  )
+  return response.data
+}
+
 export async function getPurchasePriceVersions(
   channelModelId: number
 ): Promise<PriceVersionResponse<PurchasePriceVersion[]>> {

@@ -55,59 +55,73 @@ export function VersionList(props: VersionListProps) {
 
   return (
     <div className='space-y-2'>
-      {props.items.map((item) => (
-        <div
-          key={item.id}
-          className='flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3'
-        >
-          <div className='min-w-0 space-y-1'>
-            <div className='flex items-center gap-2'>
-              <span className='font-medium'>
-                {t('Version')} {item.version}
-              </span>
-              <Badge variant={item.status === 'active' ? 'default' : 'outline'}>
-                {t(item.status)}
-              </Badge>
+      {props.items.map((item) => {
+        let statusLabel = item.status
+        if (item.status === 'active') {
+          statusLabel = t('active')
+        } else if (item.status === 'draft') {
+          statusLabel = t('draft')
+        } else if (item.status === 'suspended') {
+          statusLabel = t('suspended')
+        } else if (item.status === 'expired') {
+          statusLabel = t('expired')
+        }
+        return (
+          <div
+            key={item.id}
+            className='flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3'
+          >
+            <div className='min-w-0 space-y-1'>
+              <div className='flex items-center gap-2'>
+                <span className='font-medium'>
+                  {t('Version')} {item.version}
+                </span>
+                <Badge
+                  variant={item.status === 'active' ? 'default' : 'outline'}
+                >
+                  {statusLabel}
+                </Badge>
+              </div>
+              {item.input_unit_price || item.output_unit_price ? (
+                <p className='text-muted-foreground text-xs'>
+                  {t('Input')}: {item.input_unit_price || '—'} {item.currency}
+                  {' · '}
+                  {t('Output')}: {item.output_unit_price || '—'} {item.currency}
+                </p>
+              ) : null}
             </div>
-            {item.input_unit_price || item.output_unit_price ? (
-              <p className='text-muted-foreground text-xs'>
-                {t('Input')}: {item.input_unit_price || '—'} {item.currency}
-                {' · '}
-                {t('Output')}: {item.output_unit_price || '—'} {item.currency}
-              </p>
+            {item.status === 'draft' ? (
+              <div className='flex gap-2'>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  disabled={props.isDeleting}
+                  onClick={() => setDeleteId(item.id)}
+                >
+                  {t('Delete Draft')}
+                </Button>
+                <Button
+                  size='sm'
+                  disabled={props.isPublishing}
+                  onClick={() => props.onPublish(item.id)}
+                >
+                  {t('Publish')}
+                </Button>
+              </div>
+            ) : null}
+            {item.status === 'active' ? (
+              <Button
+                size='sm'
+                variant='destructive'
+                disabled={props.isSuspending}
+                onClick={() => props.onSuspend(item.id)}
+              >
+                {t('Suspend')}
+              </Button>
             ) : null}
           </div>
-          {item.status === 'draft' ? (
-            <div className='flex gap-2'>
-              <Button
-                size='sm'
-                variant='ghost'
-                disabled={props.isDeleting}
-                onClick={() => setDeleteId(item.id)}
-              >
-                {t('Delete Draft')}
-              </Button>
-              <Button
-                size='sm'
-                disabled={props.isPublishing}
-                onClick={() => props.onPublish(item.id)}
-              >
-                {t('Publish')}
-              </Button>
-            </div>
-          ) : null}
-          {item.status === 'active' ? (
-            <Button
-              size='sm'
-              variant='destructive'
-              disabled={props.isSuspending}
-              onClick={() => props.onSuspend(item.id)}
-            >
-              {t('Suspend')}
-            </Button>
-          ) : null}
-        </div>
-      ))}
+        )
+      })}
       <ConfirmDialog
         open={deleteId !== null}
         onOpenChange={(open) => {

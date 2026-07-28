@@ -144,8 +144,24 @@ export function OfficialPriceOverviewTable(
                       billingLabel = t('Token')
                     } else if (row.billing_mode === 'request') {
                       billingLabel = t('Per request')
+                    } else if (row.billing_mode === 'image') {
+                      billingLabel = t('Image')
+                    } else if (row.billing_mode === 'audio_duration') {
+                      billingLabel = t('Audio duration')
                     } else if (row.billing_mode === 'video_duration') {
                       billingLabel = t('Video duration')
+                    } else if (row.billing_mode === 'character') {
+                      billingLabel = t('Character')
+                    } else if (row.billing_mode === 'mixed') {
+                      billingLabel = t('Mixed')
+                    }
+                    let structureLabel = '—'
+                    if (row.price_structure === 'flat') {
+                      structureLabel = t('Flat rate')
+                    } else if (row.price_structure === 'tiered') {
+                      structureLabel = t('Tiered pricing')
+                    } else if (row.price_structure === 'expression') {
+                      structureLabel = t('Expression pricing')
                     }
                     let statusLabel = t('Not configured')
                     let statusVariant: 'default' | 'warning' | 'outline' =
@@ -156,8 +172,10 @@ export function OfficialPriceOverviewTable(
                     } else if (row.status === 'draft') {
                       statusLabel = t('draft')
                       statusVariant = 'warning'
-                    } else if (row.status !== 'unconfigured') {
-                      statusLabel = t(row.status)
+                    } else if (row.status === 'suspended') {
+                      statusLabel = t('suspended')
+                    } else if (row.status === 'expired') {
+                      statusLabel = t('expired')
                     }
                     return (
                       <TableRow key={row.model_id}>
@@ -186,21 +204,21 @@ export function OfficialPriceOverviewTable(
                         <TableCell>
                           <p className='font-medium'>{billingLabel}</p>
                           <p className='text-muted-foreground text-xs'>
-                            {row.price_structure || '—'}
+                            {structureLabel}
                           </p>
                         </TableCell>
                         <TableCell>
                           <PriceValue
                             currency={row.currency}
                             value={row.input_unit_price}
-                            unit='1M tokens'
+                            unit={t('1M tokens')}
                           />
                         </TableCell>
                         <TableCell>
                           <PriceValue
                             currency={row.currency}
                             value={row.output_unit_price}
-                            unit='1M tokens'
+                            unit={t('1M tokens')}
                           />
                         </TableCell>
                         <TableCell>

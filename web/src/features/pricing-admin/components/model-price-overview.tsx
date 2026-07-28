@@ -80,11 +80,11 @@ export function ModelPriceOverview(props: ModelPriceOverviewProps) {
             {props.items.map((item) => (
               <TableRow key={`${item.model_id}-${item.currency}`}>
                 <TableCell className='font-medium'>{item.model_name}</TableCell>
+                <TableCell>{item.currency}</TableCell>
                 <TableCell>{item.active_channel_count}</TableCell>
                 <TableCell>
                   <LowestPrice value={item.input} />
                 </TableCell>
-                <TableCell>{item.currency}</TableCell>
                 <TableCell>
                   <LowestPrice value={item.output} />
                 </TableCell>

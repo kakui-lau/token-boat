@@ -48,6 +48,20 @@ const componentLabels: Record<string, string> = {
   video_second_unit_price: 'Per Video Second',
 }
 
+type PriceRule = {
+  id?: string
+  name?: string
+  component?: string
+  unit?: string
+  unit_size?: string
+  unit_price?: string
+  upper_bound?: string
+  operation?: string
+  quality?: string
+  resolution?: string
+  with_audio?: string
+}
+
 export function OfficialPriceVersionDialog(
   props: OfficialPriceVersionDialogProps
 ) {
@@ -64,8 +78,15 @@ export function OfficialPriceVersionDialog(
       components = {}
     }
   }
+  const priceRules = Array.isArray(components.rules)
+    ? (components.rules as PriceRule[])
+    : []
   const componentEntries = Object.entries(components).filter(
-    ([key]) => !key.startsWith('legacy_') && key !== 'price_unit'
+    ([key]) =>
+      !key.startsWith('legacy_') &&
+      key !== 'price_unit' &&
+      key !== 'schema_version' &&
+      key !== 'rules'
   )
 
   const billingLabels: Record<string, string> = {
@@ -125,7 +146,53 @@ export function OfficialPriceVersionDialog(
 
             <section className='space-y-2'>
               <h3 className='text-sm font-medium'>{t('Price Components')}</h3>
-              {componentEntries.length > 0 ? (
+              {priceRules.length > 0 && (
+                <div className='space-y-2'>
+                  {priceRules.map((rule, index) => {
+                    const conditions = [
+                      rule.operation && `${t('Operation')}: ${rule.operation}`,
+                      rule.quality && `${t('Quality')}: ${rule.quality}`,
+                      rule.resolution &&
+                        `${t('Resolution')}: ${rule.resolution}`,
+                      rule.with_audio === 'true' && t('With audio'),
+                      rule.with_audio === 'false' && t('Without audio'),
+                      rule.upper_bound &&
+                        `${t('Usage upper bound')}: ${rule.upper_bound}`,
+                    ].filter(Boolean)
+                    return (
+                      <div
+                        key={rule.id || `${rule.component}-${index}`}
+                        className='rounded-lg border p-3'
+                      >
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
+                          <div className='flex items-center gap-2'>
+                            <Badge variant='outline'>
+                              {rule.name || `#${index + 1}`}
+                            </Badge>
+                            <span className='font-medium'>
+                              {t(
+                                componentLabels[rule.component || ''] ??
+                                  rule.component ??
+                                  'Price rule'
+                              )}
+                            </span>
+                          </div>
+                          <span className='font-mono text-sm'>
+                            {rule.unit_price || '0'} {version.currency} /{' '}
+                            {rule.unit_size || '1'} {rule.unit || ''}
+                          </span>
+                        </div>
+                        {conditions.length > 0 ? (
+                          <p className='text-muted-foreground mt-2 text-xs'>
+                            {conditions.join(' · ')}
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {priceRules.length === 0 && componentEntries.length > 0 && (
                 <div className='grid gap-2 sm:grid-cols-2'>
                   {componentEntries.map(([key, value]) => (
                     <div
@@ -141,7 +208,8 @@ export function OfficialPriceVersionDialog(
                     </div>
                   ))}
                 </div>
-              ) : (
+              )}
+              {priceRules.length === 0 && componentEntries.length === 0 && (
                 <p className='text-muted-foreground rounded-lg border border-dashed p-3 text-sm'>
                   {t('No structured price components')}
                 </p>

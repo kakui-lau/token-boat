@@ -23,6 +23,14 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
   combineBillingExpr,
@@ -37,11 +45,20 @@ type PriceField = {
   label: string
 }
 
-type StructuredTier = {
+type BusinessPriceRule = {
   id: string
   name: string
-  up_to: string
+  component: string
+  unit: string
+  unit_size: string
   unit_price: string
+  upper_bound: string
+  operation: string
+  quality: string
+  resolution: string
+  with_audio: string
+  billing_event: string
+  voice_tier: string
 }
 
 type OfficialPriceConfigurationEditorProps = {
@@ -81,6 +98,130 @@ const fieldsByMode: Record<string, PriceField[]> = {
     { key: 'video_second_unit_price', label: 'Price per video second' },
     { key: 'character_unit_price', label: 'Price per 1M characters' },
   ],
+}
+
+const componentOptionsByMode: Record<
+  string,
+  { value: string; label: string; unit: string }[]
+> = {
+  request: [
+    { value: 'request', label: 'Request', unit: 'request' },
+    { value: 'tool_call', label: 'Tool call', unit: 'request' },
+    { value: 'generated_item', label: 'Generated item', unit: 'request' },
+  ],
+  image: [
+    { value: 'image_output', label: 'Image output', unit: 'image' },
+    { value: 'image_input', label: 'Image input', unit: 'image' },
+  ],
+  audio_duration: [
+    { value: 'audio_input', label: 'Audio input', unit: 'second' },
+    { value: 'audio_output', label: 'Audio output', unit: 'second' },
+  ],
+  video_duration: [
+    { value: 'video_output', label: 'Video output', unit: 'second' },
+    { value: 'video_input', label: 'Video input', unit: 'second' },
+  ],
+  character: [
+    { value: 'character_input', label: 'Character input', unit: 'character' },
+    { value: 'character_output', label: 'Character output', unit: 'character' },
+  ],
+  mixed: [
+    { value: 'token_input', label: 'Token input', unit: 'token' },
+    { value: 'token_output', label: 'Token output', unit: 'token' },
+    { value: 'cache_read', label: 'Cache read', unit: 'token' },
+    { value: 'request', label: 'Request', unit: 'request' },
+    { value: 'image_output', label: 'Image output', unit: 'image' },
+    { value: 'audio_input', label: 'Audio input', unit: 'second' },
+    { value: 'audio_output', label: 'Audio output', unit: 'second' },
+    { value: 'video_output', label: 'Video output', unit: 'second' },
+    { value: 'character_input', label: 'Character input', unit: 'character' },
+  ],
+}
+
+function createBusinessRule(mode: string, index: number): BusinessPriceRule {
+  const first = componentOptionsByMode[mode]?.[0] ?? {
+    value: 'request',
+    unit: 'request',
+  }
+  return {
+    id: `rule-${Date.now()}-${index}`,
+    name: index === 0 ? 'base' : `tier_${index + 1}`,
+    component: first.value,
+    unit: first.unit,
+    unit_size:
+      first.unit === 'character' || first.unit === 'token' ? '1000000' : '1',
+    unit_price: '',
+    upper_bound: '',
+    operation: '',
+    quality: '',
+    resolution: '',
+    with_audio: '',
+    billing_event: 'succeeded',
+    voice_tier: '',
+  }
+}
+
+function normalizedBusinessRules(
+  mode: string,
+  components: Record<string, unknown>
+): BusinessPriceRule[] {
+  if (!Array.isArray(components.rules) || components.rules.length === 0) {
+    return [createBusinessRule(mode, 0)]
+  }
+  return (components.rules as Partial<BusinessPriceRule>[]).map(
+    (rule, index) => ({
+      ...createBusinessRule(mode, index),
+      ...rule,
+      id: rule.id || `rule-${index + 1}`,
+    })
+  )
+}
+
+function businessRuleExpression(rules: BusinessPriceRule[]): string {
+  const usageVariable = (rule: BusinessPriceRule) => {
+    if (rule.component === 'token_input') return 'p'
+    if (rule.component === 'token_output') return 'c'
+    if (rule.component === 'cache_read') return 'cr'
+    if (rule.unit === 'image') return 'images'
+    if (rule.unit === 'character') return 'chars'
+    if (rule.unit === 'second') {
+      return rule.component.startsWith('video') ? 'video_s' : 'audio_s'
+    }
+    return 'req'
+  }
+  const ruleBody = (rule: BusinessPriceRule) => {
+    const divisor = Number(rule.unit_size) > 0 ? rule.unit_size : '1'
+    return `tier(${JSON.stringify(rule.name || 'base')}, ${usageVariable(rule)} / ${divisor} * ${rule.unit_price || '0'})`
+  }
+  const condition = (rule: BusinessPriceRule) => {
+    const conditions: string[] = []
+    if (rule.upper_bound) {
+      conditions.push(`${usageVariable(rule)} <= ${rule.upper_bound}`)
+    }
+    if (rule.operation) {
+      conditions.push(`param("operation") == ${JSON.stringify(rule.operation)}`)
+    }
+    if (rule.quality) {
+      conditions.push(`param("quality") == ${JSON.stringify(rule.quality)}`)
+    }
+    if (rule.resolution) {
+      conditions.push(
+        `param("resolution") == ${JSON.stringify(rule.resolution)}`
+      )
+    }
+    if (rule.with_audio) {
+      conditions.push(`param("with_audio") == ${rule.with_audio}`)
+    }
+    return conditions.join(' && ')
+  }
+  if (rules.length === 0) return 'v2:tier("base", 0)'
+  return `v2:${rules
+    .map((rule, index) => {
+      const when = condition(rule)
+      if (index === rules.length - 1 || !when) return ruleBody(rule)
+      return `${when} ? ${ruleBody(rule)}`
+    })
+    .join(' : ')}`
 }
 
 function readComponents(value: string): Record<string, unknown> {
@@ -139,12 +280,15 @@ export function OfficialPriceConfigurationEditor(
         nextExpression ??
         generatedFlatExpression(props.version.billing_mode, nextComponents),
       expression_source: 'generated',
+      expression_schema_version:
+        props.version.billing_mode === 'token' ? 'v1' : 'v2',
     })
   }
 
   if (
     props.version.billing_mode === 'token' &&
-    props.version.price_structure === 'tiered'
+    (props.version.price_structure === 'tiered' ||
+      props.version.price_structure === 'expression')
   ) {
     const split = splitBillingExprAndRequestRules(props.version.billing_expr)
     return (
@@ -174,25 +318,44 @@ export function OfficialPriceConfigurationEditor(
   }
 
   if (props.version.price_structure === 'expression') {
+    const expressionTemplates: Record<string, string> = {
+      request: 'v2:tier("base", req * 0)',
+      image: 'v2:tier("base", images * 0)',
+      audio_duration: 'v2:tier("base", audio_s * 0)',
+      video_duration: 'v2:tier("base", video_s * 0)',
+      character: 'v2:tier("base", chars / 1000000 * 0)',
+      mixed:
+        'v2:tier("base", req * 0 + images * 0 + audio_s * 0 + video_s * 0 + chars / 1000000 * 0)',
+    }
+    const template = expressionTemplates[props.version.billing_mode]
     return (
       <div className='space-y-4'>
-        <Field>
-          <FieldLabel htmlFor='official-expression-components'>
-            {t('Price Components')}
-          </FieldLabel>
-          <Textarea
-            id='official-expression-components'
-            className='min-h-32 font-mono text-xs'
-            value={props.version.price_components}
-            onChange={(event) =>
-              props.onChange({
-                ...props.version,
-                price_components: event.target.value,
-                expression_source: 'custom',
-              })
-            }
-          />
-        </Field>
+        {template ? (
+          <div className='flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3'>
+            <div>
+              <p className='text-sm font-medium'>{t('Expression template')}</p>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Start from a safe template using normalized billing variables.'
+                )}
+              </p>
+            </div>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() =>
+                props.onChange({
+                  ...props.version,
+                  billing_expr: template,
+                  expression_source: 'template',
+                })
+              }
+            >
+              {t('Apply template')}
+            </Button>
+          </div>
+        ) : null}
         <Field>
           <FieldLabel htmlFor='official-custom-expression'>
             {t('Billing Expression')}
@@ -210,84 +373,264 @@ export function OfficialPriceConfigurationEditor(
             }
           />
         </Field>
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Price components are internal display metadata and do not need to be entered manually. Billing is calculated from the expression.'
+          )}
+        </p>
+        <div className='bg-muted/30 rounded-lg border p-3 text-xs'>
+          <p className='font-medium'>{t('Available billing variables')}</p>
+          <p className='text-muted-foreground mt-1 font-mono'>
+            req · images · audio_s · video_s · chars · param("path") ·
+            tier("name", amount)
+          </p>
+        </div>
       </div>
     )
   }
 
-  if (props.version.price_structure === 'tiered') {
-    const tiers = Array.isArray(components.tiers)
-      ? (components.tiers as Partial<StructuredTier>[]).map((tier, index) => ({
-          id: tier.id || `tier-${index + 1}`,
-          name: tier.name || `tier_${index + 1}`,
-          up_to: tier.up_to || '',
-          unit_price: tier.unit_price || '',
-        }))
-      : [{ id: 'tier-1', name: 'base', up_to: '', unit_price: '' }]
-    const updateTiers = (nextTiers: StructuredTier[]) =>
-      updateComponents({ tiers: nextTiers }, 'v1:tier("structured_draft", 0)')
+  if (props.version.billing_mode !== 'token') {
+    const rules = normalizedBusinessRules(
+      props.version.billing_mode,
+      components
+    )
+    const updateRules = (nextRules: BusinessPriceRule[]) =>
+      updateComponents(
+        { schema_version: 'v2', rules: nextRules },
+        businessRuleExpression(nextRules)
+      )
+    const componentOptions =
+      componentOptionsByMode[props.version.billing_mode] ?? []
+    const showTierConditions = props.version.price_structure === 'tiered'
     return (
       <div className='space-y-3'>
-        <p className='text-muted-foreground text-sm'>
-          {t(
-            'Configure usage tiers here. This billing mode remains draft-only until its runtime usage variable is enabled.'
-          )}
-        </p>
-        {tiers.map((tier, index) => (
-          <div
-            key={tier.id}
-            className='grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_1fr_1fr_auto]'
-          >
-            <Field>
-              <FieldLabel>{t('Tier name')}</FieldLabel>
-              <Input
-                value={tier.name}
-                onChange={(event) => {
-                  const next = [...tiers]
-                  next[index] = { ...tier, name: event.target.value }
-                  updateTiers(next)
-                }}
-              />
-            </Field>
-            <Field>
-              <FieldLabel>{t('Upper bound')}</FieldLabel>
-              <Input
-                type='number'
-                min={0}
-                step='any'
-                value={tier.up_to}
-                placeholder={t('No limit')}
-                onChange={(event) => {
-                  const next = [...tiers]
-                  next[index] = { ...tier, up_to: event.target.value }
-                  updateTiers(next)
-                }}
-              />
-            </Field>
-            <Field>
-              <FieldLabel>{t('Unit price')}</FieldLabel>
-              <Input
-                type='number'
-                min={0}
-                step='any'
-                value={tier.unit_price}
-                onChange={(event) => {
-                  const next = [...tiers]
-                  next[index] = { ...tier, unit_price: event.target.value }
-                  updateTiers(next)
-                }}
-              />
-            </Field>
-            <Button
-              type='button'
-              size='icon'
-              variant='ghost'
-              className='self-end'
-              disabled={tiers.length === 1}
-              aria-label={t('Delete tier')}
-              onClick={() => updateTiers(tiers.filter((_, i) => i !== index))}
-            >
-              <Trash2 />
-            </Button>
+        {showTierConditions ? (
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'Each row is a pricing tier. Conditions are evaluated in order, and the final row acts as the default tier.'
+            )}
+          </p>
+        ) : (
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'Add one row for each billable operation or market price variant.'
+            )}
+          </p>
+        )}
+        {rules.map((rule, index) => (
+          <div key={rule.id} className='space-y-3 rounded-lg border p-3'>
+            <div className='flex items-center justify-between gap-3'>
+              <p className='font-medium'>
+                {showTierConditions
+                  ? `${t('Tier')} ${index + 1}`
+                  : `${t('Price rule')} ${index + 1}`}
+              </p>
+              <Button
+                type='button'
+                size='icon'
+                variant='ghost'
+                disabled={rules.length === 1}
+                aria-label={t('Delete price rule')}
+                onClick={() =>
+                  updateRules(
+                    rules.filter((_, ruleIndex) => ruleIndex !== index)
+                  )
+                }
+              >
+                <Trash2 />
+              </Button>
+            </div>
+            <FieldGroup className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+              {showTierConditions ? (
+                <Field>
+                  <FieldLabel>{t('Tier name')}</FieldLabel>
+                  <Input
+                    value={rule.name}
+                    onChange={(event) => {
+                      const next = [...rules]
+                      next[index] = { ...rule, name: event.target.value }
+                      updateRules(next)
+                    }}
+                  />
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel>{t('Billing component')}</FieldLabel>
+                <Select
+                  items={componentOptions}
+                  value={rule.component}
+                  onValueChange={(value) => {
+                    if (!value) return
+                    const option = componentOptions.find(
+                      (item) => item.value === value
+                    )
+                    const next = [...rules]
+                    next[index] = {
+                      ...rule,
+                      component: value,
+                      unit: option?.unit ?? rule.unit,
+                      unit_size:
+                        option?.unit === 'character'
+                          ? '1000000'
+                          : rule.unit_size,
+                    }
+                    updateRules(next)
+                  }}
+                >
+                  <SelectTrigger className='w-full'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {componentOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {t(option.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>{t('Billing unit')}</FieldLabel>
+                <Input value={t(rule.unit)} disabled />
+              </Field>
+              <Field>
+                <FieldLabel>{t('Units per price')}</FieldLabel>
+                <Input
+                  type='number'
+                  min={1}
+                  step={1}
+                  value={rule.unit_size}
+                  onChange={(event) => {
+                    const next = [...rules]
+                    next[index] = { ...rule, unit_size: event.target.value }
+                    updateRules(next)
+                  }}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>{t('Unit price')}</FieldLabel>
+                <Input
+                  type='number'
+                  min={0}
+                  step='any'
+                  value={rule.unit_price}
+                  onChange={(event) => {
+                    const next = [...rules]
+                    next[index] = { ...rule, unit_price: event.target.value }
+                    updateRules(next)
+                  }}
+                />
+              </Field>
+              {showTierConditions ? (
+                <Field>
+                  <FieldLabel>{t('Usage upper bound')}</FieldLabel>
+                  <Input
+                    type='number'
+                    min={0}
+                    step='any'
+                    value={rule.upper_bound}
+                    placeholder={t('No limit')}
+                    onChange={(event) => {
+                      const next = [...rules]
+                      next[index] = {
+                        ...rule,
+                        upper_bound: event.target.value,
+                      }
+                      updateRules(next)
+                    }}
+                  />
+                </Field>
+              ) : null}
+              {props.version.billing_mode === 'image' ||
+              props.version.billing_mode === 'video_duration' ||
+              props.version.billing_mode === 'mixed' ? (
+                <>
+                  <Field>
+                    <FieldLabel>{t('Operation')}</FieldLabel>
+                    <Input
+                      value={rule.operation}
+                      placeholder={t('Any')}
+                      onChange={(event) => {
+                        const next = [...rules]
+                        next[index] = {
+                          ...rule,
+                          operation: event.target.value,
+                        }
+                        updateRules(next)
+                      }}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>{t('Quality')}</FieldLabel>
+                    <Input
+                      value={rule.quality}
+                      placeholder={t('Any')}
+                      onChange={(event) => {
+                        const next = [...rules]
+                        next[index] = {
+                          ...rule,
+                          quality: event.target.value,
+                        }
+                        updateRules(next)
+                      }}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>{t('Resolution')}</FieldLabel>
+                    <Input
+                      value={rule.resolution}
+                      placeholder='720p / 1080p / 4K'
+                      onChange={(event) => {
+                        const next = [...rules]
+                        next[index] = {
+                          ...rule,
+                          resolution: event.target.value,
+                        }
+                        updateRules(next)
+                      }}
+                    />
+                  </Field>
+                </>
+              ) : null}
+              {props.version.billing_mode === 'video_duration' ||
+              props.version.billing_mode === 'mixed' ? (
+                <Field>
+                  <FieldLabel>{t('Audio option')}</FieldLabel>
+                  <Select
+                    items={[
+                      { value: 'any', label: t('Any') },
+                      { value: 'true', label: t('With audio') },
+                      { value: 'false', label: t('Without audio') },
+                    ]}
+                    value={rule.with_audio || 'any'}
+                    onValueChange={(value) => {
+                      if (!value) return
+                      const next = [...rules]
+                      next[index] = {
+                        ...rule,
+                        with_audio: value === 'any' ? '' : value,
+                      }
+                      updateRules(next)
+                    }}
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value='any'>{t('Any')}</SelectItem>
+                        <SelectItem value='true'>{t('With audio')}</SelectItem>
+                        <SelectItem value='false'>
+                          {t('Without audio')}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
+            </FieldGroup>
           </div>
         ))}
         <Button
@@ -295,19 +638,14 @@ export function OfficialPriceConfigurationEditor(
           size='sm'
           variant='outline'
           onClick={() =>
-            updateTiers([
-              ...tiers,
-              {
-                id: `tier-${Date.now()}`,
-                name: `tier_${tiers.length + 1}`,
-                up_to: '',
-                unit_price: '',
-              },
+            updateRules([
+              ...rules,
+              createBusinessRule(props.version.billing_mode, rules.length),
             ])
           }
         >
           <Plus data-icon='inline-start' />
-          {t('Add tier')}
+          {showTierConditions ? t('Add tier') : t('Add price rule')}
         </Button>
       </div>
     )

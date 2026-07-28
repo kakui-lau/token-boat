@@ -80,15 +80,27 @@ function emptyOfficialConfiguration(
   billingMode: string,
   priceStructure: string
 ): OfficialPriceVersion {
+  let billingExpression = ''
+  if (billingMode !== 'token') {
+    const usageVariables: Record<string, string> = {
+      request: 'req',
+      image: 'images',
+      audio_duration: 'audio_s',
+      video_duration: 'video_s',
+      character: 'chars / 1000000',
+      mixed: 'req',
+    }
+    billingExpression = `v2:tier("base", ${usageVariables[billingMode] ?? 'req'} * 0)`
+  }
   return {
     id: 0,
     model_id: modelId,
     billing_mode: billingMode,
     price_structure: priceStructure,
     price_components: '{}',
-    billing_expr: '',
+    billing_expr: billingExpression,
     expression_source: 'custom',
-    expression_schema_version: 'v1',
+    expression_schema_version: billingMode === 'token' ? 'v1' : 'v2',
     currency: 'USD',
     version: 0,
     status: 'draft',

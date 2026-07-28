@@ -233,6 +233,31 @@ Version controls:
 
 This enables future evolution without breaking existing expressions.
 
+#### V2 normalized business usage variables
+
+`v2:` extends the expression environment for non-token and mixed billing
+without changing any V1 variable:
+
+| Variable | Meaning |
+|---|---|
+| `req` | Billable request or operation count |
+| `images` | Billable image count |
+| `audio_s` | Billable audio duration in seconds |
+| `video_s` | Billable video duration in seconds |
+| `chars` | Billable character count |
+
+Example:
+
+```text
+v2:param("resolution") == "1080p"
+  ? tier("1080p", video_s * 0.40)
+  : tier("720p", video_s * 0.20)
+```
+
+These variables are available to draft validation and expression tooling.
+Runtime publishing remains gated by billing-mode support; an adapter must
+normalize and bound the corresponding usage before a non-token mode is enabled.
+
 ---
 
 ## File Map

@@ -17,9 +17,12 @@ const maxCacheSize = 256
 const DefaultExprVersion = 1
 
 // ParseExprVersion extracts the version tag and body from an expression string.
-// Format: "v1:tier(...)" → version=1, body="tier(...)".
+// Format: "v1:tier(...)" or "v2:tier(...)" → version and expression body.
 // No prefix defaults to DefaultExprVersion.
 func ParseExprVersion(exprStr string) (version int, body string) {
+	if strings.HasPrefix(exprStr, "v2:") {
+		return 2, exprStr[3:]
+	}
 	if strings.HasPrefix(exprStr, "v1:") {
 		return 1, exprStr[3:]
 	}
@@ -67,6 +70,17 @@ var compileEnvPrototypeV1 = map[string]interface{}{
 
 func getCompileEnv(version int) map[string]interface{} {
 	switch version {
+	case 2:
+		env := make(map[string]interface{}, len(compileEnvPrototypeV1)+5)
+		for key, value := range compileEnvPrototypeV1 {
+			env[key] = value
+		}
+		env["req"] = float64(0)
+		env["images"] = float64(0)
+		env["audio_s"] = float64(0)
+		env["video_s"] = float64(0)
+		env["chars"] = float64(0)
+		return env
 	default:
 		return compileEnvPrototypeV1
 	}

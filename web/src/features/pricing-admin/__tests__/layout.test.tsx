@@ -179,7 +179,8 @@ describe('Pricing admin editor layout', () => {
       <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
     )
 
-    expect(screen.getByLabelText('Price per video second')).toBeVisible()
+    expect(screen.getByText('Billing component')).toBeVisible()
+    expect(screen.getByText('Unit price')).toBeVisible()
     expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
   })
 
@@ -204,9 +205,34 @@ describe('Pricing admin editor layout', () => {
     )
 
     expect(screen.getByText('Tier name')).toBeVisible()
-    expect(screen.getByText('Upper bound')).toBeVisible()
+    expect(screen.getByText('Usage upper bound')).toBeVisible()
     expect(screen.getByText('Unit price')).toBeVisible()
+    expect(screen.getByText('Billing component')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Add tier' })).toBeEnabled()
+  })
+
+  test('does not expose internal price-component JSON in expression mode', () => {
+    const version: OfficialPriceVersion = {
+      id: 0,
+      model_id: 3,
+      billing_mode: 'token',
+      price_structure: 'expression',
+      price_components: '{}',
+      billing_expr: 'v1:tier("custom", p * 1)',
+      currency: 'USD',
+      version: 0,
+      status: 'draft',
+      source: 'manual',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+    render(
+      <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
+    )
+
+    expect(screen.getByDisplayValue('v1:tier("custom", p * 1)')).toBeVisible()
+    expect(screen.queryByLabelText('Price Components')).not.toBeInTheDocument()
   })
 
   test('switches the new-version editor from token fields to the selected mode', async () => {
@@ -233,7 +259,8 @@ describe('Pricing admin editor layout', () => {
 
     expect(selectors[0]).toHaveTextContent('Video duration')
     expect(selectors[1]).toHaveTextContent('Flat rate')
-    expect(screen.getByLabelText('Price per video second')).toBeVisible()
+    expect(screen.getByText('Billing component')).toBeVisible()
+    expect(screen.getByText('Unit price')).toBeVisible()
     expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
   })
 
@@ -305,9 +332,7 @@ describe('Pricing admin editor layout', () => {
 
     expect(screen.getByLabelText('Billing Mode')).toHaveValue('video_duration')
     expect(screen.getByLabelText('Price Structure')).toHaveValue('expression')
-    expect(screen.getByLabelText('Price Components')).toHaveValue(
-      '{"video_second_unit_price":"0.2"}'
-    )
+    expect(screen.queryByLabelText('Price Components')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Billing Expression')).toHaveValue(
       'v1:tier("base", 0.2)'
     )

@@ -73,6 +73,17 @@ type flatTokenPriceComponents struct {
 	PriceUnit            string `json:"price_unit"`
 }
 
+type purchaseDiscountSpec struct {
+	InputDiscount       string `json:"input_discount,omitempty"`
+	OutputDiscount      string `json:"output_discount,omitempty"`
+	CacheReadDiscount   string `json:"cache_read_discount,omitempty"`
+	CacheWriteDiscount  string `json:"cache_write_discount,omitempty"`
+	ImageInputDiscount  string `json:"image_input_discount,omitempty"`
+	ImageOutputDiscount string `json:"image_output_discount,omitempty"`
+	AudioInputDiscount  string `json:"audio_input_discount,omitempty"`
+	AudioOutputDiscount string `json:"audio_output_discount,omitempty"`
+}
+
 func CreateOfficialFlatDraft(input OfficialFlatDraftInput, userId int) (model.OfficialModelPriceVersion, error) {
 	version, err := buildOfficialFlatDraft(input)
 	if err != nil {
@@ -167,13 +178,24 @@ func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPr
 }
 
 func CreatePurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {
+	version, err := buildPurchaseDraft(input)
+	if err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	if err := CreatePurchasePriceVersion(&version, userId); err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	return version, nil
+}
+
+func buildPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
 	switch input.PricingMode {
 	case "official_ratio":
-		return createOfficialRatioPurchaseDraft(input, userId)
+		return buildOfficialRatioPurchaseDraft(input)
 	case "component_ratio":
-		return createComponentRatioPurchaseDraft(input, userId)
+		return buildComponentRatioPurchaseDraft(input)
 	case "fixed_unit_price":
-		return createFixedPurchaseDraft(input, userId)
+		return buildFixedPurchaseDraft(input)
 	default:
 		return model.ChannelModelPurchasePriceVersion{}, fmt.Errorf(
 			"structured purchase form does not support pricing mode %q",
@@ -182,7 +204,132 @@ func CreatePurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelMod
 	}
 }
 
+func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
+	replacement, err := buildPurchaseDraft(input)
+	if err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	var updated model.ChannelModelPurchasePriceVersion
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		current, err := model.GetPurchasePriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if current.Status != model.PricingVersionStatusDraft {
+			return errors.New("only purchase price drafts can be updated")
+		}
+		if current.ChannelModelId != replacement.ChannelModelId {
+			return errors.New("purchase price draft channel model cannot be changed")
+		}
+		if replacement.OfficialPriceVersionId != nil {
+			var official model.OfficialModelPriceVersion
+			if err := tx.First(&official, *replacement.OfficialPriceVersionId).Error; err != nil {
+				return err
+			}
+			var channelModel model.ChannelModel
+			if err := tx.First(&channelModel, replacement.ChannelModelId).Error; err != nil {
+				return err
+			}
+			if official.ModelId != channelModel.ModelId {
+				return errors.New("official price and channel model belong to different logical models")
+			}
+		}
+		replacement.PurchaseExprHash = billingexpr.ExprHashString(replacement.PurchaseBillingExpr)
+		updates := map[string]any{
+			"official_price_version_id": replacement.OfficialPriceVersionId,
+			"billing_mode":              replacement.BillingMode,
+			"pricing_mode":              replacement.PricingMode,
+			"price_structure":           replacement.PriceStructure,
+			"quote_spec":                replacement.QuoteSpec,
+			"price_components":          replacement.PriceComponents,
+			"purchase_discount":         replacement.PurchaseDiscount,
+			"input_unit_price":          replacement.InputUnitPrice,
+			"output_unit_price":         replacement.OutputUnitPrice,
+			"cache_read_unit_price":     replacement.CacheReadUnitPrice,
+			"cache_write_unit_price":    replacement.CacheWriteUnitPrice,
+			"price_unit":                replacement.PriceUnit,
+			"purchase_billing_expr":     replacement.PurchaseBillingExpr,
+			"purchase_expr_hash":        replacement.PurchaseExprHash,
+			"expression_source":         replacement.ExpressionSource,
+			"expression_schema_version": replacement.ExpressionSchemaVersion,
+			"currency":                  replacement.Currency,
+			"quote_reference":           replacement.QuoteReference,
+			"contract_reference":        replacement.ContractReference,
+			"remark":                    replacement.Remark,
+			"updated_at":                common.GetTimestamp(),
+		}
+		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+			Where("id = ? AND status = ?", id, model.PricingVersionStatusDraft).
+			UpdateColumns(updates).Error; err != nil {
+			return err
+		}
+		return tx.First(&updated, id).Error
+	})
+	return updated, err
+}
+
 func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRetailPriceVersion, error) {
+	version, err := buildRetailDraft(input)
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	if err := CreateRetailPriceVersion(&version, userId); err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	return version, nil
+}
+
+func UpdateRetailDraft(id int, input RetailDraftInput) (model.ChannelModelRetailPriceVersion, error) {
+	replacement, err := buildRetailDraft(input)
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	var updated model.ChannelModelRetailPriceVersion
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		current, err := model.GetRetailPriceVersionForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if current.Status != model.PricingVersionStatusDraft {
+			return errors.New("only retail price drafts can be updated")
+		}
+		if current.ChannelModelId != replacement.ChannelModelId {
+			return errors.New("retail price draft channel model cannot be changed")
+		}
+		replacement.RetailExprHash = billingexpr.ExprHashString(replacement.RetailBillingExpr)
+		updates := map[string]any{
+			"purchase_price_version_id": replacement.PurchasePriceVersionId,
+			"billing_mode":              replacement.BillingMode,
+			"price_structure":           replacement.PriceStructure,
+			"price_components":          replacement.PriceComponents,
+			"input_unit_price":          replacement.InputUnitPrice,
+			"output_unit_price":         replacement.OutputUnitPrice,
+			"cache_read_unit_price":     replacement.CacheReadUnitPrice,
+			"cache_write_unit_price":    replacement.CacheWriteUnitPrice,
+			"price_unit":                replacement.PriceUnit,
+			"retail_billing_expr":       replacement.RetailBillingExpr,
+			"retail_expr_hash":          replacement.RetailExprHash,
+			"expression_source":         replacement.ExpressionSource,
+			"expression_schema_version": replacement.ExpressionSchemaVersion,
+			"currency":                  replacement.Currency,
+			"total_variable_cost_rate":  replacement.TotalVariableCostRate,
+			"effective_tax_rate":        replacement.EffectiveTaxRate,
+			"target_net_margin":         replacement.TargetNetMargin,
+			"minimum_margin_rate":       replacement.MinimumMarginRate,
+			"remark":                    replacement.Remark,
+			"updated_at":                common.GetTimestamp(),
+		}
+		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
+			Where("id = ? AND status = ?", id, model.PricingVersionStatusDraft).
+			UpdateColumns(updates).Error; err != nil {
+			return err
+		}
+		return tx.First(&updated, id).Error
+	})
+	return updated, err
+}
+
+func buildRetailDraft(input RetailDraftInput) (model.ChannelModelRetailPriceVersion, error) {
 	var purchase model.ChannelModelPurchasePriceVersion
 	if err := model.DB.First(&purchase, input.PurchasePriceVersionId).Error; err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
@@ -207,7 +354,7 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
 	if purchase.PriceStructure != "flat" {
-		return createExpressionRetailDraft(input, purchase, calculator, userId)
+		return buildExpressionRetailDraft(input, purchase, calculator)
 	}
 	purchasePrices, err := unmarshalFlatPriceComponents(purchase.PriceComponents)
 	if err != nil {
@@ -241,9 +388,6 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 		TargetNetMargin:         input.TargetNetMargin,
 		MinimumMarginRate:       input.MinimumMarginRate,
 		Remark:                  strings.TrimSpace(input.Remark),
-	}
-	if err := CreateRetailPriceVersion(&version, userId); err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
 	}
 	return version, nil
 }
@@ -285,11 +429,10 @@ func calculateRetailFlatPrices(
 	return result, nil
 }
 
-func createExpressionRetailDraft(
+func buildExpressionRetailDraft(
 	input RetailDraftInput,
 	purchase model.ChannelModelPurchasePriceVersion,
 	calculator RetailPriceCalculator,
-	userId int,
 ) (model.ChannelModelRetailPriceVersion, error) {
 	factor, err := calculator.SellingFactor()
 	if err != nil {
@@ -320,13 +463,10 @@ func createExpressionRetailDraft(
 		MinimumMarginRate:       input.MinimumMarginRate,
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
-	if err := CreateRetailPriceVersion(&version, userId); err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
 	return version, nil
 }
 
-func createOfficialRatioPurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {
+func buildOfficialRatioPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
 	official, err := requireOfficialPrice(input.OfficialPriceVersionId)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
@@ -344,13 +484,12 @@ func createOfficialRatioPurchaseDraft(input PurchaseDraftInput, userId int) (mod
 		if err != nil {
 			return model.ChannelModelPurchasePriceVersion{}, err
 		}
-		return persistExpressionPurchaseDraft(
+		return buildExpressionPurchaseDraft(
 			input,
 			official,
 			componentsJSON,
 			expression,
 			discount.String(),
-			userId,
 		)
 	}
 	officialPrices, err := unmarshalFlatPriceComponents(official.PriceComponents)
@@ -361,10 +500,10 @@ func createOfficialRatioPurchaseDraft(input PurchaseDraftInput, userId int) (mod
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
 	}
-	return persistPurchaseDraft(input, official, prices, expression, input.PurchaseDiscount, userId)
+	return buildFlatPurchaseDraft(input, official, prices, expression, input.PurchaseDiscount)
 }
 
-func createComponentRatioPurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {
+func buildComponentRatioPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
 	official, err := requireOfficialPrice(input.OfficialPriceVersionId)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
@@ -381,23 +520,27 @@ func createComponentRatioPurchaseDraft(input PurchaseDraftInput, userId int) (mo
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
 	}
-	return persistPurchaseDraft(input, official, prices, expression, "", userId)
+	return buildFlatPurchaseDraft(input, official, prices, expression, "")
 }
 
-func persistExpressionPurchaseDraft(
+func buildExpressionPurchaseDraft(
 	input PurchaseDraftInput,
 	official model.OfficialModelPriceVersion,
 	componentsJSON string,
 	expression string,
 	discount string,
-	userId int,
 ) (model.ChannelModelPurchasePriceVersion, error) {
+	quoteSpec, err := buildPurchaseDiscountSpec(input)
+	if err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
 	version := model.ChannelModelPurchasePriceVersion{
 		ChannelModelId:          input.ChannelModelId,
 		OfficialPriceVersionId:  input.OfficialPriceVersionId,
 		BillingMode:             official.BillingMode,
 		PricingMode:             input.PricingMode,
 		PriceStructure:          official.PriceStructure,
+		QuoteSpec:               quoteSpec,
 		PriceComponents:         componentsJSON,
 		PurchaseDiscount:        discount,
 		PriceUnit:               "expression",
@@ -409,13 +552,10 @@ func persistExpressionPurchaseDraft(
 		ContractReference:       strings.TrimSpace(input.ContractReference),
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
-	if err := CreatePurchasePriceVersion(&version, userId); err != nil {
-		return model.ChannelModelPurchasePriceVersion{}, err
-	}
 	return version, nil
 }
 
-func createFixedPurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelModelPurchasePriceVersion, error) {
+func buildFixedPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
 	prices, expression, _, err := normalizeFlatTokenPrices(input.Prices)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
@@ -434,18 +574,21 @@ func createFixedPurchaseDraft(input PurchaseDraftInput, userId int) (model.Chann
 			return model.ChannelModelPurchasePriceVersion{}, err
 		}
 	}
-	return persistPurchaseDraft(input, official, prices, expression, "", userId)
+	return buildFlatPurchaseDraft(input, official, prices, expression, "")
 }
 
-func persistPurchaseDraft(
+func buildFlatPurchaseDraft(
 	input PurchaseDraftInput,
 	official model.OfficialModelPriceVersion,
 	prices FlatTokenPriceInput,
 	expression string,
 	discount string,
-	userId int,
 ) (model.ChannelModelPurchasePriceVersion, error) {
 	componentsJSON, err := marshalFlatPriceComponents(prices)
+	if err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	quoteSpec, err := buildPurchaseDiscountSpec(input)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
 	}
@@ -455,6 +598,7 @@ func persistPurchaseDraft(
 		BillingMode:             official.BillingMode,
 		PricingMode:             input.PricingMode,
 		PriceStructure:          "flat",
+		QuoteSpec:               quoteSpec,
 		PriceComponents:         componentsJSON,
 		PurchaseDiscount:        discount,
 		InputUnitPrice:          prices.InputUnitPrice,
@@ -470,10 +614,24 @@ func persistPurchaseDraft(
 		ContractReference:       strings.TrimSpace(input.ContractReference),
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
-	if err := CreatePurchasePriceVersion(&version, userId); err != nil {
-		return model.ChannelModelPurchasePriceVersion{}, err
-	}
 	return version, nil
+}
+
+func buildPurchaseDiscountSpec(input PurchaseDraftInput) (string, error) {
+	if input.PricingMode != "component_ratio" {
+		return "", nil
+	}
+	data, err := common.Marshal(purchaseDiscountSpec{
+		InputDiscount:       input.InputDiscount,
+		OutputDiscount:      input.OutputDiscount,
+		CacheReadDiscount:   input.CacheReadDiscount,
+		CacheWriteDiscount:  input.CacheWriteDiscount,
+		ImageInputDiscount:  input.ImageInputDiscount,
+		ImageOutputDiscount: input.ImageOutputDiscount,
+		AudioInputDiscount:  input.AudioInputDiscount,
+		AudioOutputDiscount: input.AudioOutputDiscount,
+	})
+	return string(data), err
 }
 
 func normalizeFlatTokenPrices(input FlatTokenPriceInput) (FlatTokenPriceInput, string, string, error) {

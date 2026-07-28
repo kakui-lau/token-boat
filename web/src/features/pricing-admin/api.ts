@@ -205,7 +205,7 @@ export async function getPurchasePriceVersions(
   return response.data
 }
 
-export async function createPurchaseDraft(input: {
+export type PurchaseDraftPayload = {
   channel_model_id: number
   official_price_version_id?: number
   pricing_mode: 'official_ratio' | 'component_ratio' | 'fixed_unit_price'
@@ -223,8 +223,23 @@ export async function createPurchaseDraft(input: {
   quote_reference: string
   contract_reference: string
   remark: string
-}): Promise<PriceVersionResponse<PurchasePriceVersion>> {
+}
+
+export async function createPurchaseDraft(
+  input: PurchaseDraftPayload
+): Promise<PriceVersionResponse<PurchasePriceVersion>> {
   const response = await api.post('/api/pricing-admin/drafts/purchase', input)
+  return response.data
+}
+
+export async function updatePurchaseDraft(
+  id: number,
+  input: PurchaseDraftPayload
+): Promise<PriceVersionResponse<PurchasePriceVersion>> {
+  const response = await api.put(
+    `/api/pricing-admin/drafts/purchase/${id}`,
+    input
+  )
   return response.data
 }
 
@@ -246,7 +261,7 @@ export async function getActivePriceBundle(
   return response.data
 }
 
-export async function createRetailDraft(input: {
+export type RetailDraftPayload = {
   channel_model_id: number
   purchase_price_version_id: number
   total_variable_cost_rate: string
@@ -254,8 +269,23 @@ export async function createRetailDraft(input: {
   target_net_margin: string
   minimum_margin_rate: string
   remark: string
-}): Promise<PriceVersionResponse<RetailPriceVersion>> {
+}
+
+export async function createRetailDraft(
+  input: RetailDraftPayload
+): Promise<PriceVersionResponse<RetailPriceVersion>> {
   const response = await api.post('/api/pricing-admin/drafts/retail', input)
+  return response.data
+}
+
+export async function updateRetailDraft(
+  id: number,
+  input: RetailDraftPayload
+): Promise<PriceVersionResponse<RetailPriceVersion>> {
+  const response = await api.put(
+    `/api/pricing-admin/drafts/retail/${id}`,
+    input
+  )
   return response.data
 }
 

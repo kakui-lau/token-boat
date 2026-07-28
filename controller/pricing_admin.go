@@ -419,6 +419,24 @@ func AdminCreateStructuredPurchasePriceDraft(c *gin.Context) {
 	common.ApiSuccess(c, version)
 }
 
+func AdminUpdateStructuredPurchasePriceDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input pricingadmin.PurchaseDraftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.UpdatePurchaseDraft(id, input)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
+}
+
 func AdminListRetailPriceVersions(c *gin.Context) {
 	channelModelId, ok := positiveQueryId(c, "channel_model_id")
 	if !ok {
@@ -490,6 +508,24 @@ func AdminCreateStructuredRetailPriceDraft(c *gin.Context) {
 		return
 	}
 	version, err := pricingadmin.CreateRetailDraft(input, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
+}
+
+func AdminUpdateStructuredRetailPriceDraft(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input pricingadmin.RetailDraftInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.UpdateRetailDraft(id, input)
 	if err != nil {
 		common.ApiError(c, err)
 		return

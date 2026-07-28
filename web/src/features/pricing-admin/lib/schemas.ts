@@ -152,16 +152,26 @@ export const purchasePriceSchema = z
     }
   })
 
-export const retailPriceSchema = z.object({
-  purchase_price_version_id: z
-    .string()
-    .min(1, 'Select a purchase price version'),
-  total_variable_cost_rate: requiredRate,
-  effective_tax_rate: requiredRate,
-  target_net_margin: requiredRate,
-  minimum_margin_rate: requiredRate,
-  remark: z.string().trim(),
-})
+export const retailPriceSchema = z
+  .object({
+    purchase_price_version_id: z
+      .string()
+      .min(1, 'Select a purchase price version'),
+    total_variable_cost_rate: requiredRate,
+    effective_tax_rate: requiredRate,
+    target_net_margin: requiredRate,
+    minimum_margin_rate: requiredRate,
+    remark: z.string().trim(),
+  })
+  .superRefine((value, context) => {
+    if (Number(value.minimum_margin_rate) > Number(value.target_net_margin)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['minimum_margin_rate'],
+        message: 'Margin floor cannot exceed target margin',
+      })
+    }
+  })
 
 export type OfficialPriceForm = z.infer<typeof officialPriceSchema>
 export type PurchasePriceForm = z.infer<typeof purchasePriceSchema>

@@ -121,6 +121,82 @@ func TestUpdateOfficialFlatDraftRejectsPublishedVersion(t *testing.T) {
 	require.ErrorContains(t, err, "only official price drafts")
 }
 
+func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 26, ModelName: "editable-chain"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 36, ChannelId: 46, ModelId: 26, UpstreamModelName: "editable-chain",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 26, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "8"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+	officialId := official.Id
+
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
+		PricingMode: "component_ratio", InputDiscount: "0.5", OutputDiscount: "0.75",
+	}, 2)
+	require.NoError(t, err)
+	updatedPurchase, err := UpdatePurchaseDraft(purchase.Id, PurchaseDraftInput{
+		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
+		PricingMode: "component_ratio", InputDiscount: "0.6", OutputDiscount: "0.8",
+		QuoteReference: "Q-2026", Remark: "revised",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, purchase.Id, updatedPurchase.Id)
+	assert.Equal(t, purchase.Version, updatedPurchase.Version)
+	assert.Equal(t, "1.2", updatedPurchase.InputUnitPrice)
+	assert.Equal(t, "6.4", updatedPurchase.OutputUnitPrice)
+	assert.Equal(t, "Q-2026", updatedPurchase.QuoteReference)
+	assert.Contains(t, updatedPurchase.QuoteSpec, `"input_discount":"0.6"`)
+	require.NoError(t, PublishPurchasePriceVersion(updatedPurchase.Id))
+
+	retail, err := CreateRetailDraft(RetailDraftInput{
+		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
+		TotalVariableCostRate: "0.1", EffectiveTaxRate: "0.1",
+		TargetNetMargin: "0.2", MinimumMarginRate: "0.1",
+	}, 3)
+	require.NoError(t, err)
+	updatedRetail, err := UpdateRetailDraft(retail.Id, RetailDraftInput{
+		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
+		TotalVariableCostRate: "0.12", EffectiveTaxRate: "0.1",
+		TargetNetMargin: "0.25", MinimumMarginRate: "0.15", Remark: "approved",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, retail.Id, updatedRetail.Id)
+	assert.Equal(t, retail.Version, updatedRetail.Version)
+	assert.Equal(t, "0.25", updatedRetail.TargetNetMargin)
+	assert.Equal(t, "approved", updatedRetail.Remark)
+}
+
+func TestPublishRetailDraftRejectsMarginBelowConfiguredFloor(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 27, ModelName: "margin-gate"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 37, ChannelId: 47, ModelId: 27, UpstreamModelName: "margin-gate",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 37, PricingMode: "fixed_unit_price", Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+	retail, err := CreateRetailDraft(RetailDraftInput{
+		ChannelModelId: 37, PurchasePriceVersionId: purchase.Id,
+		TotalVariableCostRate: "0.1", EffectiveTaxRate: "0.1",
+		TargetNetMargin: "0.1", MinimumMarginRate: "0.2",
+	}, 1)
+	require.NoError(t, err)
+
+	err = PublishRetailPriceVersion(retail.Id)
+	require.ErrorContains(t, err, "does not meet the configured minimum margin")
+}
+
 func TestComponentDiscountRequiresEveryPricedOfficialComponent(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 22, ModelName: "component-test"}).Error)

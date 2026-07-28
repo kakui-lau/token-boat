@@ -121,6 +121,7 @@ export type PurchasePriceVersion = {
   billing_mode: string
   price_structure: string
   price_components: string
+  quote_spec?: string
   input_unit_price: string
   output_unit_price: string
   cache_read_unit_price: string

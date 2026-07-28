@@ -518,6 +518,11 @@ func PublishRetailPriceVersion(id int) error {
 		if err := validateRetailEconomics(version); err != nil {
 			return err
 		}
+		targetMargin, _ := validateRate("target_net_margin", version.TargetNetMargin)
+		minimumMargin, _ := validateRate("minimum_margin_rate", version.MinimumMarginRate)
+		if minimumMargin.GreaterThan(targetMargin) {
+			return errors.New("retail price does not meet the configured minimum margin")
+		}
 		return model.ActivateRetailPriceVersion(tx, version, common.GetTimestamp())
 	})
 }

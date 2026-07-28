@@ -34,7 +34,7 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 
-import { createPurchaseDraft } from '../api'
+import { createPurchaseDraft, updatePurchaseDraft } from '../api'
 import { purchasePriceSchema, type PurchasePriceForm } from '../lib/schemas'
 import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
 import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
@@ -69,6 +69,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
   const { t } = useTranslation()
   const [detailVersion, setDetailVersion] =
     useState<PurchasePriceVersion | null>(null)
+  const [editVersionId, setEditVersionId] = useState<number | null>(null)
   const form = useForm<PurchasePriceForm>({
     resolver: zodResolver(purchasePriceSchema),
     defaultValues: {
@@ -103,8 +104,8 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
     [pricingMode, props.officialVersions]
   )
   const createMutation = useMutation({
-    mutationFn: (value: PurchasePriceForm) =>
-      createPurchaseDraft({
+    mutationFn: (value: PurchasePriceForm) => {
+      const payload = {
         channel_model_id: props.channelModelId,
         official_price_version_id: value.official_price_version_id
           ? Number(value.official_price_version_id)
@@ -133,13 +134,80 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         quote_reference: value.quote_reference,
         contract_reference: value.contract_reference,
         remark: value.remark,
-      }),
+      }
+      return editVersionId
+        ? updatePurchaseDraft(editVersionId, payload)
+        : createPurchaseDraft(payload)
+    },
     onSuccess: async () => {
+      const wasEditing = editVersionId !== null
       form.reset()
+      setEditVersionId(null)
       await props.onCreated()
-      toast.success(t('Purchase price draft created'))
+      toast.success(
+        t(
+          wasEditing
+            ? 'Purchase price draft updated'
+            : 'Purchase price draft created'
+        )
+      )
     },
   })
+  const editVersion = (id: number) => {
+    const version = props.versions.find((item) => item.id === id)
+    if (!version) {
+      return
+    }
+    let componentPrices: Record<string, string> = {}
+    let discountSpec: Record<string, string> = {}
+    try {
+      componentPrices = JSON.parse(version.price_components || '{}') as Record<
+        string,
+        string
+      >
+      discountSpec = JSON.parse(version.quote_spec || '{}') as Record<
+        string,
+        string
+      >
+    } catch {
+      componentPrices = {}
+      discountSpec = {}
+    }
+    const canRestoreMode =
+      version.pricing_mode !== 'component_ratio' ||
+      Object.keys(discountSpec).length > 0
+    form.reset({
+      pricing_mode: canRestoreMode
+        ? (version.pricing_mode as PurchasePriceForm['pricing_mode'])
+        : 'fixed_unit_price',
+      currency: version.currency,
+      official_price_version_id: version.official_price_version_id
+        ? String(version.official_price_version_id)
+        : '',
+      purchase_discount: version.purchase_discount || '',
+      input_discount: discountSpec.input_discount || '',
+      output_discount: discountSpec.output_discount || '',
+      cache_read_discount: discountSpec.cache_read_discount || '',
+      cache_write_discount: discountSpec.cache_write_discount || '',
+      image_input_discount: discountSpec.image_input_discount || '',
+      image_output_discount: discountSpec.image_output_discount || '',
+      audio_input_discount: discountSpec.audio_input_discount || '',
+      audio_output_discount: discountSpec.audio_output_discount || '',
+      input_unit_price: version.input_unit_price || '',
+      output_unit_price: version.output_unit_price || '',
+      cache_read_unit_price: version.cache_read_unit_price || '',
+      cache_write_unit_price: version.cache_write_unit_price || '',
+      image_input_unit_price: componentPrices.image_input_unit_price || '',
+      image_output_unit_price: componentPrices.image_output_unit_price || '',
+      audio_input_unit_price: componentPrices.audio_input_unit_price || '',
+      audio_output_unit_price: componentPrices.audio_output_unit_price || '',
+      quote_reference: version.quote_reference || '',
+      contract_reference: version.contract_reference || '',
+      remark: version.remark || '',
+    })
+    setEditVersionId(id)
+  }
+
   const fillFromVersion = (id: number) => {
     const version = props.versions.find((item) => item.id === id)
     if (!version) {
@@ -188,7 +256,26 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
         onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
       >
-        <h3 className='font-medium'>{t('New Purchase Version')}</h3>
+        <div className='flex items-center justify-between gap-3'>
+          <h3 className='font-medium'>
+            {t(
+              editVersionId ? 'Edit Purchase Version' : 'New Purchase Version'
+            )}
+          </h3>
+          {editVersionId ? (
+            <Button
+              type='button'
+              size='sm'
+              variant='ghost'
+              onClick={() => {
+                form.reset()
+                setEditVersionId(null)
+              }}
+            >
+              {t('Cancel Editing')}
+            </Button>
+          ) : null}
+        </div>
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field>
             <FieldLabel htmlFor='purchase-pricing-mode'>
@@ -410,14 +497,19 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               eligibleOfficialVersions.length === 0)
           }
         >
-          {t('Save Draft')}
+          {t(editVersionId ? 'Update Draft' : 'Save Draft')}
         </Button>
       </form>
 
       <section className='space-y-3'>
         <h3 className='font-medium'>{t('Version History')}</h3>
         <VersionList
-          items={props.versions}
+          items={props.versions.map((version) => ({
+            ...version,
+            dependency_label: version.official_price_version_id
+              ? `${t('Official Version')} #${version.official_price_version_id}`
+              : undefined,
+          }))}
           isPublishing={props.isPublishing}
           isSuspending={props.isSuspending}
           isDeleting={props.isDeleting}
@@ -430,6 +522,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
             )
           }
           onFill={fillFromVersion}
+          onEdit={editVersion}
         />
       </section>
       <ChannelPriceVersionDialog

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelPriceVersionDialog } from '../components/channel-price-version-dialog'
+import { PurchasePricePanel } from '../components/purchase-price-panel'
 import { VersionList } from '../components/version-list'
 import type { PurchasePriceVersion } from '../types'
 
@@ -125,5 +127,80 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getByText('0.65')).toBeVisible()
     expect(screen.getByText('1.25 USD')).toBeVisible()
     expect(screen.queryByText(version.price_components)).not.toBeInTheDocument()
+  })
+
+  test('loads an unpublished purchase version into the edit form', () => {
+    const version: PurchasePriceVersion = {
+      id: 21,
+      channel_model_id: 2,
+      official_price_version_id: 4,
+      pricing_mode: 'component_ratio',
+      billing_mode: 'token',
+      price_structure: 'flat',
+      price_components:
+        '{"input_unit_price":"1.2","output_unit_price":"6.4","price_unit":"per_1m_tokens"}',
+      quote_spec: '{"input_discount":"0.6","output_discount":"0.8"}',
+      input_unit_price: '1.2',
+      output_unit_price: '6.4',
+      cache_read_unit_price: '',
+      cache_write_unit_price: '',
+      currency: 'USD',
+      version: 2,
+      status: 'draft',
+      purchase_discount: '',
+      purchase_billing_expr: 'v1:tier("base", p * 1.2 + c * 6.4)',
+      expression_source: 'generated',
+      expression_schema_version: 'v1',
+      price_unit: 'per_1m_tokens',
+      quote_reference: 'Q-21',
+      contract_reference: '',
+      conditions: '',
+      remark: 'pending approval',
+      effective_from: 0,
+      effective_to: 0,
+    }
+    const queryClient = new QueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PurchasePricePanel
+          channelModelId={2}
+          officialVersions={[
+            {
+              id: 4,
+              model_id: 1,
+              billing_mode: 'token',
+              price_structure: 'flat',
+              price_components: '{}',
+              billing_expr: 'v1:tier("base", p * 2 + c * 8)',
+              currency: 'USD',
+              version: 1,
+              status: 'active',
+              source: 'manual',
+              remark: '',
+              effective_from: 1,
+              effective_to: 0,
+            },
+          ]}
+          versions={[version]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Edit Purchase Version' })
+    ).toBeVisible()
+    expect(screen.getByLabelText('Input discount')).toHaveValue('0.6')
+    expect(screen.getByLabelText('Output discount')).toHaveValue('0.8')
+    expect(screen.getByLabelText('Quote ID')).toHaveValue('Q-21')
+    expect(screen.getByRole('button', { name: 'Update Draft' })).toBeEnabled()
   })
 })

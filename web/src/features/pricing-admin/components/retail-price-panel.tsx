@@ -33,7 +33,7 @@ import {
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 
-import { createRetailDraft } from '../api'
+import { createRetailDraft, updateRetailDraft } from '../api'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
 import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
 import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
@@ -58,6 +58,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
   const [detailVersion, setDetailVersion] = useState<RetailPriceVersion | null>(
     null
   )
+  const [editVersionId, setEditVersionId] = useState<number | null>(null)
   const form = useForm<RetailPriceForm>({
     resolver: zodResolver(retailPriceSchema),
     defaultValues: {
@@ -125,8 +126,8 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     watchedValues.total_variable_cost_rate,
   ])
   const createMutation = useMutation({
-    mutationFn: (value: RetailPriceForm) =>
-      createRetailDraft({
+    mutationFn: (value: RetailPriceForm) => {
+      const payload = {
         channel_model_id: props.channelModelId,
         purchase_price_version_id: Number(value.purchase_price_version_id),
         total_variable_cost_rate: value.total_variable_cost_rate,
@@ -134,13 +135,40 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         target_net_margin: value.target_net_margin,
         minimum_margin_rate: value.minimum_margin_rate,
         remark: value.remark,
-      }),
+      }
+      return editVersionId
+        ? updateRetailDraft(editVersionId, payload)
+        : createRetailDraft(payload)
+    },
     onSuccess: async () => {
+      const wasEditing = editVersionId !== null
       form.reset()
+      setEditVersionId(null)
       await props.onCreated()
-      toast.success(t('Retail price draft created'))
+      toast.success(
+        t(
+          wasEditing
+            ? 'Retail price draft updated'
+            : 'Retail price draft created'
+        )
+      )
     },
   })
+  const editVersion = (id: number) => {
+    const version = props.versions.find((item) => item.id === id)
+    if (!version) {
+      return
+    }
+    form.reset({
+      purchase_price_version_id: String(version.purchase_price_version_id),
+      total_variable_cost_rate: version.total_variable_cost_rate,
+      effective_tax_rate: version.effective_tax_rate,
+      target_net_margin: version.target_net_margin,
+      minimum_margin_rate: version.minimum_margin_rate,
+      remark: version.remark || '',
+    })
+    setEditVersionId(id)
+  }
   const fillFromVersion = (id: number) => {
     const version = props.versions.find((item) => item.id === id)
     if (!version) {
@@ -163,7 +191,24 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
         onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
       >
-        <h3 className='font-medium'>{t('New Retail Version')}</h3>
+        <div className='flex items-center justify-between gap-3'>
+          <h3 className='font-medium'>
+            {t(editVersionId ? 'Edit Retail Version' : 'New Retail Version')}
+          </h3>
+          {editVersionId ? (
+            <Button
+              type='button'
+              size='sm'
+              variant='ghost'
+              onClick={() => {
+                form.reset()
+                setEditVersionId(null)
+              }}
+            >
+              {t('Cancel Editing')}
+            </Button>
+          ) : null}
+        </div>
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field
             data-invalid={Boolean(
@@ -284,14 +329,17 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             eligiblePurchaseVersions.length === 0
           }
         >
-          {t('Save Draft')}
+          {t(editVersionId ? 'Update Draft' : 'Save Draft')}
         </Button>
       </form>
 
       <section className='space-y-3'>
         <h3 className='font-medium'>{t('Version History')}</h3>
         <VersionList
-          items={props.versions}
+          items={props.versions.map((version) => ({
+            ...version,
+            dependency_label: `${t('Purchase Version')} #${version.purchase_price_version_id}`,
+          }))}
           isPublishing={props.isPublishing}
           isSuspending={props.isSuspending}
           isDeleting={props.isDeleting}
@@ -304,6 +352,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             )
           }
           onFill={fillFromVersion}
+          onEdit={editVersion}
         />
       </section>
       <ChannelPriceVersionDialog

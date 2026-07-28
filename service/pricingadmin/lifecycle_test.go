@@ -39,7 +39,7 @@ func TestSuspendPriceChainRequiresRetailFirst(t *testing.T) {
 	bundle, err := GetActivePriceBundle(102)
 	require.NoError(t, err)
 	assert.Equal(t, retail.Id, bundle.Retail.Id)
-	assert.Positive(t, bundle.Revision)
+	assert.Len(t, bundle.Revision, 64)
 
 	require.ErrorContains(t, SuspendPurchasePriceVersion(purchase.Id), "active retail")
 	require.NoError(t, SuspendRetailPriceVersion(retail.Id))

@@ -5520,5 +5520,9 @@
   "Delete Draft": "Xóa bản nháp",
   "Delete price draft?": "Xóa bản nháp giá?",
   "This draft will be permanently deleted. Published price history is never deleted.": "Bản nháp này sẽ bị xóa vĩnh viễn. Lịch sử giá đã xuất bản không bao giờ bị xóa.",
-  "Price draft deleted": "Đã xóa bản nháp giá"
+  "Price draft deleted": "Đã xóa bản nháp giá",
+  "{{total}} channel models": "{{total}} mô hình kênh",
+  "Previous": "Trước",
+  "Next": "Tiếp",
+  "Page {{page}} of {{total}}": "Trang {{page}} / {{total}}"
 }

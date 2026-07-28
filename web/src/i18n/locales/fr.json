@@ -5520,5 +5520,9 @@
   "Delete Draft": "Supprimer le brouillon",
   "Delete price draft?": "Supprimer le brouillon de prix ?",
   "This draft will be permanently deleted. Published price history is never deleted.": "Ce brouillon sera définitivement supprimé. L'historique des prix publiés n'est jamais supprimé.",
-  "Price draft deleted": "Brouillon de prix supprimé"
+  "Price draft deleted": "Brouillon de prix supprimé",
+  "{{total}} channel models": "{{total}} modèles de canal",
+  "Previous": "Précédent",
+  "Next": "Suivant",
+  "Page {{page}} of {{total}}": "Page {{page}} sur {{total}}"
 }

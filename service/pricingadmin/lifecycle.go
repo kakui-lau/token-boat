@@ -1,7 +1,9 @@
 package pricingadmin
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -13,7 +15,7 @@ type ActivePriceBundle struct {
 	Official     *model.OfficialModelPriceVersion       `json:"official_price,omitempty"`
 	Purchase     model.ChannelModelPurchasePriceVersion `json:"purchase_price"`
 	Retail       model.ChannelModelRetailPriceVersion   `json:"retail_price"`
-	Revision     int64                                  `json:"revision"`
+	Revision     string                                 `json:"revision"`
 }
 
 func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
@@ -46,15 +48,33 @@ func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 		}
 		bundle.Official = &official
 	}
-	bundle.Revision = bundle.ChannelModel.UpdatedAt
-	for _, updatedAt := range []int64{bundle.Purchase.UpdatedAt, bundle.Retail.UpdatedAt} {
-		if updatedAt > bundle.Revision {
-			bundle.Revision = updatedAt
-		}
+	officialIdentity := "none"
+	if bundle.Official != nil {
+		officialIdentity = fmt.Sprintf(
+			"%d:%d:%s:%s",
+			bundle.Official.Id,
+			bundle.Official.UpdatedAt,
+			bundle.Official.Status,
+			bundle.Official.ExprHash,
+		)
 	}
-	if bundle.Official != nil && bundle.Official.UpdatedAt > bundle.Revision {
-		bundle.Revision = bundle.Official.UpdatedAt
-	}
+	revisionPayload := fmt.Sprintf(
+		"cm=%d:%d:%d:%s|official=%s|purchase=%d:%d:%s:%s|retail=%d:%d:%s:%s",
+		bundle.ChannelModel.Id,
+		bundle.ChannelModel.UpdatedAt,
+		bundle.ChannelModel.Status,
+		bundle.ChannelModel.RuntimeMode,
+		officialIdentity,
+		bundle.Purchase.Id,
+		bundle.Purchase.UpdatedAt,
+		bundle.Purchase.Status,
+		bundle.Purchase.PurchaseExprHash,
+		bundle.Retail.Id,
+		bundle.Retail.UpdatedAt,
+		bundle.Retail.Status,
+		bundle.Retail.RetailExprHash,
+	)
+	bundle.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(revisionPayload)))
 	return bundle, nil
 }
 

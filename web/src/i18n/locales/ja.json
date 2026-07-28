@@ -5520,5 +5520,9 @@
   "Delete Draft": "下書きを削除",
   "Delete price draft?": "価格の下書きを削除しますか？",
   "This draft will be permanently deleted. Published price history is never deleted.": "この下書きは完全に削除されます。公開済みの価格履歴は削除されません。",
-  "Price draft deleted": "価格の下書きを削除しました"
+  "Price draft deleted": "価格の下書きを削除しました",
+  "{{total}} channel models": "{{total}} 件のチャネルモデル",
+  "Previous": "前へ",
+  "Next": "次へ",
+  "Page {{page}} of {{total}}": "{{page}} / {{total}} ページ"
 }

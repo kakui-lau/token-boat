@@ -56,6 +56,7 @@ export function PricingAdmin() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
+  const [page, setPage] = useState(1)
   const [selectedChannelModel, setSelectedChannelModel] =
     useState<ChannelModel | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -63,12 +64,12 @@ export function PricingAdmin() {
     useState<ChannelModel | null>(null)
   const deferredKeyword = useDeferredValue(keyword)
   const channelModelsQuery = useQuery({
-    queryKey: ['pricing-admin', 'channel-models', deferredKeyword],
+    queryKey: ['pricing-admin', 'channel-models', deferredKeyword, page],
     queryFn: () =>
       getChannelModels({
         keyword: deferredKeyword.trim() || undefined,
-        page: 1,
-        page_size: 100,
+        page,
+        page_size: 50,
       }),
   })
   const overviewQuery = useQuery({
@@ -99,6 +100,8 @@ export function PricingAdmin() {
     },
   })
   const rows = channelModelsQuery.data?.data.items ?? []
+  const total = channelModelsQuery.data?.data.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / 50))
   const isMutating = syncMutation.isPending || importMutation.isPending
 
   return (
@@ -149,7 +152,10 @@ export function PricingAdmin() {
                   id='pricing-admin-search'
                   value={keyword}
                   placeholder={t('Search channels or models')}
-                  onChange={(event) => setKeyword(event.target.value)}
+                  onChange={(event) => {
+                    setKeyword(event.target.value)
+                    setPage(1)
+                  }}
                 />
               </InputGroup>
             </Field>
@@ -230,6 +236,35 @@ export function PricingAdmin() {
                 ) : null}
               </TableBody>
             </Table>
+          </div>
+          <div className='flex items-center justify-between'>
+            <p className='text-muted-foreground text-sm'>
+              {t('{{total}} channel models', { total })}
+            </p>
+            <div className='flex items-center gap-2'>
+              <Button
+                size='sm'
+                variant='outline'
+                disabled={page <= 1 || channelModelsQuery.isFetching}
+                onClick={() => setPage((current) => current - 1)}
+              >
+                {t('Previous')}
+              </Button>
+              <span className='text-sm'>
+                {t('Page {{page}} of {{total}}', {
+                  page,
+                  total: totalPages,
+                })}
+              </span>
+              <Button
+                size='sm'
+                variant='outline'
+                disabled={page >= totalPages || channelModelsQuery.isFetching}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                {t('Next')}
+              </Button>
+            </div>
           </div>
           <PriceEditorSheet
             channelModel={selectedChannelModel}

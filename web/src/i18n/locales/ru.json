@@ -5520,5 +5520,9 @@
   "Delete Draft": "Удалить черновик",
   "Delete price draft?": "Удалить черновик цены?",
   "This draft will be permanently deleted. Published price history is never deleted.": "Черновик будет удалён безвозвратно. История опубликованных цен никогда не удаляется.",
-  "Price draft deleted": "Черновик цены удалён"
+  "Price draft deleted": "Черновик цены удалён",
+  "{{total}} channel models": "Моделей каналов: {{total}}",
+  "Previous": "Назад",
+  "Next": "Далее",
+  "Page {{page}} of {{total}}": "Страница {{page}} из {{total}}"
 }

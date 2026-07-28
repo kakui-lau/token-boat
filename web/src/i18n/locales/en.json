@@ -5520,5 +5520,9 @@
   "Delete Draft": "Delete Draft",
   "Delete price draft?": "Delete price draft?",
   "This draft will be permanently deleted. Published price history is never deleted.": "This draft will be permanently deleted. Published price history is never deleted.",
-  "Price draft deleted": "Price draft deleted"
+  "Price draft deleted": "Price draft deleted",
+  "{{total}} channel models": "{{total}} channel models",
+  "Previous": "Previous",
+  "Next": "Next",
+  "Page {{page}} of {{total}}": "Page {{page}} of {{total}}"
 }

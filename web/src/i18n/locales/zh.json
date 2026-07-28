@@ -5520,5 +5520,9 @@
   "Delete Draft": "删除草稿",
   "Delete price draft?": "删除价格草稿？",
   "This draft will be permanently deleted. Published price history is never deleted.": "该草稿将被永久删除。已发布的价格历史永远不会被删除。",
-  "Price draft deleted": "价格草稿已删除"
+  "Price draft deleted": "价格草稿已删除",
+  "{{total}} channel models": "{{total}} 个渠道模型",
+  "Previous": "上一页",
+  "Next": "下一页",
+  "Page {{page}} of {{total}}": "第 {{page}} / {{total}} 页"
 }

@@ -760,6 +760,28 @@ func GetPendingTaskSettlements(limit int) []*Task {
 	return tasks
 }
 
+// GetUnrefundedFailedTasks returns failed tasks that still retain charged
+// quota after the reconciliation grace period. Completed refunds and legacy
+// tasks are excluded before LIMIT so they cannot starve refundable work.
+func GetUnrefundedFailedTasks(updatedBefore int64, limit int) []*Task {
+	if limit <= 0 {
+		return nil
+	}
+	var tasks []*Task
+	if err := DB.Where("status = ?", TaskStatusFailure).
+		Where("quota > ?", 0).
+		Where("refund_status <> ? OR refund_status IS NULL OR refund_status = ?", TaskRefundStatusCompleted, "").
+		Where("updated_at <= ?", updatedBefore).
+		Where("(submit_time <= ? OR submit_time >= ?)", 0, TaskRefundLegacyCutoff).
+		Order("id").
+		Limit(limit).
+		Find(&tasks).Error; err != nil {
+		common.SysLog("failed to query unrefunded failed tasks: " + err.Error())
+		return nil
+	}
+	return tasks
+}
+
 func UpdateTaskBillingAuditStatus(id int64, status, message string) error {
 	if id <= 0 {
 		return errors.New("invalid task billing audit status")

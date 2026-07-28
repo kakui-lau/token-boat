@@ -257,10 +257,10 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 // ModelPriceHelperTask resolves task pricing. Tiered expressions use the same
 // frozen pre-consume contract as synchronous relays; legacy task models keep
 // their existing per-call/ratio behavior.
-func ModelPriceHelperTask(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
+func ModelPriceHelperTask(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
 	if info.TieredBillingSnapshot != nil {
-		priceData := types.PriceData{
-			GroupRatioInfo:    types.GroupRatioInfo{GroupRatio: info.TieredBillingSnapshot.GroupRatio},
+		priceData := hosttypes.PriceData{
+			GroupRatioInfo:    hosttypes.GroupRatioInfo{GroupRatio: info.TieredBillingSnapshot.GroupRatio},
 			Quota:             info.TieredBillingSnapshot.EstimatedQuotaAfterGroup,
 			QuotaToPreConsume: info.TieredBillingSnapshot.EstimatedQuotaAfterGroup,
 		}
@@ -271,18 +271,18 @@ func ModelPriceHelperTask(c *gin.Context, info *relaycommon.RelayInfo) (types.Pr
 		return ModelPriceHelperPerCall(c, info)
 	}
 	if info.TaskRelayInfo == nil || !info.TaskTieredEstimateReady || info.TaskPreConsumeTokens <= 0 {
-		return types.PriceData{}, fmt.Errorf("model %s task channel does not provide a safe tiered billing estimate", info.OriginModelName)
+		return hosttypes.PriceData{}, fmt.Errorf("model %s task channel does not provide a safe tiered billing estimate", info.OriginModelName)
 	}
 	exprStr, _ := billing_setting.GetBillingExpr(info.OriginModelName)
 	if sensitiveBillingHeaderPattern.MatchString(exprStr) {
-		return types.PriceData{}, fmt.Errorf("task billing expression must not reference sensitive authentication headers")
+		return hosttypes.PriceData{}, fmt.Errorf("task billing expression must not reference sensitive authentication headers")
 	}
 	if timeBillingFunctionPattern.MatchString(exprStr) {
-		return types.PriceData{}, fmt.Errorf("task billing expression must not reference time-dependent functions")
+		return hosttypes.PriceData{}, fmt.Errorf("task billing expression must not reference time-dependent functions")
 	}
 	if info.BillingRequestInput != nil {
 		if len(info.BillingRequestInput.Body) > maxPersistedTaskBillingRequestBytes {
-			return types.PriceData{}, fmt.Errorf("task billing expression request body exceeds %d bytes", maxPersistedTaskBillingRequestBytes)
+			return hosttypes.PriceData{}, fmt.Errorf("task billing expression request body exceeds %d bytes", maxPersistedTaskBillingRequestBytes)
 		}
 		safeHeaders := make(map[string]string, len(info.BillingRequestInput.Headers))
 		for key, value := range info.BillingRequestInput.Headers {
@@ -299,7 +299,7 @@ func ModelPriceHelperTask(c *gin.Context, info *relaycommon.RelayInfo) (types.Pr
 	meta := &types.TokenCountMeta{MaxTokens: info.TaskPreConsumeTokens}
 	priceData, err := modelPriceHelperTiered(c, info, 0, meta, HandleGroupRatio(c, info))
 	if err != nil {
-		return types.PriceData{}, err
+		return hosttypes.PriceData{}, err
 	}
 	priceData.Quota = priceData.QuotaToPreConsume
 	info.PriceData = priceData

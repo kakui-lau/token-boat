@@ -6,7 +6,7 @@ DEV_POSTGRES_SERVICE = postgres
 DEV_API_SERVICE = new-api
 DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
-DEV_SQLITE_PATH ?= one-api.db
+DEV_SQLITE_PATH ?= data/one-api.db
 
 .PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
 
@@ -21,7 +21,8 @@ build-all-web: build-web
 
 start-api:
 	@echo "Starting api dev server..."
-	@cd $(API_DIR) && go run main.go &
+	@mkdir -p $(dir $(DEV_SQLITE_PATH))
+	@cd $(API_DIR) && SQLITE_PATH="$(abspath $(DEV_SQLITE_PATH))?_busy_timeout=30000" go run main.go &
 
 dev-api:
 	@echo "Starting api services (docker)..."

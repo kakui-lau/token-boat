@@ -31,28 +31,23 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   deletePriceDraft,
+  getOfficialPriceOverview,
   getOfficialPriceVersions,
-  getPricingCatalogOptions,
   importLegacyOfficialPrices,
   publishPriceVersion,
   suspendPriceVersion,
 } from '@/features/pricing-admin/api'
 import { OfficialPricePanel } from '@/features/pricing-admin/components/official-price-panel'
+import type { OfficialPriceOverview } from '@/features/pricing-admin/types'
+
+import { OfficialPriceOverviewTable } from './components/official-price-overview-table'
 
 type OfficialPricingProps = {
   initialModelId?: number
 }
 
-const emptyPricingModels: { id: number; name: string }[] = []
+const emptyOfficialPriceRows: OfficialPriceOverview[] = []
 
 export function OfficialPricing(props: OfficialPricingProps) {
   const { t } = useTranslation()
@@ -62,18 +57,18 @@ export function OfficialPricing(props: OfficialPricingProps) {
     props.initialModelId ?? null
   )
   const deferredKeyword = useDeferredValue(keyword.trim().toLowerCase())
-  const catalogQuery = useQuery({
-    queryKey: ['pricing-admin', 'catalog-options'],
-    queryFn: getPricingCatalogOptions,
+  const overviewQuery = useQuery({
+    queryKey: ['pricing-admin', 'official-price-overview'],
+    queryFn: () => getOfficialPriceOverview(),
   })
-  const models = catalogQuery.data?.data.models ?? emptyPricingModels
-  const filteredModels = deferredKeyword
-    ? models.filter((model) =>
-        model.name.toLowerCase().includes(deferredKeyword)
+  const rows = overviewQuery.data?.data ?? emptyOfficialPriceRows
+  const filteredRows = deferredKeyword
+    ? rows.filter((row) =>
+        row.model_name.toLowerCase().includes(deferredKeyword)
       )
-    : models
+    : rows
   const selectedModel =
-    models.find((model) => model.id === selectedModelId) ?? null
+    rows.find((row) => row.model_id === selectedModelId) ?? null
   const officialQueryKey = ['pricing-admin', 'official-prices', selectedModelId]
   const officialQuery = useQuery({
     queryKey: officialQueryKey,
@@ -87,6 +82,9 @@ export function OfficialPricing(props: OfficialPricingProps) {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
       })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'official-price-overview'],
+      })
       toast.success(t('Price version published'))
     },
   })
@@ -96,6 +94,9 @@ export function OfficialPricing(props: OfficialPricingProps) {
       await queryClient.invalidateQueries({ queryKey: officialQueryKey })
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'official-price-overview'],
       })
       toast.success(t('Price version suspended'))
     },
@@ -112,6 +113,9 @@ export function OfficialPricing(props: OfficialPricingProps) {
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'official-prices'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'official-price-overview'],
       })
       toast.success(
         t(
@@ -158,13 +162,13 @@ export function OfficialPricing(props: OfficialPricingProps) {
                   {t('Manage Official Price')}
                 </h3>
                 <p className='text-muted-foreground truncate text-sm'>
-                  {selectedModel.name}
+                  {selectedModel.model_name}
                 </p>
               </div>
             </div>
             <div className='min-h-0 flex-1 overflow-auto rounded-lg border p-4'>
               <OfficialPricePanel
-                modelId={selectedModel.id}
+                modelId={selectedModel.model_id}
                 versions={officialQuery.data?.data ?? []}
                 isPublishing={publishMutation.isPending}
                 isSuspending={suspendMutation.isPending}
@@ -174,6 +178,7 @@ export function OfficialPricing(props: OfficialPricingProps) {
                 onDelete={(id) => deleteMutation.mutate(id)}
                 onCreated={async () => {
                   await officialQuery.refetch()
+                  await overviewQuery.refetch()
                 }}
               />
             </div>
@@ -201,41 +206,12 @@ export function OfficialPricing(props: OfficialPricingProps) {
                 />
               </InputGroup>
             </Field>
-            <div className='overflow-x-auto rounded-lg border'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('Model')}</TableHead>
-                    <TableHead className='text-right'>{t('Actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredModels.map((model) => (
-                    <TableRow key={model.id}>
-                      <TableCell className='font-medium'>
-                        {model.name}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        <Button
-                          size='sm'
-                          variant='outline'
-                          onClick={() => setSelectedModelId(model.id)}
-                        >
-                          {t('Manage Official Price')}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!catalogQuery.isLoading && filteredModels.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={2} className='py-8 text-center'>
-                        {t('No models found')}
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
+            <OfficialPriceOverviewTable
+              allRows={rows}
+              rows={filteredRows}
+              isLoading={overviewQuery.isLoading}
+              onManage={setSelectedModelId}
+            />
           </div>
         )}
       </SectionPageLayout.Content>

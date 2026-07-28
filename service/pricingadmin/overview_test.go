@@ -88,3 +88,41 @@ func TestListModelPriceOverviewDoesNotCompareDifferentCurrencies(t *testing.T) {
 	assert.Equal(t, "CNY", result[0].Currency)
 	assert.Equal(t, "USD", result[1].Currency)
 }
+
+func TestListOfficialPriceOverviewPrefersActiveVersionAndIncludesCoverage(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 401, ModelName: "official-priced"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 402, ModelName: "official-unconfigured"}).Error)
+	for _, version := range []model.OfficialModelPriceVersion{
+		{
+			ModelId: 401, BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{"input_unit_price":"1.25","output_unit_price":"5","cache_read_unit_price":"0.2"}`,
+			BillingExpr:     `v1:tier("active", p * 1.25 + c * 5)`, ExprHash: "active",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			Currency: "USD", Source: "manual", Version: 1,
+			Status: model.PricingVersionStatusActive, EffectiveFrom: 100,
+		},
+		{
+			ModelId: 401, BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{"input_unit_price":"2","output_unit_price":"6"}`,
+			BillingExpr:     `v1:tier("draft", p * 2 + c * 6)`, ExprHash: "draft",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			Currency: "USD", Source: "manual", Version: 2,
+			Status: model.PricingVersionStatusDraft,
+		},
+	} {
+		require.NoError(t, model.DB.Create(&version).Error)
+	}
+
+	result, err := ListOfficialPriceOverview("official")
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	assert.Equal(t, model.PricingVersionStatusActive, result[0].Status)
+	assert.Equal(t, int64(1), result[0].Version)
+	assert.Equal(t, "1.25", result[0].InputUnitPrice)
+	assert.Equal(t, "0.2", result[0].CacheReadUnitPrice)
+	assert.Equal(t, 2, result[0].VersionCount)
+	assert.Equal(t, 1, result[0].DraftCount)
+	assert.Equal(t, "unconfigured", result[1].Status)
+	assert.Zero(t, result[1].VersionCount)
+}

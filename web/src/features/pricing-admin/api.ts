@@ -24,6 +24,7 @@ import type {
   FlatTokenPrices,
   ImportResponse,
   ModelPriceOverview,
+  OfficialPriceOverview,
   OfficialPriceVersion,
   PriceSimulationResult,
   PricingCatalogOptionsResponse,
@@ -108,6 +109,15 @@ export async function getOfficialPriceVersions(
 ): Promise<PriceVersionResponse<OfficialPriceVersion[]>> {
   const response = await api.get('/api/pricing-admin/official-prices', {
     params: { model_id: modelId },
+  })
+  return response.data
+}
+
+export async function getOfficialPriceOverview(
+  keyword?: string
+): Promise<PriceVersionResponse<OfficialPriceOverview[]>> {
+  const response = await api.get('/api/pricing-admin/official-price-overview', {
+    params: { keyword },
   })
   return response.data
 }

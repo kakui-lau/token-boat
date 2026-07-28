@@ -73,6 +73,29 @@ export type OfficialPriceVersion = {
   effective_to: number
 }
 
+export type OfficialPriceOverview = {
+  model_id: number
+  model_name: string
+  status: PriceVersionStatus | 'unconfigured'
+  currency: string
+  billing_mode: string
+  price_structure: string
+  version: number
+  version_count: number
+  draft_count: number
+  effective_from: number
+  input_unit_price: string
+  output_unit_price: string
+  cache_read_unit_price: string
+  cache_write_unit_price: string
+  image_input_unit_price: string
+  image_output_unit_price: string
+  audio_input_unit_price: string
+  audio_output_unit_price: string
+  request_unit_price: string
+  video_second_unit_price: string
+}
+
 export type PurchasePriceVersion = {
   id: number
   channel_model_id: number

@@ -373,6 +373,7 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.GET("/channel-models", controller.AdminListChannelModels)
 			pricingAdminRoute.GET("/catalog-options", controller.AdminListPricingCatalogOptions)
 			pricingAdminRoute.GET("/model-price-overview", controller.AdminListModelPriceOverview)
+			pricingAdminRoute.GET("/official-price-overview", controller.AdminListOfficialPriceOverview)
 			pricingAdminRoute.POST("/channel-models", controller.AdminCreateChannelModel)
 			pricingAdminRoute.PUT("/channel-models/:id", controller.AdminUpdateChannelModel)
 			pricingAdminRoute.POST("/channel-models/sync-legacy", controller.AdminSyncLegacyChannelModels)

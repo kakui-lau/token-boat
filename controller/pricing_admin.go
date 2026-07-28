@@ -51,6 +51,15 @@ func AdminListModelPriceOverview(c *gin.Context) {
 	common.ApiSuccess(c, items)
 }
 
+func AdminListOfficialPriceOverview(c *gin.Context) {
+	items, err := pricingadmin.ListOfficialPriceOverview(c.Query("keyword"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, items)
+}
+
 func AdminListChannelModels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := strings.TrimSpace(c.Query("keyword"))

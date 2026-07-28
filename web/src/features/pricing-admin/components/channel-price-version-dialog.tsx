@@ -37,6 +37,33 @@ const componentLabels: Record<string, string> = {
   audio_output_unit_price: 'Audio Output / 1M tokens',
   request_unit_price: 'Per Request',
   video_second_unit_price: 'Per Video Second',
+  token_input: 'Token input',
+  token_output: 'Token output',
+  cache_read: 'Cache read',
+  cache_write: 'Cache write',
+  image_input: 'Image input',
+  image_output: 'Image output',
+  audio_input: 'Audio input',
+  audio_output: 'Audio output',
+  request: 'Request',
+  image: 'Image',
+  audio_second: 'Audio second',
+  video_second: 'Video second',
+  character: 'Character',
+}
+
+type PriceRule = {
+  id?: string
+  name?: string
+  component?: string
+  unit?: string
+  unit_size?: string
+  unit_price?: string
+  upper_bound?: string
+  operation?: string
+  quality?: string
+  resolution?: string
+  with_audio?: string
 }
 
 export function ChannelPriceVersionDialog(
@@ -63,6 +90,9 @@ export function ChannelPriceVersionDialog(
       key !== 'rules' &&
       typeof value !== 'object'
   )
+  const priceRules = Array.isArray(components.rules)
+    ? (components.rules as PriceRule[])
+    : []
   const isPurchase = props.kind === 'purchase'
   const purchase = isPurchase ? (version as PurchasePriceVersion | null) : null
   const retail = !isPurchase ? (version as RetailPriceVersion | null) : null
@@ -103,6 +133,52 @@ export function ChannelPriceVersionDialog(
 
             <section className='space-y-2'>
               <h3 className='text-sm font-medium'>{t('Price Components')}</h3>
+              {priceRules.length > 0 ? (
+                <div className='space-y-2'>
+                  {priceRules.map((rule, index) => {
+                    const conditions = [
+                      rule.operation && `${t('Operation')}: ${rule.operation}`,
+                      rule.quality && `${t('Quality')}: ${rule.quality}`,
+                      rule.resolution &&
+                        `${t('Resolution')}: ${rule.resolution}`,
+                      rule.with_audio === 'true' && t('With audio'),
+                      rule.with_audio === 'false' && t('Without audio'),
+                      rule.upper_bound &&
+                        `${t('Usage upper bound')}: ${rule.upper_bound}`,
+                    ].filter(Boolean)
+                    return (
+                      <div
+                        key={rule.id || `${rule.component}-${index}`}
+                        className='rounded-lg border p-3'
+                      >
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
+                          <div className='flex items-center gap-2'>
+                            <Badge variant='outline'>
+                              {rule.name || `#${index + 1}`}
+                            </Badge>
+                            <span className='font-medium'>
+                              {t(
+                                componentLabels[rule.component || ''] ??
+                                  rule.component ??
+                                  'Price rule'
+                              )}
+                            </span>
+                          </div>
+                          <span className='font-mono text-sm'>
+                            {rule.unit_price || '0'} {version.currency} /{' '}
+                            {rule.unit_size || '1'} {rule.unit || ''}
+                          </span>
+                        </div>
+                        {conditions.length > 0 ? (
+                          <p className='text-muted-foreground mt-2 text-xs'>
+                            {conditions.join(' · ')}
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
               <div className='grid gap-2 sm:grid-cols-2'>
                 {componentEntries.map(([key, value]) => (
                   <div
@@ -117,7 +193,7 @@ export function ChannelPriceVersionDialog(
                     </span>
                   </div>
                 ))}
-                {componentEntries.length === 0 ? (
+                {componentEntries.length === 0 && priceRules.length === 0 ? (
                   <p className='text-muted-foreground col-span-full rounded-lg border border-dashed p-3 text-sm'>
                     {t('No structured price components')}
                   </p>

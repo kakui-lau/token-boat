@@ -70,6 +70,9 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
   const [detailVersion, setDetailVersion] =
     useState<PurchasePriceVersion | null>(null)
   const [editVersionId, setEditVersionId] = useState<number | null>(null)
+  const [editVersionUpdatedAt, setEditVersionUpdatedAt] = useState<
+    number | undefined
+  >(undefined)
   const form = useForm<PurchasePriceForm>({
     resolver: zodResolver(purchasePriceSchema),
     defaultValues: {
@@ -134,6 +137,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         quote_reference: value.quote_reference,
         contract_reference: value.contract_reference,
         remark: value.remark,
+        expected_updated_at: editVersionUpdatedAt,
       }
       return editVersionId
         ? updatePurchaseDraft(editVersionId, payload)
@@ -143,6 +147,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       const wasEditing = editVersionId !== null
       form.reset()
       setEditVersionId(null)
+      setEditVersionUpdatedAt(undefined)
       await props.onCreated()
       toast.success(
         t(
@@ -206,6 +211,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       remark: version.remark || '',
     })
     setEditVersionId(id)
+    setEditVersionUpdatedAt(version.updated_at)
   }
 
   const fillFromVersion = (id: number) => {
@@ -270,6 +276,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               onClick={() => {
                 form.reset()
                 setEditVersionId(null)
+                setEditVersionUpdatedAt(undefined)
               }}
             >
               {t('Cancel Editing')}

@@ -49,6 +49,7 @@ type PurchaseDraftInput struct {
 	QuoteReference         string              `json:"quote_reference"`
 	ContractReference      string              `json:"contract_reference"`
 	Remark                 string              `json:"remark"`
+	ExpectedUpdatedAt      int64               `json:"expected_updated_at"`
 }
 
 type RetailDraftInput struct {
@@ -59,6 +60,7 @@ type RetailDraftInput struct {
 	TargetNetMargin        string `json:"target_net_margin"`
 	MinimumMarginRate      string `json:"minimum_margin_rate"`
 	Remark                 string `json:"remark"`
+	ExpectedUpdatedAt      int64  `json:"expected_updated_at"`
 }
 
 type flatTokenPriceComponents struct {
@@ -205,6 +207,9 @@ func buildPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePri
 }
 
 func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
+	if input.ExpectedUpdatedAt <= 0 {
+		return model.ChannelModelPurchasePriceVersion{}, errors.New("expected_updated_at is required")
+	}
 	replacement, err := buildPurchaseDraft(input)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
@@ -217,6 +222,9 @@ func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPu
 		}
 		if current.Status != model.PricingVersionStatusDraft {
 			return errors.New("only purchase price drafts can be updated")
+		}
+		if current.UpdatedAt != input.ExpectedUpdatedAt {
+			return errors.New("purchase price draft was updated by another administrator; reload before saving")
 		}
 		if current.ChannelModelId != replacement.ChannelModelId {
 			return errors.New("purchase price draft channel model cannot be changed")
@@ -235,6 +243,10 @@ func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPu
 			}
 		}
 		replacement.PurchaseExprHash = billingexpr.ExprHashString(replacement.PurchaseBillingExpr)
+		updatedAt := common.GetTimestamp()
+		if updatedAt <= current.UpdatedAt {
+			updatedAt = current.UpdatedAt + 1
+		}
 		updates := map[string]any{
 			"official_price_version_id": replacement.OfficialPriceVersionId,
 			"billing_mode":              replacement.BillingMode,
@@ -256,7 +268,7 @@ func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPu
 			"quote_reference":           replacement.QuoteReference,
 			"contract_reference":        replacement.ContractReference,
 			"remark":                    replacement.Remark,
-			"updated_at":                common.GetTimestamp(),
+			"updated_at":                updatedAt,
 		}
 		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
 			Where("id = ? AND status = ?", id, model.PricingVersionStatusDraft).
@@ -280,6 +292,9 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 }
 
 func UpdateRetailDraft(id int, input RetailDraftInput) (model.ChannelModelRetailPriceVersion, error) {
+	if input.ExpectedUpdatedAt <= 0 {
+		return model.ChannelModelRetailPriceVersion{}, errors.New("expected_updated_at is required")
+	}
 	replacement, err := buildRetailDraft(input)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
@@ -293,10 +308,17 @@ func UpdateRetailDraft(id int, input RetailDraftInput) (model.ChannelModelRetail
 		if current.Status != model.PricingVersionStatusDraft {
 			return errors.New("only retail price drafts can be updated")
 		}
+		if current.UpdatedAt != input.ExpectedUpdatedAt {
+			return errors.New("retail price draft was updated by another administrator; reload before saving")
+		}
 		if current.ChannelModelId != replacement.ChannelModelId {
 			return errors.New("retail price draft channel model cannot be changed")
 		}
 		replacement.RetailExprHash = billingexpr.ExprHashString(replacement.RetailBillingExpr)
+		updatedAt := common.GetTimestamp()
+		if updatedAt <= current.UpdatedAt {
+			updatedAt = current.UpdatedAt + 1
+		}
 		updates := map[string]any{
 			"purchase_price_version_id": replacement.PurchasePriceVersionId,
 			"billing_mode":              replacement.BillingMode,
@@ -317,7 +339,7 @@ func UpdateRetailDraft(id int, input RetailDraftInput) (model.ChannelModelRetail
 			"target_net_margin":         replacement.TargetNetMargin,
 			"minimum_margin_rate":       replacement.MinimumMarginRate,
 			"remark":                    replacement.Remark,
-			"updated_at":                common.GetTimestamp(),
+			"updated_at":                updatedAt,
 		}
 		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
 			Where("id = ? AND status = ?", id, model.PricingVersionStatusDraft).

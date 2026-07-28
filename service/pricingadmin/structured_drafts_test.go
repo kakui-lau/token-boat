@@ -145,6 +145,7 @@ func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {
 		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
 		PricingMode: "component_ratio", InputDiscount: "0.6", OutputDiscount: "0.8",
 		QuoteReference: "Q-2026", Remark: "revised",
+		ExpectedUpdatedAt: purchase.UpdatedAt,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, purchase.Id, updatedPurchase.Id)
@@ -153,6 +154,12 @@ func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {
 	assert.Equal(t, "6.4", updatedPurchase.OutputUnitPrice)
 	assert.Equal(t, "Q-2026", updatedPurchase.QuoteReference)
 	assert.Contains(t, updatedPurchase.QuoteSpec, `"input_discount":"0.6"`)
+	_, err = UpdatePurchaseDraft(purchase.Id, PurchaseDraftInput{
+		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+		ExpectedUpdatedAt: purchase.UpdatedAt,
+	})
+	require.ErrorContains(t, err, "updated by another administrator")
 	require.NoError(t, PublishPurchasePriceVersion(updatedPurchase.Id))
 
 	retail, err := CreateRetailDraft(RetailDraftInput{
@@ -165,6 +172,7 @@ func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {
 		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
 		TotalVariableCostRate: "0.12", EffectiveTaxRate: "0.1",
 		TargetNetMargin: "0.25", MinimumMarginRate: "0.15", Remark: "approved",
+		ExpectedUpdatedAt: retail.UpdatedAt,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, retail.Id, updatedRetail.Id)

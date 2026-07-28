@@ -203,4 +203,50 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getByLabelText('Quote ID')).toHaveValue('Q-21')
     expect(screen.getByRole('button', { name: 'Update Draft' })).toBeEnabled()
   })
+
+  test('renders tier rules and request conditions in version details', () => {
+    const version: PurchasePriceVersion = {
+      id: 30,
+      channel_model_id: 2,
+      official_price_version_id: 5,
+      pricing_mode: 'official_ratio',
+      billing_mode: 'token',
+      price_structure: 'tiered',
+      price_components:
+        '{"rules":[{"id":"short","name":"standard","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"2","upper_bound":"100000"},{"id":"fallback","name":"default","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"4"}]}',
+      input_unit_price: '',
+      output_unit_price: '',
+      cache_read_unit_price: '',
+      cache_write_unit_price: '',
+      currency: 'USD',
+      version: 3,
+      status: 'draft',
+      purchase_discount: '0.5',
+      purchase_billing_expr:
+        'v1:len <= 100000 ? tier("standard", p * 2) : tier("default", p * 4)',
+      expression_source: 'generated',
+      expression_schema_version: 'v1',
+      price_unit: 'expression',
+      quote_reference: '',
+      contract_reference: '',
+      conditions: '',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+
+    render(
+      <ChannelPriceVersionDialog
+        kind='purchase'
+        version={version}
+        onOpenChange={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('standard')).toBeVisible()
+    expect(screen.getByText('default')).toBeVisible()
+    expect(screen.getAllByText('Token input')).toHaveLength(2)
+    expect(screen.getByText('Usage upper bound: 100000')).toBeVisible()
+    expect(screen.getByText('2 USD / 1000000 token')).toBeVisible()
+  })
 })

@@ -46,6 +46,19 @@ const componentLabels: Record<string, string> = {
   audio_output_unit_price: 'Audio Output / 1M tokens',
   request_unit_price: 'Per Request',
   video_second_unit_price: 'Per Video Second',
+  token_input: 'Token input',
+  token_output: 'Token output',
+  cache_read: 'Cache read',
+  cache_write: 'Cache write',
+  image_input: 'Image input',
+  image_output: 'Image output',
+  audio_input: 'Audio input',
+  audio_output: 'Audio output',
+  request: 'Request',
+  image: 'Image',
+  audio_second: 'Audio second',
+  video_second: 'Video second',
+  character: 'Character',
 }
 
 type PriceRule = {

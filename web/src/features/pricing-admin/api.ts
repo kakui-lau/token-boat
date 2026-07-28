@@ -223,6 +223,7 @@ export type PurchaseDraftPayload = {
   quote_reference: string
   contract_reference: string
   remark: string
+  expected_updated_at?: number
 }
 
 export async function createPurchaseDraft(
@@ -269,6 +270,7 @@ export type RetailDraftPayload = {
   target_net_margin: string
   minimum_margin_rate: string
   remark: string
+  expected_updated_at?: number
 }
 
 export async function createRetailDraft(

@@ -59,6 +59,9 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     null
   )
   const [editVersionId, setEditVersionId] = useState<number | null>(null)
+  const [editVersionUpdatedAt, setEditVersionUpdatedAt] = useState<
+    number | undefined
+  >(undefined)
   const form = useForm<RetailPriceForm>({
     resolver: zodResolver(retailPriceSchema),
     defaultValues: {
@@ -135,6 +138,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         target_net_margin: value.target_net_margin,
         minimum_margin_rate: value.minimum_margin_rate,
         remark: value.remark,
+        expected_updated_at: editVersionUpdatedAt,
       }
       return editVersionId
         ? updateRetailDraft(editVersionId, payload)
@@ -144,6 +148,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       const wasEditing = editVersionId !== null
       form.reset()
       setEditVersionId(null)
+      setEditVersionUpdatedAt(undefined)
       await props.onCreated()
       toast.success(
         t(
@@ -168,6 +173,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       remark: version.remark || '',
     })
     setEditVersionId(id)
+    setEditVersionUpdatedAt(version.updated_at)
   }
   const fillFromVersion = (id: number) => {
     const version = props.versions.find((item) => item.id === id)
@@ -203,6 +209,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
               onClick={() => {
                 form.reset()
                 setEditVersionId(null)
+                setEditVersionUpdatedAt(undefined)
               }}
             >
               {t('Cancel Editing')}
@@ -338,7 +345,10 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         <VersionList
           items={props.versions.map((version) => ({
             ...version,
-            dependency_label: `${t('Purchase Version')} #${version.purchase_price_version_id}`,
+            dependency_label:
+              `${t('Purchase Version')} #${version.purchase_price_version_id}` +
+              ` · ${t('Target Margin (TM)')} ${version.target_net_margin}` +
+              ` · ${t('Margin Floor')} ${version.minimum_margin_rate}`,
           }))}
           isPublishing={props.isPublishing}
           isSuspending={props.isSuspending}

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -31,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { createOfficialFlatDraft, updateOfficialFlatDraft } from '../api'
 import { officialPriceSchema, type OfficialPriceForm } from '../lib/schemas'
 import type { FlatTokenPrices, OfficialPriceVersion } from '../types'
+import { OfficialPriceVersionDialog } from './official-price-version-dialog'
 import { PriceInputField } from './price-input-field'
 import { VersionList } from './version-list'
 
@@ -49,6 +50,10 @@ type OfficialPricePanelProps = {
 export function OfficialPricePanel(props: OfficialPricePanelProps) {
   const { t } = useTranslation()
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null)
+  const [selectedVersion, setSelectedVersion] =
+    useState<OfficialPriceVersion | null>(null)
+  const [baseVersion, setBaseVersion] = useState<number | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const defaultValues: OfficialPriceForm = {
     currency: 'USD',
     input_unit_price: '',
@@ -90,6 +95,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
     onSuccess: async () => {
       const wasEditing = editingDraftId !== null
       setEditingDraftId(null)
+      setBaseVersion(null)
       form.reset(defaultValues)
       await props.onCreated()
       toast.success(
@@ -103,6 +109,14 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
   const fillFromVersion = (versionId: number, edit: boolean) => {
     const version = props.versions.find((item) => item.id === versionId)
     if (!version) return
+    if (
+      version.billing_mode !== 'token' ||
+      version.price_structure !== 'flat'
+    ) {
+      setSelectedVersion(version)
+      toast.error(t('Only flat token versions can be copied into this form'))
+      return
+    }
     let prices: Partial<FlatTokenPrices> = {}
     try {
       prices = JSON.parse(version.price_components) as Partial<FlatTokenPrices>
@@ -123,6 +137,10 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       remark: edit ? version.remark : '',
     })
     setEditingDraftId(edit ? version.id : null)
+    setBaseVersion(version.version)
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
     toast.success(
       edit
         ? t('Draft loaded for editing')
@@ -133,6 +151,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
   return (
     <div className='space-y-6'>
       <form
+        ref={formRef}
         className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
         onSubmit={form.handleSubmit((value) => saveMutation.mutate(value))}
       >
@@ -142,6 +161,11 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
               ? t('New Official Version')
               : t('Edit Official Version')}
           </h3>
+          {baseVersion !== null ? (
+            <span className='text-muted-foreground text-xs'>
+              {t('Based on Version {{version}}', { version: baseVersion })}
+            </span>
+          ) : null}
           {editingDraftId !== null ? (
             <Button
               type='button'
@@ -149,6 +173,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
               variant='outline'
               onClick={() => {
                 setEditingDraftId(null)
+                setBaseVersion(null)
                 form.reset(defaultValues)
               }}
             >
@@ -233,10 +258,21 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           onPublish={props.onPublish}
           onSuspend={props.onSuspend}
           onDelete={props.onDelete}
+          onView={(id) =>
+            setSelectedVersion(
+              props.versions.find((item) => item.id === id) ?? null
+            )
+          }
           onEdit={(id) => fillFromVersion(id, true)}
           onFill={(id) => fillFromVersion(id, false)}
         />
       </section>
+      <OfficialPriceVersionDialog
+        version={selectedVersion}
+        onOpenChange={(open) => {
+          if (!open) setSelectedVersion(null)
+        }}
+      />
     </div>
   )
 }

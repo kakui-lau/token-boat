@@ -73,11 +73,17 @@ export type OfficialPriceVersion = {
   price_structure: string
   price_components: string
   billing_expr: string
+  expr_hash?: string
+  expression_source?: string
+  expression_schema_version?: string
   currency: string
   version: number
   status: PriceVersionStatus
   source: string
+  source_version?: string
   remark: string
+  created_at?: number
+  updated_at?: number
   effective_from: number
   effective_to: number
 }

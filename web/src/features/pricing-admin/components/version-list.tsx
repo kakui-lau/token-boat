@@ -40,6 +40,7 @@ type VersionListProps = {
   onPublish: (id: number) => void
   onSuspend: (id: number) => void
   onDelete: (id: number) => void
+  onView?: (id: number) => void
   onEdit?: (id: number) => void
   onFill?: (id: number) => void
 }
@@ -93,6 +94,15 @@ export function VersionList(props: VersionListProps) {
               ) : null}
             </div>
             <div className='flex flex-wrap justify-end gap-2'>
+              {props.onView ? (
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  onClick={() => props.onView?.(item.id)}
+                >
+                  {t('View')}
+                </Button>
+              ) : null}
               {props.onFill ? (
                 <Button
                   size='sm'

@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { updateOfficialFlatDraft } from '../api'
 import { ChannelModelDialog } from '../components/channel-model-dialog'
@@ -77,6 +77,10 @@ function renderWithQueryClient(node: React.ReactNode) {
 }
 
 describe('Pricing admin editor layout', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
   afterEach(cleanup)
 
   test('uses a wide pricing workspace for channel-specific pricing tabs', () => {
@@ -181,6 +185,15 @@ describe('Pricing admin editor layout', () => {
     fireEvent.click(templateButtons[1])
     expect(screen.getByLabelText('Input / 1M tokens')).toHaveValue('2')
     expect(screen.getByLabelText('Output / 1M tokens')).toHaveValue('8')
+    expect(screen.getByText('Based on Version {{version}}')).toBeVisible()
+
+    const viewButtons = screen.getAllByRole('button', { name: 'View' })
+    fireEvent.click(viewButtons[1])
+    expect(
+      screen.getByRole('dialog', { name: 'Version Configuration · v1' })
+    ).toBeVisible()
+    expect(screen.getByText('p * 2 + c * 8')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(

@@ -127,7 +127,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
   return (
     <div className='space-y-6'>
       <form
-        className='space-y-4 rounded-lg border p-4'
+        className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
         onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
       >
         <h3 className='font-medium'>{t('Create purchase price draft')}</h3>

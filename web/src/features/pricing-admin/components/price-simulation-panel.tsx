@@ -94,7 +94,7 @@ export function PriceSimulationPanel(props: PriceSimulationPanelProps) {
 
   return (
     <div className='space-y-6'>
-      <div className='space-y-4 rounded-lg border p-4'>
+      <div className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'>
         <h3 className='font-medium'>{t('Run price simulation')}</h3>
         <FieldGroup className='grid gap-4 sm:grid-cols-2'>
           <Field className='sm:col-span-2'>

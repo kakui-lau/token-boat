@@ -169,7 +169,7 @@ export function OfficialPricing(props: OfficialPricingProps) {
                 </p>
               </div>
             </div>
-            <div className='min-h-0 flex-1 overflow-auto rounded-lg border p-4'>
+            <div className='bg-background/95 min-h-0 flex-1 overflow-auto rounded-xl border p-4 shadow-sm backdrop-blur-sm'>
               <OfficialPricePanel
                 modelId={selectedModel.model_id}
                 versions={officialQuery.data?.data ?? []}

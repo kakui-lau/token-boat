@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelModelDialog } from '../components/channel-model-dialog'
+import { OfficialPricePanel } from '../components/official-price-panel'
 import { PriceEditorSheet } from '../components/price-editor-sheet'
 import type { ChannelModel } from '../types'
 
@@ -22,6 +23,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../api', () => ({
   createChannelModel: vi.fn(),
+  createOfficialFlatDraft: vi.fn(),
   deletePriceDraft: vi.fn(),
   getActivePriceBundle: vi.fn().mockResolvedValue({
     data: {
@@ -96,6 +98,28 @@ describe('Pricing admin editor layout', () => {
       'max-h-[90vh]',
       'overflow-y-auto'
     )
+  })
+
+  test('uses an opaque high-contrast surface for official price inputs', () => {
+    renderWithQueryClient(
+      <OfficialPricePanel
+        modelId={3}
+        versions={[]}
+        isPublishing={false}
+        isSuspending={false}
+        isDeleting={false}
+        onPublish={vi.fn()}
+        onSuspend={vi.fn()}
+        onDelete={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    expect(
+      screen
+        .getByRole('heading', { name: 'Create official price draft' })
+        .closest('form')
+    ).toHaveClass('pricing-form-surface')
   })
 
   test('shows the active official, purchase, and retail version chain', async () => {

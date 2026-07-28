@@ -119,6 +119,10 @@ export type FlatTokenPrices = {
   output_unit_price: string
   cache_read_unit_price: string
   cache_write_unit_price: string
+  image_input_unit_price: string
+  image_output_unit_price: string
+  audio_input_unit_price: string
+  audio_output_unit_price: string
 }
 
 export type PriceSimulationResult = {
@@ -133,4 +137,17 @@ export type PriceSimulationResult = {
   minimum_margin_rate: string
   meets_minimum_margin: boolean
   currency: string
+}
+
+export type PricingCatalogOption = {
+  id: number
+  name: string
+}
+
+export type PricingCatalogOptionsResponse = {
+  success: boolean
+  data: {
+    channels: PricingCatalogOption[]
+    models: PricingCatalogOption[]
+  }
 }

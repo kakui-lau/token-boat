@@ -5490,5 +5490,18 @@
   "Gross margin rate": "Gross margin rate",
   "Net margin rate": "Net margin rate",
   "Suspend": "Suspend",
-  "Price version suspended": "Price version suspended"
+  "Price version suspended": "Price version suspended",
+  "Image input price per 1M tokens": "Image input price per 1M tokens",
+  "Image output price per 1M tokens": "Image output price per 1M tokens",
+  "Audio input price per 1M tokens": "Audio input price per 1M tokens",
+  "Audio output price per 1M tokens": "Audio output price per 1M tokens",
+  "Image input discount": "Image input discount",
+  "Image output discount": "Image output discount",
+  "Audio input discount": "Audio input discount",
+  "Audio output discount": "Audio output discount",
+  "Create Channel Model": "Create Channel Model",
+  "Bind one logical model to the upstream model name exposed by a channel.": "Bind one logical model to the upstream model name exposed by a channel.",
+  "Select a channel": "Select a channel",
+  "Select a model": "Select a model",
+  "Channel model created": "Channel model created"
 }

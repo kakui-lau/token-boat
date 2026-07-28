@@ -96,3 +96,44 @@ func TestComponentDiscountRequiresEveryPricedOfficialComponent(t *testing.T) {
 	}, 2)
 	require.ErrorContains(t, err, "output_discount")
 }
+
+func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 23, ModelName: "multimodal-test"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 33, ChannelId: 43, ModelId: 23, UpstreamModelName: "multimodal-test",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 23, Currency: "USD",
+		Prices: FlatTokenPriceInput{
+			ImageInputUnitPrice: "2", ImageOutputUnitPrice: "8",
+			AudioInputUnitPrice: "3", AudioOutputUnitPrice: "12",
+		},
+	}, 1)
+	require.NoError(t, err)
+	assert.Contains(t, official.BillingExpr, "img * 2")
+	assert.Contains(t, official.BillingExpr, "img_o * 8")
+	assert.Contains(t, official.BillingExpr, "ai * 3")
+	assert.Contains(t, official.BillingExpr, "ao * 12")
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+
+	officialId := official.Id
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 33, OfficialPriceVersionId: &officialId,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.NoError(t, err)
+	assert.Contains(t, purchase.PriceComponents, `"image_input_unit_price":"1"`)
+	assert.Contains(t, purchase.PriceComponents, `"audio_output_unit_price":"6"`)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+
+	retail, err := CreateRetailDraft(RetailDraftInput{
+		ChannelModelId: 33, PurchasePriceVersionId: purchase.Id,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.5", MinimumMarginRate: "0.1",
+	}, 1)
+	require.NoError(t, err)
+	assert.Contains(t, retail.PriceComponents, `"image_input_unit_price":"2"`)
+	assert.Contains(t, retail.PriceComponents, `"audio_output_unit_price":"12"`)
+}

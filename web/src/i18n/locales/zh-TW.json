@@ -5490,5 +5490,18 @@
   "Gross margin rate": "毛利率",
   "Net margin rate": "淨利潤率",
   "Suspend": "停用",
-  "Price version suspended": "價格版本已停用"
+  "Price version suspended": "價格版本已停用",
+  "Image input price per 1M tokens": "圖片輸入每百萬 Token 價格",
+  "Image output price per 1M tokens": "圖片輸出每百萬 Token 價格",
+  "Audio input price per 1M tokens": "音訊輸入每百萬 Token 價格",
+  "Audio output price per 1M tokens": "音訊輸出每百萬 Token 價格",
+  "Image input discount": "圖片輸入折扣",
+  "Image output discount": "圖片輸出折扣",
+  "Audio input discount": "音訊輸入折扣",
+  "Audio output discount": "音訊輸出折扣",
+  "Create Channel Model": "建立渠道模型",
+  "Bind one logical model to the upstream model name exposed by a channel.": "將一個邏輯模型綁定至渠道提供的上游模型名稱。",
+  "Select a channel": "選擇渠道",
+  "Select a model": "選擇模型",
+  "Channel model created": "渠道模型已建立"
 }

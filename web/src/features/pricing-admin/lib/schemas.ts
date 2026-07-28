@@ -44,6 +44,10 @@ export const officialPriceSchema = z
     output_unit_price: optionalNonNegativeDecimal,
     cache_read_unit_price: optionalNonNegativeDecimal,
     cache_write_unit_price: optionalNonNegativeDecimal,
+    image_input_unit_price: optionalNonNegativeDecimal,
+    image_output_unit_price: optionalNonNegativeDecimal,
+    audio_input_unit_price: optionalNonNegativeDecimal,
+    audio_output_unit_price: optionalNonNegativeDecimal,
     remark: z.string().trim(),
   })
   .refine(
@@ -52,7 +56,11 @@ export const officialPriceSchema = z
         value.input_unit_price ||
         value.output_unit_price ||
         value.cache_read_unit_price ||
-        value.cache_write_unit_price
+        value.cache_write_unit_price ||
+        value.image_input_unit_price ||
+        value.image_output_unit_price ||
+        value.audio_input_unit_price ||
+        value.audio_output_unit_price
       ),
     {
       message: 'Enter at least one unit price',
@@ -73,10 +81,18 @@ export const purchasePriceSchema = z
     output_discount: optionalNonNegativeDecimal,
     cache_read_discount: optionalNonNegativeDecimal,
     cache_write_discount: optionalNonNegativeDecimal,
+    image_input_discount: optionalNonNegativeDecimal,
+    image_output_discount: optionalNonNegativeDecimal,
+    audio_input_discount: optionalNonNegativeDecimal,
+    audio_output_discount: optionalNonNegativeDecimal,
     input_unit_price: optionalNonNegativeDecimal,
     output_unit_price: optionalNonNegativeDecimal,
     cache_read_unit_price: optionalNonNegativeDecimal,
     cache_write_unit_price: optionalNonNegativeDecimal,
+    image_input_unit_price: optionalNonNegativeDecimal,
+    image_output_unit_price: optionalNonNegativeDecimal,
+    audio_input_unit_price: optionalNonNegativeDecimal,
+    audio_output_unit_price: optionalNonNegativeDecimal,
     quote_reference: z.string().trim(),
     contract_reference: z.string().trim(),
     remark: z.string().trim(),
@@ -104,7 +120,11 @@ export const purchasePriceSchema = z
       !value.input_unit_price &&
       !value.output_unit_price &&
       !value.cache_read_unit_price &&
-      !value.cache_write_unit_price
+      !value.cache_write_unit_price &&
+      !value.image_input_unit_price &&
+      !value.image_output_unit_price &&
+      !value.audio_input_unit_price &&
+      !value.audio_output_unit_price
     ) {
       context.addIssue({
         code: 'custom',
@@ -117,7 +137,11 @@ export const purchasePriceSchema = z
       !value.input_discount &&
       !value.output_discount &&
       !value.cache_read_discount &&
-      !value.cache_write_discount
+      !value.cache_write_discount &&
+      !value.image_input_discount &&
+      !value.image_output_discount &&
+      !value.audio_input_discount &&
+      !value.audio_output_discount
     ) {
       context.addIssue({
         code: 'custom',

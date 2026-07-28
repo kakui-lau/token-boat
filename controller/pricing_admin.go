@@ -17,6 +17,31 @@ type channelModelAdminRow struct {
 	ModelName   string `json:"model_name"`
 }
 
+type pricingAdminCatalogOption struct {
+	Id   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+func AdminListPricingCatalogOptions(c *gin.Context) {
+	var channels []pricingAdminCatalogOption
+	if err := model.DB.Model(&model.Channel{}).
+		Select("id, name").
+		Order("name ASC").
+		Scan(&channels).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var models []pricingAdminCatalogOption
+	if err := model.DB.Model(&model.Model{}).
+		Select("id, model_name AS name").
+		Order("model_name ASC").
+		Scan(&models).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"channels": channels, "models": models})
+}
+
 func AdminListChannelModels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := strings.TrimSpace(c.Query("keyword"))

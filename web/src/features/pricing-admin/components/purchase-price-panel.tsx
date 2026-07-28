@@ -55,6 +55,10 @@ const emptyPrices = {
   output_unit_price: '',
   cache_read_unit_price: '',
   cache_write_unit_price: '',
+  image_input_unit_price: '',
+  image_output_unit_price: '',
+  audio_input_unit_price: '',
+  audio_output_unit_price: '',
 }
 
 export function PurchasePricePanel(props: PurchasePricePanelProps) {
@@ -69,6 +73,10 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       output_discount: '',
       cache_read_discount: '',
       cache_write_discount: '',
+      image_input_discount: '',
+      image_output_discount: '',
+      audio_input_discount: '',
+      audio_output_discount: '',
       ...emptyPrices,
       quote_reference: '',
       contract_reference: '',
@@ -89,11 +97,19 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         output_discount: value.output_discount,
         cache_read_discount: value.cache_read_discount,
         cache_write_discount: value.cache_write_discount,
+        image_input_discount: value.image_input_discount,
+        image_output_discount: value.image_output_discount,
+        audio_input_discount: value.audio_input_discount,
+        audio_output_discount: value.audio_output_discount,
         prices: {
           input_unit_price: value.input_unit_price,
           output_unit_price: value.output_unit_price,
           cache_read_unit_price: value.cache_read_unit_price,
           cache_write_unit_price: value.cache_write_unit_price,
+          image_input_unit_price: value.image_input_unit_price,
+          image_output_unit_price: value.image_output_unit_price,
+          audio_input_unit_price: value.audio_input_unit_price,
+          audio_output_unit_price: value.audio_output_unit_price,
         },
         quote_reference: value.quote_reference,
         contract_reference: value.contract_reference,
@@ -204,6 +220,30 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
                 registration={form.register('cache_write_discount')}
                 error={form.formState.errors.cache_write_discount}
               />
+              <PriceInputField
+                id='purchase-image-input-discount'
+                label='Image input discount'
+                registration={form.register('image_input_discount')}
+                error={form.formState.errors.image_input_discount}
+              />
+              <PriceInputField
+                id='purchase-image-output-discount'
+                label='Image output discount'
+                registration={form.register('image_output_discount')}
+                error={form.formState.errors.image_output_discount}
+              />
+              <PriceInputField
+                id='purchase-audio-input-discount'
+                label='Audio input discount'
+                registration={form.register('audio_input_discount')}
+                error={form.formState.errors.audio_input_discount}
+              />
+              <PriceInputField
+                id='purchase-audio-output-discount'
+                label='Audio output discount'
+                registration={form.register('audio_output_discount')}
+                error={form.formState.errors.audio_output_discount}
+              />
             </>
           ) : null}
           {pricingMode === 'fixed_unit_price' ? (
@@ -231,6 +271,30 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
                 label='Cache write price per 1M tokens'
                 registration={form.register('cache_write_unit_price')}
                 error={form.formState.errors.cache_write_unit_price}
+              />
+              <PriceInputField
+                id='purchase-image-input-price'
+                label='Image input price per 1M tokens'
+                registration={form.register('image_input_unit_price')}
+                error={form.formState.errors.image_input_unit_price}
+              />
+              <PriceInputField
+                id='purchase-image-output-price'
+                label='Image output price per 1M tokens'
+                registration={form.register('image_output_unit_price')}
+                error={form.formState.errors.image_output_unit_price}
+              />
+              <PriceInputField
+                id='purchase-audio-input-price'
+                label='Audio input price per 1M tokens'
+                registration={form.register('audio_input_unit_price')}
+                error={form.formState.errors.audio_input_unit_price}
+              />
+              <PriceInputField
+                id='purchase-audio-output-price'
+                label='Audio output price per 1M tokens'
+                registration={form.register('audio_output_unit_price')}
+                error={form.formState.errors.audio_output_unit_price}
               />
             </>
           ) : null}

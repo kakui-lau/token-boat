@@ -5490,5 +5490,18 @@
   "Gross margin rate": "Tỷ suất lợi nhuận gộp",
   "Net margin rate": "Tỷ suất lợi nhuận ròng",
   "Suspend": "Tạm dừng",
-  "Price version suspended": "Đã tạm dừng phiên bản giá"
+  "Price version suspended": "Đã tạm dừng phiên bản giá",
+  "Image input price per 1M tokens": "Giá hình ảnh đầu vào trên 1 triệu token",
+  "Image output price per 1M tokens": "Giá hình ảnh đầu ra trên 1 triệu token",
+  "Audio input price per 1M tokens": "Giá âm thanh đầu vào trên 1 triệu token",
+  "Audio output price per 1M tokens": "Giá âm thanh đầu ra trên 1 triệu token",
+  "Image input discount": "Chiết khấu hình ảnh đầu vào",
+  "Image output discount": "Chiết khấu hình ảnh đầu ra",
+  "Audio input discount": "Chiết khấu âm thanh đầu vào",
+  "Audio output discount": "Chiết khấu âm thanh đầu ra",
+  "Create Channel Model": "Tạo mô hình kênh",
+  "Bind one logical model to the upstream model name exposed by a channel.": "Liên kết một mô hình logic với tên mô hình thượng nguồn của kênh.",
+  "Select a channel": "Chọn kênh",
+  "Select a model": "Chọn mô hình",
+  "Channel model created": "Đã tạo mô hình kênh"
 }

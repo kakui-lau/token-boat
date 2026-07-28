@@ -5490,5 +5490,18 @@
   "Gross margin rate": "粗利益率",
   "Net margin rate": "純利益率",
   "Suspend": "停止",
-  "Price version suspended": "価格バージョンを停止しました"
+  "Price version suspended": "価格バージョンを停止しました",
+  "Image input price per 1M tokens": "画像入力100万トークン当たりの価格",
+  "Image output price per 1M tokens": "画像出力100万トークン当たりの価格",
+  "Audio input price per 1M tokens": "音声入力100万トークン当たりの価格",
+  "Audio output price per 1M tokens": "音声出力100万トークン当たりの価格",
+  "Image input discount": "画像入力割引",
+  "Image output discount": "画像出力割引",
+  "Audio input discount": "音声入力割引",
+  "Audio output discount": "音声出力割引",
+  "Create Channel Model": "チャネルモデルを作成",
+  "Bind one logical model to the upstream model name exposed by a channel.": "論理モデルをチャネルが公開する上流モデル名に関連付けます。",
+  "Select a channel": "チャネルを選択",
+  "Select a model": "モデルを選択",
+  "Channel model created": "チャネルモデルを作成しました"
 }

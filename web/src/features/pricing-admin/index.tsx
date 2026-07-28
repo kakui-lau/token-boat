@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleAlert, DatabaseZap, RefreshCw, Search } from 'lucide-react'
+import { CircleAlert, DatabaseZap, Plus, RefreshCw, Search } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -46,6 +46,7 @@ import {
   importLegacyOfficialPrices,
   syncLegacyChannelModels,
 } from './api'
+import { ChannelModelDialog } from './components/channel-model-dialog'
 import { PriceEditorSheet } from './components/price-editor-sheet'
 import type { ChannelModel } from './types'
 
@@ -55,6 +56,7 @@ export function PricingAdmin() {
   const [keyword, setKeyword] = useState('')
   const [selectedChannelModel, setSelectedChannelModel] =
     useState<ChannelModel | null>(null)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const deferredKeyword = useDeferredValue(keyword)
   const channelModelsQuery = useQuery({
     queryKey: ['pricing-admin', 'channel-models', deferredKeyword],
@@ -97,6 +99,10 @@ export function PricingAdmin() {
         {t('Channel Model Pricing')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <Button variant='outline' onClick={() => setCreateDialogOpen(true)}>
+          <Plus data-icon='inline-start' />
+          {t('Create Channel Model')}
+        </Button>
         <Button
           variant='outline'
           disabled={isMutating}
@@ -205,6 +211,13 @@ export function PricingAdmin() {
               if (!open) {
                 setSelectedChannelModel(null)
               }
+            }}
+          />
+          <ChannelModelDialog
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            onCreated={async () => {
+              await channelModelsQuery.refetch()
             }}
           />
         </div>

@@ -12,10 +12,14 @@ import (
 )
 
 type FlatTokenPriceInput struct {
-	InputUnitPrice      string `json:"input_unit_price"`
-	OutputUnitPrice     string `json:"output_unit_price"`
-	CacheReadUnitPrice  string `json:"cache_read_unit_price"`
-	CacheWriteUnitPrice string `json:"cache_write_unit_price"`
+	InputUnitPrice       string `json:"input_unit_price"`
+	OutputUnitPrice      string `json:"output_unit_price"`
+	CacheReadUnitPrice   string `json:"cache_read_unit_price"`
+	CacheWriteUnitPrice  string `json:"cache_write_unit_price"`
+	ImageInputUnitPrice  string `json:"image_input_unit_price"`
+	ImageOutputUnitPrice string `json:"image_output_unit_price"`
+	AudioInputUnitPrice  string `json:"audio_input_unit_price"`
+	AudioOutputUnitPrice string `json:"audio_output_unit_price"`
 }
 
 type OfficialFlatDraftInput struct {
@@ -35,6 +39,10 @@ type PurchaseDraftInput struct {
 	OutputDiscount         string              `json:"output_discount"`
 	CacheReadDiscount      string              `json:"cache_read_discount"`
 	CacheWriteDiscount     string              `json:"cache_write_discount"`
+	ImageInputDiscount     string              `json:"image_input_discount"`
+	ImageOutputDiscount    string              `json:"image_output_discount"`
+	AudioInputDiscount     string              `json:"audio_input_discount"`
+	AudioOutputDiscount    string              `json:"audio_output_discount"`
 	Prices                 FlatTokenPriceInput `json:"prices"`
 	QuoteReference         string              `json:"quote_reference"`
 	ContractReference      string              `json:"contract_reference"`
@@ -52,11 +60,15 @@ type RetailDraftInput struct {
 }
 
 type flatTokenPriceComponents struct {
-	InputUnitPrice      string `json:"input_unit_price,omitempty"`
-	OutputUnitPrice     string `json:"output_unit_price,omitempty"`
-	CacheReadUnitPrice  string `json:"cache_read_unit_price,omitempty"`
-	CacheWriteUnitPrice string `json:"cache_write_unit_price,omitempty"`
-	PriceUnit           string `json:"price_unit"`
+	InputUnitPrice       string `json:"input_unit_price,omitempty"`
+	OutputUnitPrice      string `json:"output_unit_price,omitempty"`
+	CacheReadUnitPrice   string `json:"cache_read_unit_price,omitempty"`
+	CacheWriteUnitPrice  string `json:"cache_write_unit_price,omitempty"`
+	ImageInputUnitPrice  string `json:"image_input_unit_price,omitempty"`
+	ImageOutputUnitPrice string `json:"image_output_unit_price,omitempty"`
+	AudioInputUnitPrice  string `json:"audio_input_unit_price,omitempty"`
+	AudioOutputUnitPrice string `json:"audio_output_unit_price,omitempty"`
+	PriceUnit            string `json:"price_unit"`
 }
 
 func CreateOfficialFlatDraft(input OfficialFlatDraftInput, userId int) (model.OfficialModelPriceVersion, error) {
@@ -139,12 +151,11 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	retailPrices, err := scaleFlatPrices(FlatTokenPriceInput{
-		InputUnitPrice:      purchase.InputUnitPrice,
-		OutputUnitPrice:     purchase.OutputUnitPrice,
-		CacheReadUnitPrice:  purchase.CacheReadUnitPrice,
-		CacheWriteUnitPrice: purchase.CacheWriteUnitPrice,
-	}, factor)
+	purchasePrices, err := unmarshalFlatPriceComponents(purchase.PriceComponents)
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
+	}
+	retailPrices, err := scaleFlatPrices(purchasePrices, factor)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
@@ -300,8 +311,26 @@ func normalizeFlatTokenPrices(input FlatTokenPriceInput) (FlatTokenPriceInput, s
 	if err != nil {
 		return prices, "", "", err
 	}
+	prices.ImageInputUnitPrice, err = normalizeOptionalPrice("image_input_unit_price", input.ImageInputUnitPrice)
+	if err != nil {
+		return prices, "", "", err
+	}
+	prices.ImageOutputUnitPrice, err = normalizeOptionalPrice("image_output_unit_price", input.ImageOutputUnitPrice)
+	if err != nil {
+		return prices, "", "", err
+	}
+	prices.AudioInputUnitPrice, err = normalizeOptionalPrice("audio_input_unit_price", input.AudioInputUnitPrice)
+	if err != nil {
+		return prices, "", "", err
+	}
+	prices.AudioOutputUnitPrice, err = normalizeOptionalPrice("audio_output_unit_price", input.AudioOutputUnitPrice)
+	if err != nil {
+		return prices, "", "", err
+	}
 	if prices.InputUnitPrice == "" && prices.OutputUnitPrice == "" &&
-		prices.CacheReadUnitPrice == "" && prices.CacheWriteUnitPrice == "" {
+		prices.CacheReadUnitPrice == "" && prices.CacheWriteUnitPrice == "" &&
+		prices.ImageInputUnitPrice == "" && prices.ImageOutputUnitPrice == "" &&
+		prices.AudioInputUnitPrice == "" && prices.AudioOutputUnitPrice == "" {
 		return prices, "", "", errors.New("at least one unit price is required")
 	}
 	terms := make([]string, 0, 4)
@@ -317,6 +346,18 @@ func normalizeFlatTokenPrices(input FlatTokenPriceInput) (FlatTokenPriceInput, s
 	if prices.CacheWriteUnitPrice != "" {
 		terms = append(terms, "cc * "+prices.CacheWriteUnitPrice)
 	}
+	if prices.ImageInputUnitPrice != "" {
+		terms = append(terms, "img * "+prices.ImageInputUnitPrice)
+	}
+	if prices.ImageOutputUnitPrice != "" {
+		terms = append(terms, "img_o * "+prices.ImageOutputUnitPrice)
+	}
+	if prices.AudioInputUnitPrice != "" {
+		terms = append(terms, "ai * "+prices.AudioInputUnitPrice)
+	}
+	if prices.AudioOutputUnitPrice != "" {
+		terms = append(terms, "ao * "+prices.AudioOutputUnitPrice)
+	}
 	expression := `v1:tier("base", ` + strings.Join(terms, " + ") + ")"
 	components, err := marshalFlatPriceComponents(prices)
 	return prices, expression, components, err
@@ -324,11 +365,15 @@ func normalizeFlatTokenPrices(input FlatTokenPriceInput) (FlatTokenPriceInput, s
 
 func marshalFlatPriceComponents(prices FlatTokenPriceInput) (string, error) {
 	data, err := common.Marshal(flatTokenPriceComponents{
-		InputUnitPrice:      prices.InputUnitPrice,
-		OutputUnitPrice:     prices.OutputUnitPrice,
-		CacheReadUnitPrice:  prices.CacheReadUnitPrice,
-		CacheWriteUnitPrice: prices.CacheWriteUnitPrice,
-		PriceUnit:           "per_1m_tokens",
+		InputUnitPrice:       prices.InputUnitPrice,
+		OutputUnitPrice:      prices.OutputUnitPrice,
+		CacheReadUnitPrice:   prices.CacheReadUnitPrice,
+		CacheWriteUnitPrice:  prices.CacheWriteUnitPrice,
+		ImageInputUnitPrice:  prices.ImageInputUnitPrice,
+		ImageOutputUnitPrice: prices.ImageOutputUnitPrice,
+		AudioInputUnitPrice:  prices.AudioInputUnitPrice,
+		AudioOutputUnitPrice: prices.AudioOutputUnitPrice,
+		PriceUnit:            "per_1m_tokens",
 	})
 	return string(data), err
 }
@@ -339,10 +384,14 @@ func unmarshalFlatPriceComponents(raw string) (FlatTokenPriceInput, error) {
 		return FlatTokenPriceInput{}, fmt.Errorf("official flat price components are invalid: %w", err)
 	}
 	return FlatTokenPriceInput{
-		InputUnitPrice:      components.InputUnitPrice,
-		OutputUnitPrice:     components.OutputUnitPrice,
-		CacheReadUnitPrice:  components.CacheReadUnitPrice,
-		CacheWriteUnitPrice: components.CacheWriteUnitPrice,
+		InputUnitPrice:       components.InputUnitPrice,
+		OutputUnitPrice:      components.OutputUnitPrice,
+		CacheReadUnitPrice:   components.CacheReadUnitPrice,
+		CacheWriteUnitPrice:  components.CacheWriteUnitPrice,
+		ImageInputUnitPrice:  components.ImageInputUnitPrice,
+		ImageOutputUnitPrice: components.ImageOutputUnitPrice,
+		AudioInputUnitPrice:  components.AudioInputUnitPrice,
+		AudioOutputUnitPrice: components.AudioOutputUnitPrice,
 	}, nil
 }
 
@@ -362,6 +411,22 @@ func scaleFlatPrices(input FlatTokenPriceInput, factor decimal.Decimal) (FlatTok
 		return result, err
 	}
 	result.CacheWriteUnitPrice, err = scaleOptionalPrice(input.CacheWriteUnitPrice, factor)
+	if err != nil {
+		return result, err
+	}
+	result.ImageInputUnitPrice, err = scaleOptionalPrice(input.ImageInputUnitPrice, factor)
+	if err != nil {
+		return result, err
+	}
+	result.ImageOutputUnitPrice, err = scaleOptionalPrice(input.ImageOutputUnitPrice, factor)
+	if err != nil {
+		return result, err
+	}
+	result.AudioInputUnitPrice, err = scaleOptionalPrice(input.AudioInputUnitPrice, factor)
+	if err != nil {
+		return result, err
+	}
+	result.AudioOutputUnitPrice, err = scaleOptionalPrice(input.AudioOutputUnitPrice, factor)
 	return result, err
 }
 
@@ -378,6 +443,10 @@ func applyComponentDiscounts(official FlatTokenPriceInput, input PurchaseDraftIn
 		{"output", official.OutputUnitPrice, input.OutputDiscount, &result.OutputUnitPrice},
 		{"cache_read", official.CacheReadUnitPrice, input.CacheReadDiscount, &result.CacheReadUnitPrice},
 		{"cache_write", official.CacheWriteUnitPrice, input.CacheWriteDiscount, &result.CacheWriteUnitPrice},
+		{"image_input", official.ImageInputUnitPrice, input.ImageInputDiscount, &result.ImageInputUnitPrice},
+		{"image_output", official.ImageOutputUnitPrice, input.ImageOutputDiscount, &result.ImageOutputUnitPrice},
+		{"audio_input", official.AudioInputUnitPrice, input.AudioInputDiscount, &result.AudioInputUnitPrice},
+		{"audio_output", official.AudioOutputUnitPrice, input.AudioOutputDiscount, &result.AudioOutputUnitPrice},
 	}
 	for _, item := range components {
 		if item.price == "" {

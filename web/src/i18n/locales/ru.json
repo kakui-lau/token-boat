@@ -5490,5 +5490,18 @@
   "Gross margin rate": "Валовая маржа",
   "Net margin rate": "Чистая маржа",
   "Suspend": "Приостановить",
-  "Price version suspended": "Версия цены приостановлена"
+  "Price version suspended": "Версия цены приостановлена",
+  "Image input price per 1M tokens": "Цена входных изображений за 1 млн токенов",
+  "Image output price per 1M tokens": "Цена выходных изображений за 1 млн токенов",
+  "Audio input price per 1M tokens": "Цена входного аудио за 1 млн токенов",
+  "Audio output price per 1M tokens": "Цена выходного аудио за 1 млн токенов",
+  "Image input discount": "Скидка на входные изображения",
+  "Image output discount": "Скидка на выходные изображения",
+  "Audio input discount": "Скидка на входное аудио",
+  "Audio output discount": "Скидка на выходное аудио",
+  "Create Channel Model": "Создать модель канала",
+  "Bind one logical model to the upstream model name exposed by a channel.": "Свяжите логическую модель с именем вышестоящей модели канала.",
+  "Select a channel": "Выберите канал",
+  "Select a model": "Выберите модель",
+  "Channel model created": "Модель канала создана"
 }

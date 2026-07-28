@@ -19,11 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  ChannelModel,
   ChannelModelListResponse,
   FlatTokenPrices,
   ImportResponse,
   OfficialPriceVersion,
   PriceSimulationResult,
+  PricingCatalogOptionsResponse,
   PriceVersionResponse,
   PurchasePriceVersion,
   RetailPriceVersion,
@@ -44,6 +46,24 @@ export async function syncLegacyChannelModels(): Promise<ImportResponse> {
   const response = await api.post(
     '/api/pricing-admin/channel-models/sync-legacy'
   )
+  return response.data
+}
+
+export async function getPricingCatalogOptions(): Promise<PricingCatalogOptionsResponse> {
+  const response = await api.get('/api/pricing-admin/catalog-options')
+  return response.data
+}
+
+export async function createChannelModel(input: {
+  channel_id: number
+  model_id: number
+  upstream_model_name: string
+  status: number
+  priority: number
+  weight: number
+  region: string
+}): Promise<PriceVersionResponse<ChannelModel>> {
+  const response = await api.post('/api/pricing-admin/channel-models', input)
   return response.data
 }
 
@@ -94,6 +114,10 @@ export async function createPurchaseDraft(input: {
   output_discount: string
   cache_read_discount: string
   cache_write_discount: string
+  image_input_discount: string
+  image_output_discount: string
+  audio_input_discount: string
+  audio_output_discount: string
   prices: FlatTokenPrices
   quote_reference: string
   contract_reference: string

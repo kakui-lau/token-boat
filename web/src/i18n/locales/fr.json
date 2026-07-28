@@ -5490,5 +5490,18 @@
   "Gross margin rate": "Taux de marge brute",
   "Net margin rate": "Taux de marge nette",
   "Suspend": "Suspendre",
-  "Price version suspended": "Version de prix suspendue"
+  "Price version suspended": "Version de prix suspendue",
+  "Image input price per 1M tokens": "Prix de l'image en entrée par million de jetons",
+  "Image output price per 1M tokens": "Prix de l'image en sortie par million de jetons",
+  "Audio input price per 1M tokens": "Prix de l'audio en entrée par million de jetons",
+  "Audio output price per 1M tokens": "Prix de l'audio en sortie par million de jetons",
+  "Image input discount": "Remise sur l'image en entrée",
+  "Image output discount": "Remise sur l'image en sortie",
+  "Audio input discount": "Remise sur l'audio en entrée",
+  "Audio output discount": "Remise sur l'audio en sortie",
+  "Create Channel Model": "Créer un modèle de canal",
+  "Bind one logical model to the upstream model name exposed by a channel.": "Associez un modèle logique au nom de modèle amont exposé par un canal.",
+  "Select a channel": "Sélectionner un canal",
+  "Select a model": "Sélectionner un modèle",
+  "Channel model created": "Modèle de canal créé"
 }

@@ -237,6 +237,15 @@ func AdminPublishOfficialPriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminPublishLatestOfficialPriceDrafts(c *gin.Context) {
+	result, err := pricingadmin.PublishLatestOfficialPriceDrafts()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func AdminSuspendOfficialPriceVersion(c *gin.Context) {
 	id, ok := positivePathId(c)
 	if !ok {

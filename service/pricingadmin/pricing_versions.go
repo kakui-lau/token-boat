@@ -209,53 +209,93 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 
 func PublishOfficialPriceVersion(id int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
-		version, err := model.GetOfficialPriceVersionForUpdate(tx, id)
-		if err != nil {
-			return err
-		}
-		if version.Status != model.PricingVersionStatusDraft {
-			return errors.New("only draft official prices can be published")
-		}
-		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
-			return err
-		}
-		if err := validateCommonPrice(
-			version.ModelId,
-			version.BillingMode,
-			version.PriceStructure,
-			version.Currency,
-			version.BillingExpr,
-		); err != nil {
-			return err
-		}
-		if version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
-			return errors.New("official price expression hash does not match")
-		}
-		activeOfficialIds := tx.Model(&model.OfficialModelPriceVersion{}).
-			Select("id").
-			Where(
-				"model_id = ? AND status = ? AND id <> ?",
-				version.ModelId,
-				model.PricingVersionStatusActive,
-				version.Id,
-			)
-		var activePurchaseCount int64
-		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
-			Where(
-				"status = ? AND official_price_version_id IN (?)",
-				model.PricingVersionStatusActive,
-				activeOfficialIds,
-			).
-			Count(&activePurchaseCount).Error; err != nil {
-			return err
-		}
-		if activePurchaseCount > 0 {
-			return errors.New(
-				"cannot replace official price while an active purchase price references the current version",
-			)
-		}
-		return model.ActivateOfficialPriceVersion(tx, version, common.GetTimestamp())
+		return publishOfficialPriceVersion(tx, id)
 	})
+}
+
+type PublishLatestOfficialPriceDraftsResult struct {
+	Published int `json:"published"`
+}
+
+func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult, error) {
+	var result PublishLatestOfficialPriceDraftsResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var drafts []model.OfficialModelPriceVersion
+		if err := tx.Where("status = ?", model.PricingVersionStatusDraft).
+			Order("model_id ASC, version DESC").
+			Find(&drafts).Error; err != nil {
+			return err
+		}
+		latestDraftIds := make([]int, 0, len(drafts))
+		seenModels := make(map[int]struct{}, len(drafts))
+		for _, draft := range drafts {
+			if _, exists := seenModels[draft.ModelId]; exists {
+				continue
+			}
+			seenModels[draft.ModelId] = struct{}{}
+			latestDraftIds = append(latestDraftIds, draft.Id)
+		}
+		for _, id := range latestDraftIds {
+			if err := publishOfficialPriceVersion(tx, id); err != nil {
+				return fmt.Errorf("publish official price draft %d: %w", id, err)
+			}
+			result.Published++
+		}
+		return nil
+	})
+	if err != nil {
+		result.Published = 0
+	}
+	return result, err
+}
+
+func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
+	version, err := model.GetOfficialPriceVersionForUpdate(tx, id)
+	if err != nil {
+		return err
+	}
+	if version.Status != model.PricingVersionStatusDraft {
+		return errors.New("only draft official prices can be published")
+	}
+	if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
+		return err
+	}
+	if err := validateCommonPrice(
+		version.ModelId,
+		version.BillingMode,
+		version.PriceStructure,
+		version.Currency,
+		version.BillingExpr,
+	); err != nil {
+		return err
+	}
+	if version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
+		return errors.New("official price expression hash does not match")
+	}
+	activeOfficialIds := tx.Model(&model.OfficialModelPriceVersion{}).
+		Select("id").
+		Where(
+			"model_id = ? AND status = ? AND id <> ?",
+			version.ModelId,
+			model.PricingVersionStatusActive,
+			version.Id,
+		)
+	var activePurchaseCount int64
+	if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where(
+			"status = ? AND official_price_version_id IN (?)",
+			model.PricingVersionStatusActive,
+			activeOfficialIds,
+		).
+		Count(&activePurchaseCount).Error; err != nil {
+		return err
+	}
+	if activePurchaseCount > 0 {
+		return errors.New(
+			"cannot replace official price while an active purchase price references the current version",
+		)
+	}
+	return model.ActivateOfficialPriceVersion(tx, version, common.GetTimestamp())
 }
 
 func PublishPurchasePriceVersion(id int) error {

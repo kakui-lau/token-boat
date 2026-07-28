@@ -7,10 +7,14 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { publishPriceVersion } from '@/features/pricing-admin/api'
+import {
+  publishLatestOfficialPriceDrafts,
+  publishPriceVersion,
+} from '@/features/pricing-admin/api'
 
 import { OfficialPricing } from '..'
 
@@ -52,6 +56,9 @@ vi.mock('@/features/pricing-admin/api', () => ({
   }),
   importLegacyOfficialPrices: vi.fn(),
   publishPriceVersion: vi.fn().mockResolvedValue({ data: null }),
+  publishLatestOfficialPriceDrafts: vi.fn().mockResolvedValue({
+    data: { published: 1 },
+  }),
   suspendPriceVersion: vi.fn(),
 }))
 
@@ -81,6 +88,22 @@ describe('Official pricing page layout', () => {
     expect(screen.getByText('USD 1.25')).toBeVisible()
     expect(screen.getByText('USD 5')).toBeVisible()
     expect(screen.getByText('Active official prices')).toBeVisible()
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Publish All Latest Drafts',
+      })
+    )
+    const bulkPublishDialog = screen.getByRole('alertdialog', {
+      name: 'Publish all latest official price drafts?',
+    })
+    fireEvent.click(
+      within(bulkPublishDialog).getByRole('button', {
+        name: 'Publish All Latest Drafts',
+      })
+    )
+    await waitFor(() => {
+      expect(publishLatestOfficialPriceDrafts).toHaveBeenCalledTimes(1)
+    })
     const manageButton = screen.getByRole('button', {
       name: 'Manage Official Price',
     })

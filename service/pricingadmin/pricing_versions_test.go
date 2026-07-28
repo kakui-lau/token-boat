@@ -107,6 +107,80 @@ func TestPublishOfficialPricePreservesActivePurchaseChain(t *testing.T) {
 	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
 }
 
+func TestPublishLatestOfficialPriceDraftsPublishesNewestDraftPerModel(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 61, ModelName: "batch-a"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 62, ModelName: "batch-b"}).Error)
+
+	older, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 61, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	newer, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 61, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2"},
+	}, 1)
+	require.NoError(t, err)
+	other, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 62, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "3"},
+	}, 1)
+	require.NoError(t, err)
+
+	result, err := PublishLatestOfficialPriceDrafts()
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Published)
+
+	var storedOlder model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedOlder, older.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusDraft, storedOlder.Status)
+	var storedNewer model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedNewer, newer.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedNewer.Status)
+	var storedOther model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedOther, other.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedOther.Status)
+}
+
+func TestPublishLatestOfficialPriceDraftsRollsBackEntireBatch(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 71, ModelName: "batch-first"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 72, ModelName: "batch-blocked"}).Error)
+
+	first, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 71, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	current, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 72, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(current.Id))
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 73, OfficialPriceVersionId: &current.Id, Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
+	_, err = CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 72, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "3"},
+	}, 1)
+	require.NoError(t, err)
+
+	result, err := PublishLatestOfficialPriceDrafts()
+	require.ErrorContains(t, err, "active purchase price references")
+	assert.Zero(t, result.Published)
+
+	var storedFirst model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedFirst, first.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusDraft, storedFirst.Status)
+	var storedCurrent model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&storedCurrent, current.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
+}
+
 func TestPublishPurchasePricePreservesActiveRetailChain(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{

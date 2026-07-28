@@ -56,6 +56,14 @@ export type ImportResponse = {
   data: ImportResult
 }
 
+export type PublishLatestOfficialPriceDraftsResponse = {
+  success: boolean
+  message?: string
+  data: {
+    published: number
+  }
+}
+
 export type PriceVersionStatus = 'draft' | 'active' | 'suspended' | 'expired'
 
 export type OfficialPriceVersion = {

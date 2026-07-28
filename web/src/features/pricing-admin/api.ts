@@ -30,6 +30,7 @@ import type {
   PriceSimulationResult,
   PricingCatalogOptionsResponse,
   PriceVersionResponse,
+  PublishLatestOfficialPriceDraftsResponse,
   PurchasePriceVersion,
   RetailPriceVersion,
 } from './types'
@@ -101,6 +102,13 @@ export async function updateChannelModel(
 export async function importLegacyOfficialPrices(): Promise<ImportResponse> {
   const response = await api.post(
     '/api/pricing-admin/official-prices/import-legacy'
+  )
+  return response.data
+}
+
+export async function publishLatestOfficialPriceDrafts(): Promise<PublishLatestOfficialPriceDraftsResponse> {
+  const response = await api.post(
+    '/api/pricing-admin/official-prices/publish-latest'
   )
   return response.data
 }

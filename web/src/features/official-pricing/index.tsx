@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, DatabaseZap, Search } from 'lucide-react'
+import { ArrowLeft, CheckCheck, DatabaseZap, Search } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
@@ -35,6 +36,7 @@ import {
   getOfficialPriceOverview,
   getOfficialPriceVersions,
   importLegacyOfficialPrices,
+  publishLatestOfficialPriceDrafts,
   publishPriceVersion,
   suspendPriceVersion,
 } from '@/features/pricing-admin/api'
@@ -53,6 +55,7 @@ export function OfficialPricing(props: OfficialPricingProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
+  const [bulkPublishOpen, setBulkPublishOpen] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState<number | null>(
     props.initialModelId ?? null
   )
@@ -132,6 +135,33 @@ export function OfficialPricing(props: OfficialPricingProps) {
       )
     },
   })
+  const bulkPublishMutation = useMutation({
+    mutationFn: publishLatestOfficialPriceDrafts,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'official-prices'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'model-price-overview'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'official-price-overview'],
+      })
+      if (response.data.published > 0) {
+        toast.success(
+          t('Published latest official price drafts for {{count}} models', {
+            count: response.data.published,
+          })
+        )
+      } else {
+        toast.info(t('No official price drafts to publish'))
+      }
+    },
+  })
+  const totalDraftCount = rows.reduce(
+    (total, row) => total + row.draft_count,
+    0
+  )
 
   return (
     <SectionPageLayout fixedContent>
@@ -140,6 +170,13 @@ export function OfficialPricing(props: OfficialPricingProps) {
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button
+          disabled={totalDraftCount === 0 || bulkPublishMutation.isPending}
+          onClick={() => setBulkPublishOpen(true)}
+        >
+          <CheckCheck data-icon='inline-start' />
+          {t('Publish All Latest Drafts')}
+        </Button>
+        <Button
           variant='outline'
           disabled={importMutation.isPending}
           onClick={() => importMutation.mutate()}
@@ -147,6 +184,20 @@ export function OfficialPricing(props: OfficialPricingProps) {
           <DatabaseZap data-icon='inline-start' />
           {t('Import Legacy Prices as Drafts')}
         </Button>
+        <ConfirmDialog
+          open={bulkPublishOpen}
+          onOpenChange={setBulkPublishOpen}
+          title={t('Publish all latest official price drafts?')}
+          desc={t(
+            "All models' latest drafts will be validated and published atomically. If any draft fails validation, no prices will be changed."
+          )}
+          confirmText={t('Publish All Latest Drafts')}
+          isLoading={bulkPublishMutation.isPending}
+          handleConfirm={() => {
+            bulkPublishMutation.mutate()
+            setBulkPublishOpen(false)
+          }}
+        />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         {selectedModel ? (

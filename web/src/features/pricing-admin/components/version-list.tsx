@@ -33,7 +33,9 @@ type VersionListItem = {
 type VersionListProps = {
   items: VersionListItem[]
   isPublishing: boolean
+  isSuspending: boolean
   onPublish: (id: number) => void
+  onSuspend: (id: number) => void
 }
 
 export function VersionList(props: VersionListProps) {
@@ -77,6 +79,16 @@ export function VersionList(props: VersionListProps) {
               onClick={() => props.onPublish(item.id)}
             >
               {t('Publish')}
+            </Button>
+          ) : null}
+          {item.status === 'active' ? (
+            <Button
+              size='sm'
+              variant='destructive'
+              disabled={props.isSuspending}
+              onClick={() => props.onSuspend(item.id)}
+            >
+              {t('Suspend')}
             </Button>
           ) : null}
         </div>

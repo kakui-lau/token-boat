@@ -120,3 +120,17 @@ export type FlatTokenPrices = {
   cache_read_unit_price: string
   cache_write_unit_price: string
 }
+
+export type PriceSimulationResult = {
+  purchase_cost: string
+  retail_amount: string
+  variable_cost: string
+  pre_tax_profit: string
+  tax_expense: string
+  net_profit: string
+  gross_margin_rate: string
+  net_margin_rate: string
+  minimum_margin_rate: string
+  meets_minimum_margin: boolean
+  currency: string
+}

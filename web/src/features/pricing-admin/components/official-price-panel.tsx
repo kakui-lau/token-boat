@@ -37,7 +37,9 @@ type OfficialPricePanelProps = {
   modelId: number
   versions: OfficialPriceVersion[]
   isPublishing: boolean
+  isSuspending: boolean
   onPublish: (id: number) => void
+  onSuspend: (id: number) => void
   onCreated: () => Promise<void>
 }
 
@@ -129,7 +131,9 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         <VersionList
           items={props.versions}
           isPublishing={props.isPublishing}
+          isSuspending={props.isSuspending}
           onPublish={props.onPublish}
+          onSuspend={props.onSuspend}
         />
       </section>
     </div>

@@ -23,6 +23,7 @@ import type {
   FlatTokenPrices,
   ImportResponse,
   OfficialPriceVersion,
+  PriceSimulationResult,
   PriceVersionResponse,
   PurchasePriceVersion,
   RetailPriceVersion,
@@ -131,5 +132,32 @@ export async function publishPriceVersion(
   const response = await api.post(
     `/api/pricing-admin/${kind}-prices/${id}/publish`
   )
+  return response.data
+}
+
+export async function suspendPriceVersion(
+  kind: 'official' | 'purchase' | 'retail',
+  id: number
+): Promise<PriceVersionResponse<null>> {
+  const response = await api.post(
+    `/api/pricing-admin/${kind}-prices/${id}/suspend`
+  )
+  return response.data
+}
+
+export async function simulatePrice(input: {
+  channel_model_id: number
+  purchase_price_version_id: number
+  retail_price_version_id: number
+  prompt_tokens: number
+  completion_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  image_input_tokens: number
+  image_output_tokens: number
+  audio_input_tokens: number
+  audio_output_tokens: number
+}): Promise<PriceVersionResponse<PriceSimulationResult>> {
+  const response = await api.post('/api/pricing-admin/simulate', input)
   return response.data
 }

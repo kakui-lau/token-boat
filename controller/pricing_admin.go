@@ -191,6 +191,18 @@ func AdminPublishOfficialPriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminSuspendOfficialPriceVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.SuspendOfficialPriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminImportLegacyOfficialPriceDrafts(c *gin.Context) {
 	result, err := pricingadmin.ImportLegacyOfficialPriceDrafts(c.GetInt("id"))
 	if err != nil {
@@ -254,6 +266,18 @@ func AdminPublishPurchasePriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminSuspendPurchasePriceVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.SuspendPurchasePriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminCreateStructuredPurchasePriceDraft(c *gin.Context) {
 	var input pricingadmin.PurchaseDraftInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -308,6 +332,18 @@ func AdminPublishRetailPriceVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminSuspendRetailPriceVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.SuspendRetailPriceVersion(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminCreateStructuredRetailPriceDraft(c *gin.Context) {
 	var input pricingadmin.RetailDraftInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -320,6 +356,33 @@ func AdminCreateStructuredRetailPriceDraft(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, version)
+}
+
+func AdminSimulatePrice(c *gin.Context) {
+	var input pricingadmin.PriceSimulationInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := pricingadmin.SimulatePrice(input)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminGetActivePriceBundle(c *gin.Context) {
+	channelModelId, ok := positiveQueryId(c, "channel_model_id")
+	if !ok {
+		return
+	}
+	bundle, err := pricingadmin.GetActivePriceBundle(channelModelId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, bundle)
 }
 
 func positivePathId(c *gin.Context) (int, bool) {

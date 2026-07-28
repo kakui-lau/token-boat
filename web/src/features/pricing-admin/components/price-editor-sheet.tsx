@@ -34,9 +34,11 @@ import {
   getPurchasePriceVersions,
   getRetailPriceVersions,
   publishPriceVersion,
+  suspendPriceVersion,
 } from '../api'
 import type { ChannelModel } from '../types'
 import { OfficialPricePanel } from './official-price-panel'
+import { PriceSimulationPanel } from './price-simulation-panel'
 import { PurchasePricePanel } from './purchase-price-panel'
 import { RetailPricePanel } from './retail-price-panel'
 
@@ -91,6 +93,21 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       toast.success(t('Price version published'))
     },
   })
+  const suspendMutation = useMutation({
+    mutationFn: ({ kind, id }: { kind: PriceKind; id: number }) =>
+      suspendPriceVersion(kind, id),
+    onSuccess: async (_, variables) => {
+      const queryKeys: Record<PriceKind, (number | string | undefined)[]> = {
+        official: officialQueryKey,
+        purchase: purchaseQueryKey,
+        retail: retailQueryKey,
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys[variables.kind],
+      })
+      toast.success(t('Price version suspended'))
+    },
+  })
 
   return (
     <Sheet open={Boolean(channelModel)} onOpenChange={props.onOpenChange}>
@@ -109,6 +126,7 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
               <TabsTrigger value='official'>{t('Official Price')}</TabsTrigger>
               <TabsTrigger value='purchase'>{t('Purchase Price')}</TabsTrigger>
               <TabsTrigger value='retail'>{t('Retail Price')}</TabsTrigger>
+              <TabsTrigger value='simulation'>{t('Simulation')}</TabsTrigger>
             </TabsList>
             <div className='min-h-0 flex-1 overflow-auto pt-3'>
               <TabsContent value='official'>
@@ -116,8 +134,12 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   modelId={channelModel.model_id}
                   versions={officialQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}
+                  isSuspending={suspendMutation.isPending}
                   onPublish={(id) =>
                     publishMutation.mutate({ kind: 'official', id })
+                  }
+                  onSuspend={(id) =>
+                    suspendMutation.mutate({ kind: 'official', id })
                   }
                   onCreated={async () => {
                     await officialQuery.refetch()
@@ -130,8 +152,12 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   officialVersions={officialQuery.data?.data ?? []}
                   versions={purchaseQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}
+                  isSuspending={suspendMutation.isPending}
                   onPublish={(id) =>
                     publishMutation.mutate({ kind: 'purchase', id })
+                  }
+                  onSuspend={(id) =>
+                    suspendMutation.mutate({ kind: 'purchase', id })
                   }
                   onCreated={async () => {
                     await purchaseQuery.refetch()
@@ -144,12 +170,23 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   purchaseVersions={purchaseQuery.data?.data ?? []}
                   versions={retailQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}
+                  isSuspending={suspendMutation.isPending}
                   onPublish={(id) =>
                     publishMutation.mutate({ kind: 'retail', id })
+                  }
+                  onSuspend={(id) =>
+                    suspendMutation.mutate({ kind: 'retail', id })
                   }
                   onCreated={async () => {
                     await retailQuery.refetch()
                   }}
+                />
+              </TabsContent>
+              <TabsContent value='simulation'>
+                <PriceSimulationPanel
+                  channelModelId={channelModel.id}
+                  purchaseVersions={purchaseQuery.data?.data ?? []}
+                  retailVersions={retailQuery.data?.data ?? []}
                 />
               </TabsContent>
             </div>

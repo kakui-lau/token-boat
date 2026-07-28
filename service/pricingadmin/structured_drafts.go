@@ -123,30 +123,21 @@ func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRe
 			"purchase and retail versions belong to different channel models",
 		)
 	}
-	vcr, err := validateRate("total_variable_cost_rate", input.TotalVariableCostRate)
-	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	tax, err := validateRate("effective_tax_rate", input.EffectiveTaxRate)
-	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	margin, err := validateRate("target_net_margin", input.TargetNetMargin)
+	calculator, err := NewRetailPriceCalculator(
+		input.TotalVariableCostRate,
+		input.EffectiveTaxRate,
+		input.TargetNetMargin,
+	)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
 	if _, err := validateRate("minimum_margin_rate", input.MinimumMarginRate); err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	denominator := decimal.NewFromInt(1).Sub(vcr).
-		Mul(decimal.NewFromInt(1).Sub(tax)).
-		Sub(margin)
-	if !denominator.IsPositive() {
-		return model.ChannelModelRetailPriceVersion{}, errors.New(
-			"VCR, tax rate and target margin produce a non-positive retail denominator",
-		)
+	factor, err := calculator.SellingFactor()
+	if err != nil {
+		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	factor := decimal.NewFromInt(1).Sub(tax).Div(denominator)
 	retailExpression, err := scaleBillingExpression(purchase.PurchaseBillingExpr, factor)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err

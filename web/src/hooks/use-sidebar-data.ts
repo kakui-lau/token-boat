@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  BadgeDollarSign,
   Box,
   ChartNoAxesCombined,
   CircleDollarSign,
@@ -132,6 +133,11 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Official Model Prices'),
+            url: '/official-pricing',
+            icon: BadgeDollarSign,
           },
           {
             title: t('Channel Model Pricing'),

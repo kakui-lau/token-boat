@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleAlert, DatabaseZap, Plus, RefreshCw, Search } from 'lucide-react'
+import { CircleAlert, Plus, RefreshCw, Search } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -44,7 +44,6 @@ import {
 import {
   getChannelModels,
   getModelPriceOverview,
-  importLegacyOfficialPrices,
   syncLegacyChannelModels,
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
@@ -89,21 +88,9 @@ export function PricingAdmin() {
       )
     },
   })
-  const importMutation = useMutation({
-    mutationFn: importLegacyOfficialPrices,
-    onSuccess: (response) => {
-      toast.success(
-        t('Legacy price drafts imported: {{count}} created', {
-          count: response.data.created,
-        })
-      )
-    },
-  })
   const rows = channelModelsQuery.data?.data.items ?? []
   const total = channelModelsQuery.data?.data.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / 50))
-  const isMutating = syncMutation.isPending || importMutation.isPending
-
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
@@ -115,14 +102,9 @@ export function PricingAdmin() {
           {t('Create Channel Model')}
         </Button>
         <Button
-          variant='outline'
-          disabled={isMutating}
-          onClick={() => importMutation.mutate()}
+          disabled={syncMutation.isPending}
+          onClick={() => syncMutation.mutate()}
         >
-          <DatabaseZap data-icon='inline-start' />
-          {t('Import Legacy Prices')}
-        </Button>
-        <Button disabled={isMutating} onClick={() => syncMutation.mutate()}>
           <RefreshCw data-icon='inline-start' />
           {t('Sync Channel Models')}
         </Button>

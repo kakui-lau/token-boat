@@ -50,6 +50,7 @@ import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenti
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
+import { Route as AuthenticatedOfficialPricingIndexRouteImport } from './routes/_authenticated/official-pricing/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedPricingAdminIndexRouteImport } from './routes/_authenticated/pricing-admin/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
@@ -292,6 +293,12 @@ const AuthenticatedModelsSectionRoute =
     path: '/models/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedOfficialPricingIndexRoute =
+  AuthenticatedOfficialPricingIndexRouteImport.update({
+    id: '/official-pricing/',
+    path: '/official-pricing/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPlaygroundIndexRoute =
   AuthenticatedPlaygroundIndexRouteImport.update({
     id: '/playground/',
@@ -494,6 +501,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
+  '/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
@@ -561,6 +569,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
+  '/official-pricing': typeof AuthenticatedOfficialPricingIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/pricing-admin': typeof AuthenticatedPricingAdminIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
@@ -632,6 +641,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
+  '/_authenticated/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
@@ -702,6 +712,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/keys/'
     | '/models/'
+    | '/official-pricing/'
     | '/playground/'
     | '/pricing-admin/'
     | '/profile/'
@@ -769,6 +780,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/keys'
     | '/models'
+    | '/official-pricing'
     | '/playground'
     | '/pricing-admin'
     | '/profile'
@@ -839,6 +851,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
+    | '/_authenticated/official-pricing/'
     | '/_authenticated/playground/'
     | '/_authenticated/pricing-admin/'
     | '/_authenticated/profile/'
@@ -1181,6 +1194,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedModelsSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/official-pricing/': {
+      id: '/_authenticated/official-pricing/'
+      path: '/official-pricing'
+      fullPath: '/official-pricing/'
+      preLoaderRoute: typeof AuthenticatedOfficialPricingIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/playground/': {
       id: '/_authenticated/playground/'
       path: '/playground'
@@ -1470,6 +1490,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
+  AuthenticatedOfficialPricingIndexRoute: typeof AuthenticatedOfficialPricingIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedPricingAdminIndexRoute: typeof AuthenticatedPricingAdminIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
@@ -1499,6 +1520,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
+  AuthenticatedOfficialPricingIndexRoute:
+    AuthenticatedOfficialPricingIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedPricingAdminIndexRoute: AuthenticatedPricingAdminIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,

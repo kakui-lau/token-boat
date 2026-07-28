@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/ui/button'
 import {
   Sheet,
   SheetContent,
@@ -38,12 +40,11 @@ import {
   suspendPriceVersion,
 } from '../api'
 import type { ChannelModel } from '../types'
-import { OfficialPricePanel } from './official-price-panel'
 import { PriceSimulationPanel } from './price-simulation-panel'
 import { PurchasePricePanel } from './purchase-price-panel'
 import { RetailPricePanel } from './retail-price-panel'
 
-type PriceKind = 'official' | 'purchase' | 'retail'
+type PriceKind = 'purchase' | 'retail'
 
 type PriceEditorSheetProps = {
   channelModel: ChannelModel | null
@@ -85,7 +86,6 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       publishPriceVersion(kind, id),
     onSuccess: async (_, variables) => {
       const queryKeys: Record<PriceKind, (number | string | undefined)[]> = {
-        official: officialQueryKey,
         purchase: purchaseQueryKey,
         retail: retailQueryKey,
       }
@@ -102,7 +102,6 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       suspendPriceVersion(kind, id),
     onSuccess: async (_, variables) => {
       const queryKeys: Record<PriceKind, (number | string | undefined)[]> = {
-        official: officialQueryKey,
         purchase: purchaseQueryKey,
         retail: retailQueryKey,
       }
@@ -120,7 +119,6 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       deletePriceDraft(kind, id),
     onSuccess: async (_, variables) => {
       const queryKeys: Record<PriceKind, (number | string | undefined)[]> = {
-        official: officialQueryKey,
         purchase: purchaseQueryKey,
         retail: retailQueryKey,
       }
@@ -141,40 +139,33 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
               ? `${channelModel.channel_name} · ${channelModel.model_name}`
               : ''}
           </SheetDescription>
+          {channelModel ? (
+            <Button
+              variant='outline'
+              size='sm'
+              className='mt-3 w-fit'
+              render={
+                <Link
+                  to='/official-pricing'
+                  search={{ modelId: channelModel.model_id }}
+                />
+              }
+            >
+              {t('View Official Price')}
+            </Button>
+          ) : null}
         </SheetHeader>
         {channelModel ? (
           <Tabs
-            defaultValue='official'
+            defaultValue='purchase'
             className='min-h-0 overflow-hidden px-4 pb-4'
           >
-            <TabsList className='grid h-auto w-full grid-cols-2 sm:grid-cols-4'>
-              <TabsTrigger value='official'>{t('Official Price')}</TabsTrigger>
+            <TabsList className='grid h-auto w-full grid-cols-3'>
               <TabsTrigger value='purchase'>{t('Purchase Price')}</TabsTrigger>
               <TabsTrigger value='retail'>{t('Retail Price')}</TabsTrigger>
               <TabsTrigger value='simulation'>{t('Simulation')}</TabsTrigger>
             </TabsList>
             <div className='min-h-0 flex-1 overflow-auto pt-3'>
-              <TabsContent value='official'>
-                <OfficialPricePanel
-                  modelId={channelModel.model_id}
-                  versions={officialQuery.data?.data ?? []}
-                  isPublishing={publishMutation.isPending}
-                  isSuspending={suspendMutation.isPending}
-                  isDeleting={deleteMutation.isPending}
-                  onPublish={(id) =>
-                    publishMutation.mutate({ kind: 'official', id })
-                  }
-                  onSuspend={(id) =>
-                    suspendMutation.mutate({ kind: 'official', id })
-                  }
-                  onDelete={(id) =>
-                    deleteMutation.mutate({ kind: 'official', id })
-                  }
-                  onCreated={async () => {
-                    await officialQuery.refetch()
-                  }}
-                />
-              </TabsContent>
               <TabsContent value='purchase'>
                 <PurchasePricePanel
                   channelModelId={channelModel.id}

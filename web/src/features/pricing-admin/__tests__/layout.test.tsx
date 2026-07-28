@@ -14,6 +14,12 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: React.ReactNode }) => (
+    <a href='/official-pricing'>{children}</a>
+  ),
+}))
+
 vi.mock('../api', () => ({
   createChannelModel: vi.fn(),
   deletePriceDraft: vi.fn(),
@@ -55,7 +61,7 @@ function renderWithQueryClient(node: React.ReactNode) {
 describe('Pricing admin editor layout', () => {
   afterEach(cleanup)
 
-  test('uses a wide pricing workspace for the four pricing tabs', () => {
+  test('uses a wide pricing workspace for channel-specific pricing tabs', () => {
     renderWithQueryClient(
       <PriceEditorSheet channelModel={channelModel} onOpenChange={vi.fn()} />
     )
@@ -64,10 +70,7 @@ describe('Pricing admin editor layout', () => {
       'sm:w-[92vw]',
       'sm:max-w-6xl'
     )
-    expect(screen.getByRole('tablist')).toHaveClass(
-      'grid-cols-2',
-      'sm:grid-cols-4'
-    )
+    expect(screen.getByRole('tablist')).toHaveClass('grid-cols-3')
   })
 
   test('uses a wider scrollable dialog for channel model editing', () => {

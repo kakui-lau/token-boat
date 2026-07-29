@@ -196,11 +196,6 @@ func synchronizeOfficialPriceItem(
 	); err != nil {
 		return err
 	}
-	if input.AutoActivate {
-		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
-			return err
-		}
-	}
 	version.ExprHash = billingexpr.ExprHashString(version.BillingExpr)
 	version.ContentHash = officialPriceContentHash(version)
 	version.SyncBatchId = &batch.Id

@@ -155,7 +155,7 @@ func TestPublishLatestOfficialPriceDraftsPublishesNewestDraftPerModel(t *testing
 	assert.Equal(t, model.PricingVersionStatusActive, storedOther.Status)
 }
 
-func TestPublishLatestOfficialPriceDraftsSkipsUnsupportedBillingModes(t *testing.T) {
+func TestPublishLatestOfficialPriceDraftsPublishesNonTokenCatalogPrices(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 63, ModelName: "batch-token"}).Error)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 64, ModelName: "batch-video"}).Error)
@@ -174,15 +174,15 @@ func TestPublishLatestOfficialPriceDraftsSkipsUnsupportedBillingModes(t *testing
 
 	result, err := PublishLatestOfficialPriceDrafts()
 	require.NoError(t, err)
-	assert.Equal(t, 1, result.Published)
-	assert.Equal(t, 1, result.SkippedUnsupported)
+	assert.Equal(t, 2, result.Published)
+	assert.Zero(t, result.SkippedUnsupported)
 
 	var storedToken model.OfficialModelPriceVersion
 	require.NoError(t, model.DB.First(&storedToken, token.Id).Error)
 	assert.Equal(t, model.PricingVersionStatusActive, storedToken.Status)
 	var storedVideo model.OfficialModelPriceVersion
 	require.NoError(t, model.DB.First(&storedVideo, video.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusDraft, storedVideo.Status)
+	assert.Equal(t, model.PricingVersionStatusActive, storedVideo.Status)
 }
 
 func TestPublishLatestOfficialPriceDraftsDoesNotRewritePurchaseSnapshots(t *testing.T) {
@@ -420,7 +420,7 @@ func TestImportLegacyOfficialPriceCreatesReviewableDraftWithoutRuntimeActivation
 	assert.Equal(t, 1, secondResult.SkippedExisting)
 }
 
-func TestPublishNonTokenOfficialPriceWaitsForRuntimeEvaluator(t *testing.T) {
+func TestPublishNonTokenOfficialPriceDoesNotRequireRuntimeEvaluator(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 14, ModelName: "video-test"}).Error)
 
@@ -433,8 +433,46 @@ func TestPublishNonTokenOfficialPriceWaitsForRuntimeEvaluator(t *testing.T) {
 		Source:         "manual",
 	}
 	require.NoError(t, CreateOfficialPriceVersion(&version, 1))
-	err := PublishOfficialPriceVersion(version.Id)
-	require.ErrorContains(t, err, "cannot be published until its V2 runtime evaluator is enabled")
+	require.NoError(t, PublishOfficialPriceVersion(version.Id))
+
+	var stored model.OfficialModelPriceVersion
+	require.NoError(t, model.DB.First(&stored, version.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, stored.Status)
+}
+
+func TestPublishNonTokenChannelPricesWhileRuntimeRemainsLegacy(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 19, ModelName: "video-channel-price"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 29, ChannelId: 39, ModelId: 19, UpstreamModelName: "provider-video",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+
+	purchase := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 29, BillingMode: "video_duration",
+		PricingMode: "fixed_unit_price", PriceStructure: "flat",
+		PriceComponents:         `{"video_second_unit_price":"0.2"}`,
+		PurchaseBillingExpr:     `v2:tier("base", video_s * 0.2)`,
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}
+	require.NoError(t, CreatePurchasePriceVersion(&purchase, 1))
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+
+	retail := model.ChannelModelRetailPriceVersion{
+		ChannelModelId: 29, PurchasePriceVersionId: purchase.Id,
+		BillingMode: "video_duration", PriceStructure: "flat",
+		PriceComponents:         `{"video_second_unit_price":"0.4"}`,
+		RetailBillingExpr:       `v2:tier("base", video_s * 0.4)`,
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.1", MinimumMarginRate: "0",
+	}
+	require.NoError(t, CreateRetailPriceVersion(&retail, 1))
+	require.NoError(t, PublishRetailPriceVersion(retail.Id))
+
+	var storedChannelModel model.ChannelModel
+	require.NoError(t, model.DB.First(&storedChannelModel, 29).Error)
+	assert.Equal(t, "legacy", storedChannelModel.RuntimeMode)
 }
 
 func TestUpdateOfficialPriceDraftSupportsNonTokenConfiguration(t *testing.T) {

@@ -321,10 +321,6 @@ func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult,
 				continue
 			}
 			seenModels[draft.ModelId] = struct{}{}
-			if validateV1PublishableBillingMode(draft.BillingMode) != nil {
-				result.SkippedUnsupported++
-				continue
-			}
 			latestDraftIds = append(latestDraftIds, draft.Id)
 		}
 		for _, id := range latestDraftIds {
@@ -350,9 +346,6 @@ func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
 		return errors.New("only draft official prices can be published")
 	}
 	if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.BillingExpr); err != nil {
-		return err
-	}
-	if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
 		return err
 	}
 	if err := validateCommonPrice(
@@ -425,9 +418,6 @@ func PublishPurchasePriceVersion(id int) error {
 		if channelModel.Status == 0 {
 			return errors.New("disabled channel model cannot publish a purchase price")
 		}
-		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
-			return err
-		}
 		if err := validateCommonPrice(
 			version.ChannelModelId,
 			version.BillingMode,
@@ -499,9 +489,6 @@ func PublishRetailPriceVersion(id int) error {
 		}
 		if purchase.ChannelModelId != version.ChannelModelId {
 			return errors.New("purchase and retail versions belong to different channel models")
-		}
-		if err := validateV1PublishableBillingMode(version.BillingMode); err != nil {
-			return err
 		}
 		if err := validateCommonPrice(
 			version.ChannelModelId,
@@ -736,16 +723,6 @@ func validateRetailEconomics(input model.ChannelModelRetailPriceVersion) error {
 		Sub(margin)
 	if !denominator.IsPositive() {
 		return errors.New("VCR, tax rate and target margin produce a non-positive retail denominator")
-	}
-	return nil
-}
-
-func validateV1PublishableBillingMode(billingMode string) error {
-	if billingMode != "token" {
-		return fmt.Errorf(
-			"billing mode %q can be saved as draft but cannot be published until its V2 runtime evaluator is enabled",
-			billingMode,
-		)
 	}
 	return nil
 }

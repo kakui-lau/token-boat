@@ -138,6 +138,31 @@ const componentOptionsByMode: Record<
   ],
 }
 
+const operationOptions = [
+  { value: 'any', label: 'Any' },
+  { value: 'generate', label: 'Generate' },
+  { value: 'edit', label: 'Edit' },
+  { value: 'variation', label: 'Variation' },
+  { value: 'upscale', label: 'Upscale' },
+]
+
+const qualityOptions = [
+  { value: 'any', label: 'Any' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'high', label: 'High' },
+]
+
+const resolutionOptions = [
+  { value: 'any', label: 'Any' },
+  { value: 'auto', label: 'Auto' },
+  { value: '480p', label: '480p' },
+  { value: '720p', label: '720p' },
+  { value: '1080p', label: '1080p' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' },
+]
+
 function createBusinessRule(mode: string, index: number): BusinessPriceRule {
   const first = componentOptionsByMode[mode]?.[0] ?? {
     value: 'request',
@@ -545,48 +570,108 @@ export function OfficialPriceConfigurationEditor(
                 <>
                   <Field>
                     <FieldLabel>{t('Operation')}</FieldLabel>
-                    <Input
-                      value={rule.operation}
-                      placeholder={t('Any')}
-                      onChange={(event) => {
+                    <Select
+                      items={operationOptions.map((option) => ({
+                        ...option,
+                        label: t(option.label),
+                      }))}
+                      value={rule.operation || 'any'}
+                      onValueChange={(value) => {
+                        if (!value) return
                         const next = [...rules]
                         next[index] = {
                           ...rule,
-                          operation: event.target.value,
+                          operation: value === 'any' ? '' : value,
                         }
                         updateRules(next)
                       }}
-                    />
+                    >
+                      <SelectTrigger
+                        className='w-full'
+                        aria-label={t('Operation')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {operationOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {t(option.label)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
                   </Field>
                   <Field>
                     <FieldLabel>{t('Quality')}</FieldLabel>
-                    <Input
-                      value={rule.quality}
-                      placeholder={t('Any')}
-                      onChange={(event) => {
+                    <Select
+                      items={qualityOptions.map((option) => ({
+                        ...option,
+                        label: t(option.label),
+                      }))}
+                      value={rule.quality || 'any'}
+                      onValueChange={(value) => {
+                        if (!value) return
                         const next = [...rules]
                         next[index] = {
                           ...rule,
-                          quality: event.target.value,
+                          quality: value === 'any' ? '' : value,
                         }
                         updateRules(next)
                       }}
-                    />
+                    >
+                      <SelectTrigger
+                        className='w-full'
+                        aria-label={t('Quality')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {qualityOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {t(option.label)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
                   </Field>
                   <Field>
                     <FieldLabel>{t('Resolution')}</FieldLabel>
-                    <Input
-                      value={rule.resolution}
-                      placeholder='720p / 1080p / 4K'
-                      onChange={(event) => {
+                    <Select
+                      items={resolutionOptions.map((option) => ({
+                        ...option,
+                        label: t(option.label),
+                      }))}
+                      value={rule.resolution || 'any'}
+                      onValueChange={(value) => {
+                        if (!value) return
                         const next = [...rules]
                         next[index] = {
                           ...rule,
-                          resolution: event.target.value,
+                          resolution: value === 'any' ? '' : value,
                         }
                         updateRules(next)
                       }}
-                    />
+                    >
+                      <SelectTrigger
+                        className='w-full'
+                        aria-label={t('Resolution')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {resolutionOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {t(option.label)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
                   </Field>
                 </>
               ) : null}

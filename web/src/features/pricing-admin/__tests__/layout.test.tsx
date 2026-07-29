@@ -241,7 +241,12 @@ describe('Pricing admin editor layout', () => {
     )
 
     expect(screen.getByText('Price rule 1')).toBeVisible()
-    expect(screen.getByText('Resolution')).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'Operation' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'Quality' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'Resolution' })).toBeVisible()
+    expect(
+      screen.queryByRole('textbox', { name: 'Resolution' })
+    ).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add price rule' })).toBeEnabled()
     expect(screen.getByText('Advanced expression')).toBeVisible()
     expect(screen.queryByLabelText('Billing Expression')).not.toBeVisible()

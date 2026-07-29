@@ -3917,6 +3917,7 @@
     "Published versions are immutable snapshots": "Les versions publiées sont des instantanés immuables",
     "Published versions are immutable snapshots. Draft versions remain editable until publication.": "Les versions publiées sont immuables. Les brouillons restent modifiables avant publication.",
     "Published:": "Publié :",
+    "Publishing this retail version will also publish purchase version {{version}} in the same transaction.": "La publication de cette version de vente publiera aussi la version d'achat {{version}} dans la même transaction.",
     "Pull": "Télécharger",
     "Pull model": "Télécharger le modèle",
     "Pulling...": "Téléchargement en cours...",

@@ -3917,6 +3917,7 @@
     "Published versions are immutable snapshots": "Published versions are immutable snapshots",
     "Published versions are immutable snapshots. Draft versions remain editable until publication.": "Published versions are immutable snapshots. Draft versions remain editable until publication.",
     "Published:": "Published:",
+    "Publishing this retail version will also publish purchase version {{version}} in the same transaction.": "Publishing this retail version will also publish purchase version {{version}} in the same transaction.",
     "Pull": "Pull",
     "Pull model": "Pull model",
     "Pulling...": "Pulling...",

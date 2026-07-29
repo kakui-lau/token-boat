@@ -60,6 +60,37 @@ describe('Pricing version lifecycle', () => {
     expect(onPublish).toHaveBeenCalledWith(12)
   })
 
+  test('explains atomic purchase publication before publishing a linked retail draft', () => {
+    render(
+      <VersionList
+        items={[
+          {
+            id: 13,
+            version: 4,
+            status: 'draft',
+            currency: 'USD',
+            publish_dependency_notice:
+              'Publishing this retail version will also publish purchase version 3 in the same transaction.',
+          },
+        ]}
+        isPublishing={false}
+        isSuspending={false}
+        isDeleting={false}
+        onPublish={vi.fn()}
+        onSuspend={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
+
+    expect(
+      screen.getByText(
+        'Publishing this retail version will also publish purchase version 3 in the same transaction.'
+      )
+    ).toBeVisible()
+  })
+
   test('shows dependency impact before suspending an active version', () => {
     const onSuspend = vi.fn()
     render(

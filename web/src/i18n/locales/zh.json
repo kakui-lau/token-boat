@@ -3917,6 +3917,7 @@
     "Published versions are immutable snapshots": "已发布版本为不可变快照",
     "Published versions are immutable snapshots. Draft versions remain editable until publication.": "已发布版本为不可变快照；草稿可在发布前编辑。",
     "Published:": "已发布：",
+    "Publishing this retail version will also publish purchase version {{version}} in the same transaction.": "发布此销售版本时，将在同一事务中同步发布采购版本 {{version}}。",
     "Pull": "拉取",
     "Pull model": "拉取模型",
     "Pulling...": "拉取中...",

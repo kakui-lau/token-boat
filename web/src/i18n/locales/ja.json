@@ -3917,6 +3917,7 @@
     "Published versions are immutable snapshots": "公開済みバージョンは変更できないスナップショットです",
     "Published versions are immutable snapshots. Draft versions remain editable until publication.": "公開済みバージョンは変更できません。下書きは公開前まで編集できます。",
     "Published:": "公開済み:",
+    "Publishing this retail version will also publish purchase version {{version}} in the same transaction.": "この販売バージョンを公開すると、調達バージョン {{version}} も同じトランザクションで公開されます。",
     "Pull": "プル",
     "Pull model": "モデルをプル",
     "Pulling...": "プル中...",

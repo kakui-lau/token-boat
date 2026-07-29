@@ -3917,6 +3917,7 @@
     "Published versions are immutable snapshots": "Опубликованные версии являются неизменяемыми снимками",
     "Published versions are immutable snapshots. Draft versions remain editable until publication.": "Опубликованные версии неизменяемы. Черновики можно редактировать до публикации.",
     "Published:": "Опубликовано:",
+    "Publishing this retail version will also publish purchase version {{version}} in the same transaction.": "При публикации этой розничной версии закупочная версия {{version}} будет опубликована в той же транзакции.",
     "Pull": "Загрузить",
     "Pull model": "Загрузить модель",
     "Pulling...": "Загрузка...",

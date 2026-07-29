@@ -379,13 +379,25 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       <section className='space-y-3'>
         <h3 className='font-medium'>{t('Version History')}</h3>
         <VersionList
-          items={props.versions.map((version) => ({
-            ...version,
-            dependency_label:
-              `${t('Purchase Version')} #${version.purchase_price_version_id}` +
-              ` · ${t('Target Margin (TM)')} ${formatStoredRatePercentage(version.target_net_margin)}` +
-              ` · ${t('Margin Floor')} ${formatStoredRatePercentage(version.minimum_margin_rate)}`,
-          }))}
+          items={props.versions.map((version) => {
+            const purchaseVersion = props.purchaseVersions.find(
+              (purchase) => purchase.id === version.purchase_price_version_id
+            )
+            return {
+              ...version,
+              dependency_label:
+                `${t('Purchase Version')} #${version.purchase_price_version_id}` +
+                ` · ${t('Target Margin (TM)')} ${formatStoredRatePercentage(version.target_net_margin)}` +
+                ` · ${t('Margin Floor')} ${formatStoredRatePercentage(version.minimum_margin_rate)}`,
+              publish_dependency_notice:
+                purchaseVersion?.status === 'draft'
+                  ? t(
+                      'Publishing this retail version will also publish purchase version {{version}} in the same transaction.',
+                      { version: purchaseVersion.version }
+                    )
+                  : undefined,
+            }
+          })}
           isPublishing={props.isPublishing}
           isSuspending={props.isSuspending}
           isDeleting={props.isDeleting}

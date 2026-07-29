@@ -31,6 +31,7 @@ type VersionListItem = {
   input_unit_price?: string
   output_unit_price?: string
   dependency_label?: string
+  publish_dependency_notice?: string
 }
 
 type VersionListProps = {
@@ -216,6 +217,12 @@ export function VersionList(props: VersionListProps) {
                 {pendingAction.item.dependency_label
                   ? ` · ${pendingAction.item.dependency_label}`
                   : ''}
+              </p>
+            ) : null}
+            {pendingAction?.kind === 'publish' &&
+            pendingAction.item.publish_dependency_notice ? (
+              <p className='border-primary/30 bg-primary/5 rounded-md border p-2 text-sm'>
+                {pendingAction.item.publish_dependency_notice}
               </p>
             ) : null}
           </div>

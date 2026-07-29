@@ -92,6 +92,9 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       }
       const queryKey = queryKeys[variables.kind]
       await queryClient.invalidateQueries({ queryKey })
+      if (variables.kind === 'retail') {
+        await queryClient.invalidateQueries({ queryKey: purchaseQueryKey })
+      }
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
       })

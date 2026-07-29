@@ -3917,6 +3917,7 @@
     "Published versions are immutable snapshots": "Phiên bản đã phát hành là bản chụp không thể chỉnh sửa",
     "Published versions are immutable snapshots. Draft versions remain editable until publication.": "Phiên bản đã phát hành không thể thay đổi. Bản nháp vẫn có thể sửa trước khi phát hành.",
     "Published:": "Đã xuất bản:",
+    "Publishing this retail version will also publish purchase version {{version}} in the same transaction.": "Khi phát hành phiên bản bán, phiên bản mua {{version}} cũng sẽ được phát hành trong cùng giao dịch.",
     "Pull": "Tải",
     "Pull model": "Tải mô hình",
     "Pulling...": "Đang tải...",

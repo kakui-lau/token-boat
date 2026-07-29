@@ -45,7 +45,6 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 	assert.Equal(t, "6.5", purchase.OutputUnitPrice)
 	assert.Equal(t, "0.13", purchase.CacheReadUnitPrice)
 	assert.Contains(t, purchase.PurchaseBillingExpr, "* 0.65")
-	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
 
 	retail, err := CreateRetailDraft(RetailDraftInput{
 		ChannelModelId:         31,
@@ -61,6 +60,13 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 	assert.True(t, decimal.RequireFromString("1.67").Equal(actualInput))
 	assert.Contains(t, retail.RetailBillingExpr, "p * 1.67")
 	require.NoError(t, PublishRetailPriceVersion(retail.Id))
+
+	var storedPurchase model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.First(&storedPurchase, purchase.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedPurchase.Status)
+	var storedRetail model.ChannelModelRetailPriceVersion
+	require.NoError(t, model.DB.First(&storedRetail, retail.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusActive, storedRetail.Status)
 }
 
 func TestUpdateOfficialFlatDraftChangesPricesWithoutCreatingVersion(t *testing.T) {

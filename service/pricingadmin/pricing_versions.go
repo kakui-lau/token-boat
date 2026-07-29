@@ -404,6 +404,54 @@ func validatePriceComponents(
 	return validateBusinessPriceRules(billingMode, priceStructure, parsed)
 }
 
+func validatePurchasePricePublication(
+	tx *gorm.DB,
+	version model.ChannelModelPurchasePriceVersion,
+) error {
+	if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.PurchaseBillingExpr); err != nil {
+		return err
+	}
+	var channelModel model.ChannelModel
+	if err := tx.First(&channelModel, version.ChannelModelId).Error; err != nil {
+		return err
+	}
+	if channelModel.Status == 0 {
+		return errors.New("disabled channel model cannot publish a purchase price")
+	}
+	if err := validateCommonPrice(
+		version.ChannelModelId,
+		version.BillingMode,
+		version.PriceStructure,
+		version.Currency,
+		version.PurchaseBillingExpr,
+	); err != nil {
+		return err
+	}
+	if version.PurchaseExprHash != billingexpr.ExprHashString(version.PurchaseBillingExpr) {
+		return errors.New("purchase price expression hash does not match")
+	}
+	requiresOfficialPrice := version.PricingMode == "official_ratio" ||
+		version.PricingMode == "component_ratio" ||
+		version.PricingMode == "hybrid"
+	if requiresOfficialPrice && version.OfficialPriceVersionId == nil {
+		return errors.New("official price version is required for ratio pricing")
+	}
+	if !requiresOfficialPrice {
+		return nil
+	}
+	var official model.OfficialModelPriceVersion
+	if err := tx.First(&official, *version.OfficialPriceVersionId).Error; err != nil {
+		return err
+	}
+	if !officialPriceCanBeReferenced(official.Status) {
+		return errors.New("referenced official price must be published")
+	}
+	if official.ModelId != channelModel.ModelId {
+		return errors.New("official price and channel model belong to different logical models")
+	}
+	return nil
+}
+
 func PublishPurchasePriceVersion(id int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)
@@ -413,27 +461,8 @@ func PublishPurchasePriceVersion(id int) error {
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only draft purchase prices can be published")
 		}
-		if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.PurchaseBillingExpr); err != nil {
+		if err := validatePurchasePricePublication(tx, version); err != nil {
 			return err
-		}
-		var channelModel model.ChannelModel
-		if err := tx.First(&channelModel, version.ChannelModelId).Error; err != nil {
-			return err
-		}
-		if channelModel.Status == 0 {
-			return errors.New("disabled channel model cannot publish a purchase price")
-		}
-		if err := validateCommonPrice(
-			version.ChannelModelId,
-			version.BillingMode,
-			version.PriceStructure,
-			version.Currency,
-			version.PurchaseBillingExpr,
-		); err != nil {
-			return err
-		}
-		if version.PurchaseExprHash != billingexpr.ExprHashString(version.PurchaseBillingExpr) {
-			return errors.New("purchase price expression hash does not match")
 		}
 		var activeRetailCount int64
 		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
@@ -451,24 +480,6 @@ func PublishPurchasePriceVersion(id int) error {
 				"cannot replace purchase price while an active retail price references the current version",
 			)
 		}
-		requiresOfficialPrice := version.PricingMode == "official_ratio" ||
-			version.PricingMode == "component_ratio" ||
-			version.PricingMode == "hybrid"
-		if requiresOfficialPrice && version.OfficialPriceVersionId == nil {
-			return errors.New("official price version is required for ratio pricing")
-		}
-		if requiresOfficialPrice {
-			var official model.OfficialModelPriceVersion
-			if err := tx.First(&official, *version.OfficialPriceVersionId).Error; err != nil {
-				return err
-			}
-			if !officialPriceCanBeReferenced(official.Status) {
-				return errors.New("referenced official price must be published")
-			}
-			if official.ModelId != channelModel.ModelId {
-				return errors.New("official price and channel model belong to different logical models")
-			}
-		}
 		return model.ActivatePurchasePriceVersion(tx, version, common.GetTimestamp())
 	})
 }
@@ -485,15 +496,21 @@ func PublishRetailPriceVersion(id int) error {
 		if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.RetailBillingExpr); err != nil {
 			return err
 		}
-		var purchase model.ChannelModelPurchasePriceVersion
-		if err := tx.First(&purchase, version.PurchasePriceVersionId).Error; err != nil {
+		purchase, err := model.GetPurchasePriceVersionForUpdate(tx, version.PurchasePriceVersionId)
+		if err != nil {
 			return err
 		}
-		if purchase.Status != model.PricingVersionStatusActive {
-			return errors.New("retail price requires an active purchase price")
+		if purchase.Status != model.PricingVersionStatusActive &&
+			purchase.Status != model.PricingVersionStatusDraft {
+			return errors.New("retail price requires an active or draft purchase price")
 		}
 		if purchase.ChannelModelId != version.ChannelModelId {
 			return errors.New("purchase and retail versions belong to different channel models")
+		}
+		if purchase.Status == model.PricingVersionStatusDraft {
+			if err := validatePurchasePricePublication(tx, purchase); err != nil {
+				return err
+			}
 		}
 		if err := validateCommonPrice(
 			version.ChannelModelId,
@@ -515,7 +532,13 @@ func PublishRetailPriceVersion(id int) error {
 		if minimumMargin.GreaterThan(targetMargin) {
 			return errors.New("retail price does not meet the configured minimum margin")
 		}
-		return model.ActivateRetailPriceVersion(tx, version, common.GetTimestamp())
+		now := common.GetTimestamp()
+		if purchase.Status == model.PricingVersionStatusDraft {
+			if err := model.ActivatePurchasePriceVersion(tx, purchase, now); err != nil {
+				return err
+			}
+		}
+		return model.ActivateRetailPriceVersion(tx, version, now)
 	})
 }
 

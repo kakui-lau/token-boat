@@ -56,6 +56,7 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 		&input.ExpressionSource,
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
+		&input.BillingExpr,
 	)
 	if err := validateOfficialPriceCurrency(input.Currency); err != nil {
 		return err
@@ -63,6 +64,10 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
 		return err
 	}
+	upgradePricingExpressionToV2(
+		&input.ExpressionSchemaVersion,
+		&input.BillingExpr,
+	)
 	if err := validateCommonPrice(
 		input.ModelId,
 		input.BillingMode,
@@ -109,6 +114,7 @@ func UpdateOfficialPriceVersionDraft(
 		&input.ExpressionSource,
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
+		&input.BillingExpr,
 	)
 	if err := validateOfficialPriceCurrency(input.Currency); err != nil {
 		return updated, err
@@ -116,6 +122,10 @@ func UpdateOfficialPriceVersionDraft(
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
 		return updated, err
 	}
+	upgradePricingExpressionToV2(
+		&input.ExpressionSchemaVersion,
+		&input.BillingExpr,
+	)
 	if err := validateCommonPrice(
 		input.ModelId,
 		input.BillingMode,
@@ -181,10 +191,15 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 		&input.ExpressionSource,
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
+		&input.PurchaseBillingExpr,
 	)
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.PurchaseBillingExpr); err != nil {
 		return err
 	}
+	upgradePricingExpressionToV2(
+		&input.ExpressionSchemaVersion,
+		&input.PurchaseBillingExpr,
+	)
 	if err := validateCommonPrice(
 		input.ChannelModelId,
 		input.BillingMode,
@@ -228,6 +243,13 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 			if official.ModelId != channelModel.ModelId {
 				return errors.New("official price and channel model belong to different logical models")
 			}
+			if input.PricingMode == "official_ratio" ||
+				input.PricingMode == "component_ratio" ||
+				input.PricingMode == "hybrid" {
+				if err := validatePurchaseOfficialBillingContract(*input, official); err != nil {
+					return err
+				}
+			}
 		}
 		var maxVersion int64
 		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
@@ -254,10 +276,15 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 		&input.ExpressionSource,
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
+		&input.RetailBillingExpr,
 	)
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.RetailBillingExpr); err != nil {
 		return err
 	}
+	upgradePricingExpressionToV2(
+		&input.ExpressionSchemaVersion,
+		&input.RetailBillingExpr,
+	)
 	if err := validateCommonPrice(
 		input.ChannelModelId,
 		input.BillingMode,
@@ -292,6 +319,16 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 		}
 		if purchase.ChannelModelId != input.ChannelModelId {
 			return errors.New("purchase and retail versions belong to different channel models")
+		}
+		if !sameBillingContract(
+			purchase.BillingMode,
+			purchase.PriceStructure,
+			purchase.Currency,
+			input.BillingMode,
+			input.PriceStructure,
+			input.Currency,
+		) {
+			return errors.New("retail billing contract does not match purchase price")
 		}
 		var maxVersion int64
 		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
@@ -358,6 +395,27 @@ func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
 	}
 	if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.BillingExpr); err != nil {
 		return err
+	}
+	if version.ExprHash != "" &&
+		version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
+		return errors.New("official price expression hash does not match")
+	}
+	if upgradePricingExpressionToV2(
+		&version.ExpressionSchemaVersion,
+		&version.BillingExpr,
+	) {
+		version.ExprHash = billingexpr.ExprHashString(version.BillingExpr)
+		version.ContentHash = officialPriceContentHash(version)
+		if err := tx.Model(&model.OfficialModelPriceVersion{}).
+			Where("id = ? AND status = ?", version.Id, model.PricingVersionStatusDraft).
+			UpdateColumns(map[string]any{
+				"billing_expr":              version.BillingExpr,
+				"expr_hash":                 version.ExprHash,
+				"expression_schema_version": version.ExpressionSchemaVersion,
+				"content_hash":              version.ContentHash,
+			}).Error; err != nil {
+			return err
+		}
 	}
 	if err := validateCommonPrice(
 		version.ModelId,
@@ -455,7 +513,74 @@ func validatePurchasePricePublication(
 	if official.ModelId != channelModel.ModelId {
 		return errors.New("official price and channel model belong to different logical models")
 	}
+	return validatePurchaseOfficialBillingContract(version, official)
+}
+
+func validatePurchaseOfficialBillingContract(
+	purchase model.ChannelModelPurchasePriceVersion,
+	official model.OfficialModelPriceVersion,
+) error {
+	if !sameBillingContract(
+		purchase.BillingMode,
+		purchase.PriceStructure,
+		purchase.Currency,
+		official.BillingMode,
+		official.PriceStructure,
+		official.Currency,
+	) {
+		return errors.New("purchase billing contract does not match official price")
+	}
+	if purchase.PricingMode == "component_ratio" &&
+		(official.BillingMode != "token" || official.PriceStructure != "flat") {
+		return errors.New("component discounts require a flat token official price")
+	}
 	return nil
+}
+
+func sameBillingContract(
+	leftBillingMode string,
+	leftPriceStructure string,
+	leftCurrency string,
+	rightBillingMode string,
+	rightPriceStructure string,
+	rightCurrency string,
+) bool {
+	return leftBillingMode == rightBillingMode &&
+		leftPriceStructure == rightPriceStructure &&
+		leftCurrency == rightCurrency
+}
+
+func upgradePurchasePriceDraftExpressionToV2(
+	tx *gorm.DB,
+	version *model.ChannelModelPurchasePriceVersion,
+) error {
+	if version.Status != model.PricingVersionStatusDraft {
+		return nil
+	}
+	if err := validateExpressionMetadata(
+		version.ExpressionSchemaVersion,
+		version.PurchaseBillingExpr,
+	); err != nil {
+		return err
+	}
+	if version.PurchaseExprHash != "" &&
+		version.PurchaseExprHash != billingexpr.ExprHashString(version.PurchaseBillingExpr) {
+		return errors.New("purchase price expression hash does not match")
+	}
+	if !upgradePricingExpressionToV2(
+		&version.ExpressionSchemaVersion,
+		&version.PurchaseBillingExpr,
+	) {
+		return nil
+	}
+	version.PurchaseExprHash = billingexpr.ExprHashString(version.PurchaseBillingExpr)
+	return tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ? AND status = ?", version.Id, model.PricingVersionStatusDraft).
+		UpdateColumns(map[string]any{
+			"purchase_billing_expr":     version.PurchaseBillingExpr,
+			"purchase_expr_hash":        version.PurchaseExprHash,
+			"expression_schema_version": version.ExpressionSchemaVersion,
+		}).Error
 }
 
 func PublishPurchasePriceVersion(id int) error {
@@ -466,6 +591,9 @@ func PublishPurchasePriceVersion(id int) error {
 		}
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only draft purchase prices can be published")
+		}
+		if err := upgradePurchasePriceDraftExpressionToV2(tx, &version); err != nil {
+			return err
 		}
 		if err := validatePurchasePricePublication(tx, version); err != nil {
 			return err
@@ -502,8 +630,30 @@ func PublishRetailPriceVersion(id int) error {
 		if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.RetailBillingExpr); err != nil {
 			return err
 		}
+		if version.RetailExprHash != "" &&
+			version.RetailExprHash != billingexpr.ExprHashString(version.RetailBillingExpr) {
+			return errors.New("retail price expression hash does not match")
+		}
+		if upgradePricingExpressionToV2(
+			&version.ExpressionSchemaVersion,
+			&version.RetailBillingExpr,
+		) {
+			version.RetailExprHash = billingexpr.ExprHashString(version.RetailBillingExpr)
+			if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
+				Where("id = ? AND status = ?", version.Id, model.PricingVersionStatusDraft).
+				UpdateColumns(map[string]any{
+					"retail_billing_expr":       version.RetailBillingExpr,
+					"retail_expr_hash":          version.RetailExprHash,
+					"expression_schema_version": version.ExpressionSchemaVersion,
+				}).Error; err != nil {
+				return err
+			}
+		}
 		purchase, err := model.GetPurchasePriceVersionForUpdate(tx, version.PurchasePriceVersionId)
 		if err != nil {
+			return err
+		}
+		if err := upgradePurchasePriceDraftExpressionToV2(tx, &purchase); err != nil {
 			return err
 		}
 		if purchase.Status != model.PricingVersionStatusActive &&
@@ -512,6 +662,16 @@ func PublishRetailPriceVersion(id int) error {
 		}
 		if purchase.ChannelModelId != version.ChannelModelId {
 			return errors.New("purchase and retail versions belong to different channel models")
+		}
+		if !sameBillingContract(
+			purchase.BillingMode,
+			purchase.PriceStructure,
+			purchase.Currency,
+			version.BillingMode,
+			version.PriceStructure,
+			version.Currency,
+		) {
+			return errors.New("retail billing contract does not match purchase price")
 		}
 		if purchase.Status == model.PricingVersionStatusDraft {
 			if err := validatePurchasePricePublication(tx, purchase); err != nil {
@@ -598,6 +758,12 @@ func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialMode
 		if !hasExpression || strings.TrimSpace(expression) == "" {
 			return model.OfficialModelPriceVersion{}, false
 		}
+		expressionVersion, expressionBody := billingexpr.ParseExprVersion(expression)
+		if expressionVersion == 1 {
+			expression = fmt.Sprintf("v2:(%s) / 1000000", expressionBody)
+		} else {
+			expression = "v2:" + expressionBody
+		}
 		priceStructure = "tiered"
 	case billing_setting.BillingModePerRequest:
 		price, ok := ratio_setting.GetModelPrice(logicalModel.ModelName, false)
@@ -605,7 +771,10 @@ func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialMode
 			return model.OfficialModelPriceVersion{}, false
 		}
 		billingMode = "request"
-		expression = fmt.Sprintf(`v1:tier("legacy_import", %s)`, decimal.NewFromFloat(price).String())
+		expression = fmt.Sprintf(
+			`v2:tier("legacy_import", req * %s)`,
+			decimal.NewFromFloat(price).String(),
+		)
 		priceComponents["request_unit_price"] = decimal.NewFromFloat(price).String()
 	case billing_setting.BillingModeVideoSecond:
 		price, ok := ratio_setting.GetModelPrice(logicalModel.ModelName, false)
@@ -613,7 +782,10 @@ func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialMode
 			return model.OfficialModelPriceVersion{}, false
 		}
 		billingMode = "video_duration"
-		expression = fmt.Sprintf(`v1:tier("legacy_import", %s)`, decimal.NewFromFloat(price).String())
+		expression = fmt.Sprintf(
+			`v2:tier("legacy_import", video_s * %s)`,
+			decimal.NewFromFloat(price).String(),
+		)
 		priceComponents["video_second_unit_price"] = decimal.NewFromFloat(price).String()
 	default:
 		ratio, ok, _ := ratio_setting.GetModelRatio(logicalModel.ModelName)
@@ -623,7 +795,7 @@ func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialMode
 		inputPrice := decimal.NewFromFloat(ratio).Mul(decimal.NewFromInt(2))
 		outputPrice := inputPrice.Mul(decimal.NewFromFloat(ratio_setting.GetCompletionRatio(logicalModel.ModelName)))
 		expression = fmt.Sprintf(
-			`v1:tier("legacy_import", p * %s + c * %s)`,
+			`v2:(tier("legacy_import", p * %s + c * %s)) / 1000000`,
 			inputPrice.String(),
 			outputPrice.String(),
 		)
@@ -642,7 +814,7 @@ func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialMode
 		PriceComponents:         string(componentsJSON),
 		BillingExpr:             expression,
 		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: "v1",
+		ExpressionSchemaVersion: "v2",
 		Currency:                "USD",
 		Source:                  "legacy_import",
 		SourceVersion:           "new-api-legacy",
@@ -650,16 +822,48 @@ func buildLegacyOfficialPriceDraft(logicalModel model.Model) (model.OfficialMode
 	}, true
 }
 
-func normalizeExpressionMetadata(source *string, schemaVersion *string, currency *string) {
+func normalizeExpressionMetadata(source *string, schemaVersion *string, currency *string, expression *string) {
 	*source = strings.TrimSpace(*source)
 	if *source == "" {
 		*source = "generated"
 	}
 	*schemaVersion = strings.TrimSpace(*schemaVersion)
 	if *schemaVersion == "" {
-		*schemaVersion = "v1"
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(*expression), "v1:"):
+			*schemaVersion = "v1"
+		case strings.HasPrefix(strings.TrimSpace(*expression), "v2:"):
+			*schemaVersion = "v2"
+		default:
+			*schemaVersion = "v2"
+		}
 	}
 	*currency = strings.ToUpper(strings.TrimSpace(*currency))
+	*expression = strings.TrimSpace(*expression)
+	if *expression == "" {
+		return
+	}
+	if strings.HasPrefix(*expression, "v1:") || strings.HasPrefix(*expression, "v2:") {
+		return
+	}
+	if hasExpressionVersionPrefix(*expression) {
+		return
+	}
+	*expression = *schemaVersion + ":" + *expression
+}
+
+// upgradePricingExpressionToV2 keeps the new pricing catalog on one
+// expression contract. V1 expressions return a per-million weighted value;
+// wrapping the body and dividing once preserves the exact currency amount
+// while moving storage and subsequent derivations to V2.
+func upgradePricingExpressionToV2(schemaVersion *string, expression *string) bool {
+	if *schemaVersion != "v1" || strings.TrimSpace(*expression) == "" {
+		return false
+	}
+	_, body := billingexpr.ParseExprVersion(*expression)
+	*expression = fmt.Sprintf("v2:(%s) / 1000000", body)
+	*schemaVersion = "v2"
+	return true
 }
 
 func validateOfficialPriceCurrency(currency string) error {
@@ -674,8 +878,20 @@ func validateExpressionMetadata(schemaVersion string, expression string) error {
 	if schemaVersion != "v1" && schemaVersion != "v2" {
 		return fmt.Errorf("unsupported expression schema version %q", schemaVersion)
 	}
-	actualVersion := billingexpr.ExprVersion(expression)
-	expectedVersion := "v" + strconv.Itoa(actualVersion)
+	expression = strings.TrimSpace(expression)
+	expectedVersion := ""
+	switch {
+	case strings.HasPrefix(expression, "v1:"):
+		expectedVersion = "v1"
+	case strings.HasPrefix(expression, "v2:"):
+		expectedVersion = "v2"
+	case hasExpressionVersionPrefix(expression):
+		prefix := expression[:strings.IndexByte(expression, ':')]
+		return fmt.Errorf("unsupported expression prefix %q", prefix)
+	default:
+		actualVersion := billingexpr.ExprVersion(expression)
+		expectedVersion = "v" + strconv.Itoa(actualVersion)
+	}
 	if schemaVersion != expectedVersion {
 		return fmt.Errorf(
 			"expression schema version %q does not match expression prefix %q",
@@ -684,6 +900,19 @@ func validateExpressionMetadata(schemaVersion string, expression string) error {
 		)
 	}
 	return nil
+}
+
+func hasExpressionVersionPrefix(expression string) bool {
+	colon := strings.IndexByte(expression, ':')
+	if colon < 2 || expression[0] != 'v' {
+		return false
+	}
+	for _, char := range expression[1:colon] {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func validateCommonPrice(scopeId int, billingMode string, priceStructure string, currency string, expression string) error {

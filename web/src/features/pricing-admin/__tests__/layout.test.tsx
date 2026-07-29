@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -498,7 +516,7 @@ describe('Pricing admin editor layout', () => {
       <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
     )
 
-    expect(screen.getByDisplayValue('v1:tier("custom", p * 1)')).toBeVisible()
+    expect(screen.getByDisplayValue('tier("custom", p * 1)')).toBeVisible()
     expect(screen.queryByLabelText('Price Components')).not.toBeInTheDocument()
   })
 
@@ -554,6 +572,57 @@ describe('Pricing admin editor layout', () => {
     fireEvent.click(tieredOption)
 
     expect(screen.getByText('Visual editor')).toBeVisible()
+  })
+
+  test('keeps token tier metadata synchronized with the executable expression', async () => {
+    const onChange = vi.fn()
+    const version: OfficialPriceVersion = {
+      id: 0,
+      model_id: 3,
+      billing_mode: 'token',
+      price_structure: 'tiered',
+      price_components: JSON.stringify({
+        tiers: [
+          {
+            name: 'base',
+            input_unit_price: '999',
+            output_unit_price: '999',
+          },
+        ],
+      }),
+      billing_expr: 'v1:tier("base", p * 2 + c * 4)',
+      currency: 'USD',
+      version: 0,
+      status: 'draft',
+      source: 'manual',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+
+    render(
+      <OfficialPriceConfigurationEditor version={version} onChange={onChange} />
+    )
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], {
+      target: { value: '3' },
+    })
+
+    await waitFor(() => {
+      const updated = onChange.mock.calls.at(-1)?.[0] as
+        | OfficialPriceVersion
+        | undefined
+      expect(updated?.billing_expr).toContain(
+        'v2:(tier("base", p * 3 + c * 4)) / 1000000'
+      )
+      expect(updated?.expression_schema_version).toBe('v2')
+      expect(JSON.parse(updated?.price_components ?? '{}').tiers).toEqual([
+        expect.objectContaining({
+          name: 'base',
+          input_unit_price: '3',
+          output_unit_price: '4',
+        }),
+      ])
+    })
   })
 
   test('keeps active official revisions as history without a suspend action', () => {

@@ -86,3 +86,34 @@ func TestSimulatePriceUsesV2UsageAndRequestContext(t *testing.T) {
 	assert.Equal(t, "hd", result.PurchaseMatchedTier)
 	assert.Equal(t, "hd", result.RetailMatchedTier)
 }
+
+func TestSimulatePriceDoesNotDoubleChargeSeparatelyPricedCacheTokens(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 73, ChannelId: 83, ModelId: 93, UpstreamModelName: "cache-simulation",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	purchase := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 73, BillingMode: "token", PricingMode: "fixed_unit_price",
+		PriceStructure: "flat", PurchaseBillingExpr: `v1:tier("base", p * 1 + cr * 10)`,
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v1", Currency: "USD",
+	}
+	require.NoError(t, CreatePurchasePriceVersion(&purchase, 1))
+	retail := model.ChannelModelRetailPriceVersion{
+		ChannelModelId: 73, PurchasePriceVersionId: purchase.Id, BillingMode: "token",
+		PriceStructure: "flat", RetailBillingExpr: `v1:tier("base", p * 2 + cr * 20)`,
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v1", Currency: "USD",
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.1", MinimumMarginRate: "0",
+	}
+	require.NoError(t, CreateRetailPriceVersion(&retail, 1))
+
+	result, err := SimulatePrice(PriceSimulationInput{
+		ChannelModelId: 73, PurchasePriceVersionId: purchase.Id,
+		RetailPriceVersionId: retail.Id, PromptTokens: 1_000_000,
+		CacheReadTokens: 200_000,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "2.8", result.PurchaseCost)
+	assert.Equal(t, "5.6", result.RetailAmount)
+}

@@ -179,10 +179,18 @@ func synchronizeOfficialPriceItem(
 		&version.ExpressionSource,
 		&version.ExpressionSchemaVersion,
 		&version.Currency,
+		&version.BillingExpr,
 	)
 	if err := validateOfficialPriceCurrency(version.Currency); err != nil {
 		return err
 	}
+	if err := validateExpressionMetadata(version.ExpressionSchemaVersion, version.BillingExpr); err != nil {
+		return err
+	}
+	upgradePricingExpressionToV2(
+		&version.ExpressionSchemaVersion,
+		&version.BillingExpr,
+	)
 	if err := validateCommonPrice(
 		version.ModelId,
 		version.BillingMode,

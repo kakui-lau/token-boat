@@ -12,7 +12,7 @@ The expression is the billing contract between the administrator and the system.
 
 2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c` and priced at their rate. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
 
-3. **Prices are real prices** — Expression coefficients are actual $/1M tokens prices as published by providers. No ratio conversion, no `/2` convention. `p * 2.5` means $2.50 per 1M prompt tokens.
+3. **Prices are real prices** — Expression coefficients are actual $/1M tokens prices as published by providers. No ratio conversion and no `/2` convention. In the new V2 catalog contract, `$2.50 / 1M` is stored as `p * 2.5 / 1000000`; legacy V1 writes `p * 2.5` and relies on the V1 settlement conversion.
 
 4. **Upstream-agnostic** — The expression doesn't need to know whether the upstream API is OpenAI-format (prompt_tokens includes cache) or Claude-format (input_tokens excludes cache). The system normalizes token counts before evaluation based on the upstream response format.
 
@@ -94,29 +94,48 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 
 ```
 # Simple flat pricing
-tier("base", p * 2.5 + c * 15 + cr * 0.25)
+v2:(tier("base", p * 2.5 + c * 15 + cr * 0.25)) / 1000000
 
 # Multi-tier (Claude Sonnet style) — use len for tier conditions
-len <= 200000
+v2:(len <= 200000
   ? tier("standard", p * 3 + c * 15 + cr * 0.3 + cc * 3.75 + cc1h * 6)
-  : tier("long_context", p * 6 + c * 22.5 + cr * 0.6 + cc * 7.5 + cc1h * 12)
+  : tier("long_context", p * 6 + c * 22.5 + cr * 0.6 + cc * 7.5 + cc1h * 12)) / 1000000
 
 # Image model (no separate cache/audio pricing — those tokens stay in p/c)
-tier("base", p * 2 + c * 8 + img * 2.5)
+v2:(tier("base", p * 2 + c * 8 + img * 2.5)) / 1000000
 
 # Multimodal with audio
-tier("base", p * 0.43 + c * 3.06 + img * 0.78 + ai * 3.81 + ao * 15.11)
+v2:(tier("base", p * 0.43 + c * 3.06 + img * 0.78 + ai * 3.81 + ao * 15.11)) / 1000000
 ```
 
-### Request Rules (appended after `|||`)
+### Request Rules
 
-Request-conditional multipliers are appended to the expression after a `|||` separator:
+Request-conditional multipliers are part of the same expression and multiply
+the base price:
 
 ```
-tier("base", p * 5 + c * 25)|||when(header("anthropic-beta") has "fast-mode") * 6
+v2:((tier("base", p * 5 + c * 25)) * (has(header("anthropic-beta"), "fast-mode") ? 6 : 1)) / 1000000
 ```
 
-These are parsed and applied separately by the request rule system.
+The frontend editor presents these as request rules, but storage and execution
+use one valid expression. There is no `|||` or `when(...)` syntax in the
+runtime language.
+
+### Version Prefix Policy
+
+- New official, purchase, and retail price records are stored with an explicit
+  `v2:` prefix, including token pricing.
+- The admin API adds the selected schema prefix automatically when an operator
+  enters an unprefixed expression; operators do not need to type it manually.
+- When a V1 expression is copied, imported, edited, or synchronized into a new
+  catalog record, the service wraps it with the equivalent `/ 1000000`
+  conversion and stores it as V2 without changing its currency result.
+- Existing new-api expressions without a prefix remain valid and execute as V1
+  for backward compatibility. Existing immutable V1 snapshots are not rewritten.
+- V1 coefficients are USD per one million tokens and conversion divides the
+  expression result by 1,000,000.
+- V2 expressions return an actual USD amount; token rules must include their
+  own `/ 1000000` divisor.
 
 ---
 
@@ -158,7 +177,9 @@ When a request arrives and the model uses `tiered_expr` billing:
 1. Loads expression from `billing_setting.GetBillingExpr()`
 2. Builds `RequestInput` (headers + body) for `param()` / `header()` functions
 3. Runs expression with estimated tokens: `RunExprWithRequest(expr, {P, C}, requestInput)`
-4. Converts output to quota: `rawCost / 1,000,000 * QuotaPerUnit`
+4. Converts output to quota through `CurrencyAmount()`:
+   - V1: `rawCost / 1,000,000 * QuotaPerUnit`
+   - V2: `rawCost * QuotaPerUnit`
 5. Creates `BillingSnapshot` (frozen state for settlement) and stores on `RelayInfo`
 
 ### 4. Settlement (Actual Billing)
@@ -214,17 +235,21 @@ This ensures that heavy cache usage doesn't cause the tier condition to incorrec
 
 ### Quota Conversion
 
-Expression coefficients are $/1M tokens. Conversion to internal quota:
+V1 expression coefficients are $/1M tokens. V2 expressions return the actual
+currency amount. Conversion to internal quota is version-dispatched:
 
 ```
-quota = exprOutput / 1,000,000 * QuotaPerUnit * groupRatio
+V1 quota = exprOutput / 1,000,000 * QuotaPerUnit * groupRatio
+V2 quota = exprOutput * QuotaPerUnit * groupRatio
 ```
 
 This matches the per-call billing pattern: `quota = modelPrice * QuotaPerUnit * groupRatio`.
 
 ### Expression Versioning
 
-Expressions can carry a version prefix: `v1:tier(...)`. No prefix = v1.
+Expressions can carry a version prefix such as `v1:` or `v2:`. No prefix
+continues to mean V1 only for legacy new-api compatibility. New pricing catalog
+records always use explicit V2.
 
 Version controls:
 - Compile environment (available variables and functions)
@@ -270,12 +295,12 @@ normalize and bound the corresponding usage before a non-token mode is enabled.
 
 | Layer | Files |
 |-------|-------|
-| Expression engine | `pkg/billingexpr/compile.go`, `run.go`, `settle.go`, `round.go`, `types.go` |
+| Expression engine | `pkg/billingexpr/compile.go`, `run.go`, `settle.go`, `normalize.go`, `round.go`, `types.go` |
 | Storage | `setting/billing_setting/tiered_billing.go` |
 | Pre-consume | `relay/helper/price.go`, `relay/helper/billing_expr_request.go` |
 | Settlement | `service/tiered_settle.go`, `service/quota.go` |
 | Log injection | `service/log_info_generate.go` |
-| Frontend editor | `web/src/pages/Setting/Ratio/components/TieredPricingEditor.jsx` |
-| Frontend display | `web/src/helpers/render.jsx`, `web/src/helpers/utils.jsx` |
-| Model detail | `web/src/components/table/model-pricing/modal/components/DynamicPricingBreakdown.jsx` |
-| Log display | `web/src/hooks/usage-logs/useUsageLogsData.jsx`, `web/src/components/table/usage-logs/UsageLogsColumnDefs.jsx` |
+| Frontend editor | `web/src/features/system-settings/models/tiered-pricing-editor.tsx`, `web/src/features/pricing-admin/components/official-price-configuration-editor.tsx` |
+| Frontend expression helpers | `web/src/features/pricing/lib/billing-expr.ts`, `web/src/features/pricing/lib/tier-expr.ts` |
+| Model detail | `web/src/features/pricing/components/model-details.tsx`, `web/src/features/pricing/components/dynamic-pricing-breakdown.tsx` |
+| Admin version detail | `web/src/features/pricing-admin/components/official-price-version-dialog.tsx` |

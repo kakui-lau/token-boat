@@ -106,7 +106,8 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
         (version) =>
           (version.status === 'active' || version.status === 'expired') &&
           (pricingMode === 'official_ratio' ||
-            version.price_structure === 'flat')
+            (version.billing_mode === 'token' &&
+              version.price_structure === 'flat'))
       ),
     [pricingMode, props.officialVersions]
   )

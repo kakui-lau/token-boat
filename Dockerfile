@@ -25,17 +25,17 @@ RUN go mod download
 
 COPY . .
 COPY --from=builder /build/web/dist ./web/dist
-RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
+RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api \
+    && mkdir -p /runtime-root/data /runtime-root/tmp
 
-FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
+FROM gcr.m.daocloud.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata libasan8 wget \
-    && rm -rf /var/lib/apt/lists/* \
-    && update-ca-certificates
-
-COPY --from=builder2 /build/new-api /
-COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
+COPY --from=builder2 --chown=65532:65532 /runtime-root/data /data
+COPY --from=builder2 --chown=65532:65532 /runtime-root/tmp /tmp
+COPY --from=builder2 --chown=65532:65532 /build/new-api /
+COPY --chown=65532:65532 LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
 EXPOSE 3000
 WORKDIR /data
+ENV HOME=/data TMPDIR=/tmp
+USER 65532:65532
 ENTRYPOINT ["/new-api"]

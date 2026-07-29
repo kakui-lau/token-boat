@@ -12,6 +12,7 @@ docs
 .agents
 /build
 /logs
+/outputs
 *.db
 /web/node_modules
 /web/dist

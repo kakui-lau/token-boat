@@ -1,13 +1,33 @@
 package pricingadmin
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestScaleBillingExpressionScalesOneValidRequestAwareExpression(t *testing.T) {
+	scaled, err := scaleBillingExpression(
+		`v1:(tier("base", p * 2)) * (param("service_tier") == "fast" ? 2 : 1)`,
+		decimal.RequireFromString("0.5"),
+	)
+	require.NoError(t, err)
+	assert.NotContains(t, scaled, "|||")
+
+	result, trace, err := billingexpr.RunExprWithRequest(
+		scaled,
+		billingexpr.TokenParams{P: 100},
+		billingexpr.RequestInput{Body: []byte(`{"service_tier":"fast"}`)},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 0.0002, result)
+	assert.Equal(t, "base", trace.MatchedTier)
+}
 
 func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) {
 	setupPricingAdminTestDB(t)
@@ -32,6 +52,8 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 	}, 1)
 	require.NoError(t, err)
 	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+	assert.Equal(t, "v2", official.ExpressionSchemaVersion)
+	assert.True(t, strings.HasPrefix(official.BillingExpr, "v2:"))
 
 	officialId := official.Id
 	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
@@ -41,6 +63,7 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 		PurchaseDiscount:       "0.65",
 	}, 2)
 	require.NoError(t, err)
+	assert.Equal(t, "v2", purchase.ExpressionSchemaVersion)
 	assert.Equal(t, "1.3", purchase.InputUnitPrice)
 	assert.Equal(t, "6.5", purchase.OutputUnitPrice)
 	assert.Equal(t, "0.13", purchase.CacheReadUnitPrice)
@@ -55,6 +78,7 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 		MinimumMarginRate:      "0.05",
 	}, 3)
 	require.NoError(t, err)
+	assert.Equal(t, "v2", retail.ExpressionSchemaVersion)
 
 	actualInput := decimal.RequireFromString(retail.InputUnitPrice)
 	assert.True(t, decimal.RequireFromString("1.67").Equal(actualInput))
@@ -360,6 +384,87 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, "0.4", result.PurchaseCost)
 	assert.Equal(t, "0.8", result.RetailAmount)
+}
+
+func TestStructuredDraftBuildsFlatImagePurchaseAndRetailChain(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 34, ModelName: "flat-image-chain"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 35, ChannelId: 36, ModelId: 34, UpstreamModelName: "flat-image-chain",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official := model.OfficialModelPriceVersion{
+		ModelId:        34,
+		BillingMode:    "image",
+		PriceStructure: "flat",
+		PriceComponents: `{"schema_version":"v2","rules":[` +
+			`{"name":"output","component":"image_output","unit":"image","unit_size":"1","unit_price":"0.04"}` +
+			`]}`,
+		BillingExpr:             `v2:tier("output", images * 0.04)`,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD",
+		Source:                  "manual",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&official, 1))
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 35, OfficialPriceVersionId: &official.Id,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "image", purchase.BillingMode)
+	assert.Equal(t, "expression", purchase.PriceUnit)
+	assert.Contains(t, purchase.PriceComponents, `"unit_price":"0.02"`)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+
+	retail, err := CreateRetailDraft(RetailDraftInput{
+		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.5", MinimumMarginRate: "0.4",
+	}, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "image", retail.BillingMode)
+	assert.Contains(t, retail.PriceComponents, `"unit_price":"0.04"`)
+
+	result, err := SimulatePrice(PriceSimulationInput{
+		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,
+		RetailPriceVersionId: retail.Id, ImageCount: 2,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "0.04", result.PurchaseCost)
+	assert.Equal(t, "0.08", result.RetailAmount)
+}
+
+func TestComponentDiscountRejectsNonTokenOfficialPrice(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 37, ModelName: "image-discount"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 38, ChannelId: 39, ModelId: 37, UpstreamModelName: "image-discount",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official := model.OfficialModelPriceVersion{
+		ModelId:        37,
+		BillingMode:    "image",
+		PriceStructure: "flat",
+		PriceComponents: `{"schema_version":"v2","rules":[` +
+			`{"name":"output","component":"image_output","unit":"image","unit_size":"1","unit_price":"0.04"}` +
+			`]}`,
+		BillingExpr:             `v2:tier("output", images * 0.04)`,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD",
+		Source:                  "manual",
+	}
+	require.NoError(t, CreateOfficialPriceVersion(&official, 1))
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+
+	_, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 38, OfficialPriceVersionId: &official.Id,
+		PricingMode: "component_ratio", ImageOutputDiscount: "0.5",
+	}, 1)
+	require.ErrorContains(t, err, "component discounts require a flat token official price")
 }
 
 func TestPurchaseCanReferenceAnExpiredOfficialRevision(t *testing.T) {

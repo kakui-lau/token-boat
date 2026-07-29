@@ -90,7 +90,7 @@ function emptyOfficialConfiguration(
 ): OfficialPriceVersion {
   let billingExpression = ''
   if (billingMode === 'token' && priceStructure !== 'flat') {
-    billingExpression = 'v1:tier("base", p * 0 + c * 0)'
+    billingExpression = 'v2:(tier("base", p * 0 + c * 0)) / 1000000'
   } else if (billingMode !== 'token') {
     const usageVariables: Record<string, string> = {
       request: 'req',
@@ -110,7 +110,7 @@ function emptyOfficialConfiguration(
     price_components: '{}',
     billing_expr: billingExpression,
     expression_source: 'custom',
-    expression_schema_version: billingMode === 'token' ? 'v1' : 'v2',
+    expression_schema_version: 'v2',
     currency: 'USD',
     version: 0,
     status: 'draft',
@@ -202,7 +202,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         price_components: version.price_components,
         billing_expr: version.billing_expr,
         expression_source: version.expression_source || 'custom',
-        expression_schema_version: version.expression_schema_version || 'v1',
+        expression_schema_version: version.expression_schema_version || 'v2',
         currency: version.currency,
         source: editingDraftId === null ? 'manual' : version.source,
         source_version:

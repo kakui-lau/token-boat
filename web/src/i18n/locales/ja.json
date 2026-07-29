@@ -1678,6 +1678,7 @@
     "Edit non-sensitive settings such as models, groups, and routing rules.": "モデル、グループ、ルーティングルールなどの非機密設定を編集します。",
     "Edit OAuth Provider": "OAuthプロバイダーを編集",
     "Edit official price draft": "公式価格の下書きを編集",
+    "Edit Official Version": "公式価格バージョンを編集",
     "Edit payment method": "決済方法を編集",
     "Edit Prefill Group": "プリフィルグループを編集",
     "Edit product": "製品を編集",

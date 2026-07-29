@@ -19,8 +19,6 @@ type TieredResultWrapper = billingexpr.TieredResult
 // report them as text-only. This function normalizes to text-only when
 // sub-categories are separately priced.
 func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVars map[string]bool) billingexpr.TokenParams {
-	p := float64(usage.PromptTokens)
-	c := float64(usage.CompletionTokens)
 	cr := float64(usage.PromptTokensDetails.CachedTokens)
 	cc5m := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
@@ -35,51 +33,9 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	imgO := float64(usage.CompletionTokenDetails.ImageTokens)
 	ao := float64(usage.CompletionTokenDetails.AudioTokens)
 
-	// len = total input context length for tier condition evaluation.
-	// Non-Claude: prompt_tokens already includes everything.
-	// Claude: input_tokens is text-only, so add cache read + cache creation.
-	inputLen := p
-	if isClaudeUsageSemantic {
-		inputLen = p + cr + cc5m + cc1h
-	}
-
-	if !isClaudeUsageSemantic {
-		if usedVars["cr"] {
-			p -= cr
-		}
-		if usedVars["cc"] {
-			p -= cc5m
-		}
-		if usedVars["cc1h"] {
-			p -= cc1h
-		}
-		if usedVars["img"] {
-			p -= img
-		}
-		if usedVars["ai"] {
-			p -= ai
-		}
-		if usedVars["img_o"] {
-			c -= imgO
-		}
-		if usedVars["ao"] {
-			c -= ao
-		}
-	}
-
-	// OpenAI cache-write usage reports unadjusted prefix counts, so cr + cc can
-	// exceed the prompt and drive the remainder negative. Clamp at zero.
-	if p < 0 {
-		p = 0
-	}
-	if c < 0 {
-		c = 0
-	}
-
-	return billingexpr.TokenParams{
-		P:    p,
-		C:    c,
-		Len:  inputLen,
+	return billingexpr.NormalizeTokenParams(billingexpr.TokenParams{
+		P:    float64(usage.PromptTokens),
+		C:    float64(usage.CompletionTokens),
 		CR:   cr,
 		CC:   cc5m,
 		CC1h: cc1h,
@@ -87,7 +43,7 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 		ImgO: imgO,
 		AI:   ai,
 		AO:   ao,
-	}
+	}, isClaudeUsageSemantic, usedVars)
 }
 
 // TryTieredSettle checks if the request uses tiered_expr billing and, if so,

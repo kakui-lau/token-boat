@@ -135,4 +135,46 @@ describe('purchase discount input', () => {
       })
     )
   })
+
+  test('offers component discounts only for flat token official prices', () => {
+    const queryClient = new QueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PurchasePricePanel
+          channelModelId={31}
+          officialVersions={[
+            officialVersion,
+            {
+              ...officialVersion,
+              id: 5,
+              billing_mode: 'image',
+              version: 3,
+              price_components:
+                '{"rules":[{"name":"output","component":"image_output","unit":"image","unit_size":"1","unit_price":"0.04"}]}',
+              billing_expr: 'v2:tier("output", images * 0.04)',
+            },
+          ]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText('Cost Basis'), {
+      target: { value: 'component_ratio' },
+    })
+
+    expect(
+      screen.getByRole('option', { name: /Version 2/ })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('option', { name: /Version 3/ })
+    ).not.toBeInTheDocument()
+  })
 })

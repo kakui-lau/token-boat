@@ -43,6 +43,11 @@ import {
 } from '@/features/pricing/lib/billing-expr'
 import { TieredPricingEditor } from '@/features/system-settings/models/tiered-pricing-editor'
 
+import {
+  buildV2TokenBillingExpression,
+  synchronizeTokenTierComponents,
+  tokenBillingEditorBody,
+} from '../lib/official-price-expression'
 import type { OfficialPriceVersion } from '../types'
 
 type PriceField = {
@@ -133,6 +138,32 @@ const componentOptionsByMode: Record<
     { value: 'token_input', label: 'Token input', unit: 'token' },
     { value: 'token_output', label: 'Token output', unit: 'token' },
     { value: 'cache_read', label: 'Cache read', unit: 'token' },
+    { value: 'cache_write', label: 'Cache write', unit: 'token' },
+    {
+      value: 'cache_write_1h',
+      label: 'Cache write (1h)',
+      unit: 'token',
+    },
+    {
+      value: 'image_token_input',
+      label: 'Image input tokens',
+      unit: 'token',
+    },
+    {
+      value: 'image_token_output',
+      label: 'Image output tokens',
+      unit: 'token',
+    },
+    {
+      value: 'audio_token_input',
+      label: 'Audio input tokens',
+      unit: 'token',
+    },
+    {
+      value: 'audio_token_output',
+      label: 'Audio output tokens',
+      unit: 'token',
+    },
     { value: 'request', label: 'Request', unit: 'request' },
     { value: 'image_output', label: 'Image output', unit: 'image' },
     { value: 'audio_input', label: 'Audio input', unit: 'second' },
@@ -247,6 +278,12 @@ function businessRuleExpression(rules: BusinessPriceRule[]): string {
     if (rule.component === 'token_input') return 'p'
     if (rule.component === 'token_output') return 'c'
     if (rule.component === 'cache_read') return 'cr'
+    if (rule.component === 'cache_write') return 'cc'
+    if (rule.component === 'cache_write_1h') return 'cc1h'
+    if (rule.component === 'image_token_input') return 'img'
+    if (rule.component === 'image_token_output') return 'img_o'
+    if (rule.component === 'audio_token_input') return 'ai'
+    if (rule.component === 'audio_token_output') return 'ao'
     if (rule.unit === 'image') return 'images'
     if (rule.unit === 'character') return 'chars'
     if (rule.unit === 'second') {
@@ -322,7 +359,7 @@ function generatedFlatExpression(
   components: Record<string, unknown>
 ) {
   if (mode !== 'token') {
-    return 'v1:tier("flat", 0)'
+    return 'v2:tier("flat", 0)'
   }
   const expressionVariables: Record<string, string> = {
     input_unit_price: 'p',
@@ -338,7 +375,9 @@ function generatedFlatExpression(
     const value = String(components[field.key] ?? '').trim()
     return value ? [`${expressionVariables[field.key]} * ${value}`] : []
   })
-  return `v1:tier("flat", ${parts.length > 0 ? parts.join(' + ') : '0'})`
+  return buildV2TokenBillingExpression(
+    `tier("flat", ${parts.length > 0 ? parts.join(' + ') : '0'})`
+  )
 }
 
 export function OfficialPriceConfigurationEditor(
@@ -361,8 +400,7 @@ export function OfficialPriceConfigurationEditor(
         nextExpression ??
         generatedFlatExpression(props.version.billing_mode, nextComponents),
       expression_source: 'generated',
-      expression_schema_version:
-        props.version.billing_mode === 'token' ? 'v1' : 'v2',
+      expression_schema_version: 'v2',
     })
   }
 
@@ -371,28 +409,36 @@ export function OfficialPriceConfigurationEditor(
     (props.version.price_structure === 'tiered' ||
       props.version.price_structure === 'expression')
   ) {
-    const split = splitBillingExprAndRequestRules(props.version.billing_expr)
+    const split = splitBillingExprAndRequestRules(
+      tokenBillingEditorBody(props.version.billing_expr)
+    )
+    const updateTokenExpression = (
+      billingExpr: string,
+      requestRuleExpr: string
+    ) => {
+      const combined =
+        combineBillingExpr(billingExpr, requestRuleExpr) ?? billingExpr
+      const expression = buildV2TokenBillingExpression(combined)
+      props.onChange({
+        ...props.version,
+        price_components: synchronizeTokenTierComponents(
+          props.version.price_components,
+          expression
+        ),
+        billing_expr: expression,
+        expression_source: 'generated',
+        expression_schema_version: 'v2',
+      })
+    }
     return (
       <TieredPricingEditor
         billingExpr={split.billingExpr}
         requestRuleExpr={split.requestRuleExpr}
         onBillingExprChange={(billingExpr) =>
-          props.onChange({
-            ...props.version,
-            billing_expr:
-              combineBillingExpr(billingExpr, split.requestRuleExpr) ??
-              billingExpr,
-            expression_source: 'generated',
-          })
+          updateTokenExpression(billingExpr, split.requestRuleExpr)
         }
         onRequestRuleExprChange={(requestRuleExpr) =>
-          props.onChange({
-            ...props.version,
-            billing_expr:
-              combineBillingExpr(split.billingExpr, requestRuleExpr) ??
-              split.billingExpr,
-            expression_source: 'generated',
-          })
+          updateTokenExpression(split.billingExpr, requestRuleExpr)
         }
       />
     )

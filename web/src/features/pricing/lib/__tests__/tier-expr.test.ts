@@ -1,7 +1,25 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { parseTiersFromExpr } from '../billing-expr'
+import { parseTiersFromExpr, splitBillingExprVersion } from '../billing-expr'
 import { evalExprLocally, type ExtraTokenValues } from '../tier-expr'
 
 const emptyExtraTokens: ExtraTokenValues = {
@@ -43,6 +61,13 @@ describe('request-aware expression preview', () => {
 })
 
 describe('tier pricing expression parsing', () => {
+  test('parses explicit versions without breaking legacy expressions', () => {
+    assert.deepEqual(splitBillingExprVersion(' v1:tier("base", p * 1) '), {
+      schemaVersion: 'v1',
+      body: 'tier("base", p * 1)',
+    })
+  })
+
   test('extracts prices from grouped input and output terms', () => {
     const tiers = parseTiersFromExpr(
       'param("metadata.billing_has_video") == true ? tier("video_480p_720p", (p + c) * 3.835616) : tier("text_480p_720p", (p + c) * 6.986301)'

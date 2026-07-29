@@ -20,11 +20,12 @@ const DefaultExprVersion = 1
 // Format: "v1:tier(...)" or "v2:tier(...)" → version and expression body.
 // No prefix defaults to DefaultExprVersion.
 func ParseExprVersion(exprStr string) (version int, body string) {
+	exprStr = strings.TrimSpace(exprStr)
 	if strings.HasPrefix(exprStr, "v2:") {
-		return 2, exprStr[3:]
+		return 2, strings.TrimSpace(exprStr[3:])
 	}
 	if strings.HasPrefix(exprStr, "v1:") {
-		return 1, exprStr[3:]
+		return 1, strings.TrimSpace(exprStr[3:])
 	}
 	return DefaultExprVersion, exprStr
 }

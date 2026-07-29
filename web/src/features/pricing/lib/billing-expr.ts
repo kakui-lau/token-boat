@@ -533,6 +533,20 @@ export function tryParseRequestRuleExpr(
 // Combine / split billing expr and request rules
 // ---------------------------------------------------------------------------
 
+export function splitBillingExprVersion(expr: string): {
+  schemaVersion: 'v1' | 'v2' | null
+  body: string
+} {
+  const trimmed = (expr || '').trim()
+  if (trimmed.startsWith('v1:')) {
+    return { schemaVersion: 'v1', body: trimmed.slice(3).trim() }
+  }
+  if (trimmed.startsWith('v2:')) {
+    return { schemaVersion: 'v2', body: trimmed.slice(3).trim() }
+  }
+  return { schemaVersion: null, body: trimmed }
+}
+
 function hasFullOuterParens(expr: string): boolean {
   if (!expr.startsWith('(') || !expr.endsWith(')')) return false
   let depth = 0

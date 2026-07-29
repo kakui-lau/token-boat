@@ -28,6 +28,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+import {
+  tokenPriceTiersFromExpression,
+  type TokenPriceTier,
+} from '../lib/official-price-expression'
 import type { OfficialPriceVersion } from '../types'
 
 type OfficialPriceVersionDialogProps = {
@@ -40,6 +44,7 @@ const componentLabels: Record<string, string> = {
   output_unit_price: 'Output / 1M tokens',
   cache_read_unit_price: 'Cache Read / 1M tokens',
   cache_write_unit_price: 'Cache Write / 1M tokens',
+  cache_write_1h_unit_price: 'Cache Write (1h)',
   image_input_unit_price: 'Image Input / 1M tokens',
   image_output_unit_price: 'Image Output / 1M tokens',
   audio_input_unit_price: 'Audio Input / 1M tokens',
@@ -50,6 +55,11 @@ const componentLabels: Record<string, string> = {
   token_output: 'Token output',
   cache_read: 'Cache read',
   cache_write: 'Cache write',
+  cache_write_1h: 'Cache Write (1h)',
+  image_token_input: 'Image input tokens',
+  image_token_output: 'Image output tokens',
+  audio_token_input: 'Audio input tokens',
+  audio_token_output: 'Audio output tokens',
   image_input: 'Image input',
   image_output: 'Image output',
   audio_input: 'Audio input',
@@ -75,19 +85,6 @@ type PriceRule = {
   with_audio?: string
 }
 
-type TokenPriceTier = {
-  name?: string
-  upper_bound?: string
-  input_unit_price?: string
-  output_unit_price?: string
-  cache_read_unit_price?: string
-  cache_write_unit_price?: string
-  image_input_unit_price?: string
-  image_output_unit_price?: string
-  audio_input_unit_price?: string
-  audio_output_unit_price?: string
-}
-
 export function OfficialPriceVersionDialog(
   props: OfficialPriceVersionDialogProps
 ) {
@@ -107,11 +104,16 @@ export function OfficialPriceVersionDialog(
   const priceRules = Array.isArray(components.rules)
     ? (components.rules as PriceRule[])
     : []
-  const priceTiers = Array.isArray(components.tiers)
-    ? (components.tiers.filter(
-        (tier) => tier !== null && typeof tier === 'object'
-      ) as TokenPriceTier[])
-    : []
+  const expressionTiers = version
+    ? tokenPriceTiersFromExpression(version.billing_expr)
+    : null
+  const priceTiers =
+    expressionTiers ??
+    (Array.isArray(components.tiers)
+      ? (components.tiers.filter(
+          (tier) => tier !== null && typeof tier === 'object'
+        ) as TokenPriceTier[])
+      : [])
   const componentEntries = Object.entries(components).filter(
     ([key, value]) =>
       !key.startsWith('legacy_') &&
@@ -391,12 +393,6 @@ export function OfficialPriceVersionDialog(
                   {version.remark}
                 </p>
               </section>
-            ) : null}
-
-            {version.billing_mode !== 'token' ? (
-              <Badge variant='outline'>
-                {t('Draft only until the V2 runtime supports this mode')}
-              </Badge>
             ) : null}
           </div>
         ) : null}

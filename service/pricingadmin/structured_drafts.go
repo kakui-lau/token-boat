@@ -153,7 +153,7 @@ func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPr
 		PriceComponents:         components,
 		BillingExpr:             expression,
 		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: "v1",
+		ExpressionSchemaVersion: "v2",
 		Currency:                input.Currency,
 		Source:                  strings.TrimSpace(input.Source),
 		Remark:                  strings.TrimSpace(input.Remark),
@@ -165,6 +165,7 @@ func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPr
 		&version.ExpressionSource,
 		&version.ExpressionSchemaVersion,
 		&version.Currency,
+		&version.BillingExpr,
 	)
 	if err := validateOfficialPriceCurrency(version.Currency); err != nil {
 		return model.OfficialModelPriceVersion{}, err
@@ -378,7 +379,7 @@ func buildRetailDraft(input RetailDraftInput) (model.ChannelModelRetailPriceVers
 	if _, err := calculator.SellingFactor(); err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	if purchase.PriceStructure != "flat" {
+	if purchase.BillingMode != "token" || purchase.PriceStructure != "flat" {
 		return buildExpressionRetailDraft(input, purchase, calculator)
 	}
 	purchasePrices, err := unmarshalFlatPriceComponents(purchase.PriceComponents)
@@ -406,7 +407,7 @@ func buildRetailDraft(input RetailDraftInput) (model.ChannelModelRetailPriceVers
 		PriceUnit:               purchase.PriceUnit,
 		RetailBillingExpr:       retailExpression,
 		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: purchase.ExpressionSchemaVersion,
+		ExpressionSchemaVersion: "v2",
 		Currency:                purchase.Currency,
 		TotalVariableCostRate:   input.TotalVariableCostRate,
 		EffectiveTaxRate:        input.EffectiveTaxRate,
@@ -480,7 +481,7 @@ func buildExpressionRetailDraft(
 		PriceUnit:               purchase.PriceUnit,
 		RetailBillingExpr:       expression,
 		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: purchase.ExpressionSchemaVersion,
+		ExpressionSchemaVersion: "v2",
 		Currency:                purchase.Currency,
 		TotalVariableCostRate:   input.TotalVariableCostRate,
 		EffectiveTaxRate:        input.EffectiveTaxRate,
@@ -504,7 +505,7 @@ func buildOfficialRatioPurchaseDraft(input PurchaseDraftInput) (model.ChannelMod
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
 	}
-	if official.PriceStructure != "flat" {
+	if official.BillingMode != "token" || official.PriceStructure != "flat" {
 		componentsJSON, err := scalePriceComponents(official.PriceComponents, discount)
 		if err != nil {
 			return model.ChannelModelPurchasePriceVersion{}, err
@@ -532,6 +533,11 @@ func buildComponentRatioPurchaseDraft(input PurchaseDraftInput) (model.ChannelMo
 	official, err := requireOfficialPrice(input.OfficialPriceVersionId)
 	if err != nil {
 		return model.ChannelModelPurchasePriceVersion{}, err
+	}
+	if official.BillingMode != "token" || official.PriceStructure != "flat" {
+		return model.ChannelModelPurchasePriceVersion{}, errors.New(
+			"component discounts require a flat token official price",
+		)
 	}
 	officialPrices, err := unmarshalFlatPriceComponents(official.PriceComponents)
 	if err != nil {
@@ -571,7 +577,7 @@ func buildExpressionPurchaseDraft(
 		PriceUnit:               "expression",
 		PurchaseBillingExpr:     expression,
 		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: official.ExpressionSchemaVersion,
+		ExpressionSchemaVersion: "v2",
 		Currency:                official.Currency,
 		QuoteReference:          strings.TrimSpace(input.QuoteReference),
 		ContractReference:       strings.TrimSpace(input.ContractReference),
@@ -588,7 +594,7 @@ func buildFixedPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurcha
 	official := model.OfficialModelPriceVersion{
 		BillingMode:             "token",
 		PriceStructure:          "flat",
-		ExpressionSchemaVersion: "v1",
+		ExpressionSchemaVersion: "v2",
 		Currency:                strings.ToUpper(strings.TrimSpace(input.Currency)),
 	}
 	if official.Currency == "" {
@@ -633,7 +639,7 @@ func buildFlatPurchaseDraft(
 		PriceUnit:               "per_1m_tokens",
 		PurchaseBillingExpr:     expression,
 		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: official.ExpressionSchemaVersion,
+		ExpressionSchemaVersion: "v2",
 		Currency:                official.Currency,
 		QuoteReference:          strings.TrimSpace(input.QuoteReference),
 		ContractReference:       strings.TrimSpace(input.ContractReference),
@@ -725,7 +731,7 @@ func normalizeFlatTokenPrices(input FlatTokenPriceInput) (FlatTokenPriceInput, s
 	if prices.AudioOutputUnitPrice != "" {
 		terms = append(terms, "ao * "+prices.AudioOutputUnitPrice)
 	}
-	expression := `v1:tier("base", ` + strings.Join(terms, " + ") + ")"
+	expression := `v2:(tier("base", ` + strings.Join(terms, " + ") + ")) / 1000000"
 	components, err := marshalFlatPriceComponents(prices)
 	return prices, expression, components, err
 }
@@ -847,13 +853,11 @@ func requireOfficialPrice(id *int) (model.OfficialModelPriceVersion, error) {
 }
 
 func scaleBillingExpression(expression string, factor decimal.Decimal) (string, error) {
-	parts := strings.SplitN(expression, "|||", 2)
-	version, body := billingexpr.ParseExprVersion(parts[0])
-	scaled := fmt.Sprintf("v%d:(%s) * %s", version, body, factor.String())
-	if len(parts) == 2 {
-		scaled += "|||" + parts[1]
+	version, body := billingexpr.ParseExprVersion(expression)
+	if version == 1 {
+		body = fmt.Sprintf("(%s) / 1000000", body)
 	}
-	return scaled, nil
+	return fmt.Sprintf("v2:(%s) * %s", body, factor.String()), nil
 }
 
 func normalizeOptionalPrice(name string, value string) (string, error) {

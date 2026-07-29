@@ -32,6 +32,7 @@ type PriceSimulationInput struct {
 	AudioSeconds           float64 `json:"audio_seconds"`
 	VideoSeconds           float64 `json:"video_seconds"`
 	CharacterCount         float64 `json:"character_count"`
+	UsageSemantic          string  `json:"usage_semantic"`
 	RequestBody            string  `json:"request_body"`
 }
 
@@ -79,6 +80,13 @@ func SimulatePrice(input PriceSimulationInput) (PriceSimulationResult, error) {
 			return PriceSimulationResult{}, fmt.Errorf("request_body must be valid JSON: %w", err)
 		}
 	}
+	usageSemantic := strings.ToLower(strings.TrimSpace(input.UsageSemantic))
+	if usageSemantic == "" {
+		usageSemantic = "openai"
+	}
+	if usageSemantic != "openai" && usageSemantic != "anthropic" {
+		return PriceSimulationResult{}, errors.New("usage_semantic must be openai or anthropic")
+	}
 
 	var purchase model.ChannelModelPurchasePriceVersion
 	if err := model.DB.First(&purchase, input.PurchasePriceVersionId).Error; err != nil {
@@ -98,7 +106,7 @@ func SimulatePrice(input PriceSimulationInput) (PriceSimulationResult, error) {
 		return PriceSimulationResult{}, errors.New("purchase and retail currencies do not match")
 	}
 
-	params := billingexpr.TokenParams{
+	rawParams := billingexpr.TokenParams{
 		P: input.PromptTokens, C: input.CompletionTokens, Len: input.PromptTokens,
 		CR: input.CacheReadTokens, CC: input.CacheWriteTokens,
 		Img: input.ImageInputTokens, ImgO: input.ImageOutputTokens,
@@ -108,19 +116,29 @@ func SimulatePrice(input PriceSimulationInput) (PriceSimulationResult, error) {
 		Chars: input.CharacterCount,
 	}
 	request := billingexpr.RequestInput{Body: []byte(requestBody)}
+	purchaseParams := billingexpr.NormalizeTokenParams(
+		rawParams,
+		usageSemantic == "anthropic",
+		billingexpr.UsedVars(purchase.PurchaseBillingExpr),
+	)
 	purchaseRaw, purchaseTrace, err := billingexpr.RunExprByHashWithRequest(
 		purchase.PurchaseBillingExpr,
 		purchase.PurchaseExprHash,
-		params,
+		purchaseParams,
 		request,
 	)
 	if err != nil {
 		return PriceSimulationResult{}, fmt.Errorf("evaluate purchase price: %w", err)
 	}
+	retailParams := billingexpr.NormalizeTokenParams(
+		rawParams,
+		usageSemantic == "anthropic",
+		billingexpr.UsedVars(retail.RetailBillingExpr),
+	)
 	retailRaw, retailTrace, err := billingexpr.RunExprByHashWithRequest(
 		retail.RetailBillingExpr,
 		retail.RetailExprHash,
-		params,
+		retailParams,
 		request,
 	)
 	if err != nil {

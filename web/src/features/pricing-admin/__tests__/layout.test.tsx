@@ -154,7 +154,7 @@ describe('Pricing admin editor layout', () => {
     ).toBeVisible()
     expect(
       screen.getByText(
-        'Price structure defines how that usage is priced: one fixed rate, multiple tiers, or a billing expression.'
+        'Use one unit price for all usage. This is the recommended choice for most models.'
       )
     ).toBeVisible()
   })
@@ -211,6 +211,40 @@ describe('Pricing admin editor layout', () => {
     expect(screen.getAllByText('Unit price')).toHaveLength(2)
     expect(screen.getAllByText('Billing component')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Add tier' })).toBeEnabled()
+    expect(
+      screen.getByText(
+        'Use tiered pricing only when the unit price changes after a usage or context threshold.'
+      )
+    ).toBeVisible()
+  })
+
+  test('provides a simple rule editor before the advanced expression for non-token billing', () => {
+    const version: OfficialPriceVersion = {
+      id: 0,
+      model_id: 3,
+      billing_mode: 'video_duration',
+      price_structure: 'expression',
+      price_components: '{}',
+      billing_expr:
+        'v2:param("resolution") == "1080p" ? tier("1080p", video_s * 0.4) : tier("default", video_s * 0.2)',
+      currency: 'USD',
+      version: 0,
+      status: 'draft',
+      source: 'manual',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+
+    render(
+      <OfficialPriceConfigurationEditor version={version} onChange={vi.fn()} />
+    )
+
+    expect(screen.getByText('Price rule 1')).toBeVisible()
+    expect(screen.getByText('Resolution')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add price rule' })).toBeEnabled()
+    expect(screen.getByText('Advanced expression')).toBeVisible()
+    expect(screen.queryByLabelText('Billing Expression')).not.toBeVisible()
   })
 
   test('does not expose internal price-component JSON in expression mode', () => {
@@ -264,6 +298,31 @@ describe('Pricing admin editor layout', () => {
     expect(screen.getByText('Billing component')).toBeVisible()
     expect(screen.getByText('Unit price')).toBeVisible()
     expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
+  })
+
+  test('opens token tiered pricing in the visual editor', async () => {
+    renderWithQueryClient(
+      <OfficialPricePanel
+        modelId={3}
+        versions={[]}
+        isPublishing={false}
+        isDeleting={false}
+        onPublish={vi.fn()}
+        onDelete={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    const selectors = screen.getAllByRole('combobox')
+    fireEvent.click(selectors[1])
+    const tieredOption = await screen.findByRole('option', {
+      name: 'Tiered pricing',
+    })
+    fireEvent.pointerDown(tieredOption)
+    fireEvent.pointerUp(tieredOption)
+    fireEvent.click(tieredOption)
+
+    expect(screen.getByText('Visual editor')).toBeVisible()
   })
 
   test('keeps active official revisions as history without a suspend action', () => {

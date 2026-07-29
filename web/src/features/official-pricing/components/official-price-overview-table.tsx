@@ -52,6 +52,15 @@ type OfficialPriceOverviewTableProps = {
   onPublishDraft: (draftId: number) => void
 }
 
+function displayPrice(value: string): string {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) return value
+  return new Intl.NumberFormat('en-US', {
+    useGrouping: false,
+    maximumFractionDigits: 12,
+  }).format(numericValue)
+}
+
 function PriceValue(props: { currency: string; value: string; unit?: string }) {
   if (!props.value) {
     return <span className='text-muted-foreground'>—</span>
@@ -59,7 +68,7 @@ function PriceValue(props: { currency: string; value: string; unit?: string }) {
   return (
     <div className='tabular-nums'>
       <span className='font-medium'>
-        {props.currency} {props.value}
+        {props.currency} {displayPrice(props.value)}
       </span>
       {props.unit ? (
         <span className='text-muted-foreground ml-1 text-xs'>
@@ -235,7 +244,8 @@ export function OfficialPriceOverviewTable(
                                 <span className='text-muted-foreground'>
                                   {t('Cache Read')}:{' '}
                                 </span>
-                                {row.currency} {row.cache_read_unit_price}
+                                {row.currency}{' '}
+                                {displayPrice(row.cache_read_unit_price)}
                               </span>
                             ) : null}
                             {row.cache_write_unit_price ? (
@@ -243,7 +253,8 @@ export function OfficialPriceOverviewTable(
                                 <span className='text-muted-foreground'>
                                   {t('Cache Write')}:{' '}
                                 </span>
-                                {row.currency} {row.cache_write_unit_price}
+                                {row.currency}{' '}
+                                {displayPrice(row.cache_write_unit_price)}
                               </span>
                             ) : null}
                             {row.image_input_unit_price ||
@@ -253,8 +264,10 @@ export function OfficialPriceOverviewTable(
                                   {t('Image')}:{' '}
                                 </span>
                                 {row.currency}{' '}
-                                {row.image_input_unit_price ||
-                                  row.image_output_unit_price}
+                                {displayPrice(
+                                  row.image_input_unit_price ||
+                                    row.image_output_unit_price
+                                )}
                               </span>
                             ) : null}
                             {row.audio_input_unit_price ||
@@ -264,8 +277,10 @@ export function OfficialPriceOverviewTable(
                                   {t('Audio')}:{' '}
                                 </span>
                                 {row.currency}{' '}
-                                {row.audio_input_unit_price ||
-                                  row.audio_output_unit_price}
+                                {displayPrice(
+                                  row.audio_input_unit_price ||
+                                    row.audio_output_unit_price
+                                )}
                               </span>
                             ) : null}
                             {row.request_unit_price ? (
@@ -273,7 +288,8 @@ export function OfficialPriceOverviewTable(
                                 <span className='text-muted-foreground'>
                                   {t('Request')}:{' '}
                                 </span>
-                                {row.currency} {row.request_unit_price}
+                                {row.currency}{' '}
+                                {displayPrice(row.request_unit_price)}
                               </span>
                             ) : null}
                             {row.video_second_unit_price ? (
@@ -281,7 +297,8 @@ export function OfficialPriceOverviewTable(
                                 <span className='text-muted-foreground'>
                                   {t('Video')}:{' '}
                                 </span>
-                                {row.currency} {row.video_second_unit_price}
+                                {row.currency}{' '}
+                                {displayPrice(row.video_second_unit_price)}
                               </span>
                             ) : null}
                             {!row.cache_read_unit_price &&

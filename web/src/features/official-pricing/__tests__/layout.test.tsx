@@ -42,7 +42,7 @@ vi.mock('@/features/pricing-admin/api', () => ({
         latest_draft_id: 8,
         effective_from: 1_700_000_000,
         input_unit_price: '1.25',
-        output_unit_price: '5',
+        output_unit_price: '3.999999999999999825',
         cache_read_unit_price: '',
         cache_write_unit_price: '',
         image_input_unit_price: '',
@@ -86,7 +86,7 @@ describe('Official pricing page layout', () => {
     ).toBeVisible()
     expect(await screen.findByText('openai/gpt-test')).toBeVisible()
     expect(screen.getByText('USD 1.25')).toBeVisible()
-    expect(screen.getByText('USD 5')).toBeVisible()
+    expect(screen.getByText('USD 4')).toBeVisible()
     expect(screen.getByText('Active Prices')).toBeVisible()
     fireEvent.click(
       screen.getByRole('button', {

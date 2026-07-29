@@ -72,8 +72,16 @@ const billingModeOptions = [
 const priceStructureOptions = [
   { value: 'flat', label: 'Flat rate' },
   { value: 'tiered', label: 'Tiered pricing' },
-  { value: 'expression', label: 'Expression pricing' },
+  { value: 'expression', label: 'Conditional pricing' },
 ]
+
+const priceStructureDescriptions: Record<string, string> = {
+  flat: 'Use one unit price for all usage. This is the recommended choice for most models.',
+  tiered:
+    'Use only when the provider changes the unit price after a usage or context threshold.',
+  expression:
+    'Use when request options such as resolution, quality, operation, or audio change the price.',
+}
 
 function emptyOfficialConfiguration(
   modelId: number,
@@ -81,7 +89,9 @@ function emptyOfficialConfiguration(
   priceStructure: string
 ): OfficialPriceVersion {
   let billingExpression = ''
-  if (billingMode !== 'token') {
+  if (billingMode === 'token' && priceStructure !== 'flat') {
+    billingExpression = 'v1:tier("base", p * 0 + c * 0)'
+  } else if (billingMode !== 'token') {
     const usageVariables: Record<string, string> = {
       request: 'req',
       image: 'images',
@@ -113,6 +123,16 @@ function emptyOfficialConfiguration(
 
 export function OfficialPricePanel(props: OfficialPricePanelProps) {
   const { t } = useTranslation()
+  const localizedBillingModeOptions = billingModeOptions.map((option) => ({
+    ...option,
+    label: t(option.label),
+  }))
+  const localizedPriceStructureOptions = priceStructureOptions.map(
+    (option) => ({
+      ...option,
+      label: t(option.label),
+    })
+  )
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null)
   const [selectedVersion, setSelectedVersion] =
     useState<OfficialPriceVersion | null>(null)
@@ -284,7 +304,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
                 {t('Billing Mode')}
               </FieldLabel>
               <Select
-                items={billingModeOptions}
+                items={localizedBillingModeOptions}
                 value={newBillingMode}
                 onValueChange={(value) => {
                   if (!value) return
@@ -329,7 +349,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
                 {t('Price Structure')}
               </FieldLabel>
               <Select
-                items={priceStructureOptions}
+                items={localizedPriceStructureOptions}
                 value={newPriceStructure}
                 onValueChange={(value) => {
                   if (!value) return
@@ -364,9 +384,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
                 </SelectContent>
               </Select>
               <p className='text-muted-foreground text-xs'>
-                {t(
-                  'Price structure defines how that usage is priced: one fixed rate, multiple tiers, or a billing expression.'
-                )}
+                {t(priceStructureDescriptions[newPriceStructure])}
               </p>
             </Field>
           </FieldGroup>

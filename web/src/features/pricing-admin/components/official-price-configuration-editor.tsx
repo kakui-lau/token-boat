@@ -163,9 +163,19 @@ function createBusinessRule(mode: string, index: number): BusinessPriceRule {
 
 function normalizedBusinessRules(
   mode: string,
-  components: Record<string, unknown>
+  components: Record<string, unknown>,
+  priceStructure: string
 ): BusinessPriceRule[] {
   if (!Array.isArray(components.rules) || components.rules.length === 0) {
+    if (priceStructure === 'tiered') {
+      return [
+        { ...createBusinessRule(mode, 0), upper_bound: '1000' },
+        createBusinessRule(mode, 1),
+      ]
+    }
+    if (priceStructure === 'expression') {
+      return [createBusinessRule(mode, 0), createBusinessRule(mode, 1)]
+    }
     return [createBusinessRule(mode, 0)]
   }
   return (components.rules as Partial<BusinessPriceRule>[]).map(
@@ -218,9 +228,11 @@ function businessRuleExpression(rules: BusinessPriceRule[]): string {
   return `v2:${rules
     .map((rule, index) => {
       const when = condition(rule)
-      if (index === rules.length - 1 || !when) return ruleBody(rule)
+      if (index === rules.length - 1) return ruleBody(rule)
+      if (!when) return ''
       return `${when} ? ${ruleBody(rule)}`
     })
+    .filter(Boolean)
     .join(' : ')}`
 }
 
@@ -331,103 +343,71 @@ export function OfficialPriceConfigurationEditor(
     )
   }
 
-  if (props.version.price_structure === 'expression') {
-    const expressionTemplates: Record<string, string> = {
-      request: 'v2:tier("base", req * 0)',
-      image: 'v2:tier("base", images * 0)',
-      audio_duration: 'v2:tier("base", audio_s * 0)',
-      video_duration: 'v2:tier("base", video_s * 0)',
-      character: 'v2:tier("base", chars / 1000000 * 0)',
-      mixed:
-        'v2:tier("base", req * 0 + images * 0 + audio_s * 0 + video_s * 0 + chars / 1000000 * 0)',
-    }
-    const template = expressionTemplates[props.version.billing_mode]
-    return (
-      <div className='space-y-4'>
-        {template ? (
-          <div className='flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3'>
-            <div>
-              <p className='text-sm font-medium'>{t('Expression template')}</p>
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'Start from a safe template using normalized billing variables.'
-                )}
-              </p>
-            </div>
-            <Button
-              type='button'
-              size='sm'
-              variant='outline'
-              onClick={() =>
-                props.onChange({
-                  ...props.version,
-                  billing_expr: template,
-                  expression_source: 'template',
-                })
-              }
-            >
-              {t('Apply template')}
-            </Button>
-          </div>
-        ) : null}
-        <Field>
-          <FieldLabel htmlFor='official-custom-expression'>
-            {t('Billing Expression')}
-          </FieldLabel>
-          <Textarea
-            id='official-custom-expression'
-            className='min-h-44 font-mono text-xs'
-            value={props.version.billing_expr}
-            onChange={(event) =>
-              props.onChange({
-                ...props.version,
-                billing_expr: event.target.value,
-                expression_source: 'custom',
-              })
-            }
-          />
-        </Field>
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Price components are internal display metadata and do not need to be entered manually. Billing is calculated from the expression.'
-          )}
-        </p>
-        <div className='bg-muted/30 rounded-lg border p-3 text-xs'>
-          <p className='font-medium'>{t('Available billing variables')}</p>
-          <p className='text-muted-foreground mt-1 font-mono'>
-            req · images · audio_s · video_s · chars · param("path") ·
-            tier("name", amount)
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   if (props.version.billing_mode !== 'token') {
     const rules = normalizedBusinessRules(
       props.version.billing_mode,
-      components
+      components,
+      props.version.price_structure
     )
     const updateRules = (nextRules: BusinessPriceRule[]) =>
       updateComponents(
         { schema_version: 'v2', rules: nextRules },
         businessRuleExpression(nextRules)
       )
-    const componentOptions =
+    const componentOptions = (
       componentOptionsByMode[props.version.billing_mode] ?? []
+    ).map((option) => ({ ...option, label: t(option.label) }))
     const showTierConditions = props.version.price_structure === 'tiered'
+    const showConditionalFields = props.version.price_structure === 'expression'
+    const defaultRule =
+      rules.at(-1) ?? createBusinessRule(props.version.billing_mode, 0)
     return (
       <div className='space-y-3'>
-        {showTierConditions ? (
+        {showTierConditions && (
+          <div className='bg-muted/30 rounded-lg border p-3'>
+            <p className='text-sm font-medium'>{t('When to use tiers')}</p>
+            <p className='text-muted-foreground mt-1 text-sm'>
+              {t(
+                'Use tiered pricing only when the unit price changes after a usage or context threshold.'
+              )}
+            </p>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t(
+                'Example: the first 1,000 requests use one rate and later requests use another rate.'
+              )}
+            </p>
+          </div>
+        )}
+        {showConditionalFields && (
+          <div className='bg-muted/30 rounded-lg border p-3'>
+            <p className='text-sm font-medium'>
+              {t('When to use conditional pricing')}
+            </p>
+            <p className='text-muted-foreground mt-1 text-sm'>
+              {t(
+                'Use conditional pricing when request options such as resolution, quality, operation, or audio change the price.'
+              )}
+            </p>
+          </div>
+        )}
+        {!showTierConditions && !showConditionalFields && (
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'Add one row for each billable operation or market price variant.'
+            )}
+          </p>
+        )}
+        {showTierConditions && (
           <p className='text-muted-foreground text-sm'>
             {t(
               'Each row is a pricing tier. Conditions are evaluated in order, and the final row acts as the default tier.'
             )}
           </p>
-        ) : (
+        )}
+        {showConditionalFields && (
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Add one row for each billable operation or market price variant.'
+              'Configure common conditions below. The final row is used when no earlier rule matches.'
             )}
           </p>
         )}
@@ -496,7 +476,7 @@ export function OfficialPriceConfigurationEditor(
                     <SelectGroup>
                       {componentOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {t(option.label)}
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -558,6 +538,7 @@ export function OfficialPriceConfigurationEditor(
                 </Field>
               ) : null}
               {index < rules.length - 1 &&
+              showConditionalFields &&
               (props.version.billing_mode === 'image' ||
                 props.version.billing_mode === 'video_duration' ||
                 props.version.billing_mode === 'mixed') ? (
@@ -610,6 +591,7 @@ export function OfficialPriceConfigurationEditor(
                 </>
               ) : null}
               {index < rules.length - 1 &&
+              showConditionalFields &&
               (props.version.billing_mode === 'video_duration' ||
                 props.version.billing_mode === 'mixed') ? (
                 <Field>
@@ -654,15 +636,54 @@ export function OfficialPriceConfigurationEditor(
           size='sm'
           variant='outline'
           onClick={() =>
-            updateRules([
-              ...rules,
-              createBusinessRule(props.version.billing_mode, rules.length),
-            ])
+            updateRules(
+              rules.length === 0
+                ? [createBusinessRule(props.version.billing_mode, 0)]
+                : [
+                    ...rules.slice(0, -1),
+                    createBusinessRule(
+                      props.version.billing_mode,
+                      rules.length
+                    ),
+                    defaultRule,
+                  ]
+            )
           }
         >
           <Plus data-icon='inline-start' />
           {showTierConditions ? t('Add tier') : t('Add price rule')}
         </Button>
+        {showConditionalFields ? (
+          <details className='rounded-lg border'>
+            <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
+              {t('Advanced expression')}
+            </summary>
+            <div className='space-y-3 border-t p-3'>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Only edit the generated expression when the visual rules cannot describe the provider price.'
+                )}
+              </p>
+              <Field>
+                <FieldLabel htmlFor='official-custom-expression'>
+                  {t('Billing Expression')}
+                </FieldLabel>
+                <Textarea
+                  id='official-custom-expression'
+                  className='min-h-36 font-mono text-xs'
+                  value={props.version.billing_expr}
+                  onChange={(event) =>
+                    props.onChange({
+                      ...props.version,
+                      billing_expr: event.target.value,
+                      expression_source: 'custom',
+                    })
+                  }
+                />
+              </Field>
+            </div>
+          </details>
+        ) : null}
       </div>
     )
   }

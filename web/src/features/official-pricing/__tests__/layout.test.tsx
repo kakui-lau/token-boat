@@ -85,8 +85,8 @@ describe('Official pricing page layout', () => {
       screen.getByRole('heading', { name: 'Official Pricing' })
     ).toBeVisible()
     expect(
-      screen.getByRole('button', { name: 'Channel Price Comparison' })
-    ).toHaveAttribute('href', '/pricing-admin')
+      screen.queryByRole('button', { name: 'Channel Price Comparison' })
+    ).not.toBeInTheDocument()
     expect(await screen.findByText('openai/gpt-test')).toBeVisible()
     expect(screen.getByText('USD 1.25')).toBeVisible()
     expect(screen.getByText('USD 4')).toBeVisible()

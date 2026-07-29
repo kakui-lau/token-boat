@@ -17,13 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  ArrowLeft,
-  BarChart3,
-  CheckCheck,
-  DatabaseZap,
-  Search,
-} from 'lucide-react'
+import { ArrowLeft, CheckCheck, DatabaseZap, Search } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -159,10 +153,6 @@ export function OfficialPricing(props: OfficialPricingProps) {
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Official Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <Button variant='outline' render={<a href='/pricing-admin' />}>
-          <BarChart3 data-icon='inline-start' />
-          {t('Channel Price Comparison')}
-        </Button>
         <Button
           disabled={totalDraftCount === 0 || bulkPublishMutation.isPending}
           onClick={() => setBulkPublishOpen(true)}

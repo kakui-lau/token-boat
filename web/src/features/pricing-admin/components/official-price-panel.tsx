@@ -611,6 +611,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           onSuspend={() => undefined}
           onDelete={props.onDelete}
           allowSuspend={false}
+          showId
           onView={(id) =>
             setSelectedVersion(
               props.versions.find((item) => item.id === id) ?? null

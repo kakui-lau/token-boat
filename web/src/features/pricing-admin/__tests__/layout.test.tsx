@@ -627,6 +627,8 @@ describe('Pricing admin editor layout', () => {
       />
     )
 
+    expect(screen.getByText('ID #12')).toBeVisible()
+    expect(screen.getByText('ID #11')).toBeVisible()
     const templateButtons = screen.getAllByRole('button', { name: 'Duplicate' })
     fireEvent.click(templateButtons[1])
     expect(screen.getByLabelText('Input / 1M tokens')).toHaveValue('2')

@@ -45,6 +45,7 @@ type VersionListProps = {
   onEdit?: (id: number) => void
   onFill?: (id: number) => void
   allowSuspend?: boolean
+  showId?: boolean
 }
 
 export function VersionList(props: VersionListProps) {
@@ -85,6 +86,11 @@ export function VersionList(props: VersionListProps) {
                 <span className='font-medium'>
                   {t('Version')} {item.version}
                 </span>
+                {props.showId ? (
+                  <span className='text-muted-foreground font-mono text-xs'>
+                    ID #{item.id}
+                  </span>
+                ) : null}
                 <Badge
                   variant={item.status === 'active' ? 'default' : 'outline'}
                 >

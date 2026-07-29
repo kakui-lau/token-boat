@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
+  BarChart3,
   BadgeDollarSign,
   CircleAlert,
   Plus,
@@ -102,6 +103,13 @@ export function PricingAdmin() {
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <Button
+          variant='outline'
+          render={<a href='#provider-price-comparison' />}
+        >
+          <BarChart3 data-icon='inline-start' />
+          {t('Channel Price Comparison')}
+        </Button>
         <Button
           variant='outline'
           render={<Link to='/official-pricing' search={{}} />}

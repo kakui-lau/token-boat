@@ -244,7 +244,7 @@ function EndpointRow(props: {
 export function ModelPriceOverview(props: ModelPriceOverviewProps) {
   const { t } = useTranslation()
   return (
-    <section className='space-y-3'>
+    <section id='provider-price-comparison' className='scroll-mt-4 space-y-3'>
       <div>
         <h2 className='font-medium'>{t('Provider Price Comparison')}</h2>
         <p className='text-muted-foreground text-sm'>

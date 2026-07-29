@@ -32,6 +32,30 @@ func setupPricingAdminTestDB(t *testing.T) {
 	})
 }
 
+func TestOptionalSnapshotPricesUseTextColumns(t *testing.T) {
+	setupPricingAdminTestDB(t)
+
+	for _, table := range []any{
+		&model.ChannelModelPurchasePriceVersion{},
+		&model.ChannelModelRetailPriceVersion{},
+	} {
+		columnTypes, err := model.DB.Migrator().ColumnTypes(table)
+		require.NoError(t, err)
+		typesByName := make(map[string]string, len(columnTypes))
+		for _, columnType := range columnTypes {
+			typesByName[columnType.Name()] = columnType.DatabaseTypeName()
+		}
+		for _, column := range []string{
+			"input_unit_price",
+			"output_unit_price",
+			"cache_read_unit_price",
+			"cache_write_unit_price",
+		} {
+			assert.Equal(t, "text", typesByName[column])
+		}
+	}
+}
+
 func TestPublishOfficialPriceExpiresPreviousVersion(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 11, ModelName: "gpt-price-test"}).Error)

@@ -35,6 +35,15 @@ import type {
   RetailPriceVersion,
 } from './types'
 
+function requirePricingSuccess<T extends { success: boolean; message?: string }>(
+  response: T
+): T {
+  if (!response.success) {
+    throw new Error(response.message || 'Pricing request failed')
+  }
+  return response
+}
+
 export async function getChannelModels(params: {
   keyword?: string
   page?: number
@@ -50,7 +59,7 @@ export async function syncLegacyChannelModels(): Promise<ImportResponse> {
   const response = await api.post(
     '/api/pricing-admin/channel-models/sync-legacy'
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function getPricingCatalogOptions(): Promise<PricingCatalogOptionsResponse> {
@@ -77,7 +86,7 @@ export async function createChannelModel(input: {
   region: string
 }): Promise<PriceVersionResponse<ChannelModel>> {
   const response = await api.post('/api/pricing-admin/channel-models', input)
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function updateChannelModel(
@@ -96,21 +105,21 @@ export async function updateChannelModel(
     `/api/pricing-admin/channel-models/${id}`,
     input
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function importLegacyOfficialPrices(): Promise<ImportResponse> {
   const response = await api.post(
     '/api/pricing-admin/official-prices/import-legacy'
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function publishLatestOfficialPriceDrafts(): Promise<PublishLatestOfficialPriceDraftsResponse> {
   const response = await api.post(
     '/api/pricing-admin/official-prices/publish-latest'
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function getOfficialPriceVersions(
@@ -119,7 +128,7 @@ export async function getOfficialPriceVersions(
   const response = await api.get('/api/pricing-admin/official-prices', {
     params: { model_id: modelId },
   })
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function getOfficialPriceOverview(
@@ -128,7 +137,7 @@ export async function getOfficialPriceOverview(
   const response = await api.get('/api/pricing-admin/official-price-overview', {
     params: { keyword },
   })
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function createOfficialPriceDraft(
@@ -144,7 +153,7 @@ export async function createOfficialPriceDraft(
   >
 ): Promise<PriceVersionResponse<OfficialPriceVersion>> {
   const response = await api.post('/api/pricing-admin/official-prices', input)
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function updateOfficialPriceDraft(
@@ -164,7 +173,7 @@ export async function updateOfficialPriceDraft(
     `/api/pricing-admin/official-prices/${id}`,
     input
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function createOfficialFlatDraft(input: {
@@ -177,7 +186,7 @@ export async function createOfficialFlatDraft(input: {
     '/api/pricing-admin/drafts/official-flat',
     input
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function updateOfficialFlatDraft(
@@ -193,7 +202,7 @@ export async function updateOfficialFlatDraft(
     `/api/pricing-admin/drafts/official-flat/${id}`,
     input
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function getPurchasePriceVersions(
@@ -230,7 +239,7 @@ export async function createPurchaseDraft(
   input: PurchaseDraftPayload
 ): Promise<PriceVersionResponse<PurchasePriceVersion>> {
   const response = await api.post('/api/pricing-admin/drafts/purchase', input)
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function updatePurchaseDraft(
@@ -241,7 +250,7 @@ export async function updatePurchaseDraft(
     `/api/pricing-admin/drafts/purchase/${id}`,
     input
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function getRetailPriceVersions(
@@ -258,9 +267,10 @@ export async function getActivePriceBundle(
 ): Promise<PriceVersionResponse<ActivePriceBundle>> {
   const response = await api.get('/api/pricing-admin/active-price-bundle', {
     params: { channel_model_id: channelModelId },
+    skipBusinessError: true,
     skipErrorHandler: true,
   })
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export type RetailDraftPayload = {
@@ -278,7 +288,7 @@ export async function createRetailDraft(
   input: RetailDraftPayload
 ): Promise<PriceVersionResponse<RetailPriceVersion>> {
   const response = await api.post('/api/pricing-admin/drafts/retail', input)
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function updateRetailDraft(
@@ -289,7 +299,7 @@ export async function updateRetailDraft(
     `/api/pricing-admin/drafts/retail/${id}`,
     input
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function publishPriceVersion(
@@ -299,7 +309,7 @@ export async function publishPriceVersion(
   const response = await api.post(
     `/api/pricing-admin/${kind}-prices/${id}/publish`
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function suspendPriceVersion(
@@ -309,7 +319,7 @@ export async function suspendPriceVersion(
   const response = await api.post(
     `/api/pricing-admin/${kind}-prices/${id}/suspend`
   )
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function deletePriceDraft(
@@ -317,7 +327,7 @@ export async function deletePriceDraft(
   id: number
 ): Promise<PriceVersionResponse<null>> {
   const response = await api.delete(`/api/pricing-admin/${kind}-prices/${id}`)
-  return response.data
+  return requirePricingSuccess(response.data)
 }
 
 export async function simulatePrice(input: {
@@ -340,5 +350,5 @@ export async function simulatePrice(input: {
   request_body: string
 }): Promise<PriceVersionResponse<PriceSimulationResult>> {
   const response = await api.post('/api/pricing-admin/simulate', input)
-  return response.data
+  return requirePricingSuccess(response.data)
 }

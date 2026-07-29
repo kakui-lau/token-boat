@@ -119,11 +119,11 @@ type ChannelModelPurchasePriceVersion struct {
 	PriceStructure          string `json:"price_structure" gorm:"type:varchar(16);not null"`
 	QuoteSpec               string `json:"quote_spec" gorm:"type:text"`
 	PriceComponents         string `json:"price_components" gorm:"type:text"`
-	PurchaseDiscount        string `json:"purchase_discount" gorm:"type:decimal(36,18)"`
-	InputUnitPrice          string `json:"input_unit_price" gorm:"type:decimal(36,18)"`
-	OutputUnitPrice         string `json:"output_unit_price" gorm:"type:decimal(36,18)"`
-	CacheReadUnitPrice      string `json:"cache_read_unit_price" gorm:"type:decimal(36,18)"`
-	CacheWriteUnitPrice     string `json:"cache_write_unit_price" gorm:"type:decimal(36,18)"`
+	PurchaseDiscount        string `json:"purchase_discount" gorm:"type:text"`
+	InputUnitPrice          string `json:"input_unit_price" gorm:"type:text"`
+	OutputUnitPrice         string `json:"output_unit_price" gorm:"type:text"`
+	CacheReadUnitPrice      string `json:"cache_read_unit_price" gorm:"type:text"`
+	CacheWriteUnitPrice     string `json:"cache_write_unit_price" gorm:"type:text"`
 	PriceUnit               string `json:"price_unit" gorm:"type:varchar(32)"`
 	PurchaseBillingExpr     string `json:"purchase_billing_expr" gorm:"type:text;not null"`
 	PurchaseExprHash        string `json:"purchase_expr_hash" gorm:"type:varchar(64);not null"`
@@ -150,10 +150,10 @@ type ChannelModelRetailPriceVersion struct {
 	BillingMode             string `json:"billing_mode" gorm:"type:varchar(32);not null"`
 	PriceStructure          string `json:"price_structure" gorm:"type:varchar(16);not null"`
 	PriceComponents         string `json:"price_components" gorm:"type:text"`
-	InputUnitPrice          string `json:"input_unit_price" gorm:"type:decimal(36,18)"`
-	OutputUnitPrice         string `json:"output_unit_price" gorm:"type:decimal(36,18)"`
-	CacheReadUnitPrice      string `json:"cache_read_unit_price" gorm:"type:decimal(36,18)"`
-	CacheWriteUnitPrice     string `json:"cache_write_unit_price" gorm:"type:decimal(36,18)"`
+	InputUnitPrice          string `json:"input_unit_price" gorm:"type:text"`
+	OutputUnitPrice         string `json:"output_unit_price" gorm:"type:text"`
+	CacheReadUnitPrice      string `json:"cache_read_unit_price" gorm:"type:text"`
+	CacheWriteUnitPrice     string `json:"cache_write_unit_price" gorm:"type:text"`
 	PriceUnit               string `json:"price_unit" gorm:"type:varchar(32)"`
 	RetailBillingExpr       string `json:"retail_billing_expr" gorm:"type:text;not null"`
 	RetailExprHash          string `json:"retail_expr_hash" gorm:"type:varchar(64);not null"`

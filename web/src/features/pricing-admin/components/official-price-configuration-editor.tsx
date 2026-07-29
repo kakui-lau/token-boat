@@ -21,7 +21,12 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -576,18 +581,32 @@ export function OfficialPriceConfigurationEditor(
                 <Input value={t(rule.unit)} disabled />
               </Field>
               <Field>
-                <FieldLabel>{t('Units per price')}</FieldLabel>
-                <Input
-                  type='number'
-                  min={1}
-                  step={1}
-                  value={rule.unit_size}
-                  onChange={(event) => {
-                    const next = [...rules]
-                    next[index] = { ...rule, unit_size: event.target.value }
-                    updateRules(next)
-                  }}
-                />
+                <FieldLabel>{t('Quantity covered by unit price')}</FieldLabel>
+                <div className='flex items-center gap-2'>
+                  <Input
+                    aria-label={t('Quantity covered by unit price')}
+                    type='number'
+                    min={1}
+                    step={1}
+                    value={rule.unit_size}
+                    onChange={(event) => {
+                      const next = [...rules]
+                      next[index] = {
+                        ...rule,
+                        unit_size: event.target.value,
+                      }
+                      updateRules(next)
+                    }}
+                  />
+                  <span className='text-muted-foreground min-w-fit text-sm'>
+                    {t(rule.unit)}
+                  </span>
+                </div>
+                <FieldDescription>
+                  {t(
+                    'The unit price applies to this quantity. Enter 1 for pricing per unit.'
+                  )}
+                </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>{t('Unit price')}</FieldLabel>

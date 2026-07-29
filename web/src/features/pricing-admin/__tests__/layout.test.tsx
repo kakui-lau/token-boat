@@ -181,6 +181,18 @@ describe('Pricing admin editor layout', () => {
 
     expect(screen.getByText('Billing component')).toBeVisible()
     expect(screen.getByText('Unit price')).toBeVisible()
+    expect(screen.getByText('Quantity covered by unit price')).toBeVisible()
+    expect(
+      screen.getByText(
+        'The unit price applies to this quantity. Enter 1 for pricing per unit.'
+      )
+    ).toBeVisible()
+    expect(
+      screen.getByRole('spinbutton', {
+        name: 'Quantity covered by unit price',
+      })
+    ).toHaveValue(1)
+    expect(screen.getByText('second')).toBeVisible()
     expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
   })
 

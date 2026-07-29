@@ -22,7 +22,12 @@ import type {
 } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
-import { Field, FieldError, FieldLabel } from '@/components/ui/field'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
 import {
   InputGroup,
   InputGroupAddon,
@@ -32,6 +37,7 @@ import {
 type PercentageInputFieldProps = {
   id: string
   label: string
+  description?: string
   registration: UseFormRegisterReturn
   error?: HookFormFieldError
 }
@@ -41,6 +47,9 @@ export function PercentageInputField(props: PercentageInputFieldProps) {
   return (
     <Field data-invalid={Boolean(props.error)}>
       <FieldLabel htmlFor={props.id}>{t(props.label)}</FieldLabel>
+      {props.description ? (
+        <FieldDescription>{t(props.description)}</FieldDescription>
+      ) : null}
       <InputGroup>
         <InputGroupInput
           id={props.id}

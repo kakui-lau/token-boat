@@ -12,7 +12,7 @@ type RetailPriceCalculator struct {
 	TargetNetMargin  decimal.Decimal
 }
 
-const retailSellingPriceDecimalPlaces int32 = 2
+const retailSellingPriceDecimalPlaces int32 = 5
 
 func NewRetailPriceCalculator(
 	variableCostRate string,

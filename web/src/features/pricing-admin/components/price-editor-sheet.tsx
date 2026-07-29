@@ -94,6 +94,9 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       await queryClient.invalidateQueries({ queryKey })
       if (variables.kind === 'retail') {
         await queryClient.invalidateQueries({ queryKey: purchaseQueryKey })
+        await queryClient.invalidateQueries({
+          queryKey: ['pricing-admin', 'channel-models'],
+        })
       }
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
@@ -115,6 +118,11 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys[variables.kind],
       })
+      if (variables.kind === 'retail') {
+        await queryClient.invalidateQueries({
+          queryKey: ['pricing-admin', 'channel-models'],
+        })
+      }
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
       })

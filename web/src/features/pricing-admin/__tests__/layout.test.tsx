@@ -87,6 +87,8 @@ const channelModel: ChannelModel = {
   weight: 0,
   region: '',
   runtime_mode: 'legacy',
+  active_retail_price_version_id: 0,
+  active_retail_price_version: 0,
 }
 
 function renderWithQueryClient(node: React.ReactNode) {

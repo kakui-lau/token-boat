@@ -29,7 +29,7 @@ import {
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { RetailPricePanel } from '../components/retail-price-panel'
-import type { PurchasePriceVersion } from '../types'
+import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
 
 const apiMocks = vi.hoisted(() => ({
   createRetailDraft: vi.fn(),
@@ -74,6 +74,72 @@ const purchaseVersion: PurchasePriceVersion = {
   remark: '',
   effective_from: 1,
   effective_to: 0,
+}
+
+const officialVersion: OfficialPriceVersion = {
+  id: 4,
+  model_id: 9,
+  billing_mode: 'video_duration',
+  price_structure: 'expression',
+  price_components: JSON.stringify({
+    rules: [
+      {
+        name: '480p',
+        component: 'video_output',
+        unit: 'second',
+        unit_size: '1',
+        unit_price: '0.04',
+      },
+    ],
+  }),
+  billing_expr: 'v2:tier("480p", video_s * 0.04)',
+  expression_source: 'generated',
+  expression_schema_version: 'v2',
+  currency: 'USD',
+  source: 'vendor-official',
+  source_version: 'test',
+  version: 1,
+  status: 'active',
+  effective_from: 1,
+  effective_to: 0,
+  remark: '',
+}
+
+const videoPurchaseVersion: PurchasePriceVersion = {
+  ...purchaseVersion,
+  id: 8,
+  billing_mode: 'video_duration',
+  price_structure: 'expression',
+  price_components: JSON.stringify({
+    rules: [
+      {
+        name: '480p',
+        component: 'video_output',
+        unit: 'second',
+        unit_size: '1',
+        unit_price: '0.024',
+      },
+    ],
+  }),
+  input_unit_price: '',
+  output_unit_price: '',
+  purchase_billing_expr: 'v2:tier("480p", video_s * 0.024)',
+  expression_schema_version: 'v2',
+}
+
+const multimodalPurchaseVersion: PurchasePriceVersion = {
+  ...purchaseVersion,
+  id: 9,
+  price_components: JSON.stringify({
+    input_unit_price: '5',
+    output_unit_price: '10',
+    image_input_unit_price: '8',
+    image_output_unit_price: '30',
+    audio_input_unit_price: '4',
+    audio_output_unit_price: '12',
+  }),
+  input_unit_price: '5',
+  output_unit_price: '10',
 }
 
 describe('retail percentage inputs', () => {
@@ -125,6 +191,11 @@ describe('retail percentage inputs', () => {
     fireEvent.change(screen.getByLabelText('Margin Floor'), {
       target: { value: '10' },
     })
+    expect(
+      screen.getByText(
+        'Used only for price simulation and margin alerts; it does not affect retail price generation.'
+      )
+    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
 
     await waitFor(() =>
@@ -139,5 +210,117 @@ describe('retail percentage inputs', () => {
         expected_updated_at: undefined,
       })
     )
+  })
+
+  test('blocks saving when a generated retail component equals the official price', async () => {
+    const queryClient = new QueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RetailPricePanel
+          channelModelId={31}
+          officialVersions={[officialVersion]}
+          purchaseVersions={[videoPurchaseVersion]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText('Purchase Version'), {
+      target: { value: '8' },
+    })
+    fireEvent.change(screen.getByLabelText('Target Margin (TM)'), {
+      target: { value: '40' },
+    })
+
+    expect(
+      screen.getByRole('alert', {
+        name: 'Retail price must be lower than the official price.',
+      })
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
+    expect(apiMocks.createRetailDraft).not.toHaveBeenCalled()
+  })
+
+  test('previews rule-based video retail prices instead of empty token fields', () => {
+    const queryClient = new QueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RetailPricePanel
+          channelModelId={31}
+          officialVersions={[officialVersion]}
+          purchaseVersions={[videoPurchaseVersion]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText('Purchase Version'), {
+      target: { value: '8' },
+    })
+
+    expect(screen.getByText('Selling Factor: 1.12')).toHaveClass(
+      'text-emerald-600'
+    )
+    expect(screen.getByText('480p')).toBeVisible()
+    expect(
+      screen.getByText('Official Price: 0.04 USD / 1 second')
+    ).toBeVisible()
+    expect(
+      screen.getByText('Retail Price: 0.02667 USD / 1 second')
+    ).toBeVisible()
+    expect(screen.queryByText('Input: — USD')).not.toBeInTheDocument()
+  })
+
+  test('previews every populated multimodal price component', () => {
+    const queryClient = new QueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RetailPricePanel
+          channelModelId={31}
+          officialVersions={[]}
+          purchaseVersions={[multimodalPurchaseVersion]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText('Purchase Version'), {
+      target: { value: '9' },
+    })
+
+    expect(screen.getByText('Image Input / 1M tokens')).toBeVisible()
+    expect(screen.getByText('Retail Price: 8.88889 USD')).toBeVisible()
+    expect(screen.getByText('Image Output / 1M tokens')).toBeVisible()
+    expect(screen.getByText('Retail Price: 33.33334 USD')).toBeVisible()
+    expect(screen.getByText('Audio Input / 1M tokens')).toBeVisible()
+    expect(screen.getByText('Retail Price: 4.44445 USD')).toBeVisible()
+    expect(screen.getByText('Audio Output / 1M tokens')).toBeVisible()
+    expect(screen.getByText('Retail Price: 13.33334 USD')).toBeVisible()
   })
 })

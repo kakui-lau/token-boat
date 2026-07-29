@@ -49,6 +49,7 @@ export async function getChannelModels(params: {
   channel_id?: number
   status?: number
   runtime_mode?: 'legacy' | 'v2'
+  retail_status?: 'published' | 'unpublished'
   page?: number
   page_size?: number
 }): Promise<ChannelModelListResponse> {

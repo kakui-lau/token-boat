@@ -29,6 +29,8 @@ export type ChannelModel = {
   weight: number
   region: string
   runtime_mode: 'legacy' | 'v2'
+  active_retail_price_version_id: number
+  active_retail_price_version: number
 }
 
 export type ChannelModelListResponse = {

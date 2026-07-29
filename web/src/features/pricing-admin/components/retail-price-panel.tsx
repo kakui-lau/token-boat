@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -35,10 +35,16 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { createRetailDraft, updateRetailDraft } from '../api'
 import {
+  priceComponentLabels,
+  type PriceRule,
+  readPriceComponents,
+} from '../lib/price-components'
+import {
   formatStoredRatePercentage,
   percentageToStoredRate,
   storedRateToPercentage,
 } from '../lib/rate-format'
+import { retailPriceExceedsOfficial } from '../lib/retail-price-cap'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
 import type {
   OfficialPriceVersion,
@@ -105,6 +111,11 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
   const selectedPurchase = eligiblePurchaseVersions.find(
     (version) => version.id === Number(watchedValues.purchase_price_version_id)
   )
+  const selectedOfficial = selectedPurchase?.official_price_version_id
+    ? props.officialVersions.find(
+        (version) => version.id === selectedPurchase.official_price_version_id
+      )
+    : undefined
   const preview = useMemo(() => {
     if (!selectedPurchase) {
       return null
@@ -138,23 +149,151 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         return '—'
       }
       const unrounded = Number((Number(value) * factor).toFixed(12))
-      return (Math.ceil(unrounded * 100) / 100).toFixed(2)
+      return (Math.ceil(unrounded * 100_000) / 100_000).toFixed(5)
     }
+    const priceComponents = readPriceComponents(
+      selectedPurchase.price_components
+    )
+    const officialComponents = readPriceComponents(
+      selectedOfficial?.price_components
+    )
+    const officialRules = Array.isArray(officialComponents.rules)
+      ? (officialComponents.rules as PriceRule[])
+      : []
+    const rules = Array.isArray(priceComponents.rules)
+      ? (priceComponents.rules as PriceRule[])
+          .filter((rule) => Boolean(rule.unit_price))
+          .map((rule, index) => ({
+            key: rule.id || `${rule.component || 'rule'}-${index}`,
+            name: rule.name || `#${index + 1}`,
+            component:
+              priceComponentLabels[rule.component || ''] ||
+              rule.component ||
+              'Price rule',
+            price: scale(rule.unit_price || ''),
+            officialPrice:
+              officialRules.find(
+                (officialRule) =>
+                  Boolean(rule.id) && officialRule.id === rule.id
+              )?.unit_price ||
+              officialRules[index]?.unit_price ||
+              '—',
+            unit: rule.unit || '',
+            unitSize: rule.unit_size || '1',
+          }))
+      : []
+    const componentKeys = [
+      'input_unit_price',
+      'output_unit_price',
+      'cache_read_unit_price',
+      'cache_write_unit_price',
+      'image_input_unit_price',
+      'image_output_unit_price',
+      'audio_input_unit_price',
+      'audio_output_unit_price',
+    ]
+    const snapshotFallbacks: Record<string, string> = {
+      input_unit_price: selectedPurchase.input_unit_price,
+      output_unit_price: selectedPurchase.output_unit_price,
+      cache_read_unit_price: selectedPurchase.cache_read_unit_price,
+      cache_write_unit_price: selectedPurchase.cache_write_unit_price,
+    }
+    const componentPrices = componentKeys.flatMap((key) => {
+      const value = String(priceComponents[key] ?? snapshotFallbacks[key] ?? '')
+      if (!value) {
+        return []
+      }
+      return [
+        {
+          key,
+          label: priceComponentLabels[key] || key,
+          price: scale(value),
+          officialPrice: String(officialComponents[key] ?? '') || '—',
+        },
+      ]
+    })
     return {
       valid: true as const,
       factor,
-      input: scale(selectedPurchase.input_unit_price),
-      output: scale(selectedPurchase.output_unit_price),
-      cacheRead: scale(selectedPurchase.cache_read_unit_price),
-      cacheWrite: scale(selectedPurchase.cache_write_unit_price),
+      rules,
+      componentPrices,
       currency: selectedPurchase.currency,
     }
   }, [
     selectedPurchase,
+    selectedOfficial,
     watchedValues.effective_tax_rate,
     watchedValues.target_net_margin,
     watchedValues.total_variable_cost_rate,
   ])
+  const exceedsOfficialPrice =
+    preview?.valid === true &&
+    selectedPurchase &&
+    selectedOfficial &&
+    retailPriceExceedsOfficial(
+      selectedPurchase,
+      selectedOfficial,
+      preview.factor
+    )
+  let previewPriceDetails: ReactNode = null
+  if (preview?.valid && preview.rules.length > 0) {
+    previewPriceDetails = (
+      <div className='space-y-2 text-sm'>
+        {preview.rules.map((rule) => (
+          <div
+            key={rule.key}
+            className='flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2'
+          >
+            <span>
+              <span className='font-medium'>{rule.name}</span>
+              {' · '}
+              {t(rule.component)}
+            </span>
+            <span className='space-y-1 text-right font-mono'>
+              <span className='block'>
+                {t('Official Price')}: {rule.officialPrice} {preview.currency}
+                {rule.unit ? ` / ${rule.unitSize} ${t(rule.unit)}` : ''}
+              </span>
+              <span className='block'>
+                {t('Retail Price')}: {rule.price} {preview.currency}
+                {rule.unit ? ` / ${rule.unitSize} ${t(rule.unit)}` : ''}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  } else if (preview?.valid) {
+    previewPriceDetails = (
+      <div className='grid gap-2 text-sm sm:grid-cols-2'>
+        {preview.componentPrices.map((component) => (
+          <div
+            key={component.key}
+            className='flex items-center justify-between gap-2 rounded-md border px-3 py-2'
+          >
+            <span>{t(component.label)}</span>
+            <span className='space-y-1 text-right font-mono'>
+              <span className='block'>
+                {t('Official Price')}: {component.officialPrice}{' '}
+                {preview.currency}
+              </span>
+              <span className='block'>
+                {t('Retail Price')}: {component.price} {preview.currency}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    )
+  } else if (preview) {
+    previewPriceDetails = (
+      <p className='text-destructive text-sm'>
+        {t(
+          'The configured costs, tax, and target margin produce an invalid retail denominator.'
+        )}
+      </p>
+    )
+  }
   const createMutation = useMutation({
     mutationFn: (value: RetailPriceForm) => {
       const payload = {
@@ -309,6 +448,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
           <PercentageInputField
             id='retail-minimum-margin'
             label='Margin Floor'
+            description='Used only for price simulation and margin alerts; it does not affect retail price generation.'
             registration={form.register('minimum_margin_rate')}
             error={form.formState.errors.minimum_margin_rate}
           />
@@ -330,33 +470,13 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             <div className='flex items-center justify-between gap-3'>
               <p className='font-medium'>{t('Price Preview')}</p>
               {preview.valid ? (
-                <span className='text-muted-foreground text-xs'>
-                  {t('Selling Factor')}: {preview.factor.toFixed(6)}
+                <span className='text-emerald-600 text-xs dark:text-emerald-400'>
+                  {t('Selling Factor')}:{' '}
+                  {(Math.ceil(preview.factor * 100) / 100).toFixed(2)}
                 </span>
               ) : null}
             </div>
-            {preview.valid ? (
-              <div className='grid gap-2 text-sm sm:grid-cols-2'>
-                <p>
-                  {t('Input')}: {preview.input} {preview.currency}
-                </p>
-                <p>
-                  {t('Output')}: {preview.output} {preview.currency}
-                </p>
-                <p>
-                  {t('Cache Read')}: {preview.cacheRead} {preview.currency}
-                </p>
-                <p>
-                  {t('Cache Write')}: {preview.cacheWrite} {preview.currency}
-                </p>
-              </div>
-            ) : (
-              <p className='text-destructive text-sm'>
-                {t(
-                  'The configured costs, tax, and target margin produce an invalid retail denominator.'
-                )}
-              </p>
-            )}
+            {previewPriceDetails}
             <p className='text-muted-foreground text-xs'>
               {t(
                 'This preview is informational. The backend recalculates exact decimal prices when the draft is saved.'
@@ -364,11 +484,23 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             </p>
           </div>
         ) : null}
+        {exceedsOfficialPrice ? (
+          <p
+            className='text-destructive text-sm'
+            role='alert'
+            aria-label={t(
+              'Retail price must be lower than the official price.'
+            )}
+          >
+            {t('Retail price must be lower than the official price.')}
+          </p>
+        ) : null}
         <Button
           type='submit'
           disabled={
             createMutation.isPending ||
             preview?.valid === false ||
+            Boolean(exceedsOfficialPrice) ||
             eligiblePurchaseVersions.length === 0
           }
         >

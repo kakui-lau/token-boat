@@ -67,6 +67,7 @@ export function PricingAdmin() {
   const [channelId, setChannelId] = useState('')
   const [status, setStatus] = useState('')
   const [runtimeMode, setRuntimeMode] = useState('')
+  const [retailStatus, setRetailStatus] = useState('')
   const [selectedChannelModel, setSelectedChannelModel] =
     useState<ChannelModel | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -85,6 +86,7 @@ export function PricingAdmin() {
       channelId,
       status,
       runtimeMode,
+      retailStatus,
       page,
     ],
     queryFn: () =>
@@ -95,6 +97,10 @@ export function PricingAdmin() {
         runtime_mode:
           runtimeMode === 'legacy' || runtimeMode === 'v2'
             ? runtimeMode
+            : undefined,
+        retail_status:
+          retailStatus === 'published' || retailStatus === 'unpublished'
+            ? retailStatus
             : undefined,
         page,
         page_size: 50,
@@ -243,6 +249,28 @@ export function PricingAdmin() {
                 </NativeSelectOption>
               </NativeSelect>
             </Field>
+            <Field className='w-auto'>
+              <FieldLabel htmlFor='pricing-admin-retail-status'>
+                {t('Retail Status')}
+              </FieldLabel>
+              <NativeSelect
+                id='pricing-admin-retail-status'
+                className='w-40'
+                value={retailStatus}
+                onChange={(event) => {
+                  setRetailStatus(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                <NativeSelectOption value='published'>
+                  {t('Published')}
+                </NativeSelectOption>
+                <NativeSelectOption value='unpublished'>
+                  {t('Not Published')}
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
           </FieldGroup>
 
           <h2 className='font-medium'>{t('Channel Models')}</h2>
@@ -257,6 +285,7 @@ export function PricingAdmin() {
                   <TableHead>{t('Priority')}</TableHead>
                   <TableHead>{t('Weight')}</TableHead>
                   <TableHead>{t('Runtime')}</TableHead>
+                  <TableHead>{t('Retail Status')}</TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -284,6 +313,18 @@ export function PricingAdmin() {
                           : t('Legacy Billing')}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      {row.active_retail_price_version_id > 0 ? (
+                        <div className='flex items-center gap-2'>
+                          <Badge>{t('Published')}</Badge>
+                          <span className='text-muted-foreground font-mono text-xs'>
+                            v{row.active_retail_price_version}
+                          </span>
+                        </div>
+                      ) : (
+                        <Badge variant='secondary'>{t('Not Published')}</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className='text-right'>
                       <div className='flex justify-end gap-2'>
                         <Button
@@ -310,7 +351,7 @@ export function PricingAdmin() {
                 {!channelModelsQuery.isLoading && rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className='text-muted-foreground h-24 text-center'
                     >
                       {t('No channel models found')}

@@ -14,8 +14,10 @@ import (
 
 type channelModelAdminRow struct {
 	model.ChannelModel
-	ChannelName string `json:"channel_name"`
-	ModelName   string `json:"model_name"`
+	ChannelName                string `json:"channel_name"`
+	ModelName                  string `json:"model_name"`
+	ActiveRetailPriceVersionId int    `json:"active_retail_price_version_id"`
+	ActiveRetailPriceVersion   int64  `json:"active_retail_price_version"`
 }
 
 type pricingAdminCatalogOption struct {
@@ -70,10 +72,25 @@ func AdminListOfficialPriceOverview(c *gin.Context) {
 func AdminListChannelModels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := strings.TrimSpace(c.Query("keyword"))
+	activeRetailPrices := model.DB.Table("channel_model_retail_price_versions").
+		Select(
+			"channel_model_id, MAX(id) AS active_retail_price_version_id, "+
+				"MAX(version) AS active_retail_price_version",
+		).
+		Where("status = ?", model.PricingVersionStatusActive).
+		Group("channel_model_id")
 	query := model.DB.Table("channel_models").
-		Select("channel_models.*, channels.name AS channel_name, models.model_name AS model_name").
+		Select(
+			"channel_models.*, channels.name AS channel_name, models.model_name AS model_name, "+
+				"COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id, "+
+				"COALESCE(active_retail.active_retail_price_version, 0) AS active_retail_price_version",
+		).
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
-		Joins("JOIN models ON models.id = channel_models.model_id")
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins(
+			"LEFT JOIN (?) AS active_retail ON active_retail.channel_model_id = channel_models.id",
+			activeRetailPrices,
+		)
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where(
@@ -103,6 +120,17 @@ func AdminListChannelModels(c *gin.Context) {
 			return
 		}
 		query = query.Where("channel_models.runtime_mode = ?", runtimeMode)
+	}
+	if retailStatus := strings.TrimSpace(c.Query("retail_status")); retailStatus != "" {
+		switch retailStatus {
+		case "published":
+			query = query.Where("active_retail.active_retail_price_version_id IS NOT NULL")
+		case "unpublished":
+			query = query.Where("active_retail.active_retail_price_version_id IS NULL")
+		default:
+			common.ApiErrorMsg(c, "retail_status 无效")
+			return
+		}
 	}
 
 	var total int64

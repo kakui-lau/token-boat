@@ -185,3 +185,70 @@ func TestAdminCreateChannelModelRejectsModelNotConfiguredOnChannel(t *testing.T)
 	require.NoError(t, model.DB.Model(&model.ChannelModel{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
+
+func TestAdminListChannelModelsReturnsAndFiltersActiveRetailPriceStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 91, Name: "pricing-status-channel",
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.Model{
+		{Id: 92, ModelName: "published-retail-model"},
+		{Id: 93, ModelName: "draft-only-retail-model"},
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.ChannelModel{
+		{
+			Id: 94, ChannelId: 91, ModelId: 92, UpstreamModelName: "published-retail-model",
+			Status: 1, RuntimeMode: "legacy",
+		},
+		{
+			Id: 95, ChannelId: 91, ModelId: 93, UpstreamModelName: "draft-only-retail-model",
+			Status: 1, RuntimeMode: "legacy",
+		},
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.ChannelModelRetailPriceVersion{
+		{
+			Id: 96, ChannelModelId: 94, PurchasePriceVersionId: 1,
+			BillingMode: "token", PriceStructure: "flat",
+			RetailBillingExpr: "v2:p / 1000000", RetailExprHash: "active",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
+			Currency: "USD", Version: 3, Status: model.PricingVersionStatusActive,
+		},
+		{
+			Id: 97, ChannelModelId: 95, PurchasePriceVersionId: 2,
+			BillingMode: "token", PriceStructure: "flat",
+			RetailBillingExpr: "v2:p / 1000000", RetailExprHash: "draft",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
+			Currency: "USD", Version: 1, Status: model.PricingVersionStatusDraft,
+		},
+	}).Error)
+
+	list := func(path string) []channelModelAdminRow {
+		context, recorder := newPricingAdminJSONContext(t, http.MethodGet, path, nil)
+		AdminListChannelModels(context)
+		var response struct {
+			Success bool `json:"success"`
+			Data    struct {
+				Items []channelModelAdminRow `json:"items"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		return response.Data.Items
+	}
+
+	allRows := list("/api/pricing-admin/channel-models")
+	require.Len(t, allRows, 2)
+	assert.Equal(t, 96, allRows[1].ActiveRetailPriceVersionId)
+	assert.EqualValues(t, 3, allRows[1].ActiveRetailPriceVersion)
+	assert.Zero(t, allRows[0].ActiveRetailPriceVersionId)
+	assert.Zero(t, allRows[0].ActiveRetailPriceVersion)
+
+	publishedRows := list("/api/pricing-admin/channel-models?retail_status=published")
+	require.Len(t, publishedRows, 1)
+	assert.Equal(t, 94, publishedRows[0].Id)
+
+	unpublishedRows := list("/api/pricing-admin/channel-models?retail_status=unpublished")
+	require.Len(t, unpublishedRows, 1)
+	assert.Equal(t, 95, unpublishedRows[0].Id)
+}

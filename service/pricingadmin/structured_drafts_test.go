@@ -81,8 +81,8 @@ func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) 
 	assert.Equal(t, "v2", retail.ExpressionSchemaVersion)
 
 	actualInput := decimal.RequireFromString(retail.InputUnitPrice)
-	assert.True(t, decimal.RequireFromString("1.67").Equal(actualInput))
-	assert.Contains(t, retail.RetailBillingExpr, "p * 1.67")
+	assert.True(t, decimal.RequireFromString("1.66616").Equal(actualInput))
+	assert.Contains(t, retail.RetailBillingExpr, "p * 1.66616")
 	require.NoError(t, PublishRetailPriceVersion(retail.Id))
 
 	var storedPurchase model.ChannelModelPurchasePriceVersion
@@ -386,6 +386,27 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 	assert.Equal(t, "0.8", result.RetailAmount)
 }
 
+func TestExpressionRetailPriceComponentsRoundUpToFiveDecimals(t *testing.T) {
+	factor, err := NewRetailPriceCalculator("0.11", "0.16", "0.5")
+	require.NoError(t, err)
+	sellingFactor, err := factor.SellingFactor()
+	require.NoError(t, err)
+
+	components, err := scalePriceComponents(
+		`{"rules":[`+
+			`{"name":"480p","unit_price":"0.024"},`+
+			`{"name":"720p","unit_price":"0.048"}`+
+			`]}`,
+		sellingFactor,
+		true,
+	)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"rules":[`+
+		`{"name":"480p","unit_price":"0.08143"},`+
+		`{"name":"720p","unit_price":"0.16285"}`+
+		`]}`, components)
+}
+
 func TestStructuredDraftBuildsFlatImagePurchaseAndRetailChain(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 34, ModelName: "flat-image-chain"}).Error)
@@ -426,7 +447,7 @@ func TestStructuredDraftBuildsFlatImagePurchaseAndRetailChain(t *testing.T) {
 	}, 1)
 	require.NoError(t, err)
 	assert.Equal(t, "image", retail.BillingMode)
-	assert.Contains(t, retail.PriceComponents, `"unit_price":"0.04"`)
+	assert.Contains(t, retail.PriceComponents, `"unit_price":"0.04000"`)
 
 	result, err := SimulatePrice(PriceSimulationInput{
 		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,

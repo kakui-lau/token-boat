@@ -468,7 +468,11 @@ func buildExpressionRetailDraft(
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
-	componentsJSON, err := scalePriceComponents(purchase.PriceComponents, factor)
+	componentsJSON, err := scalePriceComponents(
+		purchase.PriceComponents,
+		factor,
+		true,
+	)
 	if err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
@@ -506,7 +510,11 @@ func buildOfficialRatioPurchaseDraft(input PurchaseDraftInput) (model.ChannelMod
 		return model.ChannelModelPurchasePriceVersion{}, err
 	}
 	if official.BillingMode != "token" || official.PriceStructure != "flat" {
-		componentsJSON, err := scalePriceComponents(official.PriceComponents, discount)
+		componentsJSON, err := scalePriceComponents(
+			official.PriceComponents,
+			discount,
+			false,
+		)
 		if err != nil {
 			return model.ChannelModelPurchasePriceVersion{}, err
 		}
@@ -886,7 +894,11 @@ func scaleOptionalPrice(value string, factor decimal.Decimal) (string, error) {
 	return number.Mul(factor).String(), nil
 }
 
-func scalePriceComponents(raw string, factor decimal.Decimal) (string, error) {
+func scalePriceComponents(
+	raw string,
+	factor decimal.Decimal,
+	roundRetailPrice bool,
+) (string, error) {
 	var components map[string]any
 	if err := common.UnmarshalJsonStr(raw, &components); err != nil {
 		return "", fmt.Errorf("price components are invalid: %w", err)
@@ -920,7 +932,12 @@ func scalePriceComponents(raw string, factor decimal.Decimal) (string, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s is invalid: %w", key, err)
 			}
-			return number.Mul(factor).String(), nil
+			scaled := number.Mul(factor)
+			if roundRetailPrice {
+				scaled = scaled.RoundCeil(retailSellingPriceDecimalPlaces)
+				return scaled.StringFixed(retailSellingPriceDecimalPlaces), nil
+			}
+			return scaled.String(), nil
 		default:
 			return typed, nil
 		}

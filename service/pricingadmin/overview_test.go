@@ -27,6 +27,7 @@ func TestListModelPriceOverviewChoosesEachComponentMinimum(t *testing.T) {
 		PriceStructure: "flat", RetailBillingExpr: "p * 2 + c * 9",
 		RetailExprHash: "a", ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
 		Currency: "USD", InputUnitPrice: "2", OutputUnitPrice: "9",
+		PriceComponents:       `{"input_unit_price":"2","output_unit_price":"9"}`,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0", TargetNetMargin: "0",
 		MinimumMarginRate: "0", Version: 1, Status: model.PricingVersionStatusActive,
 	}).Error)
@@ -47,6 +48,16 @@ func TestListModelPriceOverviewChoosesEachComponentMinimum(t *testing.T) {
 	assert.Equal(t, "channel-a", result[0].Input.ChannelName)
 	assert.Equal(t, "8", result[0].Output.UnitPrice)
 	assert.Equal(t, "channel-b", result[0].Output.ChannelName)
+	require.Len(t, result[0].Endpoints, 2)
+	assert.Equal(t, "channel-a", result[0].Endpoints[0].ChannelName)
+	assert.Equal(t, "a", result[0].Endpoints[0].UpstreamModelName)
+	assert.Equal(t, "2", result[0].Endpoints[0].RetailInputUnitPrice)
+	assert.JSONEq(t,
+		`{"input_unit_price":"2","output_unit_price":"9"}`,
+		result[0].Endpoints[0].RetailPriceComponents,
+	)
+	assert.Equal(t, "channel-b", result[0].Endpoints[1].ChannelName)
+	assert.Equal(t, "8", result[0].Endpoints[1].RetailOutputUnitPrice)
 }
 
 func TestListModelPriceOverviewDoesNotCompareDifferentCurrencies(t *testing.T) {

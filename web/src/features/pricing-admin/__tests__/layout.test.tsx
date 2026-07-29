@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { updateOfficialFlatDraft } from '../api'
 import { ChannelModelDialog } from '../components/channel-model-dialog'
+import { ModelPriceOverview } from '../components/model-price-overview'
 import { OfficialPriceConfigurationEditor } from '../components/official-price-configuration-editor'
 import { OfficialPricePanel } from '../components/official-price-panel'
 import { PriceEditorSheet } from '../components/price-editor-sheet'
@@ -196,6 +197,113 @@ describe('Pricing admin editor layout', () => {
     ).toHaveValue(1)
     expect(screen.getByText('second')).toBeVisible()
     expect(screen.queryByLabelText('Input / 1M tokens')).not.toBeInTheDocument()
+  })
+
+  test('shows provider endpoint prices for direct channel comparison', () => {
+    render(
+      <ModelPriceOverview
+        isLoading={false}
+        items={[
+          {
+            model_id: 3,
+            model_name: 'openai/gpt-test',
+            currency: 'USD',
+            active_channel_count: 2,
+            input: {
+              unit_price: '1.5',
+              currency: 'USD',
+              channel_model_id: 1,
+              channel_name: 'Channel A',
+            },
+            output: {
+              unit_price: '6',
+              currency: 'USD',
+              channel_model_id: 2,
+              channel_name: 'Channel B',
+            },
+            endpoints: [
+              {
+                channel_model_id: 1,
+                channel_name: 'Channel A',
+                upstream_model_name: 'provider-gpt-a',
+                runtime_mode: 'v2',
+                billing_mode: 'token',
+                price_structure: 'flat',
+                retail_input_unit_price: '1.5',
+                retail_output_unit_price: '7',
+                retail_cache_read_unit_price: '',
+                retail_cache_write_unit_price: '',
+              },
+              {
+                channel_model_id: 2,
+                channel_name: 'Channel B',
+                upstream_model_name: 'provider-gpt-b',
+                runtime_mode: 'legacy',
+                billing_mode: 'token',
+                price_structure: 'flat',
+                retail_input_unit_price: '2',
+                retail_output_unit_price: '6',
+                retail_cache_read_unit_price: '',
+                retail_cache_write_unit_price: '',
+              },
+            ],
+          },
+        ]}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /openai\/gpt-test/i }))
+
+    expect(screen.getByText('provider-gpt-a')).toBeVisible()
+    expect(screen.getByText('provider-gpt-b')).toBeVisible()
+    expect(screen.getAllByText('Channel A')).toHaveLength(2)
+    expect(screen.getByText('V2 Pricing')).toBeVisible()
+    expect(screen.getByText('Legacy Billing')).toBeVisible()
+  })
+
+  test('shows conditional video prices using their native billing unit', () => {
+    render(
+      <ModelPriceOverview
+        isLoading={false}
+        items={[
+          {
+            model_id: 8,
+            model_name: 'bytedance/seedance-2.0',
+            currency: 'USD',
+            active_channel_count: 1,
+            endpoints: [
+              {
+                channel_model_id: 9,
+                channel_name: 'OpenRouter',
+                upstream_model_name: 'bytedance/seedance-2.0',
+                runtime_mode: 'v2',
+                billing_mode: 'video_duration',
+                price_structure: 'expression',
+                retail_input_unit_price: '',
+                retail_output_unit_price: '',
+                retail_cache_read_unit_price: '',
+                retail_cache_write_unit_price: '',
+                retail_price_components:
+                  '{"rules":[{"id":"480p","name":"480p","resolution":"480p","unit":"second","unit_size":"1","unit_price":"0.06726"}]}',
+              },
+            ],
+          },
+        ]}
+      />
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /bytedance\/seedance-2.0/i })
+    )
+
+    expect(
+      screen.getByText(
+        'Prices follow each endpoint billing unit and pricing conditions.'
+      )
+    ).toBeVisible()
+    expect(screen.getByText('480p:')).toBeVisible()
+    expect(screen.getByText('0.06726 USD')).toBeVisible()
+    expect(screen.getByText(/1 second/)).toBeVisible()
   })
 
   test('provides a structured tier editor for non-token billing', () => {

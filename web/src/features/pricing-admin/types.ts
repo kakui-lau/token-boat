@@ -235,6 +235,27 @@ export type ModelPriceOverview = {
   output?: LowestPriceComponent
   cache_read?: LowestPriceComponent
   cache_write?: LowestPriceComponent
+  endpoints: ProviderPriceEndpoint[]
+}
+
+export type ProviderPriceEndpoint = {
+  channel_model_id: number
+  channel_name: string
+  upstream_model_name: string
+  runtime_mode: 'legacy' | 'v2'
+  billing_mode: string
+  price_structure: string
+  purchase_pricing_mode?: string
+  purchase_currency?: string
+  purchase_price_components?: string
+  purchase_input_unit_price?: string
+  purchase_output_unit_price?: string
+  retail_price_components?: string
+  retail_input_unit_price: string
+  retail_output_unit_price: string
+  retail_cache_read_unit_price: string
+  retail_cache_write_unit_price: string
+  target_net_margin?: string
 }
 
 export type ActivePriceBundle = {

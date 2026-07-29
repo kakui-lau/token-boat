@@ -837,11 +837,8 @@ func requireOfficialPrice(id *int) (model.OfficialModelPriceVersion, error) {
 	if err := model.DB.First(&official, *id).Error; err != nil {
 		return official, err
 	}
-	if official.Status != model.PricingVersionStatusActive {
-		return official, errors.New("official price version must be active")
-	}
-	if official.BillingMode != "token" {
-		return official, errors.New("purchase publishing currently requires a token-billed official price")
+	if !officialPriceCanBeReferenced(official.Status) {
+		return official, errors.New("official price version must be published")
 	}
 	return official, nil
 }

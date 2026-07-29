@@ -204,7 +204,7 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Update Draft' })).toBeEnabled()
   })
 
-  test('allows an active multimodal official price for a uniform purchase discount', () => {
+  test('allows a published historical multimodal price for a uniform purchase discount', () => {
     const queryClient = new QueryClient()
     render(
       <QueryClientProvider client={queryClient}>
@@ -221,7 +221,7 @@ describe('Pricing version lifecycle', () => {
               billing_expr: 'v2:tier("default", video_seconds * 0.34)',
               currency: 'USD',
               version: 4,
-              status: 'active',
+              status: 'expired',
               source: 'manual',
               remark: '',
               effective_from: 1,
@@ -241,10 +241,10 @@ describe('Pricing version lifecycle', () => {
     )
 
     const officialVersion = screen.getByLabelText('Official Version')
-    expect(officialVersion).toHaveTextContent('Version 4 · active · expression')
+    expect(officialVersion).toHaveTextContent('Version 4 · expired · expression')
     expect(
       screen.queryByText(
-        'Publish a compatible active official price before creating a discount-based purchase version.'
+        'Publish a compatible official price before creating a discount-based purchase version.'
       )
     ).not.toBeInTheDocument()
   })

@@ -3894,6 +3894,7 @@
     "Public rankings page based on live usage data.": "基於真實用量數據的公開排行榜頁面。",
     "Publish": "發布",
     "Publish a compatible active official price before creating a discount-based purchase version.": "建立折扣採購版本前，請先發佈相容的有效官方價格。",
+    "Publish a compatible official price before creating a discount-based purchase version.": "建立折扣採購價前，請先發布一個相容的官方價版本。",
     "Publish All Latest Drafts": "發佈所有模型最新草稿",
     "Publish all latest official price drafts?": "發佈所有模型的最新官方價格草稿？",
     "Publish an active flat token official price before creating a discount-based purchase version.": "請先發布一個生效的 Token 固定官方價，再建立折扣採購價版本。",

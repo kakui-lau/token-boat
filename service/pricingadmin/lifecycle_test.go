@@ -91,7 +91,7 @@ func TestDeleteDraftRejectsPublishedAndReferencedVersions(t *testing.T) {
 		ChannelModelId: 112, OfficialPriceVersionId: &officialId,
 		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
 	}, 1)
-	require.ErrorContains(t, err, "must be active")
+	require.ErrorContains(t, err, "must be published")
 
 	require.NoError(t, PublishOfficialPriceVersion(official.Id))
 	purchase, err = CreatePurchaseDraft(PurchaseDraftInput{

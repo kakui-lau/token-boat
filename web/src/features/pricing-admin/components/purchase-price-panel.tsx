@@ -99,7 +99,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
     () =>
       props.officialVersions.filter(
         (version) =>
-          version.status === 'active' &&
+          (version.status === 'active' || version.status === 'expired') &&
           (pricingMode === 'official_ratio' ||
             version.price_structure === 'flat')
       ),
@@ -342,7 +342,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               {eligibleOfficialVersions.length === 0 ? (
                 <p className='text-muted-foreground text-xs'>
                   {t(
-                    'Publish a compatible active official price before creating a discount-based purchase version.'
+                    'Publish a compatible official price before creating a discount-based purchase version.'
                   )}
                 </p>
               ) : null}

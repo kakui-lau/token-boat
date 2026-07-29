@@ -38,6 +38,11 @@ var (
 	}
 )
 
+func officialPriceCanBeReferenced(status string) bool {
+	return status == model.PricingVersionStatusActive ||
+		status == model.PricingVersionStatusExpired
+}
+
 func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId int) error {
 	if input == nil {
 		return errors.New("official price is required")
@@ -457,8 +462,8 @@ func PublishPurchasePriceVersion(id int) error {
 			if err := tx.First(&official, *version.OfficialPriceVersionId).Error; err != nil {
 				return err
 			}
-			if official.Status != model.PricingVersionStatusActive {
-				return errors.New("referenced official price is not active")
+			if !officialPriceCanBeReferenced(official.Status) {
+				return errors.New("referenced official price must be published")
 			}
 			if official.ModelId != channelModel.ModelId {
 				return errors.New("official price and channel model belong to different logical models")

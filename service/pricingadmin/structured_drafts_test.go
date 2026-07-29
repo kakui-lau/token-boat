@@ -324,3 +324,41 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 	assert.Equal(t, "0.4", result.PurchaseCost)
 	assert.Equal(t, "0.8", result.RetailAmount)
 }
+
+func TestPurchaseCanReferenceAnExpiredOfficialRevision(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 81, ModelName: "historical-official-reference",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 82, ChannelId: 83, ModelId: 81,
+		UpstreamModelName: "historical-official-reference",
+		Status:            1, RuntimeMode: "legacy",
+	}).Error)
+
+	historical, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 81, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "8"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(historical.Id))
+
+	current, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 81, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "3", OutputUnitPrice: "12"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(current.Id))
+
+	require.NoError(t, model.DB.First(&historical, historical.Id).Error)
+	assert.Equal(t, model.PricingVersionStatusExpired, historical.Status)
+
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 82, OfficialPriceVersionId: &historical.Id,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "1", purchase.InputUnitPrice)
+	assert.Equal(t, "4", purchase.OutputUnitPrice)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+}

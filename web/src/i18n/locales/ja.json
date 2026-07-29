@@ -3894,6 +3894,7 @@
     "Public rankings page based on live usage data.": "実際の利用データに基づく公開ランキングページ。",
     "Publish": "公開",
     "Publish a compatible active official price before creating a discount-based purchase version.": "割引ベースの仕入価格を作成する前に、互換性のある有効な公式価格を公開してください。",
+    "Publish a compatible official price before creating a discount-based purchase version.": "割引ベースの購入価格を作成する前に、互換性のある公式価格を公開してください。",
     "Publish All Latest Drafts": "全モデルの最新下書きを公開",
     "Publish all latest official price drafts?": "全モデルの最新公式価格下書きを公開しますか？",
     "Publish an active flat token official price before creating a discount-based purchase version.": "割引仕入価格を作成する前に、有効なトークン固定公式価格を公開してください。",

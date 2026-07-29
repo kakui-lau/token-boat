@@ -24,6 +24,9 @@ func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 		return bundle, errors.New("channel model is required")
 	}
 	if err := model.DB.First(&bundle.ChannelModel, channelModelId).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return bundle, fmt.Errorf("channel model %d was not found", channelModelId)
+		}
 		return bundle, err
 	}
 	if err := model.DB.Where(
@@ -31,6 +34,12 @@ func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 		channelModelId,
 		model.PricingVersionStatusActive,
 	).First(&bundle.Purchase).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return bundle, fmt.Errorf(
+				"channel model %d has no active purchase price; publish a purchase price first",
+				channelModelId,
+			)
+		}
 		return bundle, err
 	}
 	if err := model.DB.Where(
@@ -39,11 +48,24 @@ func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 		bundle.Purchase.Id,
 		model.PricingVersionStatusActive,
 	).First(&bundle.Retail).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return bundle, fmt.Errorf(
+				"channel model %d has no active retail price for active purchase version %d; publish a linked retail price",
+				channelModelId,
+				bundle.Purchase.Version,
+			)
+		}
 		return bundle, err
 	}
 	if bundle.Purchase.OfficialPriceVersionId != nil {
 		var official model.OfficialModelPriceVersion
 		if err := model.DB.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return bundle, fmt.Errorf(
+					"active purchase price references missing official price %d",
+					*bundle.Purchase.OfficialPriceVersionId,
+				)
+			}
 			return bundle, err
 		}
 		bundle.Official = &official

@@ -180,6 +180,8 @@ describe('Pricing admin editor layout', () => {
     )
 
     expect(screen.getByText('Billing component')).toBeVisible()
+    expect(screen.getByText('Video output')).toBeVisible()
+    expect(screen.queryByText('Video input')).not.toBeInTheDocument()
     expect(screen.getByText('Unit price')).toBeVisible()
     expect(screen.getByText('Quantity covered by unit price')).toBeVisible()
     expect(

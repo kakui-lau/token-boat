@@ -124,7 +124,6 @@ const componentOptionsByMode: Record<
   ],
   video_duration: [
     { value: 'video_output', label: 'Video output', unit: 'second' },
-    { value: 'video_input', label: 'Video input', unit: 'second' },
   ],
   character: [
     { value: 'character_input', label: 'Character input', unit: 'character' },

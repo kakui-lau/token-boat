@@ -252,6 +252,61 @@ describe('Pricing admin editor layout', () => {
     expect(screen.queryByLabelText('Billing Expression')).not.toBeVisible()
   })
 
+  test('applies the OpenRouter per-second video pricing template', () => {
+    const onChange = vi.fn()
+    const version: OfficialPriceVersion = {
+      id: 0,
+      model_id: 3,
+      billing_mode: 'video_duration',
+      price_structure: 'expression',
+      price_components: '{}',
+      billing_expr: '',
+      currency: 'USD',
+      version: 0,
+      status: 'draft',
+      source: 'manual',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+
+    render(
+      <OfficialPriceConfigurationEditor version={version} onChange={onChange} />
+    )
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Apply OpenRouter video template',
+      })
+    )
+
+    const updatedVersion = onChange.mock.calls[0][0] as OfficialPriceVersion
+    const components = JSON.parse(updatedVersion.price_components) as {
+      provider_reference: { video_token_unit_price: string }
+      rules: Array<{
+        resolution: string
+        unit_price: string
+        with_audio: string
+      }>
+    }
+    expect(components.provider_reference.video_token_unit_price).toBe('7')
+    expect(components.rules).toHaveLength(5)
+    expect(components.rules.slice(0, 4).map((rule) => rule.resolution)).toEqual(
+      ['480p', '720p', '1080p', '4K']
+    )
+    expect(components.rules.map((rule) => rule.unit_price)).toEqual([
+      '0.06726',
+      '0.1512',
+      '0.3402',
+      '1.361',
+      '1.361',
+    ])
+    expect(components.rules.every((rule) => rule.with_audio === '')).toBe(true)
+    expect(updatedVersion.billing_expr).toContain(
+      'param("resolution") == "480p"'
+    )
+    expect(updatedVersion.billing_expr).toContain('video_s / 1 * 1.361')
+  })
+
   test('does not expose internal price-component JSON in expression mode', () => {
     const version: OfficialPriceVersion = {
       id: 0,

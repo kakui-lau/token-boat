@@ -163,6 +163,13 @@ const resolutionOptions = [
   { value: '4K', label: '4K' },
 ]
 
+const openRouterVideoRates = [
+  { resolution: '480p', unitPrice: '0.06726' },
+  { resolution: '720p', unitPrice: '0.1512' },
+  { resolution: '1080p', unitPrice: '0.3402' },
+  { resolution: '4K', unitPrice: '1.361' },
+]
+
 function createBusinessRule(mode: string, index: number): BusinessPriceRule {
   const first = componentOptionsByMode[mode]?.[0] ?? {
     value: 'request',
@@ -184,6 +191,25 @@ function createBusinessRule(mode: string, index: number): BusinessPriceRule {
     billing_event: 'succeeded',
     voice_tier: '',
   }
+}
+
+function createOpenRouterVideoRules(): BusinessPriceRule[] {
+  const resolutionRules = openRouterVideoRates.map(
+    ({ resolution, unitPrice }, index) => ({
+      ...createBusinessRule('video_duration', index),
+      name: resolution.toLowerCase(),
+      resolution,
+      unit_price: unitPrice,
+    })
+  )
+  return [
+    ...resolutionRules,
+    {
+      ...createBusinessRule('video_duration', resolutionRules.length),
+      name: 'fallback_4k',
+      unit_price: openRouterVideoRates.at(-1)?.unitPrice ?? '1.361',
+    },
+  ]
 }
 
 function normalizedBusinessRules(
@@ -376,7 +402,7 @@ export function OfficialPriceConfigurationEditor(
     )
     const updateRules = (nextRules: BusinessPriceRule[]) =>
       updateComponents(
-        { schema_version: 'v2', rules: nextRules },
+        { ...components, schema_version: 'v2', rules: nextRules },
         businessRuleExpression(nextRules)
       )
     const componentOptions = (
@@ -405,14 +431,51 @@ export function OfficialPriceConfigurationEditor(
         )}
         {showConditionalFields && (
           <div className='bg-muted/30 rounded-lg border p-3'>
-            <p className='text-sm font-medium'>
-              {t('When to use conditional pricing')}
-            </p>
-            <p className='text-muted-foreground mt-1 text-sm'>
-              {t(
-                'Use conditional pricing when request options such as resolution, quality, operation, or audio change the price.'
-              )}
-            </p>
+            <div className='flex flex-wrap items-start justify-between gap-3'>
+              <div>
+                <p className='text-sm font-medium'>
+                  {t('When to use conditional pricing')}
+                </p>
+                <p className='text-muted-foreground mt-1 text-sm'>
+                  {t(
+                    'Use conditional pricing when request options such as resolution, quality, operation, or audio change the price.'
+                  )}
+                </p>
+              </div>
+              {props.version.billing_mode === 'video_duration' ? (
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  onClick={() => {
+                    const templateRules = createOpenRouterVideoRules()
+                    updateComponents(
+                      {
+                        ...components,
+                        schema_version: 'v2',
+                        provider_reference: {
+                          provider: 'openrouter',
+                          billing_basis: 'alternative_reference',
+                          video_token_unit_price: '7',
+                          price_unit: 'per_1m_video_tokens',
+                        },
+                        rules: templateRules,
+                      },
+                      businessRuleExpression(templateRules)
+                    )
+                  }}
+                >
+                  {t('Apply OpenRouter video template')}
+                </Button>
+              ) : null}
+            </div>
+            {props.version.billing_mode === 'video_duration' ? (
+              <p className='text-muted-foreground mt-2 text-xs'>
+                {t(
+                  'The template bills by video seconds and resolution. Audio is included, and unknown resolutions use the conservative 4K rate.'
+                )}
+              </p>
+            ) : null}
           </div>
         )}
         {!showTierConditions && !showConditionalFields && (

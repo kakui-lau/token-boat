@@ -40,13 +40,18 @@ import {
   storedRateToPercentage,
 } from '../lib/rate-format'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
-import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
+import type {
+  OfficialPriceVersion,
+  PurchasePriceVersion,
+  RetailPriceVersion,
+} from '../types'
 import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
 import { PercentageInputField } from './percentage-input-field'
 import { VersionList } from './version-list'
 
 type RetailPricePanelProps = {
   channelModelId: number
+  officialVersions: OfficialPriceVersion[]
   purchaseVersions: PurchasePriceVersion[]
   versions: RetailPriceVersion[]
   isPublishing: boolean
@@ -67,6 +72,17 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
   const [editVersionUpdatedAt, setEditVersionUpdatedAt] = useState<
     number | undefined
   >(undefined)
+  const detailPurchaseVersion = detailVersion
+    ? props.purchaseVersions.find(
+        (version) => version.id === detailVersion.purchase_price_version_id
+      )
+    : undefined
+  const detailOfficialVersion = detailPurchaseVersion?.official_price_version_id
+    ? props.officialVersions.find(
+        (version) =>
+          version.id === detailPurchaseVersion.official_price_version_id
+      )
+    : undefined
   const form = useForm<RetailPriceForm>({
     resolver: zodResolver(retailPriceSchema),
     defaultValues: {
@@ -388,6 +404,8 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       <ChannelPriceVersionDialog
         kind='retail'
         version={detailVersion}
+        purchaseVersion={detailPurchaseVersion}
+        officialVersion={detailOfficialVersion}
         onOpenChange={(open) => {
           if (!open) {
             setDetailVersion(null)

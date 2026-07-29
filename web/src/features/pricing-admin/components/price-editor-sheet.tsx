@@ -200,6 +200,7 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
               <TabsContent value='retail'>
                 <RetailPricePanel
                   channelModelId={channelModel.id}
+                  officialVersions={officialQuery.data?.data ?? []}
                   purchaseVersions={purchaseQuery.data?.data ?? []}
                   versions={retailQuery.data?.data ?? []}
                   isPublishing={publishMutation.isPending}

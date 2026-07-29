@@ -18,11 +18,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-import {
-  priceComponentLabels,
-  type PriceRule,
-  readPriceComponents,
-} from '../lib/price-components'
 import { formatPurchaseDiscount } from '../lib/purchase-discount'
 import { formatStoredRatePercentage } from '../lib/rate-format'
 import type {
@@ -31,10 +26,12 @@ import type {
   RetailPriceVersion,
 } from '../types'
 import { PurchasePriceComparison } from './purchase-price-comparison'
+import { RetailPriceComparison } from './retail-price-comparison'
 
 type ChannelPriceVersionDialogProps = {
   kind: 'purchase' | 'retail'
   version: PurchasePriceVersion | RetailPriceVersion | null
+  purchaseVersion?: PurchasePriceVersion
   officialVersion?: OfficialPriceVersion
   onOpenChange: (open: boolean) => void
 }
@@ -44,18 +41,6 @@ export function ChannelPriceVersionDialog(
 ) {
   const { t } = useTranslation()
   const version = props.version
-  const components = readPriceComponents(version?.price_components)
-  const componentEntries = Object.entries(components).filter(
-    ([key, value]) =>
-      !key.startsWith('legacy_') &&
-      key !== 'price_unit' &&
-      key !== 'schema_version' &&
-      key !== 'rules' &&
-      typeof value !== 'object'
-  )
-  const priceRules = Array.isArray(components.rules)
-    ? (components.rules as PriceRule[])
-    : []
   const isPurchase = props.kind === 'purchase'
   const purchase = isPurchase ? (version as PurchasePriceVersion | null) : null
   const retail = !isPurchase ? (version as RetailPriceVersion | null) : null
@@ -79,6 +64,22 @@ export function ChannelPriceVersionDialog(
     discountLabel = t('Component Discounts')
   } else if (purchase?.pricing_mode === 'fixed_unit_price') {
     discountLabel = t('Fixed Prices')
+  }
+  let priceComparison =
+    isPurchase && purchase ? (
+      <PurchasePriceComparison
+        purchase={purchase}
+        officialVersion={props.officialVersion}
+      />
+    ) : null
+  if (!isPurchase && retail) {
+    priceComparison = (
+      <RetailPriceComparison
+        retail={retail}
+        purchaseVersion={props.purchaseVersion}
+        officialVersion={props.officialVersion}
+      />
+    )
   }
 
   return (
@@ -113,83 +114,7 @@ export function ChannelPriceVersionDialog(
               ))}
             </div>
 
-            {isPurchase && purchase ? (
-              <PurchasePriceComparison
-                purchase={purchase}
-                officialVersion={props.officialVersion}
-              />
-            ) : (
-              <section className='space-y-2'>
-                <h3 className='text-sm font-medium'>{t('Price Components')}</h3>
-                {priceRules.length > 0 ? (
-                  <div className='space-y-2'>
-                    {priceRules.map((rule, index) => {
-                      const conditions = [
-                        rule.operation &&
-                          `${t('Operation')}: ${rule.operation}`,
-                        rule.quality && `${t('Quality')}: ${rule.quality}`,
-                        rule.resolution &&
-                          `${t('Resolution')}: ${rule.resolution}`,
-                        rule.with_audio === 'true' && t('With audio'),
-                        rule.with_audio === 'false' && t('Without audio'),
-                        rule.upper_bound &&
-                          `${t('Usage upper bound')}: ${rule.upper_bound}`,
-                      ].filter(Boolean)
-                      return (
-                        <div
-                          key={rule.id || `${rule.component}-${index}`}
-                          className='rounded-lg border p-3'
-                        >
-                          <div className='flex flex-wrap items-center justify-between gap-2'>
-                            <div className='flex items-center gap-2'>
-                              <Badge variant='outline'>
-                                {rule.name || `#${index + 1}`}
-                              </Badge>
-                              <span className='font-medium'>
-                                {t(
-                                  priceComponentLabels[rule.component || ''] ??
-                                    rule.component ??
-                                    'Price rule'
-                                )}
-                              </span>
-                            </div>
-                            <span className='font-mono text-sm'>
-                              {rule.unit_price || '0'} {version.currency} /{' '}
-                              {rule.unit_size || '1'} {rule.unit || ''}
-                            </span>
-                          </div>
-                          {conditions.length > 0 ? (
-                            <p className='text-muted-foreground mt-2 text-xs'>
-                              {conditions.join(' · ')}
-                            </p>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : null}
-                <div className='grid gap-2 sm:grid-cols-2'>
-                  {componentEntries.map(([key, value]) => (
-                    <div
-                      key={key}
-                      className='flex items-center justify-between gap-4 rounded-lg border px-3 py-2 text-sm'
-                    >
-                      <span className='text-muted-foreground'>
-                        {t(priceComponentLabels[key] ?? key)}
-                      </span>
-                      <span className='font-mono'>
-                        {String(value)} {version.currency}
-                      </span>
-                    </div>
-                  ))}
-                  {componentEntries.length === 0 && priceRules.length === 0 ? (
-                    <p className='text-muted-foreground col-span-full rounded-lg border border-dashed p-3 text-sm'>
-                      {t('No structured price components')}
-                    </p>
-                  ) : null}
-                </div>
-              </section>
-            )}
+            {priceComparison}
 
             {isPurchase ? (
               <div className='grid gap-3 text-sm sm:grid-cols-2'>

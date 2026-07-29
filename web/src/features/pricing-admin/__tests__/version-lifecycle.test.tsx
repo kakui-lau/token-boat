@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelPriceVersionDialog } from '../components/channel-price-version-dialog'
 import { PurchasePricePanel } from '../components/purchase-price-panel'
 import { VersionList } from '../components/version-list'
-import type { PurchasePriceVersion } from '../types'
+import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -153,6 +159,103 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getByText('10 USD')).toBeVisible()
     expect(screen.getByText('6.5 USD')).toBeVisible()
     expect(screen.queryByText(version.price_components)).not.toBeInTheDocument()
+  })
+
+  test('compares official, purchase, and retail prices in retail version details', () => {
+    const purchaseVersion: PurchasePriceVersion = {
+      id: 7,
+      channel_model_id: 2,
+      official_price_version_id: 4,
+      pricing_mode: 'official_ratio',
+      billing_mode: 'token',
+      price_structure: 'flat',
+      price_components:
+        '{"input_unit_price":"1.4","output_unit_price":"5.6","schema_version":"v1"}',
+      input_unit_price: '1.4',
+      output_unit_price: '5.6',
+      cache_read_unit_price: '',
+      cache_write_unit_price: '',
+      currency: 'USD',
+      version: 3,
+      status: 'active',
+      purchase_discount: '0.7',
+      purchase_billing_expr: 'v1:tier("flat", p * 1.4 + c * 5.6)',
+      expression_source: 'generated',
+      expression_schema_version: 'v1',
+      price_unit: 'per_1m_tokens',
+      quote_reference: '',
+      contract_reference: '',
+      conditions: '',
+      remark: '',
+      effective_from: 1,
+      effective_to: 0,
+    }
+    const retailVersion: RetailPriceVersion = {
+      id: 11,
+      channel_model_id: 2,
+      purchase_price_version_id: 7,
+      billing_mode: 'token',
+      price_structure: 'flat',
+      price_components:
+        '{"input_unit_price":"2.25","output_unit_price":"9","schema_version":"v1"}',
+      input_unit_price: '2.25',
+      output_unit_price: '9',
+      cache_read_unit_price: '',
+      cache_write_unit_price: '',
+      currency: 'USD',
+      version: 4,
+      status: 'draft',
+      total_variable_cost_rate: '0.1',
+      effective_tax_rate: '0.165',
+      target_net_margin: '0.2',
+      minimum_margin_rate: '0.1',
+      retail_billing_expr: 'v1:tier("flat", p * 2.25 + c * 9)',
+      expression_source: 'generated',
+      expression_schema_version: 'v1',
+      price_unit: 'per_1m_tokens',
+      remark: '',
+      effective_from: 0,
+      effective_to: 0,
+    }
+
+    render(
+      <ChannelPriceVersionDialog
+        kind='retail'
+        version={retailVersion}
+        purchaseVersion={purchaseVersion}
+        officialVersion={{
+          id: 4,
+          model_id: 1,
+          billing_mode: 'token',
+          price_structure: 'flat',
+          price_components:
+            '{"input_unit_price":"2","output_unit_price":"8","schema_version":"v1"}',
+          billing_expr: 'v1:tier("flat", p * 2 + c * 8)',
+          currency: 'USD',
+          version: 2,
+          status: 'expired',
+          source: 'manual',
+          remark: '',
+          effective_from: 1,
+          effective_to: 2,
+        }}
+        onOpenChange={vi.fn()}
+      />
+    )
+
+    const inputRow = screen.getByRole('row', {
+      name: /Input \/ 1M tokens/,
+    })
+    expect(within(inputRow).getByText('2 USD')).toBeVisible()
+    expect(within(inputRow).getByText('1.4 USD')).toBeVisible()
+    expect(within(inputRow).getByText('2.25 USD')).toBeVisible()
+
+    const outputRow = screen.getByRole('row', {
+      name: /Output \/ 1M tokens/,
+    })
+    expect(within(outputRow).getByText('8 USD')).toBeVisible()
+    expect(within(outputRow).getByText('5.6 USD')).toBeVisible()
+    expect(within(outputRow).getByText('9 USD')).toBeVisible()
   })
 
   test('loads an unpublished purchase version into the edit form', () => {

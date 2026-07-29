@@ -88,6 +88,7 @@ describe('retail percentage inputs', () => {
       <QueryClientProvider client={queryClient}>
         <RetailPricePanel
           channelModelId={31}
+          officialVersions={[]}
           purchaseVersions={[purchaseVersion]}
           versions={[]}
           isPublishing={false}

@@ -28,13 +28,13 @@ const optionalNonNegativeDecimal = z
     'Enter a non-negative decimal'
   )
 
-const requiredRate = z
+const requiredPercentage = z
   .string()
   .trim()
   .refine(
     (value) =>
-      /^\d+(\.\d+)?$/.test(value) && Number(value) >= 0 && Number(value) < 1,
-    'Enter a rate from 0 to less than 1'
+      /^\d+(\.\d+)?$/.test(value) && Number(value) >= 0 && Number(value) < 100,
+    'Enter a percentage from 0 to less than 100'
   )
 
 export const officialPriceSchema = z
@@ -157,10 +157,10 @@ export const retailPriceSchema = z
     purchase_price_version_id: z
       .string()
       .min(1, 'Select a purchase price version'),
-    total_variable_cost_rate: requiredRate,
-    effective_tax_rate: requiredRate,
-    target_net_margin: requiredRate,
-    minimum_margin_rate: requiredRate,
+    total_variable_cost_rate: requiredPercentage,
+    effective_tax_rate: requiredPercentage,
+    target_net_margin: requiredPercentage,
+    minimum_margin_rate: requiredPercentage,
     remark: z.string().trim(),
   })
   .superRefine((value, context) => {

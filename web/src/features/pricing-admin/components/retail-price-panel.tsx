@@ -34,10 +34,15 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 
 import { createRetailDraft, updateRetailDraft } from '../api'
+import {
+  formatStoredRatePercentage,
+  percentageToStoredRate,
+  storedRateToPercentage,
+} from '../lib/rate-format'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
 import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
 import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
-import { PriceInputField } from './price-input-field'
+import { PercentageInputField } from './percentage-input-field'
 import { VersionList } from './version-list'
 
 type RetailPricePanelProps = {
@@ -68,7 +73,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       purchase_price_version_id: '',
       total_variable_cost_rate: '0',
       effective_tax_rate: '0',
-      target_net_margin: '0.1',
+      target_net_margin: '10',
       minimum_margin_rate: '0',
       remark: '',
     },
@@ -88,9 +93,15 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     if (!selectedPurchase) {
       return null
     }
-    const vcr = Number(watchedValues.total_variable_cost_rate)
-    const tax = Number(watchedValues.effective_tax_rate)
-    const margin = Number(watchedValues.target_net_margin)
+    const vcr = Number(
+      percentageToStoredRate(watchedValues.total_variable_cost_rate || '')
+    )
+    const tax = Number(
+      percentageToStoredRate(watchedValues.effective_tax_rate || '')
+    )
+    const margin = Number(
+      percentageToStoredRate(watchedValues.target_net_margin || '')
+    )
     if (
       !Number.isFinite(vcr) ||
       !Number.isFinite(tax) ||
@@ -133,10 +144,12 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       const payload = {
         channel_model_id: props.channelModelId,
         purchase_price_version_id: Number(value.purchase_price_version_id),
-        total_variable_cost_rate: value.total_variable_cost_rate,
-        effective_tax_rate: value.effective_tax_rate,
-        target_net_margin: value.target_net_margin,
-        minimum_margin_rate: value.minimum_margin_rate,
+        total_variable_cost_rate: percentageToStoredRate(
+          value.total_variable_cost_rate
+        ),
+        effective_tax_rate: percentageToStoredRate(value.effective_tax_rate),
+        target_net_margin: percentageToStoredRate(value.target_net_margin),
+        minimum_margin_rate: percentageToStoredRate(value.minimum_margin_rate),
         remark: value.remark,
         expected_updated_at: editVersionUpdatedAt,
       }
@@ -166,10 +179,12 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     }
     form.reset({
       purchase_price_version_id: String(version.purchase_price_version_id),
-      total_variable_cost_rate: version.total_variable_cost_rate,
-      effective_tax_rate: version.effective_tax_rate,
-      target_net_margin: version.target_net_margin,
-      minimum_margin_rate: version.minimum_margin_rate,
+      total_variable_cost_rate: storedRateToPercentage(
+        version.total_variable_cost_rate
+      ),
+      effective_tax_rate: storedRateToPercentage(version.effective_tax_rate),
+      target_net_margin: storedRateToPercentage(version.target_net_margin),
+      minimum_margin_rate: storedRateToPercentage(version.minimum_margin_rate),
       remark: version.remark || '',
     })
     setEditVersionId(id)
@@ -182,10 +197,12 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     }
     form.reset({
       purchase_price_version_id: String(version.purchase_price_version_id),
-      total_variable_cost_rate: version.total_variable_cost_rate,
-      effective_tax_rate: version.effective_tax_rate,
-      target_net_margin: version.target_net_margin,
-      minimum_margin_rate: version.minimum_margin_rate,
+      total_variable_cost_rate: storedRateToPercentage(
+        version.total_variable_cost_rate
+      ),
+      effective_tax_rate: storedRateToPercentage(version.effective_tax_rate),
+      target_net_margin: storedRateToPercentage(version.target_net_margin),
+      minimum_margin_rate: storedRateToPercentage(version.minimum_margin_rate),
       remark: '',
     })
     toast.success(t('Historical version copied into the new draft'))
@@ -255,31 +272,34 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
               </p>
             ) : null}
           </Field>
-          <PriceInputField
+          <PercentageInputField
             id='retail-vcr'
             label='Variable Cost Rate (VCR)'
             registration={form.register('total_variable_cost_rate')}
             error={form.formState.errors.total_variable_cost_rate}
           />
-          <PriceInputField
+          <PercentageInputField
             id='retail-tax'
             label='Tax Rate (TR)'
             registration={form.register('effective_tax_rate')}
             error={form.formState.errors.effective_tax_rate}
           />
-          <PriceInputField
+          <PercentageInputField
             id='retail-target-margin'
             label='Target Margin (TM)'
             registration={form.register('target_net_margin')}
             error={form.formState.errors.target_net_margin}
           />
-          <PriceInputField
+          <PercentageInputField
             id='retail-minimum-margin'
             label='Margin Floor'
             registration={form.register('minimum_margin_rate')}
             error={form.formState.errors.minimum_margin_rate}
           />
         </FieldGroup>
+        <p className='text-muted-foreground text-xs'>
+          {t('Enter rates as percentages; for example, enter 16.5 for 16.5%.')}
+        </p>
         <Field>
           <FieldLabel htmlFor='retail-remark'>{t('Remark')}</FieldLabel>
           <Textarea id='retail-remark' {...form.register('remark')} />
@@ -347,8 +367,8 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             ...version,
             dependency_label:
               `${t('Purchase Version')} #${version.purchase_price_version_id}` +
-              ` · ${t('Target Margin (TM)')} ${version.target_net_margin}` +
-              ` · ${t('Margin Floor')} ${version.minimum_margin_rate}`,
+              ` · ${t('Target Margin (TM)')} ${formatStoredRatePercentage(version.target_net_margin)}` +
+              ` · ${t('Margin Floor')} ${formatStoredRatePercentage(version.minimum_margin_rate)}`,
           }))}
           isPublishing={props.isPublishing}
           isSuspending={props.isSuspending}

@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+import { formatStoredRatePercentage } from '../lib/rate-format'
 import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
 
 type ChannelPriceVersionDialogProps = {
@@ -240,19 +241,23 @@ export function ChannelPriceVersionDialog(
                 />
                 <Detail
                   label={t('Variable Cost Rate (VCR)')}
-                  value={retail?.total_variable_cost_rate || '—'}
+                  value={formatStoredRatePercentage(
+                    retail?.total_variable_cost_rate
+                  )}
                 />
                 <Detail
                   label={t('Tax Rate (TR)')}
-                  value={retail?.effective_tax_rate || '—'}
+                  value={formatStoredRatePercentage(retail?.effective_tax_rate)}
                 />
                 <Detail
                   label={t('Target Margin (TM)')}
-                  value={retail?.target_net_margin || '—'}
+                  value={formatStoredRatePercentage(retail?.target_net_margin)}
                 />
                 <Detail
                   label={t('Margin Floor')}
-                  value={retail?.minimum_margin_rate || '—'}
+                  value={formatStoredRatePercentage(
+                    retail?.minimum_margin_rate
+                  )}
                 />
               </div>
             )}

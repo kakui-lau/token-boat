@@ -23,6 +23,7 @@ import {
   type PriceRule,
   readPriceComponents,
 } from '../lib/price-components'
+import { formatPurchaseDiscount } from '../lib/purchase-discount'
 import { formatStoredRatePercentage } from '../lib/rate-format'
 import type {
   OfficialPriceVersion,
@@ -73,7 +74,7 @@ export function ChannelPriceVersionDialog(
     purchase?.pricing_mode === 'official_ratio' &&
     purchase.purchase_discount
   ) {
-    discountLabel = formatStoredRatePercentage(purchase.purchase_discount)
+    discountLabel = formatPurchaseDiscount(purchase.purchase_discount, t)
   } else if (purchase?.pricing_mode === 'component_ratio') {
     discountLabel = t('Component Discounts')
   } else if (purchase?.pricing_mode === 'fixed_unit_price') {
@@ -200,7 +201,7 @@ export function ChannelPriceVersionDialog(
                   label={t('Official Version')}
                   value={officialVersionLabel}
                 />
-                <Detail label={t('Discount')} value={discountLabel} />
+                <Detail label={t('Purchase Discount')} value={discountLabel} />
                 <Detail
                   label={t('Quote ID')}
                   value={purchase?.quote_reference || '—'}

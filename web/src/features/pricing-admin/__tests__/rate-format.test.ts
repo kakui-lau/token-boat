@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { describe, expect, test } from 'vitest'
 
 import {
+  discountTenthsToStoredMultiplier,
   formatStoredRatePercentage,
   percentageToStoredRate,
+  storedMultiplierToDiscountTenths,
   storedRateToPercentage,
 } from '../lib/rate-format'
 
@@ -48,5 +50,12 @@ describe('pricing rate format', () => {
   test('formats a stored rate for administrator-facing display', () => {
     expect(formatStoredRatePercentage('0.165')).toBe('16.5%')
     expect(formatStoredRatePercentage('')).toBe('—')
+  })
+
+  test('converts between purchase discount tenths and stored multipliers', () => {
+    expect(discountTenthsToStoredMultiplier('7')).toBe('0.7')
+    expect(discountTenthsToStoredMultiplier('6.5')).toBe('0.65')
+    expect(storedMultiplierToDiscountTenths('0.7')).toBe('7')
+    expect(storedMultiplierToDiscountTenths('0.65')).toBe('6.5')
   })
 })

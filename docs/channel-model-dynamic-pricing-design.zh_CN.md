@@ -321,6 +321,18 @@ channel_model_purchase_price_versions.official_price_version_id
 }
 ```
 
+管理后台采用中国商务报价习惯输入“折数”，API 与数据库仍保存便于计算的“采购倍率”：
+
+```text
+后台输入：7      → 7 折
+API/数据库：0.7 → 官方价 × 70%
+实际降幅：30%
+```
+
+因此统一折扣与分项折扣都必须在前端完成无损换算；详情统一展示为
+`7 折（官方价 × 70%）`，不能展示成“优惠 70%”。例如 `6.5 折` 在
+API/数据库中保存为 `0.65`。
+
 官方：
 
 ```text
@@ -669,7 +681,7 @@ INDEX(channel_id, status)
 | `pricing_mode` | 五种报价模式 |
 | `default_rule` | 缺失分项规则 JSON |
 | `quote_spec` | 结构化报价 JSON |
-| `purchase_discount` | 统一折扣时使用 |
+| `purchase_discount` | 统一采购倍率；API/数据库保存 `0.7` 表示后台录入的 7 折 |
 | `price_structure` | flat、tiered、expression |
 | `input_unit_price` | 可空；输入采购单价 |
 | `output_unit_price` | 可空；输出采购单价 |

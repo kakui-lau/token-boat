@@ -16,7 +16,12 @@ import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, values?: Record<string, string>) =>
+      Object.entries(values || {}).reduce(
+        (result, [name, value]) =>
+          result.replaceAll(`{{${name}}}`, String(value)),
+        key
+      ),
   }),
 }))
 
@@ -85,10 +90,10 @@ describe('purchase price comparison', () => {
 
     expect(screen.getByText('10 USD')).toBeVisible()
     expect(screen.getByText('6 USD')).toBeVisible()
-    expect(screen.getByText('60%')).toBeVisible()
+    expect(screen.getByText('6/10 (60% of official price)')).toBeVisible()
     expect(screen.getByText('20 USD')).toBeVisible()
     expect(screen.getByText('16 USD')).toBeVisible()
-    expect(screen.getByText('80%')).toBeVisible()
+    expect(screen.getByText('8/10 (80% of official price)')).toBeVisible()
   })
 
   test('identifies a fixed net price without inventing an official discount', () => {

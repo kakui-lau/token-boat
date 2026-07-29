@@ -23,7 +23,7 @@ import {
   type PriceRule,
   readPriceComponents,
 } from '../lib/price-components'
-import { storedRateToPercentage } from '../lib/rate-format'
+import { formatPurchaseDiscount } from '../lib/purchase-discount'
 import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
 
 type PurchasePriceComparisonProps = {
@@ -63,10 +63,6 @@ function readStringRecord(raw?: string): Record<string, string> {
     }
   }
   return values
-}
-
-function formatDiscount(discount: string): string {
-  return discount ? `${storedRateToPercentage(discount)}%` : '—'
 }
 
 function formatPrice(
@@ -196,7 +192,7 @@ export function PurchasePriceComparison(props: PurchasePriceComparisonProps) {
             <TableRow>
               <TableHead>{t('Price Components')}</TableHead>
               <TableHead>{t('Official Price')}</TableHead>
-              <TableHead>{t('Discount')}</TableHead>
+              <TableHead>{t('Purchase Discount')}</TableHead>
               <TableHead>{t('Purchase Price')}</TableHead>
             </TableRow>
           </TableHeader>
@@ -227,7 +223,7 @@ export function PurchasePriceComparison(props: PurchasePriceComparisonProps) {
                 <TableCell className='whitespace-nowrap'>
                   {props.purchase.pricing_mode === 'fixed_unit_price'
                     ? t('Fixed Prices')
-                    : formatDiscount(row.discount)}
+                    : formatPurchaseDiscount(row.discount, t)}
                 </TableCell>
                 <TableCell className='font-mono whitespace-nowrap'>
                   {formatPrice(

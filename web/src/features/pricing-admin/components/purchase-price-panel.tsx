@@ -35,9 +35,14 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 
 import { createPurchaseDraft, updatePurchaseDraft } from '../api'
+import {
+  discountTenthsToStoredMultiplier,
+  storedMultiplierToDiscountTenths,
+} from '../lib/rate-format'
 import { purchasePriceSchema, type PurchasePriceForm } from '../lib/schemas'
 import type { OfficialPriceVersion, PurchasePriceVersion } from '../types'
 import { ChannelPriceVersionDialog } from './channel-price-version-dialog'
+import { DiscountInputField } from './discount-input-field'
 import { PriceInputField } from './price-input-field'
 import { VersionList } from './version-list'
 
@@ -114,15 +119,31 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           : undefined,
         pricing_mode: value.pricing_mode,
         currency: value.currency,
-        purchase_discount: value.purchase_discount,
-        input_discount: value.input_discount,
-        output_discount: value.output_discount,
-        cache_read_discount: value.cache_read_discount,
-        cache_write_discount: value.cache_write_discount,
-        image_input_discount: value.image_input_discount,
-        image_output_discount: value.image_output_discount,
-        audio_input_discount: value.audio_input_discount,
-        audio_output_discount: value.audio_output_discount,
+        purchase_discount: discountTenthsToStoredMultiplier(
+          value.purchase_discount
+        ),
+        input_discount: discountTenthsToStoredMultiplier(value.input_discount),
+        output_discount: discountTenthsToStoredMultiplier(
+          value.output_discount
+        ),
+        cache_read_discount: discountTenthsToStoredMultiplier(
+          value.cache_read_discount
+        ),
+        cache_write_discount: discountTenthsToStoredMultiplier(
+          value.cache_write_discount
+        ),
+        image_input_discount: discountTenthsToStoredMultiplier(
+          value.image_input_discount
+        ),
+        image_output_discount: discountTenthsToStoredMultiplier(
+          value.image_output_discount
+        ),
+        audio_input_discount: discountTenthsToStoredMultiplier(
+          value.audio_input_discount
+        ),
+        audio_output_discount: discountTenthsToStoredMultiplier(
+          value.audio_output_discount
+        ),
         prices: {
           input_unit_price: value.input_unit_price,
           output_unit_price: value.output_unit_price,
@@ -188,15 +209,33 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       official_price_version_id: version.official_price_version_id
         ? String(version.official_price_version_id)
         : '',
-      purchase_discount: version.purchase_discount || '',
-      input_discount: discountSpec.input_discount || '',
-      output_discount: discountSpec.output_discount || '',
-      cache_read_discount: discountSpec.cache_read_discount || '',
-      cache_write_discount: discountSpec.cache_write_discount || '',
-      image_input_discount: discountSpec.image_input_discount || '',
-      image_output_discount: discountSpec.image_output_discount || '',
-      audio_input_discount: discountSpec.audio_input_discount || '',
-      audio_output_discount: discountSpec.audio_output_discount || '',
+      purchase_discount: storedMultiplierToDiscountTenths(
+        version.purchase_discount || ''
+      ),
+      input_discount: storedMultiplierToDiscountTenths(
+        discountSpec.input_discount || ''
+      ),
+      output_discount: storedMultiplierToDiscountTenths(
+        discountSpec.output_discount || ''
+      ),
+      cache_read_discount: storedMultiplierToDiscountTenths(
+        discountSpec.cache_read_discount || ''
+      ),
+      cache_write_discount: storedMultiplierToDiscountTenths(
+        discountSpec.cache_write_discount || ''
+      ),
+      image_input_discount: storedMultiplierToDiscountTenths(
+        discountSpec.image_input_discount || ''
+      ),
+      image_output_discount: storedMultiplierToDiscountTenths(
+        discountSpec.image_output_discount || ''
+      ),
+      audio_input_discount: storedMultiplierToDiscountTenths(
+        discountSpec.audio_input_discount || ''
+      ),
+      audio_output_discount: storedMultiplierToDiscountTenths(
+        discountSpec.audio_output_discount || ''
+      ),
       input_unit_price: version.input_unit_price || '',
       output_unit_price: version.output_unit_price || '',
       cache_read_unit_price: version.cache_read_unit_price || '',
@@ -361,58 +400,58 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
             </Field>
           ) : null}
           {pricingMode === 'official_ratio' ? (
-            <PriceInputField
+            <DiscountInputField
               id='purchase-discount'
-              label='Purchase Discount (0–1)'
+              label='Purchase Discount'
               registration={form.register('purchase_discount')}
               error={form.formState.errors.purchase_discount}
             />
           ) : null}
           {pricingMode === 'component_ratio' ? (
             <>
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-input-discount'
                 label='Input discount'
                 registration={form.register('input_discount')}
                 error={form.formState.errors.input_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-output-discount'
                 label='Output discount'
                 registration={form.register('output_discount')}
                 error={form.formState.errors.output_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-cache-read-discount'
                 label='Cache read discount'
                 registration={form.register('cache_read_discount')}
                 error={form.formState.errors.cache_read_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-cache-write-discount'
                 label='Cache write discount'
                 registration={form.register('cache_write_discount')}
                 error={form.formState.errors.cache_write_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-image-input-discount'
                 label='Image input discount'
                 registration={form.register('image_input_discount')}
                 error={form.formState.errors.image_input_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-image-output-discount'
                 label='Image output discount'
                 registration={form.register('image_output_discount')}
                 error={form.formState.errors.image_output_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-audio-input-discount'
                 label='Audio input discount'
                 registration={form.register('audio_input_discount')}
                 error={form.formState.errors.audio_input_discount}
               />
-              <PriceInputField
+              <DiscountInputField
                 id='purchase-audio-output-discount'
                 label='Audio output discount'
                 registration={form.register('audio_output_discount')}
@@ -491,6 +530,11 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
             />
           </Field>
         </FieldGroup>
+        {pricingMode !== 'fixed_unit_price' ? (
+          <p className='text-muted-foreground text-xs'>
+            {t('Enter 7 for 70% of the official price.')}
+          </p>
+        ) : null}
         <Field>
           <FieldLabel htmlFor='purchase-remark'>{t('Remark')}</FieldLabel>
           <Textarea id='purchase-remark' {...form.register('remark')} />

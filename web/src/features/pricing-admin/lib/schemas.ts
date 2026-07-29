@@ -28,6 +28,18 @@ const optionalNonNegativeDecimal = z
     'Enter a non-negative decimal'
   )
 
+const optionalPositiveDecimal = z
+  .string()
+  .trim()
+  .refine(
+    (value) =>
+      value === '' ||
+      (/^\d+(\.\d+)?$/.test(value) &&
+        Number.isFinite(Number(value)) &&
+        Number(value) > 0),
+    'Enter a positive discount'
+  )
+
 const requiredPercentage = z
   .string()
   .trim()
@@ -77,15 +89,15 @@ export const purchasePriceSchema = z
     ]),
     currency: z.string().trim().min(3).max(8),
     official_price_version_id: z.string(),
-    purchase_discount: optionalNonNegativeDecimal,
-    input_discount: optionalNonNegativeDecimal,
-    output_discount: optionalNonNegativeDecimal,
-    cache_read_discount: optionalNonNegativeDecimal,
-    cache_write_discount: optionalNonNegativeDecimal,
-    image_input_discount: optionalNonNegativeDecimal,
-    image_output_discount: optionalNonNegativeDecimal,
-    audio_input_discount: optionalNonNegativeDecimal,
-    audio_output_discount: optionalNonNegativeDecimal,
+    purchase_discount: optionalPositiveDecimal,
+    input_discount: optionalPositiveDecimal,
+    output_discount: optionalPositiveDecimal,
+    cache_read_discount: optionalPositiveDecimal,
+    cache_write_discount: optionalPositiveDecimal,
+    image_input_discount: optionalPositiveDecimal,
+    image_output_discount: optionalPositiveDecimal,
+    audio_input_discount: optionalPositiveDecimal,
+    audio_output_discount: optionalPositiveDecimal,
     input_unit_price: optionalNonNegativeDecimal,
     output_unit_price: optionalNonNegativeDecimal,
     cache_read_unit_price: optionalNonNegativeDecimal,

@@ -61,6 +61,14 @@ export function percentageToStoredRate(value: string): string {
   return shiftUnsignedDecimal(value, -2)
 }
 
+export function storedMultiplierToDiscountTenths(value: string): string {
+  return shiftUnsignedDecimal(value, 1)
+}
+
+export function discountTenthsToStoredMultiplier(value: string): string {
+  return shiftUnsignedDecimal(value, -1)
+}
+
 export function formatStoredRatePercentage(value?: string): string {
   if (!value?.trim()) {
     return '—'

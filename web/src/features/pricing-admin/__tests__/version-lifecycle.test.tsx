@@ -11,7 +11,12 @@ import type { PurchasePriceVersion } from '../types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, values?: Record<string, string>) =>
+      Object.entries(values || {}).reduce(
+        (result, [name, value]) =>
+          result.replaceAll(`{{${name}}}`, String(value)),
+        key
+      ),
   }),
 }))
 
@@ -140,7 +145,9 @@ describe('Pricing version lifecycle', () => {
       screen.getByRole('dialog', { name: 'Purchase Version Details · v6' })
     ).toBeVisible()
     expect(screen.getByText('AST-Q-2026')).toBeVisible()
-    expect(screen.getAllByText('65%')).toHaveLength(3)
+    expect(screen.getAllByText('6.5/10 (65% of official price)')).toHaveLength(
+      3
+    )
     expect(screen.getByText('2.5 USD')).toBeVisible()
     expect(screen.getByText('1.25 USD')).toBeVisible()
     expect(screen.getByText('10 USD')).toBeVisible()
@@ -217,8 +224,8 @@ describe('Pricing version lifecycle', () => {
     expect(
       screen.getByRole('heading', { name: 'Edit Purchase Version' })
     ).toBeVisible()
-    expect(screen.getByLabelText('Input discount')).toHaveValue('0.6')
-    expect(screen.getByLabelText('Output discount')).toHaveValue('0.8')
+    expect(screen.getByLabelText('Input discount')).toHaveValue(6)
+    expect(screen.getByLabelText('Output discount')).toHaveValue(8)
     expect(screen.getByLabelText('Quote ID')).toHaveValue('Q-21')
     expect(screen.getByRole('button', { name: 'Update Draft' })).toBeEnabled()
   })
@@ -332,6 +339,6 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getByText('Usage upper bound: 100000')).toBeVisible()
     expect(screen.getByText('2 USD / 1000000 token')).toBeVisible()
     expect(screen.getByText('8 USD / 1000000 token')).toBeVisible()
-    expect(screen.getAllByText('50%')).toHaveLength(3)
+    expect(screen.getAllByText('5/10 (50% of official price)')).toHaveLength(3)
   })
 })

@@ -24,9 +24,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { getActivePriceBundle } from '../api'
+import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
 
 type ActivePriceBundlePanelProps = {
   channelModelId: number
+  purchaseVersions: PurchasePriceVersion[]
+  retailVersions: RetailPriceVersion[]
 }
 
 export function ActivePriceBundlePanel(props: ActivePriceBundlePanelProps) {
@@ -37,6 +40,29 @@ export function ActivePriceBundlePanel(props: ActivePriceBundlePanelProps) {
     retry: false,
   })
   const bundle = bundleQuery.data?.data
+  const activePurchase = props.purchaseVersions.find(
+    (version) => version.status === 'active'
+  )
+  const linkedActiveRetail = activePurchase
+    ? props.retailVersions.find(
+        (version) =>
+          version.status === 'active' &&
+          version.purchase_price_version_id === activePurchase.id
+      )
+    : undefined
+  let readinessMessage = t(
+    'The active price chain is being refreshed. Retry if it does not appear shortly.'
+  )
+  if (!activePurchase) {
+    readinessMessage = t(
+      'Publish a purchase price to start the active version chain.'
+    )
+  } else if (!linkedActiveRetail) {
+    readinessMessage = t(
+      'Publish a retail price linked to purchase version {{version}} to complete the active version chain.',
+      { version: activePurchase.version }
+    )
+  }
 
   return (
     <Card size='sm'>
@@ -49,7 +75,7 @@ export function ActivePriceBundlePanel(props: ActivePriceBundlePanelProps) {
       <CardContent>
         {bundleQuery.isLoading ? <Skeleton className='h-14 w-full' /> : null}
         {!bundleQuery.isLoading && !bundle ? (
-          <p className='text-muted-foreground text-sm'>{t('Not configured')}</p>
+          <p className='text-muted-foreground text-sm'>{readinessMessage}</p>
         ) : null}
         {bundle ? (
           <div className='grid gap-3 text-sm sm:grid-cols-3'>

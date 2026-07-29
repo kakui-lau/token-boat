@@ -5751,5 +5751,8 @@
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放"
-  }
+  },
+  "Publish a purchase price to start the active version chain.": "请先发布采购价，以启动生效版本链。",
+  "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "请发布关联采购价版本 {{version}} 的销售价，以完成生效版本链。",
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "生效价格链正在刷新；若稍后仍未显示，请重试。"
 }

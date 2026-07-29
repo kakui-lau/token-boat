@@ -5751,5 +5751,8 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
     "Zoom": "ズーム"
-  }
+  },
+  "Publish a purchase price to start the active version chain.": "有効なバージョンチェーンを開始するには、購入価格を公開してください。",
+  "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "購入価格バージョン {{version}} に紐づく販売価格を公開して、有効なバージョンチェーンを完成させてください。",
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "有効な価格チェーンを更新中です。しばらくしても表示されない場合は再試行してください。"
 }

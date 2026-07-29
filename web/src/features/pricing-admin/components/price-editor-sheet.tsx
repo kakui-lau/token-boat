@@ -164,7 +164,11 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
         </SheetHeader>
         {channelModel ? (
           <div className='min-h-0 flex-1 space-y-3 overflow-auto px-4 pb-4'>
-            <ActivePriceBundlePanel channelModelId={channelModel.id} />
+            <ActivePriceBundlePanel
+              channelModelId={channelModel.id}
+              purchaseVersions={purchaseQuery.data?.data ?? []}
+              retailVersions={retailQuery.data?.data ?? []}
+            />
             <Tabs defaultValue='purchase' className='min-h-0'>
               <TabsList className='grid h-auto w-full grid-cols-3'>
                 <TabsTrigger value='purchase'>{t('Purchase')}</TabsTrigger>

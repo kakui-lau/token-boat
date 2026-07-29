@@ -145,16 +145,8 @@ export function OfficialPricing(props: OfficialPricingProps) {
             count: response.data.published,
           })
         )
-      } else if (response.data.skipped_unsupported === 0) {
+      } else {
         toast.info(t('No official price drafts to publish'))
-      }
-      if (response.data.skipped_unsupported > 0) {
-        toast.warning(
-          t(
-            '{{count}} drafts were skipped because their billing modes are not enabled for runtime publishing.',
-            { count: response.data.skipped_unsupported }
-          )
-        )
       }
     },
   })

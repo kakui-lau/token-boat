@@ -5751,5 +5751,8 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Publish a purchase price to start the active version chain.": "Publiez un prix d’achat pour démarrer la chaîne de versions active.",
+  "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "Publiez un prix de vente lié à la version d’achat {{version}} pour compléter la chaîne de versions active.",
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "La chaîne de prix active est en cours d’actualisation. Réessayez si elle ne s’affiche pas rapidement."
 }

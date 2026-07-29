@@ -204,6 +204,51 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Update Draft' })).toBeEnabled()
   })
 
+  test('allows an active multimodal official price for a uniform purchase discount', () => {
+    const queryClient = new QueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PurchasePricePanel
+          channelModelId={2}
+          officialVersions={[
+            {
+              id: 9,
+              model_id: 1,
+              billing_mode: 'video_duration',
+              price_structure: 'expression',
+              price_components:
+                '{"rules":[{"id":"default","name":"Default","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.34"}]}',
+              billing_expr: 'v2:tier("default", video_seconds * 0.34)',
+              currency: 'USD',
+              version: 4,
+              status: 'active',
+              source: 'manual',
+              remark: '',
+              effective_from: 1,
+              effective_to: 0,
+            },
+          ]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    const officialVersion = screen.getByLabelText('Official Version')
+    expect(officialVersion).toHaveTextContent('Version 4 · active · expression')
+    expect(
+      screen.queryByText(
+        'Publish a compatible active official price before creating a discount-based purchase version.'
+      )
+    ).not.toBeInTheDocument()
+  })
+
   test('renders tier rules and request conditions in version details', () => {
     const version: PurchasePriceVersion = {
       id: 30,

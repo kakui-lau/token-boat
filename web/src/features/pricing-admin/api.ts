@@ -258,6 +258,7 @@ export async function getActivePriceBundle(
 ): Promise<PriceVersionResponse<ActivePriceBundle>> {
   const response = await api.get('/api/pricing-admin/active-price-bundle', {
     params: { channel_model_id: channelModelId },
+    skipErrorHandler: true,
   })
   return response.data
 }

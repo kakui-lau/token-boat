@@ -31,6 +31,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from '@/components/ui/input-group'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   deletePriceDraft,
   getOfficialPriceOverview,
@@ -54,6 +55,9 @@ export function OfficialPricing(props: OfficialPricingProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
+  const [status, setStatus] = useState('')
+  const [currency, setCurrency] = useState('')
+  const [billingMode, setBillingMode] = useState('')
   const [bulkPublishOpen, setBulkPublishOpen] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState<number | null>(
     props.initialModelId ?? null
@@ -64,11 +68,27 @@ export function OfficialPricing(props: OfficialPricingProps) {
     queryFn: () => getOfficialPriceOverview(),
   })
   const rows = overviewQuery.data?.data ?? emptyOfficialPriceRows
-  const filteredRows = deferredKeyword
-    ? rows.filter((row) =>
-        row.model_name.toLowerCase().includes(deferredKeyword)
-      )
-    : rows
+  const currencies = [
+    ...new Set(rows.map((row) => row.currency).filter(Boolean)),
+  ]
+  const billingModes = [
+    ...new Set(rows.map((row) => row.billing_mode).filter(Boolean)),
+  ]
+  const filteredRows = rows.filter((row) => {
+    if (
+      deferredKeyword &&
+      !row.model_name.toLowerCase().includes(deferredKeyword)
+    ) {
+      return false
+    }
+    if (status && row.status !== status) {
+      return false
+    }
+    if (currency && row.currency !== currency) {
+      return false
+    }
+    return !billingMode || row.billing_mode === billingMode
+  })
   const selectedModel =
     rows.find((row) => row.model_id === selectedModelId) ?? null
   const officialQueryKey = ['pricing-admin', 'official-prices', selectedModelId]
@@ -226,22 +246,91 @@ export function OfficialPricing(props: OfficialPricingProps) {
                 'Official prices are shared by all channels that reference the same logical model.'
               )}
             </p>
-            <Field className='max-w-md'>
-              <FieldLabel htmlFor='official-pricing-search' className='sr-only'>
-                {t('Search models')}
-              </FieldLabel>
-              <InputGroup>
-                <InputGroupAddon>
-                  <Search aria-hidden='true' />
-                </InputGroupAddon>
-                <InputGroupInput
-                  id='official-pricing-search'
-                  value={keyword}
-                  placeholder={t('Search models')}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </InputGroup>
-            </Field>
+            <div className='flex flex-wrap items-end gap-3'>
+              <Field className='max-w-md min-w-64 flex-1'>
+                <FieldLabel
+                  htmlFor='official-pricing-search'
+                  className='sr-only'
+                >
+                  {t('Search models')}
+                </FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon>
+                    <Search aria-hidden='true' />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id='official-pricing-search'
+                    value={keyword}
+                    placeholder={t('Search models')}
+                    onChange={(event) => setKeyword(event.target.value)}
+                  />
+                </InputGroup>
+              </Field>
+              <Field className='w-auto'>
+                <FieldLabel htmlFor='official-pricing-status'>
+                  {t('Status')}
+                </FieldLabel>
+                <NativeSelect
+                  id='official-pricing-status'
+                  className='w-36'
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                  <NativeSelectOption value='active'>
+                    {t('active')}
+                  </NativeSelectOption>
+                  <NativeSelectOption value='draft'>
+                    {t('draft')}
+                  </NativeSelectOption>
+                  <NativeSelectOption value='suspended'>
+                    {t('suspended')}
+                  </NativeSelectOption>
+                  <NativeSelectOption value='expired'>
+                    {t('expired')}
+                  </NativeSelectOption>
+                  <NativeSelectOption value='unconfigured'>
+                    {t('Not configured')}
+                  </NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field className='w-auto'>
+                <FieldLabel htmlFor='official-pricing-currency'>
+                  {t('Currency')}
+                </FieldLabel>
+                <NativeSelect
+                  id='official-pricing-currency'
+                  className='w-28'
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                >
+                  <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                  {currencies.map((item) => (
+                    <NativeSelectOption key={item} value={item}>
+                      {item}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field className='w-auto'>
+                <FieldLabel htmlFor='official-pricing-billing-mode'>
+                  {t('Billing Mode')}
+                </FieldLabel>
+                <NativeSelect
+                  id='official-pricing-billing-mode'
+                  className='w-40'
+                  value={billingMode}
+                  onChange={(event) => setBillingMode(event.target.value)}
+                >
+                  <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                  {billingModes.map((item) => (
+                    <NativeSelectOption key={item} value={item}>
+                      {item}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            </div>
             <OfficialPriceOverviewTable
               allRows={rows}
               rows={filteredRows}

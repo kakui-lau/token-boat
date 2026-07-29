@@ -84,8 +84,19 @@ func TestUpdateOfficialFlatDraftChangesPricesWithoutCreatingVersion(t *testing.T
 	}, 7)
 	require.NoError(t, err)
 
-	updated, err := UpdateOfficialFlatDraft(draft.Id, OfficialFlatDraftInput{
+	_, err = UpdateOfficialFlatDraft(draft.Id, OfficialFlatDraftInput{
 		ModelId: 24, Currency: "eur",
+		Prices: FlatTokenPriceInput{
+			InputUnitPrice:       "1.25",
+			OutputUnitPrice:      "5",
+			AudioOutputUnitPrice: "12",
+		},
+		Remark: "revised",
+	})
+	require.ErrorContains(t, err, "official price currency must be USD")
+
+	updated, err := UpdateOfficialFlatDraft(draft.Id, OfficialFlatDraftInput{
+		ModelId: 24, Currency: "usd",
 		Prices: FlatTokenPriceInput{
 			InputUnitPrice:       "1.25",
 			OutputUnitPrice:      "5",
@@ -96,7 +107,7 @@ func TestUpdateOfficialFlatDraftChangesPricesWithoutCreatingVersion(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, draft.Id, updated.Id)
 	assert.Equal(t, draft.Version, updated.Version)
-	assert.Equal(t, "EUR", updated.Currency)
+	assert.Equal(t, "USD", updated.Currency)
 	assert.Equal(t, "legacy_import", updated.Source)
 	assert.Equal(t, "revised", updated.Remark)
 	assert.Contains(t, updated.PriceComponents, `"input_unit_price":"1.25"`)
@@ -125,6 +136,26 @@ func TestUpdateOfficialFlatDraftRejectsPublishedVersion(t *testing.T) {
 		Prices: FlatTokenPriceInput{InputUnitPrice: "2"},
 	})
 	require.ErrorContains(t, err, "only official price drafts")
+}
+
+func TestCreateFixedPurchaseDraftRejectsNonUSDCurrency(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id:                35,
+		ChannelId:         45,
+		ModelId:           25,
+		UpstreamModelName: "non-usd-purchase",
+		Status:            1,
+		RuntimeMode:       "legacy",
+	}).Error)
+
+	_, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 35,
+		PricingMode:    "fixed_unit_price",
+		Currency:       "CNY",
+		Prices:         FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.ErrorContains(t, err, "pricing currency must be USD")
 }
 
 func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {

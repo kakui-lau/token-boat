@@ -51,7 +51,7 @@ const requiredPercentage = z
 
 export const officialPriceSchema = z
   .object({
-    currency: z.string().trim().min(1),
+    currency: z.literal('USD'),
     input_unit_price: optionalNonNegativeDecimal,
     output_unit_price: optionalNonNegativeDecimal,
     cache_read_unit_price: optionalNonNegativeDecimal,
@@ -87,7 +87,7 @@ export const purchasePriceSchema = z
       'component_ratio',
       'fixed_unit_price',
     ]),
-    currency: z.string().trim().min(3).max(8),
+    currency: z.literal('USD'),
     official_price_version_id: z.string(),
     purchase_discount: optionalPositiveDecimal,
     input_discount: optionalPositiveDecimal,

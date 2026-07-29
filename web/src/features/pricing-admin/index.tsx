@@ -21,6 +21,7 @@ import { Link } from '@tanstack/react-router'
 import {
   BadgeDollarSign,
   CircleAlert,
+  GitCompareArrows,
   Plus,
   RefreshCw,
   Search,
@@ -39,6 +40,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from '@/components/ui/input-group'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   Table,
   TableBody,
@@ -50,11 +52,10 @@ import {
 
 import {
   getChannelModels,
-  getModelPriceOverview,
+  getPricingCatalogOptions,
   syncLegacyChannelModels,
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
-import { ModelPriceOverview } from './components/model-price-overview'
 import { PriceEditorSheet } from './components/price-editor-sheet'
 import type { ChannelModel } from './types'
 
@@ -63,24 +64,41 @@ export function PricingAdmin() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
+  const [channelId, setChannelId] = useState('')
+  const [status, setStatus] = useState('')
+  const [runtimeMode, setRuntimeMode] = useState('')
   const [selectedChannelModel, setSelectedChannelModel] =
     useState<ChannelModel | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingChannelModel, setEditingChannelModel] =
     useState<ChannelModel | null>(null)
   const deferredKeyword = useDeferredValue(keyword)
+  const catalogQuery = useQuery({
+    queryKey: ['pricing-admin', 'catalog-options'],
+    queryFn: () => getPricingCatalogOptions(),
+  })
   const channelModelsQuery = useQuery({
-    queryKey: ['pricing-admin', 'channel-models', deferredKeyword, page],
+    queryKey: [
+      'pricing-admin',
+      'channel-models',
+      deferredKeyword,
+      channelId,
+      status,
+      runtimeMode,
+      page,
+    ],
     queryFn: () =>
       getChannelModels({
         keyword: deferredKeyword.trim() || undefined,
+        channel_id: channelId ? Number(channelId) : undefined,
+        status: status ? Number(status) : undefined,
+        runtime_mode:
+          runtimeMode === 'legacy' || runtimeMode === 'v2'
+            ? runtimeMode
+            : undefined,
         page,
         page_size: 50,
       }),
-  })
-  const overviewQuery = useQuery({
-    queryKey: ['pricing-admin', 'model-price-overview', deferredKeyword],
-    queryFn: () => getModelPriceOverview(deferredKeyword.trim() || undefined),
   })
   const syncMutation = useMutation({
     mutationFn: syncLegacyChannelModels,
@@ -102,6 +120,10 @@ export function PricingAdmin() {
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <Button variant='outline' render={<Link to='/price-comparison' />}>
+          <GitCompareArrows data-icon='inline-start' />
+          {t('Price Comparison')}
+        </Button>
         <Button
           variant='outline'
           render={<Link to='/official-pricing' search={{}} />}
@@ -133,7 +155,7 @@ export function PricingAdmin() {
             </AlertDescription>
           </Alert>
 
-          <FieldGroup>
+          <FieldGroup className='flex-row flex-wrap items-end gap-3'>
             <Field className='max-w-md'>
               <FieldLabel htmlFor='pricing-admin-search' className='sr-only'>
                 {t('Search channels or models')}
@@ -153,12 +175,75 @@ export function PricingAdmin() {
                 />
               </InputGroup>
             </Field>
+            <Field className='w-auto'>
+              <FieldLabel htmlFor='pricing-admin-channel'>
+                {t('Channel')}
+              </FieldLabel>
+              <NativeSelect
+                id='pricing-admin-channel'
+                className='w-48'
+                value={channelId}
+                onChange={(event) => {
+                  setChannelId(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                {(catalogQuery.data?.data.channels ?? []).map((channel) => (
+                  <NativeSelectOption
+                    key={channel.id}
+                    value={String(channel.id)}
+                  >
+                    {channel.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field className='w-auto'>
+              <FieldLabel htmlFor='pricing-admin-status'>
+                {t('Status')}
+              </FieldLabel>
+              <NativeSelect
+                id='pricing-admin-status'
+                className='w-36'
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                <NativeSelectOption value='1'>
+                  {t('Enabled')}
+                </NativeSelectOption>
+                <NativeSelectOption value='0'>
+                  {t('Disabled')}
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <Field className='w-auto'>
+              <FieldLabel htmlFor='pricing-admin-runtime'>
+                {t('Runtime')}
+              </FieldLabel>
+              <NativeSelect
+                id='pricing-admin-runtime'
+                className='w-40'
+                value={runtimeMode}
+                onChange={(event) => {
+                  setRuntimeMode(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                <NativeSelectOption value='legacy'>
+                  {t('Legacy Billing')}
+                </NativeSelectOption>
+                <NativeSelectOption value='v2'>
+                  {t('V2 Pricing')}
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
           </FieldGroup>
-
-          <ModelPriceOverview
-            items={overviewQuery.data?.data ?? []}
-            isLoading={overviewQuery.isLoading}
-          />
 
           <h2 className='font-medium'>{t('Channel Models')}</h2>
           <div className='overflow-x-auto rounded-lg border'>

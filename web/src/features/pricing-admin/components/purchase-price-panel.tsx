@@ -205,7 +205,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       pricing_mode: canRestoreMode
         ? (version.pricing_mode as PurchasePriceForm['pricing_mode'])
         : 'fixed_unit_price',
-      currency: version.currency,
+      currency: 'USD',
       official_price_version_id: version.official_price_version_id
         ? String(version.official_price_version_id)
         : '',
@@ -268,7 +268,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
     }
     form.reset({
       pricing_mode: 'fixed_unit_price',
-      currency: version.currency,
+      currency: 'USD',
       official_price_version_id: '',
       purchase_discount: '',
       input_discount: '',
@@ -395,6 +395,7 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               <Input
                 id='purchase-currency'
                 maxLength={8}
+                disabled
                 {...form.register('currency')}
               />
             </Field>

@@ -209,6 +209,7 @@ export type PriceSimulationResult = {
 export type PricingCatalogOption = {
   id: number
   name: string
+  upstream_model_name?: string
 }
 
 export type PricingCatalogOptionsResponse = {

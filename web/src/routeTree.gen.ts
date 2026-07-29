@@ -52,6 +52,7 @@ import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedOfficialPricingIndexRouteImport } from './routes/_authenticated/official-pricing/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
+import { Route as AuthenticatedPriceComparisonIndexRouteImport } from './routes/_authenticated/price-comparison/index'
 import { Route as AuthenticatedPricingAdminIndexRouteImport } from './routes/_authenticated/pricing-admin/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRechargeIndexRouteImport } from './routes/_authenticated/recharge/index'
@@ -305,6 +306,12 @@ const AuthenticatedPlaygroundIndexRoute =
     path: '/playground/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPriceComparisonIndexRoute =
+  AuthenticatedPriceComparisonIndexRouteImport.update({
+    id: '/price-comparison/',
+    path: '/price-comparison/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPricingAdminIndexRoute =
   AuthenticatedPricingAdminIndexRouteImport.update({
     id: '/pricing-admin/',
@@ -503,6 +510,7 @@ export interface FileRoutesByFullPath {
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
+  '/price-comparison/': typeof AuthenticatedPriceComparisonIndexRoute
   '/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/recharge/': typeof AuthenticatedRechargeIndexRoute
@@ -571,6 +579,7 @@ export interface FileRoutesByTo {
   '/models': typeof AuthenticatedModelsIndexRoute
   '/official-pricing': typeof AuthenticatedOfficialPricingIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
+  '/price-comparison': typeof AuthenticatedPriceComparisonIndexRoute
   '/pricing-admin': typeof AuthenticatedPricingAdminIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/recharge': typeof AuthenticatedRechargeIndexRoute
@@ -643,6 +652,7 @@ export interface FileRoutesById {
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
+  '/_authenticated/price-comparison/': typeof AuthenticatedPriceComparisonIndexRoute
   '/_authenticated/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/recharge/': typeof AuthenticatedRechargeIndexRoute
@@ -714,6 +724,7 @@ export interface FileRouteTypes {
     | '/models/'
     | '/official-pricing/'
     | '/playground/'
+    | '/price-comparison/'
     | '/pricing-admin/'
     | '/profile/'
     | '/recharge/'
@@ -782,6 +793,7 @@ export interface FileRouteTypes {
     | '/models'
     | '/official-pricing'
     | '/playground'
+    | '/price-comparison'
     | '/pricing-admin'
     | '/profile'
     | '/recharge'
@@ -853,6 +865,7 @@ export interface FileRouteTypes {
     | '/_authenticated/models/'
     | '/_authenticated/official-pricing/'
     | '/_authenticated/playground/'
+    | '/_authenticated/price-comparison/'
     | '/_authenticated/pricing-admin/'
     | '/_authenticated/profile/'
     | '/_authenticated/recharge/'
@@ -1208,6 +1221,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlaygroundIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/price-comparison/': {
+      id: '/_authenticated/price-comparison/'
+      path: '/price-comparison'
+      fullPath: '/price-comparison/'
+      preLoaderRoute: typeof AuthenticatedPriceComparisonIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/pricing-admin/': {
       id: '/_authenticated/pricing-admin/'
       path: '/pricing-admin'
@@ -1492,6 +1512,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedOfficialPricingIndexRoute: typeof AuthenticatedOfficialPricingIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
+  AuthenticatedPriceComparisonIndexRoute: typeof AuthenticatedPriceComparisonIndexRoute
   AuthenticatedPricingAdminIndexRoute: typeof AuthenticatedPricingAdminIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRechargeIndexRoute: typeof AuthenticatedRechargeIndexRoute
@@ -1523,6 +1544,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOfficialPricingIndexRoute:
     AuthenticatedOfficialPricingIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
+  AuthenticatedPriceComparisonIndexRoute:
+    AuthenticatedPriceComparisonIndexRoute,
   AuthenticatedPricingAdminIndexRoute: AuthenticatedPricingAdminIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRechargeIndexRoute: AuthenticatedRechargeIndexRoute,

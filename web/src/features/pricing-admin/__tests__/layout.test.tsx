@@ -10,7 +10,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { updateOfficialFlatDraft } from '../api'
+import { getPricingCatalogOptions, updateOfficialFlatDraft } from '../api'
 import { ChannelModelDialog } from '../components/channel-model-dialog'
 import { ModelPriceOverview } from '../components/model-price-overview'
 import { OfficialPriceConfigurationEditor } from '../components/official-price-configuration-editor'
@@ -127,6 +127,55 @@ describe('Pricing admin editor layout', () => {
       'max-h-[90vh]',
       'overflow-y-auto'
     )
+  })
+
+  test('only lists models configured on the selected channel', async () => {
+    vi.mocked(getPricingCatalogOptions).mockImplementation(
+      async (channelId?: number) => ({
+        success: true,
+        data: {
+          channels: [{ id: 7, name: 'Configured Channel' }],
+          models:
+            channelId === 7
+              ? [
+                  {
+                    id: 8,
+                    name: 'configured-model',
+                    upstream_model_name: 'provider-configured-model',
+                  },
+                ]
+              : [],
+        },
+      })
+    )
+    renderWithQueryClient(
+      <ChannelModelDialog
+        open
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    expect(screen.getByLabelText('Model')).toBeDisabled()
+    await screen.findByRole('option', { name: 'Configured Channel' })
+    fireEvent.change(await screen.findByLabelText('Channel'), {
+      target: { value: '7' },
+    })
+
+    const modelSelect = await screen.findByLabelText('Model')
+    await waitFor(() => expect(modelSelect).not.toBeDisabled())
+    expect(
+      screen.getByRole('option', { name: 'configured-model' })
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('option', { name: 'unconfigured-model' })
+    ).not.toBeInTheDocument()
+
+    fireEvent.change(modelSelect, { target: { value: '8' } })
+    expect(screen.getByLabelText('Provider Model')).toHaveValue(
+      'provider-configured-model'
+    )
+    expect(getPricingCatalogOptions).toHaveBeenCalledWith(7)
   })
 
   test('uses an opaque high-contrast surface for official price inputs', () => {

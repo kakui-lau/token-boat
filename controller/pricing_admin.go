@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -18,8 +19,9 @@ type channelModelAdminRow struct {
 }
 
 type pricingAdminCatalogOption struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
+	Id                int    `json:"id"`
+	Name              string `json:"name"`
+	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 }
 
 func AdminListPricingCatalogOptions(c *gin.Context) {
@@ -31,13 +33,18 @@ func AdminListPricingCatalogOptions(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	var models []pricingAdminCatalogOption
-	if err := model.DB.Model(&model.Model{}).
-		Select("id, model_name AS name").
-		Order("model_name ASC").
-		Scan(&models).Error; err != nil {
-		common.ApiError(c, err)
-		return
+	models := make([]pricingAdminCatalogOption, 0)
+	if rawChannelId := strings.TrimSpace(c.Query("channel_id")); rawChannelId != "" {
+		channelId, err := strconv.Atoi(rawChannelId)
+		if err != nil || channelId <= 0 {
+			common.ApiErrorMsg(c, "channel_id 无效")
+			return
+		}
+		models, err = configuredPricingCatalogModels(channelId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	common.ApiSuccess(c, gin.H{"channels": channels, "models": models})
 }
@@ -82,6 +89,21 @@ func AdminListChannelModels(c *gin.Context) {
 	if modelId := strings.TrimSpace(c.Query("model_id")); modelId != "" {
 		query = query.Where("channel_models.model_id = ?", modelId)
 	}
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		statusValue, err := strconv.Atoi(status)
+		if err != nil || (statusValue != 0 && statusValue != 1) {
+			common.ApiErrorMsg(c, "status 无效")
+			return
+		}
+		query = query.Where("channel_models.status = ?", statusValue)
+	}
+	if runtimeMode := strings.TrimSpace(c.Query("runtime_mode")); runtimeMode != "" {
+		if runtimeMode != "legacy" && runtimeMode != "v2" {
+			common.ApiErrorMsg(c, "runtime_mode 无效")
+			return
+		}
+		query = query.Where("channel_models.runtime_mode = ?", runtimeMode)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -119,6 +141,10 @@ func AdminCreateChannelModel(c *gin.Context) {
 		return
 	}
 	if err := requireChannelModelReferences(input.ChannelId, input.ModelId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := requireModelConfiguredOnChannel(input.ChannelId, input.ModelId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -594,4 +620,71 @@ func requireChannelModelReferences(channelId int, modelId int) error {
 		return errors.New("模型不存在")
 	}
 	return nil
+}
+
+func configuredPricingCatalogModels(channelId int) ([]pricingAdminCatalogOption, error) {
+	var channel model.Channel
+	if err := model.DB.Select("id", "models", "model_mapping").
+		First(&channel, channelId).Error; err != nil {
+		return nil, err
+	}
+
+	configuredNames := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, name := range strings.Split(channel.Models, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		configuredNames = append(configuredNames, name)
+	}
+	if len(configuredNames) == 0 {
+		return []pricingAdminCatalogOption{}, nil
+	}
+
+	var configuredModels []model.Model
+	if err := model.DB.Select("id", "model_name").
+		Where("model_name IN ?", configuredNames).
+		Order("model_name ASC").
+		Find(&configuredModels).Error; err != nil {
+		return nil, err
+	}
+
+	modelMapping := make(map[string]string)
+	if channel.ModelMapping != nil && strings.TrimSpace(*channel.ModelMapping) != "" {
+		if err := common.UnmarshalJsonStr(*channel.ModelMapping, &modelMapping); err != nil {
+			return nil, fmt.Errorf("解析渠道模型映射失败: %w", err)
+		}
+	}
+
+	options := make([]pricingAdminCatalogOption, 0, len(configuredModels))
+	for _, configuredModel := range configuredModels {
+		upstreamModelName := strings.TrimSpace(modelMapping[configuredModel.ModelName])
+		if upstreamModelName == "" {
+			upstreamModelName = configuredModel.ModelName
+		}
+		options = append(options, pricingAdminCatalogOption{
+			Id:                configuredModel.Id,
+			Name:              configuredModel.ModelName,
+			UpstreamModelName: upstreamModelName,
+		})
+	}
+	return options, nil
+}
+
+func requireModelConfiguredOnChannel(channelId int, modelId int) error {
+	options, err := configuredPricingCatalogModels(channelId)
+	if err != nil {
+		return err
+	}
+	for _, option := range options {
+		if option.Id == modelId {
+			return nil
+		}
+	}
+	return errors.New("该模型未在渠道编辑中配置")
 }

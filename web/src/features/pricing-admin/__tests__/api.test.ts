@@ -2,7 +2,11 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
-import { createPurchaseDraft, getActivePriceBundle } from '../api'
+import {
+  createPurchaseDraft,
+  getActivePriceBundle,
+  getChannelModels,
+} from '../api'
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -32,6 +36,28 @@ test('loads an incomplete active price chain without a global error toast', asyn
   )
 })
 
+test('sends common channel pricing filters to the list endpoint', async () => {
+  await getChannelModels({
+    keyword: 'gpt',
+    channel_id: 12,
+    status: 1,
+    runtime_mode: 'v2',
+    page: 2,
+    page_size: 50,
+  })
+
+  expect(api.get).toHaveBeenCalledWith('/api/pricing-admin/channel-models', {
+    params: {
+      keyword: 'gpt',
+      channel_id: 12,
+      status: 1,
+      runtime_mode: 'v2',
+      page: 2,
+      page_size: 50,
+    },
+  })
+})
+
 test('does not report a purchase draft as created after a business error', async () => {
   vi.mocked(api.post).mockResolvedValue({
     data: {
@@ -41,8 +67,6 @@ test('does not report a purchase draft as created after a business error', async
   })
 
   await expect(
-    createPurchaseDraft(
-      {} as Parameters<typeof createPurchaseDraft>[0]
-    )
+    createPurchaseDraft({} as Parameters<typeof createPurchaseDraft>[0])
   ).rejects.toThrow('database rejected an optional price')
 })

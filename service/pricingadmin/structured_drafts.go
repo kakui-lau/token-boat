@@ -166,6 +166,9 @@ func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPr
 		&version.ExpressionSchemaVersion,
 		&version.Currency,
 	)
+	if err := validateOfficialPriceCurrency(version.Currency); err != nil {
+		return model.OfficialModelPriceVersion{}, err
+	}
 	if err := validateCommonPrice(
 		version.ModelId,
 		version.BillingMode,

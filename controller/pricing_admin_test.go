@@ -112,3 +112,76 @@ func TestAdminUpdateChannelModelRejectsIdentityMutation(t *testing.T) {
 	require.NoError(t, model.DB.First(&stored, 64).Error)
 	assert.Equal(t, 61, stored.ChannelId)
 }
+
+func TestAdminListPricingCatalogOptionsOnlyReturnsModelsConfiguredOnChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	modelMapping := `{"configured-model":"provider-configured-model"}`
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id:           71,
+		Name:         "configured-channel",
+		Models:       "configured-model",
+		ModelMapping: &modelMapping,
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.Model{
+		{Id: 72, ModelName: "configured-model"},
+		{Id: 73, ModelName: "unconfigured-model"},
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/catalog-options?channel_id=71",
+		nil,
+	)
+	AdminListPricingCatalogOptions(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Models []pricingAdminCatalogOption `json:"models"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data.Models, 1)
+	assert.Equal(t, 72, response.Data.Models[0].Id)
+	assert.Equal(t, "configured-model", response.Data.Models[0].Name)
+	assert.Equal(t, "provider-configured-model", response.Data.Models[0].UpstreamModelName)
+}
+
+func TestAdminCreateChannelModelRejectsModelNotConfiguredOnChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 81, Name: "restricted-channel", Models: "allowed-model",
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.Model{
+		{Id: 82, ModelName: "allowed-model"},
+		{Id: 83, ModelName: "blocked-model"},
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models",
+		model.ChannelModel{
+			ChannelId:         81,
+			ModelId:           83,
+			UpstreamModelName: "blocked-model",
+		},
+	)
+	AdminCreateChannelModel(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Contains(t, response.Message, "未在渠道编辑中配置")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).Count(&count).Error)
+	assert.Zero(t, count)
+}

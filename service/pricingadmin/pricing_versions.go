@@ -57,6 +57,9 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
 	)
+	if err := validateOfficialPriceCurrency(input.Currency); err != nil {
+		return err
+	}
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
 		return err
 	}
@@ -107,6 +110,9 @@ func UpdateOfficialPriceVersionDraft(
 		&input.ExpressionSchemaVersion,
 		&input.Currency,
 	)
+	if err := validateOfficialPriceCurrency(input.Currency); err != nil {
+		return updated, err
+	}
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
 		return updated, err
 	}
@@ -656,6 +662,13 @@ func normalizeExpressionMetadata(source *string, schemaVersion *string, currency
 	*currency = strings.ToUpper(strings.TrimSpace(*currency))
 }
 
+func validateOfficialPriceCurrency(currency string) error {
+	if currency != "USD" {
+		return errors.New("official price currency must be USD")
+	}
+	return nil
+}
+
 func validateExpressionMetadata(schemaVersion string, expression string) error {
 	schemaVersion = strings.TrimSpace(schemaVersion)
 	if schemaVersion != "v1" && schemaVersion != "v2" {
@@ -683,8 +696,8 @@ func validateCommonPrice(scopeId int, billingMode string, priceStructure string,
 	if _, ok := validPriceStructures[priceStructure]; !ok {
 		return fmt.Errorf("unsupported price structure %q", priceStructure)
 	}
-	if strings.TrimSpace(currency) == "" {
-		return errors.New("currency is required")
+	if currency != "USD" {
+		return errors.New("pricing currency must be USD")
 	}
 	if strings.TrimSpace(expression) == "" {
 		return errors.New("billing expression is required")

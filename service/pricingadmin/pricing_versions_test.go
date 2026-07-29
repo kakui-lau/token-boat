@@ -284,6 +284,26 @@ func TestSyncOfficialPricesIsIdempotentAndKeepsOnlyChangedRevisions(t *testing.T
 	assert.Equal(t, int64(1), revisionCount)
 }
 
+func TestSyncOfficialPricesRejectsNonUSDCurrency(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 82, ModelName: "sync-currency-model"}).Error)
+
+	_, err := SyncOfficialPrices(OfficialPriceSyncInput{
+		Source: "official_api", IdempotencyKey: "non-usd-batch",
+		Items: []OfficialPriceSynchronizationItem{{
+			ModelId: 82, BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{"input_unit_price":"1"}`,
+			BillingExpr:     `v1:tier("base", p * 1)`, Currency: "CNY",
+		}},
+	}, 9)
+	require.ErrorContains(t, err, "official price currency must be USD")
+
+	var revisionCount int64
+	require.NoError(t, model.DB.Model(&model.OfficialModelPriceVersion{}).
+		Where("model_id = ?", 82).Count(&revisionCount).Error)
+	assert.Zero(t, revisionCount)
+}
+
 func TestSyncOfficialPricesAdvancesCatalogWithoutChangingPurchaseReference(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 91, ModelName: "sync-chain"}).Error)

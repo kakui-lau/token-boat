@@ -507,6 +507,40 @@ For commercial licensing, please contact support@quantumnous.com
   transform: rotate(-8deg);
 }
 
+.token-boat-dashboard-shell {
+  --border: color-mix(in oklch, var(--foreground) 28%, var(--background));
+  --input: color-mix(in oklch, var(--foreground) 34%, var(--background));
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      color-mix(in oklch, var(--primary) 10%, transparent),
+      transparent 32rem
+    ),
+    radial-gradient(
+      circle at 100% 100%,
+      color-mix(in oklch, var(--secondary) 8%, transparent),
+      transparent 38rem
+    ),
+    color-mix(in oklch, var(--background) 88%, var(--primary) 12%);
+}
+
+.dark .token-boat-dashboard-shell {
+  --border: color-mix(in oklch, var(--foreground) 24%, var(--background));
+  --input: color-mix(in oklch, var(--foreground) 30%, var(--background));
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      color-mix(in oklch, var(--primary) 12%, transparent),
+      transparent 34rem
+    ),
+    radial-gradient(
+      circle at 100% 100%,
+      color-mix(in oklch, var(--secondary) 8%, transparent),
+      transparent 40rem
+    ),
+    color-mix(in oklch, var(--background) 92%, var(--primary) 8%);
+}
+
 @keyframes token-boat-aurora-drift {
   from {
     transform: translate3d(-2%, -1%, 0) scale(1);

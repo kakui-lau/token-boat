@@ -71,10 +71,15 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
     setWeight(String(props.channelModel?.weight ?? 0))
     setRegion(props.channelModel?.region ?? '')
   }, [props.channelModel, props.open])
-  const optionsQuery = useQuery({
-    queryKey: ['pricing-admin', 'catalog-options'],
-    queryFn: getPricingCatalogOptions,
+  const channelsQuery = useQuery({
+    queryKey: ['pricing-admin', 'catalog-options', 'channels'],
+    queryFn: () => getPricingCatalogOptions(),
     enabled: props.open,
+  })
+  const modelsQuery = useQuery({
+    queryKey: ['pricing-admin', 'catalog-options', 'models', channelId],
+    queryFn: () => getPricingCatalogOptions(Number(channelId)),
+    enabled: props.open && Boolean(channelId),
   })
   const mutation = useMutation({
     mutationFn: () =>
@@ -144,12 +149,16 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               className='w-full'
               value={channelId}
               disabled={Boolean(props.channelModel)}
-              onChange={(event) => setChannelId(event.target.value)}
+              onChange={(event) => {
+                setChannelId(event.target.value)
+                setModelId('')
+                setUpstreamModelName('')
+              }}
             >
               <NativeSelectOption value=''>
                 {t('Select a channel')}
               </NativeSelectOption>
-              {optionsQuery.data?.data.channels.map((option) => (
+              {channelsQuery.data?.data.channels.map((option) => (
                 <NativeSelectOption key={option.id} value={String(option.id)}>
                   {option.name}
                 </NativeSelectOption>
@@ -162,25 +171,37 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               id='channel-model-model'
               className='w-full'
               value={modelId}
-              disabled={Boolean(props.channelModel)}
+              disabled={
+                Boolean(props.channelModel) ||
+                !channelId ||
+                modelsQuery.isPending
+              }
               onChange={(event) => {
                 setModelId(event.target.value)
-                const selected = optionsQuery.data?.data.models.find(
+                const selected = modelsQuery.data?.data.models.find(
                   (option) => option.id === Number(event.target.value)
                 )
-                if (selected && upstreamModelName === '') {
-                  setUpstreamModelName(selected.name)
+                if (selected) {
+                  setUpstreamModelName(
+                    selected.upstream_model_name || selected.name
+                  )
                 }
               }}
             >
               <NativeSelectOption value=''>
                 {t('Select a model')}
               </NativeSelectOption>
-              {optionsQuery.data?.data.models.map((option) => (
-                <NativeSelectOption key={option.id} value={String(option.id)}>
-                  {option.name}
+              {props.channelModel ? (
+                <NativeSelectOption value={String(props.channelModel.model_id)}>
+                  {props.channelModel.model_name}
                 </NativeSelectOption>
-              ))}
+              ) : (
+                modelsQuery.data?.data.models.map((option) => (
+                  <NativeSelectOption key={option.id} value={String(option.id)}>
+                    {option.name}
+                  </NativeSelectOption>
+                ))
+              )}
             </NativeSelect>
           </Field>
           <Field className='sm:col-span-2'>

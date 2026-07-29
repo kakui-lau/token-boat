@@ -35,9 +35,9 @@ import type {
   RetailPriceVersion,
 } from './types'
 
-function requirePricingSuccess<T extends { success: boolean; message?: string }>(
-  response: T
-): T {
+function requirePricingSuccess<
+  T extends { success: boolean; message?: string },
+>(response: T): T {
   if (!response.success) {
     throw new Error(response.message || 'Pricing request failed')
   }
@@ -46,6 +46,9 @@ function requirePricingSuccess<T extends { success: boolean; message?: string }>
 
 export async function getChannelModels(params: {
   keyword?: string
+  channel_id?: number
+  status?: number
+  runtime_mode?: 'legacy' | 'v2'
   page?: number
   page_size?: number
 }): Promise<ChannelModelListResponse> {
@@ -62,8 +65,12 @@ export async function syncLegacyChannelModels(): Promise<ImportResponse> {
   return requirePricingSuccess(response.data)
 }
 
-export async function getPricingCatalogOptions(): Promise<PricingCatalogOptionsResponse> {
-  const response = await api.get('/api/pricing-admin/catalog-options')
+export async function getPricingCatalogOptions(
+  channelId?: number
+): Promise<PricingCatalogOptionsResponse> {
+  const response = await api.get('/api/pricing-admin/catalog-options', {
+    params: channelId ? { channel_id: channelId } : undefined,
+  })
   return response.data
 }
 

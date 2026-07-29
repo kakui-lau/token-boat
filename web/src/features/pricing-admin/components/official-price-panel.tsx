@@ -237,7 +237,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       version.billing_mode !== 'token' ||
       version.price_structure !== 'flat'
     ) {
-      setConfigurationDraft({ ...version })
+      setConfigurationDraft({ ...version, currency: 'USD' })
       setNewBillingMode(version.billing_mode)
       setNewPriceStructure(version.price_structure)
       setEditingDraftId(edit ? version.id : null)
@@ -263,7 +263,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       return
     }
     form.reset({
-      currency: version.currency,
+      currency: 'USD',
       input_unit_price: prices.input_unit_price ?? '',
       output_unit_price: prices.output_unit_price ?? '',
       cache_read_unit_price: prices.cache_read_unit_price ?? '',
@@ -464,13 +464,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
               <Input
                 id='official-config-currency'
                 value={configurationDraft.currency}
-                maxLength={8}
-                onChange={(event) =>
-                  setConfigurationDraft({
-                    ...configurationDraft,
-                    currency: event.target.value,
-                  })
-                }
+                disabled
               />
             </Field>
           </FieldGroup>
@@ -538,6 +532,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
               <Input
                 id='official-currency'
                 maxLength={8}
+                disabled
                 {...form.register('currency')}
               />
             </Field>

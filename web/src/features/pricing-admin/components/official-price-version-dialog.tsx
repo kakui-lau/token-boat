@@ -75,6 +75,19 @@ type PriceRule = {
   with_audio?: string
 }
 
+type TokenPriceTier = {
+  name?: string
+  upper_bound?: string
+  input_unit_price?: string
+  output_unit_price?: string
+  cache_read_unit_price?: string
+  cache_write_unit_price?: string
+  image_input_unit_price?: string
+  image_output_unit_price?: string
+  audio_input_unit_price?: string
+  audio_output_unit_price?: string
+}
+
 export function OfficialPriceVersionDialog(
   props: OfficialPriceVersionDialogProps
 ) {
@@ -94,12 +107,20 @@ export function OfficialPriceVersionDialog(
   const priceRules = Array.isArray(components.rules)
     ? (components.rules as PriceRule[])
     : []
+  const priceTiers = Array.isArray(components.tiers)
+    ? (components.tiers.filter(
+        (tier) => tier !== null && typeof tier === 'object'
+      ) as TokenPriceTier[])
+    : []
   const componentEntries = Object.entries(components).filter(
-    ([key]) =>
+    ([key, value]) =>
       !key.startsWith('legacy_') &&
       key !== 'price_unit' &&
       key !== 'schema_version' &&
-      key !== 'rules'
+      key !== 'rules' &&
+      key !== 'tiers' &&
+      (typeof value === 'string' || typeof value === 'number') &&
+      String(value).trim() !== ''
   )
 
   const billingLabels: Record<string, string> = {
@@ -205,28 +226,109 @@ export function OfficialPriceVersionDialog(
                   })}
                 </div>
               )}
-              {priceRules.length === 0 && componentEntries.length > 0 && (
-                <div className='grid gap-2 sm:grid-cols-2'>
-                  {componentEntries.map(([key, value]) => (
-                    <div
-                      key={key}
-                      className='flex items-center justify-between gap-4 rounded-lg border px-3 py-2 text-sm'
-                    >
-                      <span className='text-muted-foreground'>
-                        {t(componentLabels[key] ?? key)}
-                      </span>
-                      <span className='font-mono'>
-                        {String(value)} {version.currency}
-                      </span>
-                    </div>
-                  ))}
+              {priceRules.length === 0 && priceTiers.length > 0 ? (
+                <div className='space-y-3'>
+                  {priceTiers.map((tier, index) => {
+                    const previousUpperBound =
+                      index > 0 ? priceTiers[index - 1].upper_bound : undefined
+                    const currentUpperBound = tier.upper_bound
+                    const previousBoundNumber = Number(previousUpperBound)
+                    const currentBoundNumber = Number(currentUpperBound)
+                    const previousBound =
+                      previousUpperBound && Number.isFinite(previousBoundNumber)
+                        ? previousBoundNumber.toLocaleString()
+                        : previousUpperBound || ''
+                    const currentBound =
+                      currentUpperBound && Number.isFinite(currentBoundNumber)
+                        ? currentBoundNumber.toLocaleString()
+                        : currentUpperBound || ''
+                    let contextRange = t('Fallback tier')
+                    if (previousBound && currentBound) {
+                      contextRange = `${previousBound} < ${t(
+                        'Context'
+                      )} ≤ ${currentBound} ${t('tokens')}`
+                    } else if (currentBound) {
+                      contextRange = `${t(
+                        'Context'
+                      )} ≤ ${currentBound} ${t('tokens')}`
+                    } else if (previousBound) {
+                      contextRange = `${t(
+                        'Context'
+                      )} > ${previousBound} ${t('tokens')}`
+                    }
+                    let tierName =
+                      tier.name?.replaceAll('_', ' ') ||
+                      `${t('Tier')} ${index + 1}`
+                    if (tier.name === 'standard') {
+                      tierName = t('Standard')
+                    } else if (tier.name === 'long_context') {
+                      tierName = t('Long context')
+                    }
+                    const tierPriceEntries = Object.entries(tier).filter(
+                      ([key, value]) =>
+                        componentLabels[key] !== undefined &&
+                        value !== undefined &&
+                        String(value).trim() !== ''
+                    )
+
+                    return (
+                      <article
+                        key={`${tier.name || 'tier'}-${
+                          tier.upper_bound || 'unbounded'
+                        }`}
+                        className='overflow-hidden rounded-lg border'
+                      >
+                        <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5'>
+                          <div className='flex items-center gap-2'>
+                            <Badge variant='outline'>{tierName}</Badge>
+                            <span className='text-muted-foreground text-xs'>
+                              {contextRange}
+                            </span>
+                          </div>
+                        </div>
+                        <div className='bg-border grid gap-px sm:grid-cols-2 lg:grid-cols-4'>
+                          {tierPriceEntries.map(([key, value]) => (
+                            <div key={key} className='bg-popover px-3 py-2.5'>
+                              <p className='text-muted-foreground text-xs'>
+                                {t(componentLabels[key])}
+                              </p>
+                              <p className='mt-1 font-mono text-sm font-medium'>
+                                {value} {version.currency}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </article>
+                    )
+                  })}
                 </div>
-              )}
-              {priceRules.length === 0 && componentEntries.length === 0 && (
-                <p className='text-muted-foreground rounded-lg border border-dashed p-3 text-sm'>
-                  {t('No structured price components')}
-                </p>
-              )}
+              ) : null}
+              {priceRules.length === 0 &&
+                priceTiers.length === 0 &&
+                componentEntries.length > 0 && (
+                  <div className='grid gap-2 sm:grid-cols-2'>
+                    {componentEntries.map(([key, value]) => (
+                      <div
+                        key={key}
+                        className='flex items-center justify-between gap-4 rounded-lg border px-3 py-2 text-sm'
+                      >
+                        <span className='text-muted-foreground'>
+                          {t(componentLabels[key] ?? key)}
+                        </span>
+                        <span className='font-mono'>
+                          {String(value)} {version.currency}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              {priceRules.length === 0 &&
+                priceTiers.length === 0 &&
+                componentEntries.length === 0 && (
+                  <p className='text-muted-foreground rounded-lg border border-dashed p-3 text-sm'>
+                    {t('No structured price components')}
+                  </p>
+                )}
             </section>
 
             <section className='space-y-2'>

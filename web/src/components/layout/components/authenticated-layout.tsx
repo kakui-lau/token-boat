@@ -45,17 +45,12 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
             <SidebarInset
               className={cn(
                 '@container/content',
-                'token-boat-auth-shell',
+                'token-boat-dashboard-shell',
                 'h-[calc(100svh-var(--app-header-height,0px))]',
                 'min-h-0 overflow-hidden',
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              <div aria-hidden className='token-boat-aurora opacity-30' />
-              <div
-                aria-hidden
-                className='token-boat-beam opacity-50 dark:opacity-30'
-              />
               <div className='relative z-10 flex min-h-0 flex-1 flex-col'>
                 {props.children ?? <AnimatedOutlet />}
               </div>

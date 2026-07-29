@@ -52,6 +52,29 @@ vi.mock('@/features/pricing-admin/api', () => ({
         request_unit_price: '',
         video_second_unit_price: '',
       },
+      {
+        model_id: 9,
+        model_name: 'anthropic/claude-test',
+        status: 'unconfigured',
+        currency: '',
+        billing_mode: '',
+        price_structure: '',
+        version: 0,
+        version_count: 0,
+        draft_count: 0,
+        latest_draft_id: 0,
+        effective_from: 0,
+        input_unit_price: '',
+        output_unit_price: '',
+        cache_read_unit_price: '',
+        cache_write_unit_price: '',
+        image_input_unit_price: '',
+        image_output_unit_price: '',
+        audio_input_unit_price: '',
+        audio_output_unit_price: '',
+        request_unit_price: '',
+        video_second_unit_price: '',
+      },
     ],
   }),
   importLegacyOfficialPrices: vi.fn(),
@@ -107,9 +130,9 @@ describe('Official pricing page layout', () => {
     await waitFor(() => {
       expect(publishLatestOfficialPriceDrafts).toHaveBeenCalledTimes(1)
     })
-    const manageButton = screen.getByRole('button', {
+    const manageButton = screen.getAllByRole('button', {
       name: 'Versions',
-    })
+    })[0]
     expect(manageButton).toBeEnabled()
     fireEvent.click(
       screen.getByRole('button', {
@@ -132,5 +155,26 @@ describe('Official pricing page layout', () => {
     fireEvent.click(manageButton)
 
     expect(await screen.findByText('Official price editor for 7')).toBeVisible()
+  })
+
+  test('filters official prices by common pricing fields', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <OfficialPricing />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText('openai/gpt-test')).toBeVisible()
+    expect(screen.getByText('anthropic/claude-test')).toBeVisible()
+
+    fireEvent.change(screen.getByLabelText('Status'), {
+      target: { value: 'unconfigured' },
+    })
+
+    expect(screen.queryByText('openai/gpt-test')).not.toBeInTheDocument()
+    expect(screen.getByText('anthropic/claude-test')).toBeVisible()
   })
 })

@@ -26,6 +26,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  GitCompareArrows,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -144,6 +145,12 @@ export function useSidebarData(): SidebarData {
             title: t('Channel Pricing'),
             url: '/pricing-admin',
             icon: Coins,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Price Comparison'),
+            url: '/price-comparison',
+            icon: GitCompareArrows,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {

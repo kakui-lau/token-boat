@@ -91,16 +91,16 @@ describe('Pricing version lifecycle', () => {
       billing_mode: 'token',
       price_structure: 'flat',
       price_components:
-        '{"input_unit_price":"1.25","output_unit_price":"5.5","schema_version":"v1"}',
+        '{"input_unit_price":"1.25","output_unit_price":"6.5","schema_version":"v1"}',
       input_unit_price: '1.25',
-      output_unit_price: '5.5',
+      output_unit_price: '6.5',
       cache_read_unit_price: '',
       cache_write_unit_price: '',
       currency: 'USD',
       version: 6,
       status: 'active',
       purchase_discount: '0.65',
-      purchase_billing_expr: 'v1:tier("flat", p * 1.25 + c * 5.5)',
+      purchase_billing_expr: 'v1:tier("flat", p * 1.25 + c * 6.5)',
       expression_source: 'generated',
       expression_schema_version: 'v1',
       price_unit: 'million_tokens',
@@ -116,6 +116,22 @@ describe('Pricing version lifecycle', () => {
       <ChannelPriceVersionDialog
         kind='purchase'
         version={version}
+        officialVersion={{
+          id: 4,
+          model_id: 1,
+          billing_mode: 'token',
+          price_structure: 'flat',
+          price_components:
+            '{"input_unit_price":"2.5","output_unit_price":"10","schema_version":"v1"}',
+          billing_expr: 'v1:tier("flat", p * 2.5 + c * 10)',
+          currency: 'USD',
+          version: 2,
+          status: 'expired',
+          source: 'manual',
+          remark: '',
+          effective_from: 1,
+          effective_to: 2,
+        }}
         onOpenChange={vi.fn()}
       />
     )
@@ -124,8 +140,11 @@ describe('Pricing version lifecycle', () => {
       screen.getByRole('dialog', { name: 'Purchase Version Details · v6' })
     ).toBeVisible()
     expect(screen.getByText('AST-Q-2026')).toBeVisible()
-    expect(screen.getByText('0.65')).toBeVisible()
+    expect(screen.getAllByText('65%')).toHaveLength(3)
+    expect(screen.getByText('2.5 USD')).toBeVisible()
     expect(screen.getByText('1.25 USD')).toBeVisible()
+    expect(screen.getByText('10 USD')).toBeVisible()
+    expect(screen.getByText('6.5 USD')).toBeVisible()
     expect(screen.queryByText(version.price_components)).not.toBeInTheDocument()
   })
 
@@ -241,7 +260,9 @@ describe('Pricing version lifecycle', () => {
     )
 
     const officialVersion = screen.getByLabelText('Official Version')
-    expect(officialVersion).toHaveTextContent('Version 4 · expired · expression')
+    expect(officialVersion).toHaveTextContent(
+      'Version 4 · expired · expression'
+    )
     expect(
       screen.queryByText(
         'Publish a compatible official price before creating a discount-based purchase version.'
@@ -284,6 +305,23 @@ describe('Pricing version lifecycle', () => {
       <ChannelPriceVersionDialog
         kind='purchase'
         version={version}
+        officialVersion={{
+          id: 5,
+          model_id: 1,
+          billing_mode: 'token',
+          price_structure: 'tiered',
+          price_components:
+            '{"rules":[{"id":"short","name":"standard","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"4","upper_bound":"100000"},{"id":"fallback","name":"default","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"8"}]}',
+          billing_expr:
+            'v1:len <= 100000 ? tier("standard", p * 4) : tier("default", p * 8)',
+          currency: 'USD',
+          version: 2,
+          status: 'active',
+          source: 'manual',
+          remark: '',
+          effective_from: 1,
+          effective_to: 0,
+        }}
         onOpenChange={vi.fn()}
       />
     )
@@ -293,5 +331,7 @@ describe('Pricing version lifecycle', () => {
     expect(screen.getAllByText('Token input')).toHaveLength(2)
     expect(screen.getByText('Usage upper bound: 100000')).toBeVisible()
     expect(screen.getByText('2 USD / 1000000 token')).toBeVisible()
+    expect(screen.getByText('8 USD / 1000000 token')).toBeVisible()
+    expect(screen.getAllByText('50%')).toHaveLength(3)
   })
 })

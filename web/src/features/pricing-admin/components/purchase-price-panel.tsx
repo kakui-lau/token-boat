@@ -534,6 +534,9 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       <ChannelPriceVersionDialog
         kind='purchase'
         version={detailVersion}
+        officialVersion={props.officialVersions.find(
+          (version) => version.id === detailVersion?.official_price_version_id
+        )}
         onOpenChange={(open) => {
           if (!open) {
             setDetailVersion(null)

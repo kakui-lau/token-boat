@@ -18,53 +18,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+import {
+  priceComponentLabels,
+  type PriceRule,
+  readPriceComponents,
+} from '../lib/price-components'
 import { formatStoredRatePercentage } from '../lib/rate-format'
-import type { PurchasePriceVersion, RetailPriceVersion } from '../types'
+import type {
+  OfficialPriceVersion,
+  PurchasePriceVersion,
+  RetailPriceVersion,
+} from '../types'
+import { PurchasePriceComparison } from './purchase-price-comparison'
 
 type ChannelPriceVersionDialogProps = {
   kind: 'purchase' | 'retail'
   version: PurchasePriceVersion | RetailPriceVersion | null
+  officialVersion?: OfficialPriceVersion
   onOpenChange: (open: boolean) => void
-}
-
-const componentLabels: Record<string, string> = {
-  input_unit_price: 'Input / 1M tokens',
-  output_unit_price: 'Output / 1M tokens',
-  cache_read_unit_price: 'Cache Read / 1M tokens',
-  cache_write_unit_price: 'Cache Write / 1M tokens',
-  image_input_unit_price: 'Image Input / 1M tokens',
-  image_output_unit_price: 'Image Output / 1M tokens',
-  audio_input_unit_price: 'Audio Input / 1M tokens',
-  audio_output_unit_price: 'Audio Output / 1M tokens',
-  request_unit_price: 'Per Request',
-  video_second_unit_price: 'Per Video Second',
-  token_input: 'Token input',
-  token_output: 'Token output',
-  cache_read: 'Cache read',
-  cache_write: 'Cache write',
-  image_input: 'Image input',
-  image_output: 'Image output',
-  audio_input: 'Audio input',
-  audio_output: 'Audio output',
-  request: 'Request',
-  image: 'Image',
-  audio_second: 'Audio second',
-  video_second: 'Video second',
-  character: 'Character',
-}
-
-type PriceRule = {
-  id?: string
-  name?: string
-  component?: string
-  unit?: string
-  unit_size?: string
-  unit_price?: string
-  upper_bound?: string
-  operation?: string
-  quality?: string
-  resolution?: string
-  with_audio?: string
 }
 
 export function ChannelPriceVersionDialog(
@@ -72,17 +43,7 @@ export function ChannelPriceVersionDialog(
 ) {
   const { t } = useTranslation()
   const version = props.version
-  let components: Record<string, unknown> = {}
-  if (version?.price_components) {
-    try {
-      components = JSON.parse(version.price_components) as Record<
-        string,
-        unknown
-      >
-    } catch {
-      components = {}
-    }
-  }
+  const components = readPriceComponents(version?.price_components)
   const componentEntries = Object.entries(components).filter(
     ([key, value]) =>
       !key.startsWith('legacy_') &&
@@ -99,6 +60,25 @@ export function ChannelPriceVersionDialog(
   const retail = !isPurchase ? (version as RetailPriceVersion | null) : null
   const expression =
     purchase?.purchase_billing_expr ?? retail?.retail_billing_expr
+  let officialVersionLabel = '—'
+  if (props.officialVersion) {
+    officialVersionLabel =
+      `v${props.officialVersion.version} · #${props.officialVersion.id}` +
+      ` · ${t(props.officialVersion.status)}`
+  } else if (purchase?.official_price_version_id) {
+    officialVersionLabel = `#${purchase.official_price_version_id}`
+  }
+  let discountLabel = '—'
+  if (
+    purchase?.pricing_mode === 'official_ratio' &&
+    purchase.purchase_discount
+  ) {
+    discountLabel = formatStoredRatePercentage(purchase.purchase_discount)
+  } else if (purchase?.pricing_mode === 'component_ratio') {
+    discountLabel = t('Component Discounts')
+  } else if (purchase?.pricing_mode === 'fixed_unit_price') {
+    discountLabel = t('Fixed Prices')
+  }
 
   return (
     <Dialog open={version !== null} onOpenChange={props.onOpenChange}>
@@ -132,75 +112,83 @@ export function ChannelPriceVersionDialog(
               ))}
             </div>
 
-            <section className='space-y-2'>
-              <h3 className='text-sm font-medium'>{t('Price Components')}</h3>
-              {priceRules.length > 0 ? (
-                <div className='space-y-2'>
-                  {priceRules.map((rule, index) => {
-                    const conditions = [
-                      rule.operation && `${t('Operation')}: ${rule.operation}`,
-                      rule.quality && `${t('Quality')}: ${rule.quality}`,
-                      rule.resolution &&
-                        `${t('Resolution')}: ${rule.resolution}`,
-                      rule.with_audio === 'true' && t('With audio'),
-                      rule.with_audio === 'false' && t('Without audio'),
-                      rule.upper_bound &&
-                        `${t('Usage upper bound')}: ${rule.upper_bound}`,
-                    ].filter(Boolean)
-                    return (
-                      <div
-                        key={rule.id || `${rule.component}-${index}`}
-                        className='rounded-lg border p-3'
-                      >
-                        <div className='flex flex-wrap items-center justify-between gap-2'>
-                          <div className='flex items-center gap-2'>
-                            <Badge variant='outline'>
-                              {rule.name || `#${index + 1}`}
-                            </Badge>
-                            <span className='font-medium'>
-                              {t(
-                                componentLabels[rule.component || ''] ??
-                                  rule.component ??
-                                  'Price rule'
-                              )}
+            {isPurchase && purchase ? (
+              <PurchasePriceComparison
+                purchase={purchase}
+                officialVersion={props.officialVersion}
+              />
+            ) : (
+              <section className='space-y-2'>
+                <h3 className='text-sm font-medium'>{t('Price Components')}</h3>
+                {priceRules.length > 0 ? (
+                  <div className='space-y-2'>
+                    {priceRules.map((rule, index) => {
+                      const conditions = [
+                        rule.operation &&
+                          `${t('Operation')}: ${rule.operation}`,
+                        rule.quality && `${t('Quality')}: ${rule.quality}`,
+                        rule.resolution &&
+                          `${t('Resolution')}: ${rule.resolution}`,
+                        rule.with_audio === 'true' && t('With audio'),
+                        rule.with_audio === 'false' && t('Without audio'),
+                        rule.upper_bound &&
+                          `${t('Usage upper bound')}: ${rule.upper_bound}`,
+                      ].filter(Boolean)
+                      return (
+                        <div
+                          key={rule.id || `${rule.component}-${index}`}
+                          className='rounded-lg border p-3'
+                        >
+                          <div className='flex flex-wrap items-center justify-between gap-2'>
+                            <div className='flex items-center gap-2'>
+                              <Badge variant='outline'>
+                                {rule.name || `#${index + 1}`}
+                              </Badge>
+                              <span className='font-medium'>
+                                {t(
+                                  priceComponentLabels[rule.component || ''] ??
+                                    rule.component ??
+                                    'Price rule'
+                                )}
+                              </span>
+                            </div>
+                            <span className='font-mono text-sm'>
+                              {rule.unit_price || '0'} {version.currency} /{' '}
+                              {rule.unit_size || '1'} {rule.unit || ''}
                             </span>
                           </div>
-                          <span className='font-mono text-sm'>
-                            {rule.unit_price || '0'} {version.currency} /{' '}
-                            {rule.unit_size || '1'} {rule.unit || ''}
-                          </span>
+                          {conditions.length > 0 ? (
+                            <p className='text-muted-foreground mt-2 text-xs'>
+                              {conditions.join(' · ')}
+                            </p>
+                          ) : null}
                         </div>
-                        {conditions.length > 0 ? (
-                          <p className='text-muted-foreground mt-2 text-xs'>
-                            {conditions.join(' · ')}
-                          </p>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : null}
-              <div className='grid gap-2 sm:grid-cols-2'>
-                {componentEntries.map(([key, value]) => (
-                  <div
-                    key={key}
-                    className='flex items-center justify-between gap-4 rounded-lg border px-3 py-2 text-sm'
-                  >
-                    <span className='text-muted-foreground'>
-                      {t(componentLabels[key] ?? key)}
-                    </span>
-                    <span className='font-mono'>
-                      {String(value)} {version.currency}
-                    </span>
+                      )
+                    })}
                   </div>
-                ))}
-                {componentEntries.length === 0 && priceRules.length === 0 ? (
-                  <p className='text-muted-foreground col-span-full rounded-lg border border-dashed p-3 text-sm'>
-                    {t('No structured price components')}
-                  </p>
                 ) : null}
-              </div>
-            </section>
+                <div className='grid gap-2 sm:grid-cols-2'>
+                  {componentEntries.map(([key, value]) => (
+                    <div
+                      key={key}
+                      className='flex items-center justify-between gap-4 rounded-lg border px-3 py-2 text-sm'
+                    >
+                      <span className='text-muted-foreground'>
+                        {t(priceComponentLabels[key] ?? key)}
+                      </span>
+                      <span className='font-mono'>
+                        {String(value)} {version.currency}
+                      </span>
+                    </div>
+                  ))}
+                  {componentEntries.length === 0 && priceRules.length === 0 ? (
+                    <p className='text-muted-foreground col-span-full rounded-lg border border-dashed p-3 text-sm'>
+                      {t('No structured price components')}
+                    </p>
+                  ) : null}
+                </div>
+              </section>
+            )}
 
             {isPurchase ? (
               <div className='grid gap-3 text-sm sm:grid-cols-2'>
@@ -210,16 +198,9 @@ export function ChannelPriceVersionDialog(
                 />
                 <Detail
                   label={t('Official Version')}
-                  value={
-                    purchase?.official_price_version_id
-                      ? `#${purchase.official_price_version_id}`
-                      : '—'
-                  }
+                  value={officialVersionLabel}
                 />
-                <Detail
-                  label={t('Purchase Discount (0–1)')}
-                  value={purchase?.purchase_discount || '—'}
-                />
+                <Detail label={t('Discount')} value={discountLabel} />
                 <Detail
                   label={t('Quote ID')}
                   value={purchase?.quote_reference || '—'}

@@ -84,10 +84,10 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	s.RefundWithResult(c, nil)
 }
 
-// RefundWithResult refunds every reserved funding source asynchronously and
-// reports whether all refund steps completed. Callers that persist billing
-// audits use the callback to distinguish a completed refund from a record that
-// still requires reconciliation.
+// RefundWithResult reports whether all refund steps completed. Calls without a
+// callback remain asynchronous. Audit callers provide a callback, so their
+// refund and persisted terminal state complete together before the request
+// returns and cannot be split by a process restart.
 func (s *BillingSession) RefundWithResult(c *gin.Context, completed func(error)) {
 	s.mu.Lock()
 	if s.settled || s.refunded || !s.needsRefundLocked() {
@@ -115,7 +115,7 @@ func (s *BillingSession) RefundWithResult(c *gin.Context, completed func(error))
 	subscriptionId := s.relayInfo.SubscriptionId
 	funding := s.funding
 
-	gopool.Go(func() {
+	refund := func() {
 		var refundErr error
 		// 1) 退还资金来源
 		if err := funding.Refund(); err != nil {
@@ -138,7 +138,12 @@ func (s *BillingSession) RefundWithResult(c *gin.Context, completed func(error))
 		if completed != nil {
 			completed(refundErr)
 		}
-	})
+	}
+	if completed != nil {
+		refund()
+		return
+	}
+	gopool.Go(refund)
 }
 
 // NeedsRefund 返回是否存在需要退还的预扣状态。

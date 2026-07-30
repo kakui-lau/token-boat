@@ -272,7 +272,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				}
 			} else if relayInfo.DynamicPricingSnapshot != nil &&
 				relayInfo.DynamicPricingSnapshot.AuditCreated {
-				pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+				if err := pricingruntime.MarkRequestPricingRefunded(relayInfo.RequestId); err != nil {
+					common.SysError("mark uncharged pricing snapshot refunded error: " + err.Error())
+				}
 			}
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
@@ -737,8 +739,12 @@ func RelayTask(c *gin.Context) {
 			} else {
 				relayInfo.Billing.Refund(c)
 			}
-		} else if taskErr != nil && relayInfo.DynamicPricingSnapshot != nil {
-			pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+		} else if taskErr != nil &&
+			relayInfo.DynamicPricingSnapshot != nil &&
+			relayInfo.DynamicPricingSnapshot.AuditCreated {
+			if err := pricingruntime.MarkRequestPricingRefunded(relayInfo.RequestId); err != nil {
+				common.SysError("mark uncharged task pricing snapshot refunded error: " + err.Error())
+			}
 		}
 	}()
 

@@ -115,6 +115,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   )
   expect(getRequestPricingSnapshots).toHaveBeenCalledWith({
     reconciliation: true,
+    keyword: undefined,
     page: 1,
     page_size: 20,
   })
@@ -200,6 +201,7 @@ test('loads the next reconciliation page and exposes navigation state', async ()
   await waitFor(() =>
     expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
       reconciliation: true,
+      keyword: undefined,
       page: 2,
       page_size: 20,
     })
@@ -207,4 +209,54 @@ test('loads the next reconciliation page and exposes navigation state', async ()
   expect(await screen.findByText('Page 2 of 2')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+})
+
+test('searches reconciliation records and applies the keyword to CSV export', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 0,
+      stale_reserved: 0,
+      settled_last_24h: 0,
+      refunded_last_24h: 0,
+      oldest_anomaly_created_at: 0,
+    },
+  })
+  vi.mocked(getRequestPricingSnapshots).mockResolvedValue({
+    success: true,
+    data: {
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingReconciliationPanel />
+    </QueryClientProvider>
+  )
+
+  const searchInput = await screen.findByLabelText(
+    'Search request ID, model, or channel'
+  )
+  fireEvent.change(searchInput, { target: { value: ' request/seedance ' } })
+  fireEvent.submit(screen.getByRole('search'))
+
+  await waitFor(() =>
+    expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
+      reconciliation: true,
+      keyword: 'request/seedance',
+      page: 1,
+      page_size: 20,
+    })
+  )
+  expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
+    'href',
+    '/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true&keyword=request%2Fseedance'
+  )
 })

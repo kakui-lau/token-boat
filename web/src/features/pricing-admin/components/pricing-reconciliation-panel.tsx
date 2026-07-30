@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -24,12 +25,21 @@ import {
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
   const [page, setPage] = useState(1)
+  const [keyword, setKeyword] = useState('')
+  const [appliedKeyword, setAppliedKeyword] = useState('')
   const pageSize = 20
   const snapshotsQuery = useQuery({
-    queryKey: ['pricing-admin', 'request-pricing-snapshots', 'pending', page],
+    queryKey: [
+      'pricing-admin',
+      'request-pricing-snapshots',
+      'pending',
+      appliedKeyword,
+      page,
+    ],
     queryFn: () =>
       getRequestPricingSnapshots({
         reconciliation: true,
+        keyword: appliedKeyword || undefined,
         page,
         page_size: pageSize,
       }),
@@ -42,6 +52,10 @@ export function PricingReconciliationPanel() {
   const rows = snapshotsQuery.data?.data.items ?? []
   const total = snapshotsQuery.data?.data.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const exportParams = new URLSearchParams({ reconciliation: 'true' })
+  if (appliedKeyword) {
+    exportParams.set('keyword', appliedKeyword)
+  }
 
   return (
     <section className='space-y-3' aria-labelledby='pricing-reconciliation'>
@@ -65,7 +79,7 @@ export function PricingReconciliationPanel() {
             variant='outline'
             render={
               <a
-                href='/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true'
+                href={`/api/pricing-admin/request-pricing-snapshots/export?${exportParams.toString()}`}
                 download
               />
             }
@@ -129,6 +143,26 @@ export function PricingReconciliationPanel() {
           </Card>
         ))}
       </div>
+      <form
+        className='flex flex-wrap items-center gap-2'
+        role='search'
+        onSubmit={(event) => {
+          event.preventDefault()
+          setPage(1)
+          setAppliedKeyword(keyword.trim())
+        }}
+      >
+        <Input
+          className='max-w-sm'
+          aria-label={t('Search request ID, model, or channel')}
+          placeholder={t('Search request ID, model, or channel')}
+          value={keyword}
+          onChange={(event) => setKeyword(event.target.value)}
+        />
+        <Button type='submit' size='sm' variant='outline'>
+          {t('Search')}
+        </Button>
+      </form>
       <div className='overflow-x-auto rounded-lg border'>
         <Table>
           <TableHeader>

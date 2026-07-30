@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
@@ -22,6 +23,40 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(pricingReconciliationHandler{})
+}
+
+type pricingReconciliationHandler struct{}
+
+func (pricingReconciliationHandler) Type() string {
+	return model.SystemTaskTypePricingReconcile
+}
+
+func (pricingReconciliationHandler) Enabled() bool { return true }
+
+func (pricingReconciliationHandler) Interval() time.Duration { return 5 * time.Minute }
+
+func (pricingReconciliationHandler) NewPayload() any { return nil }
+
+func (pricingReconciliationHandler) Run(
+	_ context.Context,
+	task *model.SystemTask,
+	runnerID string,
+) {
+	updated, err := pricingruntime.ReconcileStaleRequestPricingSnapshots(
+		common.GetTimestamp() - pricingReconciliationReservedAgeSeconds,
+	)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(
+		task,
+		runnerID,
+		model.SystemTaskStatusSucceeded,
+		map[string]int64{"marked_pending": updated},
+		nil,
+	)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

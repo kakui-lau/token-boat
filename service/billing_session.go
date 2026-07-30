@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -80,9 +81,20 @@ func (s *BillingSession) Settle(actualQuota int) error {
 
 // Refund 退还所有预扣费，幂等安全，异步执行。
 func (s *BillingSession) Refund(c *gin.Context) {
+	s.RefundWithResult(c, nil)
+}
+
+// RefundWithResult refunds every reserved funding source asynchronously and
+// reports whether all refund steps completed. Callers that persist billing
+// audits use the callback to distinguish a completed refund from a record that
+// still requires reconciliation.
+func (s *BillingSession) RefundWithResult(c *gin.Context, completed func(error)) {
 	s.mu.Lock()
 	if s.settled || s.refunded || !s.needsRefundLocked() {
 		s.mu.Unlock()
+		if completed != nil {
+			completed(nil)
+		}
 		return
 	}
 	s.refunded = true
@@ -104,20 +116,27 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	funding := s.funding
 
 	gopool.Go(func() {
+		var refundErr error
 		// 1) 退还资金来源
 		if err := funding.Refund(); err != nil {
 			common.SysLog("error refunding billing source: " + err.Error())
+			refundErr = errors.Join(refundErr, err)
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
+				refundErr = errors.Join(refundErr, err)
 			}
 		}
 		// 2) 退还令牌额度
 		if tokenConsumed > 0 && !isPlayground {
 			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
 				common.SysLog("error refunding token quota: " + err.Error())
+				refundErr = errors.Join(refundErr, err)
 			}
+		}
+		if completed != nil {
+			completed(refundErr)
 		}
 	})
 }

@@ -249,6 +249,34 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	} else {
 		seconds := info.PriceData.OtherRatios()["seconds"]
+		if seconds <= 0 && v2CandidateSelected {
+			taskRequest, requestErr := relaycommon.GetTaskRequest(c)
+			if requestErr != nil {
+				return nil, service.TaskErrorWrapperLocal(
+					requestErr,
+					"invalid_request",
+					http.StatusBadRequest,
+				)
+			}
+			switch {
+			case taskRequest.Duration > 0:
+				seconds = float64(taskRequest.Duration)
+			case taskRequest.Seconds != "":
+				parsedSeconds, parseErr := strconv.Atoi(taskRequest.Seconds)
+				if parseErr != nil {
+					return nil, service.TaskErrorWrapperLocal(
+						fmt.Errorf("invalid video duration: %w", parseErr),
+						"invalid_request",
+						http.StatusBadRequest,
+					)
+				}
+				seconds = float64(parsedSeconds)
+			default:
+				if metadataDuration, ok := taskRequest.Metadata["duration"].(float64); ok {
+					seconds = metadataDuration
+				}
+			}
+		}
 		if seconds > 0 {
 			if seconds > relaycommon.MaxTaskDurationSeconds {
 				return nil, service.TaskErrorWrapperLocal(

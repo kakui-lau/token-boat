@@ -240,7 +240,8 @@ func AdminListRequestPricingSnapshots(c *gin.Context) {
 		switch status {
 		case pricingruntime.PricingSnapshotStatusReserved,
 			pricingruntime.PricingSnapshotStatusPending,
-			pricingruntime.PricingSnapshotStatusSettled:
+			pricingruntime.PricingSnapshotStatusSettled,
+			pricingruntime.PricingSnapshotStatusRefunded:
 			query = query.Where("request_pricing_snapshots.status = ?", status)
 		default:
 			common.ApiErrorMsg(c, "status 无效")

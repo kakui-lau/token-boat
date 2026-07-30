@@ -799,6 +799,64 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	assert.Contains(t, settled.ActualUsage, `"request_body":""`)
 }
 
+func TestRequestPricingSnapshotRecordsCompletedRefund(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
+		RequestId:      "request-refunded",
+		UserId:         1,
+		ModelId:        2,
+		ChannelModelId: 3,
+		BillingMode:    "token",
+		ReservedQuota:  25,
+		Status:         PricingSnapshotStatusReserved,
+	}).Error)
+
+	require.NoError(t, MarkRequestPricingRefunded("request-refunded"))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", "request-refunded").First(&snapshot).Error)
+	assert.Equal(t, PricingSnapshotStatusRefunded, snapshot.Status)
+	assert.Zero(t, snapshot.SettledQuota)
+}
+
+func TestReconcileStaleRequestPricingSnapshotsMarksOnlyOldReservations(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create([]model.RequestPricingSnapshot{
+		{
+			RequestId: "stale-reserved", UserId: 1, ModelId: 2,
+			ChannelModelId: 3, BillingMode: "token",
+			Status: PricingSnapshotStatusReserved, CreatedAt: 100,
+		},
+		{
+			RequestId: "fresh-reserved", UserId: 1, ModelId: 2,
+			ChannelModelId: 3, BillingMode: "token",
+			Status: PricingSnapshotStatusReserved, CreatedAt: 200,
+		},
+		{
+			RequestId: "already-settled", UserId: 1, ModelId: 2,
+			ChannelModelId: 3, BillingMode: "token",
+			Status: PricingSnapshotStatusSettled, CreatedAt: 100,
+		},
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id IN ?", []string{"stale-reserved", "already-settled"}).
+		UpdateColumn("created_at", 100).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", "fresh-reserved").
+		UpdateColumn("created_at", 200).Error)
+
+	updated, err := ReconcileStaleRequestPricingSnapshots(150)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), updated)
+
+	var stale model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", "stale-reserved").First(&stale).Error)
+	assert.Equal(t, PricingSnapshotStatusPending, stale.Status)
+	var fresh model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", "fresh-reserved").First(&fresh).Error)
+	assert.Equal(t, PricingSnapshotStatusReserved, fresh.Status)
+}
+
 func TestPlanV2RouteOrdersByPurchaseCostBeforePriority(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 8, RuntimeModeV2)

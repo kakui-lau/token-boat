@@ -255,9 +255,22 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			newAPIError = service.NormalizeViolationFeeError(newAPIError)
 			if relayInfo.Billing != nil {
-				relayInfo.Billing.Refund(c)
-			}
-			if relayInfo.DynamicPricingSnapshot != nil &&
+				if relayInfo.DynamicPricingSnapshot != nil &&
+					relayInfo.DynamicPricingSnapshot.AuditCreated {
+					requestId := relayInfo.RequestId
+					relayInfo.Billing.RefundWithResult(c, func(refundErr error) {
+						if refundErr != nil {
+							pricingruntime.MarkRequestPricingPending(requestId)
+							return
+						}
+						if err := pricingruntime.MarkRequestPricingRefunded(requestId); err != nil {
+							common.SysError("mark refunded pricing snapshot error: " + err.Error())
+						}
+					})
+				} else {
+					relayInfo.Billing.Refund(c)
+				}
+			} else if relayInfo.DynamicPricingSnapshot != nil &&
 				relayInfo.DynamicPricingSnapshot.AuditCreated {
 				pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
 			}
@@ -709,9 +722,22 @@ func RelayTask(c *gin.Context) {
 	var taskErr *taskdto.TaskError
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil && !relayInfo.UpstreamTaskAccepted {
-			relayInfo.Billing.Refund(c)
-		}
-		if taskErr != nil && relayInfo.DynamicPricingSnapshot != nil {
+			if relayInfo.DynamicPricingSnapshot != nil &&
+				relayInfo.DynamicPricingSnapshot.AuditCreated {
+				requestId := relayInfo.RequestId
+				relayInfo.Billing.RefundWithResult(c, func(refundErr error) {
+					if refundErr != nil {
+						pricingruntime.MarkRequestPricingPending(requestId)
+						return
+					}
+					if err := pricingruntime.MarkRequestPricingRefunded(requestId); err != nil {
+						common.SysError("mark refunded task pricing snapshot error: " + err.Error())
+					}
+				})
+			} else {
+				relayInfo.Billing.Refund(c)
+			}
+		} else if taskErr != nil && relayInfo.DynamicPricingSnapshot != nil {
 			pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
 		}
 	}()

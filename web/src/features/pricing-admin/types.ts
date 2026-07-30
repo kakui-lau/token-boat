@@ -63,7 +63,7 @@ export type RequestPricingSnapshot = {
   purchase_cost: string
   retail_amount: string
   currency: string
-  status: 'reserved' | 'pending' | 'settled'
+  status: 'reserved' | 'pending' | 'settled' | 'refunded'
   updated_at: number
 }
 

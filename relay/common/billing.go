@@ -13,6 +13,10 @@ type BillingSettler interface {
 	// 通过 gopool 异步执行。如果已经结算或退款则不做任何操作。
 	Refund(c *gin.Context)
 
+	// RefundWithResult performs the same asynchronous refund and reports whether
+	// every refund step succeeded so billing audit records can be finalized.
+	RefundWithResult(c *gin.Context, completed func(error))
+
 	// NeedsRefund 返回会话是否存在需要退还的预扣状态（未结算且未退款）。
 	NeedsRefund() bool
 

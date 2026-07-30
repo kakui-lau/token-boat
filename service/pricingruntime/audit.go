@@ -15,6 +15,7 @@ const (
 	PricingSnapshotStatusReserved = "reserved"
 	PricingSnapshotStatusSettled  = "settled"
 	PricingSnapshotStatusPending  = "pending"
+	PricingSnapshotStatusRefunded = "refunded"
 )
 
 func sanitizedPricingUsageJSON(rawUsage string) (string, error) {
@@ -171,4 +172,44 @@ func markPricingSnapshotPending(requestId string) {
 
 func MarkRequestPricingPending(requestId string) {
 	markPricingSnapshotPending(requestId)
+}
+
+func MarkRequestPricingRefunded(requestId string) error {
+	if requestId == "" {
+		return errors.New("request id is required")
+	}
+	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ? AND status IN ?", requestId, []string{
+			PricingSnapshotStatusReserved,
+			PricingSnapshotStatusPending,
+		}).
+		Updates(map[string]any{
+			"settled_quota": 0,
+			"status":        PricingSnapshotStatusRefunded,
+			"updated_at":    common.GetTimestamp(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("v2 pricing snapshot was not found or already finalized")
+	}
+	return nil
+}
+
+func ReconcileStaleRequestPricingSnapshots(staleBefore int64) (int64, error) {
+	if staleBefore <= 0 {
+		return 0, errors.New("stale cutoff is required")
+	}
+	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where(
+			"status = ? AND created_at <= ?",
+			PricingSnapshotStatusReserved,
+			staleBefore,
+		).
+		Updates(map[string]any{
+			"status":     PricingSnapshotStatusPending,
+			"updated_at": common.GetTimestamp(),
+		})
+	return result.RowsAffected, result.Error
 }

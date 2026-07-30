@@ -39,7 +39,12 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('../api', () => apiMocks)
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, values?: Record<string, string>) =>
+      Object.entries(values || {}).reduce(
+        (result, [name, value]) =>
+          result.replaceAll(`{{${name}}}`, String(value)),
+        key
+      ),
   }),
 }))
 
@@ -51,7 +56,7 @@ afterEach(() => {
 const purchaseVersion: PurchasePriceVersion = {
   id: 7,
   channel_model_id: 31,
-  official_price_version_id: 4,
+  official_price_version_id: undefined,
   pricing_mode: 'official_ratio',
   billing_mode: 'token',
   price_structure: 'flat',
@@ -108,6 +113,7 @@ const officialVersion: OfficialPriceVersion = {
 const videoPurchaseVersion: PurchasePriceVersion = {
   ...purchaseVersion,
   id: 8,
+  official_price_version_id: 4,
   billing_mode: 'video_duration',
   price_structure: 'expression',
   price_components: JSON.stringify({
@@ -251,6 +257,71 @@ describe('retail percentage inputs', () => {
     expect(apiMocks.createRetailDraft).not.toHaveBeenCalled()
   })
 
+  test('blocks saving when the referenced official price is unavailable', () => {
+    const queryClient = new QueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RetailPricePanel
+          channelModelId={31}
+          officialVersions={[]}
+          purchaseVersions={[videoPurchaseVersion]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText('Purchase Version'), {
+      target: { value: '8' },
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Official price unavailable'
+    )
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled()
+  })
+
+  test('blocks saving when the selling factor exceeds the supported maximum', () => {
+    const queryClient = new QueryClient()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RetailPricePanel
+          channelModelId={31}
+          officialVersions={[]}
+          purchaseVersions={[purchaseVersion]}
+          versions={[]}
+          isPublishing={false}
+          isSuspending={false}
+          isDeleting={false}
+          onPublish={vi.fn()}
+          onSuspend={vi.fn()}
+          onDelete={vi.fn()}
+          onCreated={vi.fn().mockResolvedValue(undefined)}
+        />
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText('Purchase Version'), {
+      target: { value: '7' },
+    })
+    fireEvent.change(screen.getByLabelText('Target Margin (TM)'), {
+      target: { value: '99.99999' },
+    })
+
+    expect(
+      screen.getByText('Selling factor exceeds the supported maximum.')
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled()
+  })
+
   test('previews rule-based video retail prices instead of empty token fields', () => {
     const queryClient = new QueryClient()
 
@@ -279,9 +350,17 @@ describe('retail percentage inputs', () => {
     expect(screen.getByText('Selling Factor: 1.12')).toHaveClass(
       'text-emerald-600'
     )
+    expect(
+      screen.getByText(/Purchase Discount: 6\.5\/10/)
+    ).toBeVisible()
+    expect(screen.getByText('Retail Markup: 11.11%')).toBeVisible()
+    expect(screen.getByText('Below official price')).toBeVisible()
     expect(screen.getByText('480p')).toBeVisible()
     expect(
       screen.getByText('Official Price: 0.04 USD / 1 second')
+    ).toBeVisible()
+    expect(
+      screen.getByText('Purchase Price: 0.024 USD / 1 second')
     ).toBeVisible()
     expect(
       screen.getByText('Retail Price: 0.02667 USD / 1 second')
@@ -315,6 +394,7 @@ describe('retail percentage inputs', () => {
     })
 
     expect(screen.getByText('Image Input / 1M tokens')).toBeVisible()
+    expect(screen.getByText('Purchase Price: 8 USD')).toBeVisible()
     expect(screen.getByText('Retail Price: 8.88889 USD')).toBeVisible()
     expect(screen.getByText('Image Output / 1M tokens')).toBeVisible()
     expect(screen.getByText('Retail Price: 33.33334 USD')).toBeVisible()

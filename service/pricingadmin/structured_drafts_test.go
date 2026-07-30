@@ -226,19 +226,19 @@ func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {
 	retail, err := CreateRetailDraft(RetailDraftInput{
 		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
 		TotalVariableCostRate: "0.1", EffectiveTaxRate: "0.1",
-		TargetNetMargin: "0.2", MinimumMarginRate: "0.1",
+		TargetNetMargin: "0.05", MinimumMarginRate: "0.01",
 	}, 3)
 	require.NoError(t, err)
 	updatedRetail, err := UpdateRetailDraft(retail.Id, RetailDraftInput{
 		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
 		TotalVariableCostRate: "0.12", EffectiveTaxRate: "0.1",
-		TargetNetMargin: "0.25", MinimumMarginRate: "0.15", Remark: "approved",
+		TargetNetMargin: "0.06", MinimumMarginRate: "0.02", Remark: "approved",
 		ExpectedUpdatedAt: retail.UpdatedAt,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, retail.Id, updatedRetail.Id)
 	assert.Equal(t, retail.Version, updatedRetail.Version)
-	assert.Equal(t, "0.25", updatedRetail.TargetNetMargin)
+	assert.Equal(t, "0.06", updatedRetail.TargetNetMargin)
 	assert.Equal(t, "approved", updatedRetail.Remark)
 }
 
@@ -264,6 +264,34 @@ func TestPublishRetailDraftRejectsMarginBelowConfiguredFloor(t *testing.T) {
 
 	err = PublishRetailPriceVersion(retail.Id)
 	require.ErrorContains(t, err, "does not meet the configured minimum margin")
+}
+
+func TestCreateRetailDraftRejectsPriceEqualToOfficial(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 28, ModelName: "retail-cap"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 38, ChannelId: 48, ModelId: 28, UpstreamModelName: "retail-cap",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 28, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 38, OfficialPriceVersionId: &official.Id,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+	}, 1)
+	require.NoError(t, err)
+
+	_, err = CreateRetailDraft(RetailDraftInput{
+		ChannelModelId: 38, PurchasePriceVersionId: purchase.Id,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.5", MinimumMarginRate: "0.1",
+	}, 1)
+	require.ErrorContains(t, err, "retail price must be lower than the official price")
 }
 
 func TestComponentDiscountRequiresEveryPricedOfficialComponent(t *testing.T) {
@@ -332,11 +360,11 @@ func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
 	retail, err := CreateRetailDraft(RetailDraftInput{
 		ChannelModelId: 33, PurchasePriceVersionId: purchase.Id,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.5", MinimumMarginRate: "0.1",
+		TargetNetMargin: "0.4", MinimumMarginRate: "0.1",
 	}, 1)
 	require.NoError(t, err)
-	assert.Contains(t, retail.PriceComponents, `"image_input_unit_price":"2"`)
-	assert.Contains(t, retail.PriceComponents, `"audio_output_unit_price":"12"`)
+	assert.Contains(t, retail.PriceComponents, `"image_input_unit_price":"1.66667"`)
+	assert.Contains(t, retail.PriceComponents, `"audio_output_unit_price":"10.00001"`)
 }
 
 func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.T) {
@@ -371,11 +399,11 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 	retail, err := CreateRetailDraft(RetailDraftInput{
 		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.5", MinimumMarginRate: "0.4",
+		TargetNetMargin: "0.4", MinimumMarginRate: "0.3",
 	}, 1)
 	require.NoError(t, err)
 	assert.Equal(t, "tiered", retail.PriceStructure)
-	assert.Contains(t, retail.RetailBillingExpr, "* 2")
+	assert.Contains(t, retail.RetailBillingExpr, "* 1.666666")
 
 	result, err := SimulatePrice(PriceSimulationInput{
 		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,
@@ -383,7 +411,7 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "0.4", result.PurchaseCost)
-	assert.Equal(t, "0.8", result.RetailAmount)
+	assert.Equal(t, "0.6666666666666667", result.RetailAmount)
 }
 
 func TestExpressionRetailPriceComponentsRoundUpToFiveDecimals(t *testing.T) {
@@ -443,11 +471,11 @@ func TestStructuredDraftBuildsFlatImagePurchaseAndRetailChain(t *testing.T) {
 	retail, err := CreateRetailDraft(RetailDraftInput{
 		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.5", MinimumMarginRate: "0.4",
+		TargetNetMargin: "0.4", MinimumMarginRate: "0.3",
 	}, 1)
 	require.NoError(t, err)
 	assert.Equal(t, "image", retail.BillingMode)
-	assert.Contains(t, retail.PriceComponents, `"unit_price":"0.04000"`)
+	assert.Contains(t, retail.PriceComponents, `"unit_price":"0.03334"`)
 
 	result, err := SimulatePrice(PriceSimulationInput{
 		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,
@@ -455,7 +483,7 @@ func TestStructuredDraftBuildsFlatImagePurchaseAndRetailChain(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "0.04", result.PurchaseCost)
-	assert.Equal(t, "0.08", result.RetailAmount)
+	assert.Equal(t, "0.06666666666666667", result.RetailAmount)
 }
 
 func TestComponentDiscountRejectsNonTokenOfficialPrice(t *testing.T) {

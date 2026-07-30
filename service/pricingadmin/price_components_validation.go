@@ -86,6 +86,13 @@ func validateBusinessPriceRules(
 		if err != nil || unitPrice.IsNegative() {
 			return fmt.Errorf("price rule %d unit_price must be a non-negative decimal", position)
 		}
+		if unitPrice.GreaterThan(maxPricingUnitPrice) {
+			return fmt.Errorf(
+				"price rule %d unit_price must not exceed %s USD",
+				position,
+				maxPricingUnitPrice,
+			)
+		}
 		if strings.TrimSpace(rule.UpperBound) != "" {
 			upperBound, err := decimal.NewFromString(strings.TrimSpace(rule.UpperBound))
 			if err != nil || upperBound.IsNegative() {

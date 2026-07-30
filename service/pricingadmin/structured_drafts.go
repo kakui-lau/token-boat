@@ -318,6 +318,13 @@ func UpdateRetailDraft(id int, input RetailDraftInput) (model.ChannelModelRetail
 		if current.ChannelModelId != replacement.ChannelModelId {
 			return errors.New("retail price draft channel model cannot be changed")
 		}
+		var purchase model.ChannelModelPurchasePriceVersion
+		if err := tx.First(&purchase, replacement.PurchasePriceVersionId).Error; err != nil {
+			return err
+		}
+		if err := validateRetailPriceLimits(tx, purchase, replacement); err != nil {
+			return err
+		}
 		replacement.RetailExprHash = billingexpr.ExprHashString(replacement.RetailBillingExpr)
 		updatedAt := common.GetTimestamp()
 		if updatedAt <= current.UpdatedAt {
@@ -880,6 +887,9 @@ func normalizeOptionalPrice(name string, value string) (string, error) {
 	if number.IsNegative() {
 		return "", fmt.Errorf("%s cannot be negative", name)
 	}
+	if number.GreaterThan(maxPricingUnitPrice) {
+		return "", fmt.Errorf("%s must not exceed %s USD", name, maxPricingUnitPrice)
+	}
 	return number.String(), nil
 }
 
@@ -932,7 +942,13 @@ func scalePriceComponents(
 			if err != nil {
 				return nil, fmt.Errorf("%s is invalid: %w", key, err)
 			}
+			if number.IsNegative() {
+				return nil, fmt.Errorf("%s cannot be negative", key)
+			}
 			scaled := number.Mul(factor)
+			if scaled.GreaterThan(maxPricingUnitPrice) {
+				return nil, fmt.Errorf("%s must not exceed %s USD", key, maxPricingUnitPrice)
+			}
 			if roundRetailPrice {
 				scaled = scaled.RoundCeil(retailSellingPriceDecimalPlaces)
 				return scaled.StringFixed(retailSellingPriceDecimalPlaces), nil

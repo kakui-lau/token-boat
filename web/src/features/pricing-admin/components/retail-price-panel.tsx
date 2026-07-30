@@ -44,6 +44,7 @@ import {
   percentageToStoredRate,
   storedRateToPercentage,
 } from '../lib/rate-format'
+import { formatPurchaseDiscount } from '../lib/purchase-discount'
 import { retailPriceExceedsOfficial } from '../lib/retail-price-cap'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
 import type {
@@ -141,9 +142,12 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     }
     const denominator = (1 - vcr) * (1 - tax) - margin
     if (denominator <= 0) {
-      return { valid: false as const }
+      return { valid: false as const, reason: 'denominator' as const }
     }
     const factor = (1 - tax) / denominator
+    if (factor > 1_000_000) {
+      return { valid: false as const, reason: 'factor' as const }
+    }
     const scale = (value: string) => {
       if (value.trim() === '') {
         return '—'
@@ -171,6 +175,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
               rule.component ||
               'Price rule',
             price: scale(rule.unit_price || ''),
+            purchasePrice: rule.unit_price || '—',
             officialPrice:
               officialRules.find(
                 (officialRule) =>
@@ -208,6 +213,7 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
           key,
           label: priceComponentLabels[key] || key,
           price: scale(value),
+          purchasePrice: value,
           officialPrice: String(officialComponents[key] ?? '') || '—',
         },
       ]
@@ -235,6 +241,9 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
       selectedOfficial,
       preview.factor
     )
+  const officialPriceUnavailable = Boolean(
+    selectedPurchase?.official_price_version_id && !selectedOfficial
+  )
   let previewPriceDetails: ReactNode = null
   if (preview?.valid && preview.rules.length > 0) {
     previewPriceDetails = (
@@ -252,6 +261,10 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             <span className='space-y-1 text-right font-mono'>
               <span className='block'>
                 {t('Official Price')}: {rule.officialPrice} {preview.currency}
+                {rule.unit ? ` / ${rule.unitSize} ${t(rule.unit)}` : ''}
+              </span>
+              <span className='block'>
+                {t('Purchase Price')}: {rule.purchasePrice} {preview.currency}
                 {rule.unit ? ` / ${rule.unitSize} ${t(rule.unit)}` : ''}
               </span>
               <span className='block'>
@@ -278,6 +291,10 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
                 {preview.currency}
               </span>
               <span className='block'>
+                {t('Purchase Price')}: {component.purchasePrice}{' '}
+                {preview.currency}
+              </span>
+              <span className='block'>
                 {t('Retail Price')}: {component.price} {preview.currency}
               </span>
             </span>
@@ -289,7 +306,9 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
     previewPriceDetails = (
       <p className='text-destructive text-sm'>
         {t(
-          'The configured costs, tax, and target margin produce an invalid retail denominator.'
+          preview.reason === 'factor'
+            ? 'Selling factor exceeds the supported maximum.'
+            : 'The configured costs, tax, and target margin produce an invalid retail denominator.'
         )}
       </p>
     )
@@ -467,13 +486,29 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
         </p>
         {preview ? (
           <div className='bg-muted/40 space-y-3 rounded-lg border p-3'>
-            <div className='flex items-center justify-between gap-3'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
               <p className='font-medium'>{t('Price Preview')}</p>
               {preview.valid ? (
-                <span className='text-emerald-600 text-xs dark:text-emerald-400'>
-                  {t('Selling Factor')}:{' '}
-                  {(Math.ceil(preview.factor * 100) / 100).toFixed(2)}
-                </span>
+                <div className='flex flex-wrap items-center justify-end gap-3 text-xs'>
+                  <span>
+                    {t('Purchase Discount')}:{' '}
+                    {formatPurchaseDiscount(
+                      selectedPurchase?.purchase_discount || '',
+                      t
+                    )}
+                  </span>
+                  <span>
+                    {t('Retail Markup')}:{' '}
+                    {((preview.factor - 1) * 100).toFixed(2)}%
+                  </span>
+                  {selectedOfficial && !exceedsOfficialPrice ? (
+                    <span>{t('Below official price')}</span>
+                  ) : null}
+                  <span className='text-emerald-600 dark:text-emerald-400'>
+                    {t('Selling Factor')}:{' '}
+                    {(Math.ceil(preview.factor * 100) / 100).toFixed(2)}
+                  </span>
+                </div>
               ) : null}
             </div>
             {previewPriceDetails}
@@ -495,12 +530,18 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
             {t('Retail price must be lower than the official price.')}
           </p>
         ) : null}
+        {officialPriceUnavailable ? (
+          <p className='text-destructive text-sm' role='alert'>
+            {t('Official price unavailable')}
+          </p>
+        ) : null}
         <Button
           type='submit'
           disabled={
             createMutation.isPending ||
             preview?.valid === false ||
             Boolean(exceedsOfficialPrice) ||
+            officialPriceUnavailable ||
             eligiblePurchaseVersions.length === 0
           }
         >

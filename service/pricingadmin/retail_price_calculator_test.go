@@ -32,3 +32,11 @@ func TestRetailPriceCalculatorRejectsNegativeProcurementCost(t *testing.T) {
 	_, err = calculator.CalculateSellingPrice(decimal.NewFromInt(-1))
 	require.ErrorContains(t, err, "cannot be negative")
 }
+
+func TestRetailPriceCalculatorRejectsExtremeSellingFactor(t *testing.T) {
+	calculator, err := NewRetailPriceCalculator("0", "0", "0.9999999")
+	require.NoError(t, err)
+
+	_, err = calculator.SellingFactor()
+	require.ErrorContains(t, err, "selling factor exceeds the supported maximum")
+}

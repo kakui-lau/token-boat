@@ -51,7 +51,11 @@ func (c RetailPriceCalculator) SellingFactor() (decimal.Decimal, error) {
 				"target margin must be lower than " + maximumTheoreticalMargin.String(),
 		)
 	}
-	return taxTerm.Div(denominator), nil
+	factor := taxTerm.Div(denominator)
+	if factor.GreaterThan(maxRetailFactor) {
+		return decimal.Zero, errors.New("retail selling factor exceeds the supported maximum")
+	}
+	return factor, nil
 }
 
 func (c RetailPriceCalculator) CalculateSellingPrice(

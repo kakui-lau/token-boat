@@ -330,6 +330,9 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 		) {
 			return errors.New("retail billing contract does not match purchase price")
 		}
+		if err := validateRetailPriceLimits(tx, purchase, *input); err != nil {
+			return err
+		}
 		var maxVersion int64
 		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
 			Where("channel_model_id = ?", input.ChannelModelId).
@@ -693,6 +696,9 @@ func PublishRetailPriceVersion(id int) error {
 		if err := validateRetailEconomics(version); err != nil {
 			return err
 		}
+		if err := validateRetailPriceLimits(tx, purchase, version); err != nil {
+			return err
+		}
 		targetMargin, _ := validateRate("target_net_margin", version.TargetNetMargin)
 		minimumMargin, _ := validateRate("minimum_margin_rate", version.MinimumMarginRate)
 		if minimumMargin.GreaterThan(targetMargin) {
@@ -957,6 +963,9 @@ func validatePositiveDecimal(name string, value string, required bool) error {
 	}
 	if number.IsNegative() || (required && number.IsZero()) {
 		return fmt.Errorf("%s must be positive", name)
+	}
+	if number.GreaterThan(maxPricingUnitPrice) {
+		return fmt.Errorf("%s must not exceed %s USD", name, maxPricingUnitPrice)
 	}
 	return nil
 }

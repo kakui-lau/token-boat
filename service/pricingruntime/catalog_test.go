@@ -487,7 +487,9 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 		1_000_000,
 		0,
 		hosttypes.GroupRatioInfo{GroupRatio: 1},
-		billingexpr.RequestInput{},
+		billingexpr.RequestInput{
+			Body: []byte(`{"prompt":"private audit prompt","quality":"hd"}`),
+		},
 		pricingengine.Usage{RequestCount: 1},
 	)
 	require.NoError(t, err)
@@ -500,6 +502,8 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	assert.Equal(t, 7, reserved.PurchasePriceVersionId)
 	assert.Equal(t, "token", reserved.BillingMode)
 	assert.Equal(t, int64(2*int(common.QuotaPerUnit)), reserved.ReservedQuota)
+	assert.NotContains(t, reserved.EstimatedUsage, "private audit prompt")
+	assert.Contains(t, reserved.EstimatedUsage, `"request_body":""`)
 
 	require.NoError(t, SettleRequestPricingSnapshot(info, &dto.Usage{
 		PromptTokens: 500_000,
@@ -511,6 +515,8 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	assert.Equal(t, "0.5", settled.PurchaseCost)
 	assert.Equal(t, "1", settled.RetailAmount)
 	assert.Equal(t, int64(common.QuotaPerUnit), settled.SettledQuota)
+	assert.NotContains(t, settled.ActualUsage, "private audit prompt")
+	assert.Contains(t, settled.ActualUsage, `"request_body":""`)
 }
 
 func TestPlanV2RouteOrdersByPurchaseCostBeforePriority(t *testing.T) {

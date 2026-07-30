@@ -230,12 +230,16 @@ func TestNewTaskBillingContextTreatsV2VideoUsageAsFixedAtSubmission(t *testing.T
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
 			EstimatedUsage: `{"request_count":1,"video_seconds":10}`,
 		},
+		BillingRequestInput: &billingexpr.RequestInput{
+			Body: []byte(`{"prompt":"private video prompt"}`),
+		},
 	}
 
 	bc := NewTaskBillingContext(info)
 
 	assert.True(t, bc.PerCallBilling)
 	assert.Nil(t, bc.TieredSnapshot)
+	assert.Nil(t, bc.TieredRequest)
 }
 
 func TestComputeTieredTaskQuotaUsesTotalWithoutDoubleCountingCompletion(t *testing.T) {

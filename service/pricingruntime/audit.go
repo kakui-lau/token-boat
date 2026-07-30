@@ -17,6 +17,19 @@ const (
 	PricingSnapshotStatusPending  = "pending"
 )
 
+func sanitizedPricingUsageJSON(rawUsage string) (string, error) {
+	var usage pricingengine.Usage
+	if err := common.UnmarshalJsonStr(rawUsage, &usage); err != nil {
+		return "", err
+	}
+	usage.RequestBody = ""
+	data, err := common.Marshal(usage)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 	if info == nil || info.DynamicPricingSnapshot == nil {
 		return nil
@@ -28,6 +41,12 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 	if info.RequestId == "" {
 		return errors.New("v2 pricing requires a request id")
 	}
+	estimatedUsage, err := sanitizedPricingUsageJSON(
+		info.DynamicPricingSnapshot.EstimatedUsage,
+	)
+	if err != nil {
+		return fmt.Errorf("sanitize estimated pricing usage: %w", err)
+	}
 	snapshot := model.RequestPricingSnapshot{
 		RequestId:              info.RequestId,
 		UserId:                 info.UserId,
@@ -36,7 +55,7 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		PurchasePriceVersionId: selected.PurchasePriceVersion,
 		RetailPriceVersionId:   selected.RetailPriceVersion,
 		BillingMode:            selected.BillingMode,
-		EstimatedUsage:         info.DynamicPricingSnapshot.EstimatedUsage,
+		EstimatedUsage:         estimatedUsage,
 		ReservedQuota:          int64(info.DynamicPricingSnapshot.ReservationQuota),
 		SettledQuota:           0,
 		PurchaseCost:           selected.EstimatedPurchaseUSD,
@@ -104,6 +123,7 @@ func SettleRequestPricingSnapshot(
 		markPricingSnapshotPending(info.RequestId)
 		return fmt.Errorf("evaluate settled retail price: %w", err)
 	}
+	actualUsage.RequestBody = ""
 	usageJSON, err := common.Marshal(actualUsage)
 	if err != nil {
 		markPricingSnapshotPending(info.RequestId)

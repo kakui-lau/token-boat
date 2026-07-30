@@ -186,6 +186,9 @@ func NewTaskBillingContext(info *relaycommon.RelayInfo) *model.TaskBillingContex
 	if !usesV2Pricing {
 		bc.TieredSnapshot = info.TieredBillingSnapshot
 	}
+	if usesV2Pricing {
+		return bc
+	}
 	if info.BillingRequestInput == nil {
 		return bc
 	}

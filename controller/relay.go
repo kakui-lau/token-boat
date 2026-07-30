@@ -672,6 +672,9 @@ func RelayTask(c *gin.Context) {
 		if taskErr != nil && relayInfo.Billing != nil && !relayInfo.UpstreamTaskAccepted {
 			relayInfo.Billing.Refund(c)
 		}
+		if taskErr != nil && relayInfo.DynamicPricingSnapshot != nil {
+			pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+		}
 	}()
 
 	retryParam := &service.RetryParam{
@@ -801,6 +804,8 @@ func RelayTask(c *gin.Context) {
 					pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
 					common.SysError("settle task pricing snapshot error: " + snapshotErr.Error())
 				}
+			} else if relayInfo.DynamicPricingSnapshot != nil {
+				pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
 			}
 			service.LogTaskConsumption(c, relayInfo, chargedQuota)
 			if response, exists := c.Get("deferred_task_response"); exists {

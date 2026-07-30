@@ -52,6 +52,33 @@ export type PricingRolloutPolicy = {
   shadow_enabled: boolean
 }
 
+export type RequestPricingSnapshot = {
+  id: number
+  request_id: string
+  model_name: string
+  channel_id: number
+  channel_name: string
+  billing_mode: string
+  reserved_quota: number
+  settled_quota: number
+  purchase_cost: string
+  retail_amount: string
+  currency: string
+  status: 'reserved' | 'pending' | 'settled'
+  updated_at: number
+}
+
+export type RequestPricingSnapshotListResponse = {
+  success: boolean
+  message?: string
+  data: {
+    items: RequestPricingSnapshot[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
 export type ImportResult = {
   created: number
   updated?: number

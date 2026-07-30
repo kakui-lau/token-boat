@@ -57,6 +57,7 @@ import {
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
 import { PriceEditorSheet } from './components/price-editor-sheet'
+import { PricingReconciliationPanel } from './components/pricing-reconciliation-panel'
 import { PricingRolloutControl } from './components/pricing-rollout-control'
 import type { ChannelModel } from './types'
 
@@ -162,6 +163,7 @@ export function PricingAdmin() {
               )}
             </AlertDescription>
           </Alert>
+          <PricingReconciliationPanel />
 
           <FieldGroup className='flex-row flex-wrap items-end gap-3'>
             <Field className='max-w-md'>

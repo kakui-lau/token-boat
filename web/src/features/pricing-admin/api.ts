@@ -34,6 +34,7 @@ import type {
   PublishLatestOfficialPriceDraftsResponse,
   PurchasePriceVersion,
   RetailPriceVersion,
+  RequestPricingSnapshotListResponse,
 } from './types'
 
 export async function getPricingRolloutPolicy(): Promise<
@@ -72,6 +73,20 @@ export async function getChannelModels(params: {
     params,
   })
   return response.data
+}
+
+export async function getRequestPricingSnapshots(params: {
+  status?: 'reserved' | 'pending' | 'settled'
+  billing_mode?: string
+  keyword?: string
+  page?: number
+  page_size?: number
+}): Promise<RequestPricingSnapshotListResponse> {
+  const response = await api.get(
+    '/api/pricing-admin/request-pricing-snapshots',
+    { params }
+  )
+  return requirePricingSuccess(response.data)
 }
 
 export async function syncLegacyChannelModels(): Promise<ImportResponse> {

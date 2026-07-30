@@ -28,12 +28,27 @@ import type {
   OfficialPriceOverview,
   OfficialPriceVersion,
   PriceSimulationResult,
+  PricingRolloutPolicy,
   PricingCatalogOptionsResponse,
   PriceVersionResponse,
   PublishLatestOfficialPriceDraftsResponse,
   PurchasePriceVersion,
   RetailPriceVersion,
 } from './types'
+
+export async function getPricingRolloutPolicy(): Promise<
+  PriceVersionResponse<PricingRolloutPolicy>
+> {
+  const response = await api.get('/api/pricing-admin/rollout-policy')
+  return requirePricingSuccess(response.data)
+}
+
+export async function updatePricingRolloutPolicy(
+  input: PricingRolloutPolicy
+): Promise<PriceVersionResponse<PricingRolloutPolicy>> {
+  const response = await api.put('/api/pricing-admin/rollout-policy', input)
+  return requirePricingSuccess(response.data)
+}
 
 function requirePricingSuccess<
   T extends { success: boolean; message?: string },

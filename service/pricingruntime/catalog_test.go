@@ -19,6 +19,12 @@ import (
 func setupRuntimeCatalogTestDB(t *testing.T) {
 	t.Helper()
 	originalDB := model.DB
+	common.OptionMapRWMutex.Lock()
+	originalOptions := common.OptionMap
+	common.OptionMap = map[string]string{
+		"PricingV2RolloutPercent": "100",
+	}
+	common.OptionMapRWMutex.Unlock()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
@@ -35,6 +41,9 @@ func setupRuntimeCatalogTestDB(t *testing.T) {
 	t.Cleanup(func() {
 		InvalidateCatalog()
 		model.DB = originalDB
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = originalOptions
+		common.OptionMapRWMutex.Unlock()
 	})
 }
 
@@ -90,6 +99,20 @@ func TestSetRuntimeModeRejectsIncompletePriceChain(t *testing.T) {
 	var stored model.ChannelModel
 	require.NoError(t, model.DB.First(&stored, 1).Error)
 	assert.Equal(t, RuntimeModeLegacy, stored.RuntimeMode)
+}
+
+func TestSetRuntimeModeRejectsMultimodalUntilUsageAdaptersAreIntegrated(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 9, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 9).
+		Update("billing_mode", "video_duration").Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 9).
+		Update("billing_mode", "video_duration").Error)
+
+	err := SetRuntimeMode(9, RuntimeModeV2)
+	require.ErrorContains(t, err, "token billing only")
 }
 
 func TestCatalogContainsOnlyValidatedV2Bundles(t *testing.T) {
@@ -266,4 +289,30 @@ func TestApplyV2RetailPricingPublishesActiveRetailExpression(t *testing.T) {
 	assert.Contains(t, result[0].BillingExpr, "p * 2")
 	assert.Equal(t, "v2_dynamic", result[0].PricingSource)
 	assert.Len(t, result[0].PricingVersion, 64)
+}
+
+func TestShadowComparisonDoesNotMutateActiveBillingSnapshot(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 13, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["PricingV2ShadowEnabled"] = "true"
+	common.OptionMapRWMutex.Unlock()
+	info := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
+
+	comparison, err := BuildShadowComparison(
+		info,
+		"default",
+		1_000_000,
+		0,
+		int(common.QuotaPerUnit),
+		1,
+		billingexpr.RequestInput{},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, comparison)
+	assert.Equal(t, int(common.QuotaPerUnit), comparison.LegacyReservationQuota)
+	assert.Equal(t, 2*int(common.QuotaPerUnit), comparison.V2ReservationQuota)
+	assert.Nil(t, info.TieredBillingSnapshot)
+	assert.Nil(t, info.DynamicPricingSnapshot)
 }

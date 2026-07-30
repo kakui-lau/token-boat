@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,87 @@ type pricingAdminCatalogOption struct {
 	Id                int    `json:"id"`
 	Name              string `json:"name"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
+}
+
+type pricingRolloutPolicyInput struct {
+	Percent       int      `json:"percent"`
+	Groups        []string `json:"groups"`
+	UserIds       []int    `json:"user_ids"`
+	ShadowEnabled bool     `json:"shadow_enabled"`
+}
+
+func AdminGetPricingRolloutPolicy(c *gin.Context) {
+	policy := pricingruntime.CurrentRolloutPolicy()
+	groups := make([]string, 0, len(policy.Groups))
+	for group := range policy.Groups {
+		groups = append(groups, group)
+	}
+	userIds := make([]int, 0, len(policy.UserIds))
+	for userId := range policy.UserIds {
+		userIds = append(userIds, userId)
+	}
+	sort.Strings(groups)
+	sort.Ints(userIds)
+	common.ApiSuccess(c, pricingRolloutPolicyInput{
+		Percent:       policy.Percent,
+		Groups:        groups,
+		UserIds:       userIds,
+		ShadowEnabled: policy.ShadowEnabled,
+	})
+}
+
+func AdminUpdatePricingRolloutPolicy(c *gin.Context) {
+	var input pricingRolloutPolicyInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if input.Percent < 0 || input.Percent > 100 {
+		common.ApiErrorMsg(c, "灰度比例必须在 0 到 100 之间")
+		return
+	}
+	groupSet := make(map[string]struct{}, len(input.Groups))
+	groups := make([]string, 0, len(input.Groups))
+	for _, group := range input.Groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		if _, exists := groupSet[group]; exists {
+			continue
+		}
+		groupSet[group] = struct{}{}
+		groups = append(groups, group)
+	}
+	userSet := make(map[int]struct{}, len(input.UserIds))
+	userIds := make([]string, 0, len(input.UserIds))
+	for _, userId := range input.UserIds {
+		if userId <= 0 {
+			common.ApiErrorMsg(c, "内部用户 ID 必须是正整数")
+			return
+		}
+		if _, exists := userSet[userId]; exists {
+			continue
+		}
+		userSet[userId] = struct{}{}
+		userIds = append(userIds, strconv.Itoa(userId))
+	}
+	sort.Strings(groups)
+	sort.Strings(userIds)
+	if err := model.UpdateOptionsBulk(map[string]string{
+		"PricingV2RolloutPercent": strconv.Itoa(input.Percent),
+		"PricingV2RolloutGroups":  strings.Join(groups, ","),
+		"PricingV2RolloutUserIds": strings.Join(userIds, ","),
+		"PricingV2ShadowEnabled":  strconv.FormatBool(input.ShadowEnabled),
+	}); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "pricing.rollout.update", map[string]interface{}{
+		"percent": input.Percent, "group_count": len(groups),
+		"user_count": len(userIds), "shadow_enabled": input.ShadowEnabled,
+	})
+	AdminGetPricingRolloutPolicy(c)
 }
 
 func AdminListPricingCatalogOptions(c *gin.Context) {

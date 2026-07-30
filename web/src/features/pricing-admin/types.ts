@@ -44,6 +44,13 @@ export type ChannelModelListResponse = {
   }
 }
 
+export type PricingRolloutPolicy = {
+  percent: number
+  groups: string[]
+  user_ids: number[]
+  shadow_enabled: boolean
+}
+
 export type ImportResult = {
   created: number
   updated?: number

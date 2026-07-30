@@ -1,0 +1,125 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import { afterEach, expect, test, vi } from 'vitest'
+
+import {
+  getPricingRolloutPolicy,
+  updatePricingRolloutPolicy,
+} from '../api'
+import { PricingRolloutControl } from '../components/pricing-rollout-control'
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}))
+
+vi.mock('../api', () => ({
+  getPricingRolloutPolicy: vi.fn(),
+  updatePricingRolloutPolicy: vi.fn(),
+}))
+
+afterEach(cleanup)
+
+test('loads and submits rollout percentage, groups, users, and shadow mode', async () => {
+  vi.mocked(getPricingRolloutPolicy).mockResolvedValue({
+    success: true,
+    data: {
+      percent: 10,
+      groups: ['vip'],
+      user_ids: [42],
+      shadow_enabled: false,
+    },
+  })
+  vi.mocked(updatePricingRolloutPolicy).mockResolvedValue({
+    success: true,
+    data: {
+      percent: 50,
+      groups: ['vip', 'internal'],
+      user_ids: [42],
+      shadow_enabled: true,
+    },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingRolloutControl />
+    </QueryClientProvider>
+  )
+
+  await waitFor(() =>
+    expect(screen.getByLabelText('Traffic Percentage')).toHaveValue(10)
+  )
+  fireEvent.change(screen.getByLabelText('Traffic Percentage'), {
+    target: { value: '50' },
+  })
+  fireEvent.change(screen.getByLabelText('Groups'), {
+    target: { value: 'vip, internal' },
+  })
+  fireEvent.click(
+    screen.getByRole('switch', { name: 'Shadow comparison only' })
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  await waitFor(() =>
+    expect(updatePricingRolloutPolicy).toHaveBeenCalledWith({
+      percent: 50,
+      groups: ['vip', 'internal'],
+      user_ids: [42],
+      shadow_enabled: true,
+    })
+  )
+})
+
+test('disables saving when traffic percentage is outside the supported range', async () => {
+  vi.mocked(getPricingRolloutPolicy).mockResolvedValue({
+    success: true,
+    data: {
+      percent: 101,
+      groups: [],
+      user_ids: [],
+      shadow_enabled: false,
+    },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingRolloutControl />
+    </QueryClientProvider>
+  )
+
+  await waitFor(() =>
+    expect(screen.getByLabelText('Traffic Percentage')).toHaveValue(101)
+  )
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  )
+})

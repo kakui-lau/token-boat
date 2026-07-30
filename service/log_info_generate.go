@@ -96,6 +96,19 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
 		adminInfo["estimated_retail_usd"] = snapshot.Selected.EstimatedRetailUSD
 	}
+	if comparison := relayInfo.PricingShadowComparison; comparison != nil {
+		adminInfo, _ := other["admin_info"].(map[string]interface{})
+		if adminInfo == nil {
+			adminInfo = make(map[string]interface{})
+			other["admin_info"] = adminInfo
+		}
+		adminInfo["pricing_v2_shadow"] = map[string]interface{}{
+			"legacy_reservation_quota": comparison.LegacyReservationQuota,
+			"v2_reservation_quota":     comparison.V2ReservationQuota,
+			"delta_quota":              comparison.DeltaQuota,
+			"delta_rate":               comparison.DeltaRate,
+		}
+	}
 
 	if relayInfo.ChannelMeta == nil || relayInfo.ChannelType != constant.ChannelTypeOpenRouter || usage == nil {
 		return

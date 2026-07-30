@@ -102,7 +102,12 @@ func Distribute() func(c *gin.Context) {
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
 				}
-				if usingGroup != "auto" {
+				if usingGroup != "auto" && pricingruntime.ShouldUseV2(
+					c.GetInt("id"),
+					usingGroup,
+					c.GetString(common.RequestIdKey),
+					modelRequest.Model,
+				) {
 					routeCandidates, routeErr := pricingruntime.PlanV2Route(
 						usingGroup,
 						modelRequest.Model,

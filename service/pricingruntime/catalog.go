@@ -107,6 +107,11 @@ func ValidateV2Activation(channelModelId int) (ActivePriceBundle, error) {
 	if bundle.Purchase.Currency != "USD" || bundle.Retail.Currency != "USD" {
 		return ActivePriceBundle{}, errors.New("v2 runtime requires USD purchase and retail prices")
 	}
+	if bundle.Purchase.BillingMode != "token" || bundle.Retail.BillingMode != "token" {
+		return ActivePriceBundle{}, errors.New(
+			"v2 runtime currently supports token billing only; keep multimodal pricing on legacy runtime",
+		)
+	}
 	if _, err := billingexpr.CompileFromCache(bundle.Purchase.PurchaseBillingExpr); err != nil {
 		return ActivePriceBundle{}, fmt.Errorf("compile purchase price expression: %w", err)
 	}

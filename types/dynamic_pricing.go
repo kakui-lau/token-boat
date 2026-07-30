@@ -25,3 +25,10 @@ type DynamicPricingSnapshot struct {
 	EstimatedUsage            string
 	Selected                  *DynamicPriceCandidate
 }
+
+type PricingShadowComparison struct {
+	LegacyReservationQuota int
+	V2ReservationQuota     int
+	DeltaQuota             int
+	DeltaRate              float64
+}

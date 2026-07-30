@@ -22,6 +22,14 @@ func PrepareRelayPricing(
 	groupRatioInfo hosttypes.GroupRatioInfo,
 	requestInput billingexpr.RequestInput,
 ) (hosttypes.PriceData, bool, error) {
+	if !ShouldUseV2(
+		info.UserId,
+		group,
+		info.RequestId,
+		info.OriginModelName,
+	) {
+		return hosttypes.PriceData{}, false, nil
+	}
 	bundles := GetCandidateBundles(group, info.OriginModelName)
 	if len(bundles) == 0 {
 		return hosttypes.PriceData{}, false, nil

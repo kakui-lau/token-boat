@@ -25,6 +25,7 @@ type DynamicPricingSnapshot struct {
 	GroupRatio                float64
 	EstimatedUsage            string
 	Selected                  *DynamicPriceCandidate
+	AuditCreated              bool
 }
 
 type PricingShadowComparison struct {

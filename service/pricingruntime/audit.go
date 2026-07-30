@@ -44,7 +44,11 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		Currency:               selected.Currency,
 		Status:                 PricingSnapshotStatusReserved,
 	}
-	return model.DB.Create(&snapshot).Error
+	if err := model.DB.Create(&snapshot).Error; err != nil {
+		return err
+	}
+	info.DynamicPricingSnapshot.AuditCreated = true
+	return nil
 }
 
 func SettleRequestPricingSnapshot(

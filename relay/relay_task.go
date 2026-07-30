@@ -19,6 +19,9 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingengine"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -192,18 +195,41 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		info.PublicTaskID = model.GenerateTaskID()
 	}
 
-	// 4. 价格计算：基础模型价格
+	// 4. 价格计算：V2 候选先收集安全的业务用量；旧版仍先解析基础价格，
+	// 因为旧版适配器会在基础价格之上追加时长和分辨率倍率。
 	info.OriginModelName = modelName
-	priceData, err := helper.ModelPriceHelperTask(c, info)
-	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+	v2CandidateSelected := info.DynamicPricingSnapshot != nil
+	if !v2CandidateSelected && pricingruntime.ShouldUseV2(
+		info.UserId,
+		info.UsingGroup,
+		info.RequestId,
+		info.OriginModelName,
+	) {
+		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
+			if bundle.ChannelModel.ChannelId == info.ChannelId {
+				v2CandidateSelected = true
+				break
+			}
+		}
 	}
-	info.PriceData = priceData
+	if v2CandidateSelected {
+		if info.DynamicPricingSnapshot == nil {
+			info.PriceData = hosttypes.PriceData{
+				GroupRatioInfo: helper.HandleGroupRatio(c, info),
+			}
+		}
+	} else {
+		priceData, priceErr := helper.ModelPriceHelperTask(c, info)
+		if priceErr != nil {
+			return nil, service.TaskErrorWrapper(priceErr, "model_price_error", http.StatusBadRequest)
+		}
+		info.PriceData = priceData
+	}
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
-	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
-	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if info.TieredBillingSnapshot == nil {
+	//    旧版基础价格和 V2 空价格容器都已就绪；ResolveOriginTask 可能已在
+	//    remix 路径中预设 OtherRatios，此处合并。
+	if info.DynamicPricingSnapshot == nil && info.TieredBillingSnapshot == nil {
 		if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
 			for k, v := range estimatedRatios {
 				info.PriceData.AddOtherRatio(k, v)
@@ -211,8 +237,75 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
+	usesV2Pricing := info.DynamicPricingSnapshot != nil
+	if info.DynamicPricingSnapshot != nil {
+		if err := pricingruntime.BindSelectedChannel(info, info.ChannelId); err != nil {
+			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+		}
+		frozenRatios := info.PriceData.OtherRatios()
+		info.PriceData = hosttypes.PriceData{
+			GroupRatioInfo:    helper.HandleGroupRatio(c, info),
+			Quota:             info.DynamicPricingSnapshot.ReservationQuota,
+			QuotaToPreConsume: info.DynamicPricingSnapshot.ReservationQuota,
+		}
+		for name, ratio := range frozenRatios {
+			info.PriceData.AddOtherRatio(name, ratio)
+		}
+	} else {
+		seconds := info.PriceData.OtherRatios()["seconds"]
+		if seconds > 0 {
+			if seconds > relaycommon.MaxTaskDurationSeconds {
+				return nil, service.TaskErrorWrapperLocal(
+					fmt.Errorf("video duration exceeds %d seconds", relaycommon.MaxTaskDurationSeconds),
+					"invalid_request",
+					http.StatusBadRequest,
+				)
+			}
+			requestInput, requestErr := helper.ResolveIncomingBillingExprRequestInput(c, info)
+			if requestErr != nil {
+				return nil, service.TaskErrorWrapper(requestErr, "model_price_error", http.StatusBadRequest)
+			}
+			v2PriceData, ok, pricingErr := pricingruntime.PrepareRelayPricing(
+				info,
+				info.UsingGroup,
+				info.ChannelId,
+				0,
+				0,
+				helper.HandleGroupRatio(c, info),
+				requestInput,
+				pricingengine.Usage{
+					RequestCount: 1,
+					VideoSeconds: seconds,
+				},
+			)
+			if pricingErr != nil {
+				return nil, service.TaskErrorWrapper(pricingErr, "model_price_error", http.StatusBadRequest)
+			}
+			if ok {
+				usesV2Pricing = true
+				estimatedRatios := info.PriceData.OtherRatios()
+				info.PriceData = v2PriceData
+				info.PriceData.Quota = v2PriceData.QuotaToPreConsume
+				for name, ratio := range estimatedRatios {
+					info.PriceData.AddOtherRatio(name, ratio)
+				}
+			}
+		}
+	}
+	if v2CandidateSelected && !usesV2Pricing {
+		estimatedRatios := info.PriceData.OtherRatios()
+		legacyPriceData, legacyErr := helper.ModelPriceHelperTask(c, info)
+		if legacyErr != nil {
+			return nil, service.TaskErrorWrapper(legacyErr, "model_price_error", http.StatusBadRequest)
+		}
+		for name, ratio := range estimatedRatios {
+			legacyPriceData.AddOtherRatio(name, ratio)
+		}
+		info.PriceData = legacyPriceData
+	}
+
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
+	if !usesV2Pricing && !common.StringsContains(constant.TaskPricePatches, modelName) {
 		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
 		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
 		info.PriceData.Quota = quota
@@ -220,10 +313,25 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
-	if info.Billing == nil && !info.PriceData.FreeModel {
+	firstPreConsume := info.Billing == nil
+	if firstPreConsume && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
 		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
+		}
+	}
+	if firstPreConsume &&
+		info.DynamicPricingSnapshot != nil &&
+		!info.DynamicPricingSnapshot.AuditCreated {
+		if snapshotErr := pricingruntime.CreateRequestPricingSnapshot(info); snapshotErr != nil {
+			if info.Billing != nil {
+				info.Billing.Refund(c)
+			}
+			return nil, service.TaskErrorWrapper(
+				snapshotErr,
+				"create_pricing_snapshot_failed",
+				http.StatusInternalServerError,
+			)
 		}
 	}
 
@@ -270,7 +378,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); info.TieredBillingSnapshot == nil && len(adjustedRatios) > 0 {
+	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); !usesV2Pricing && info.TieredBillingSnapshot == nil && len(adjustedRatios) > 0 {
 		if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
 			// 基于调整后的 ratios 重新计算 quota
 			finalQuota = adjustedQuota

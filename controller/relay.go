@@ -717,6 +717,9 @@ func RelayTask(c *gin.Context) {
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
+			if relayInfo.DynamicPricingSnapshot != nil {
+				pricingruntime.RecordChannelSuccess(channel.Id)
+			}
 			break
 		}
 
@@ -725,6 +728,9 @@ func RelayTask(c *gin.Context) {
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+		}
+		if relayInfo.DynamicPricingSnapshot != nil {
+			pricingruntime.RecordChannelFailure(channel.Id, taskErr.StatusCode)
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
@@ -763,7 +769,9 @@ func RelayTask(c *gin.Context) {
 		}
 		if taskErr == nil {
 			chargedQuota := result.Quota
+			initialSettlementCompleted := true
 			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+				initialSettlementCompleted = false
 				common.SysError("settle task billing error: " + settleErr.Error())
 				chargedQuota = relayInfo.FinalPreConsumedQuota
 				if markErr := model.UpdateTaskInitialSettlement(
@@ -783,6 +791,16 @@ func RelayTask(c *gin.Context) {
 				"",
 			); markErr != nil {
 				common.SysError("mark initial task settlement completed error: " + markErr.Error())
+			}
+			if initialSettlementCompleted && relayInfo.DynamicPricingSnapshot != nil {
+				if snapshotErr := pricingruntime.SettleRequestPricingSnapshot(
+					relayInfo,
+					&dto.Usage{},
+					chargedQuota,
+				); snapshotErr != nil {
+					pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+					common.SysError("settle task pricing snapshot error: " + snapshotErr.Error())
+				}
 			}
 			service.LogTaskConsumption(c, relayInfo, chargedQuota)
 			if response, exists := c.Get("deferred_task_response"); exists {

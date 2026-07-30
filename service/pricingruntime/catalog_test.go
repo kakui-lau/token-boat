@@ -101,7 +101,7 @@ func TestSetRuntimeModeRejectsIncompletePriceChain(t *testing.T) {
 	assert.Equal(t, RuntimeModeLegacy, stored.RuntimeMode)
 }
 
-func TestSetRuntimeModeRejectsMultimodalUntilUsageAdaptersAreIntegrated(t *testing.T) {
+func TestSetRuntimeModeAllowsVideoDurationPricing(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 9, RuntimeModeLegacy)
 	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
@@ -112,7 +112,65 @@ func TestSetRuntimeModeRejectsMultimodalUntilUsageAdaptersAreIntegrated(t *testi
 		Update("billing_mode", "video_duration").Error)
 
 	err := SetRuntimeMode(9, RuntimeModeV2)
-	require.ErrorContains(t, err, "keep video duration pricing on legacy")
+	require.NoError(t, err)
+
+	var stored model.ChannelModel
+	require.NoError(t, model.DB.First(&stored, 9).Error)
+	assert.Equal(t, RuntimeModeV2, stored.RuntimeMode)
+}
+
+func TestPrepareRelayPricingRequiresVideoDurationUsage(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 9, RuntimeModeV2)
+	purchaseExpr := `v2:tier("video", video_s * 0.04)`
+	retailExpr := `v2:tier("video", video_s * 0.08)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 9).
+		Updates(map[string]any{
+			"billing_mode":          "video_duration",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 9).
+		Updates(map[string]any{
+			"billing_mode":        "video_duration",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	info := &relaycommon.RelayInfo{
+		RequestId: "video-duration-missing",
+		UserId:    9, OriginModelName: "runtime-model",
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		9,
+		0,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	info.RequestId = "video-duration-valid"
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		9,
+		0,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1, VideoSeconds: 10},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, int(0.8*common.QuotaPerUnit), priceData.QuotaToPreConsume)
 }
 
 func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) {

@@ -220,6 +220,24 @@ func TestNewTaskBillingContextFreezesExpressionAndRedactsSecrets(t *testing.T) {
 	assert.JSONEq(t, `{"metadata":{"resolution":"1080p"}}`, string(bc.TieredRequest.Body))
 }
 
+func TestNewTaskBillingContextTreatsV2VideoUsageAsFixedAtSubmission(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "video-model",
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode: "tiered_expr",
+			ExprString:  `v2:tier("video", video_s * 0.08)`,
+		},
+		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
+			EstimatedUsage: `{"request_count":1,"video_seconds":10}`,
+		},
+	}
+
+	bc := NewTaskBillingContext(info)
+
+	assert.True(t, bc.PerCallBilling)
+	assert.Nil(t, bc.TieredSnapshot)
+}
+
 func TestComputeTieredTaskQuotaUsesTotalWithoutDoubleCountingCompletion(t *testing.T) {
 	task := &model.Task{PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
 		TieredSnapshot: &billingexpr.BillingSnapshot{

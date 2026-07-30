@@ -45,15 +45,20 @@ func PrepareRelayPricing(
 	if !selectedIsV2 {
 		return hosttypes.PriceData{}, false, nil
 	}
-	if maxCompletionTokens <= 0 && groupRatioInfo.GroupRatio != 0 {
+	billingMode := bundles[0].Purchase.BillingMode
+	if maxCompletionTokens <= 0 &&
+		groupRatioInfo.GroupRatio != 0 &&
+		billingMode == "token" {
 		maxCompletionTokens = defaultEstimatedCompletionTokens
 	}
 	usage := businessUsage
 	usage.PromptTokens = float64(promptTokens)
 	usage.CompletionTokens = float64(maxCompletionTokens)
 	usage.RequestBody = string(requestInput.Body)
-	if bundles[0].Purchase.BillingMode == "audio_duration" &&
-		usage.AudioSeconds <= 0 {
+	if billingMode == "audio_duration" && usage.AudioSeconds <= 0 {
+		return hosttypes.PriceData{}, false, nil
+	}
+	if billingMode == "video_duration" && usage.VideoSeconds <= 0 {
 		return hosttypes.PriceData{}, false, nil
 	}
 	estimatedUsageJSON, err := common.Marshal(usage)

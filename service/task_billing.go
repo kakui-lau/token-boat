@@ -174,14 +174,17 @@ func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData 
 // task. Sensitive credentials are deliberately excluded from the persisted
 // request headers.
 func NewTaskBillingContext(info *relaycommon.RelayInfo) *model.TaskBillingContext {
+	usesV2Pricing := info.DynamicPricingSnapshot != nil
 	bc := &model.TaskBillingContext{
 		ModelPrice:      info.PriceData.ModelPrice,
 		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
 		ModelRatio:      info.PriceData.ModelRatio,
 		OtherRatios:     info.PriceData.OtherRatios(),
 		OriginModelName: info.OriginModelName,
-		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
-		TieredSnapshot:  info.TieredBillingSnapshot,
+		PerCallBilling:  usesV2Pricing || common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
+	}
+	if !usesV2Pricing {
+		bc.TieredSnapshot = info.TieredBillingSnapshot
 	}
 	if info.BillingRequestInput == nil {
 		return bc

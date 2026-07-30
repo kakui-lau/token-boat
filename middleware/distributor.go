@@ -115,7 +115,7 @@ func Distribute() func(c *gin.Context) {
 					)
 					if routeErr != nil {
 						common.SysError(fmt.Sprintf(
-							"plan v2 pricing route failed, falling back to legacy: group=%s model=%s error=%v",
+							"plan v2 pricing route failed: group=%s model=%s error=%v",
 							routeGroup,
 							modelRequest.Model,
 							routeErr,
@@ -146,6 +146,20 @@ func Distribute() func(c *gin.Context) {
 						break
 					}
 					break
+				}
+
+				if !v2RouteActive {
+					abortWithOpenAiMessage(
+						c,
+						http.StatusServiceUnavailable,
+						fmt.Sprintf(
+							"分组 %s 下模型 %s 没有完整的 V2 价格链",
+							usingGroup,
+							modelRequest.Model,
+						),
+						types.ErrorCodeModelPriceError,
+					)
+					return
 				}
 
 				if channel == nil && v2RouteActive {

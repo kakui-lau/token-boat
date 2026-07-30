@@ -139,9 +139,8 @@ func AdminSetPricingModelRuntime(c *gin.Context) {
 		common.ApiErrorMsg(c, "模型名称不能为空")
 		return
 	}
-	if input.RuntimeMode != pricingruntime.RuntimeModeLegacy &&
-		input.RuntimeMode != pricingruntime.RuntimeModeV2 {
-		common.ApiErrorMsg(c, "运行模式必须是 legacy 或 v2")
+	if input.RuntimeMode != pricingruntime.RuntimeModeV2 {
+		common.ApiErrorMsg(c, "运行时只允许启用 V2，不允许回退旧版")
 		return
 	}
 	updated, err := pricingruntime.SetModelRuntimeMode(input.ModelName, input.RuntimeMode)

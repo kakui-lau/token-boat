@@ -172,7 +172,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		estimatedPricingUsage(request, relayInfo, tokens),
 	)
 	if err == nil && !usesV2Pricing {
-		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+		err = fmt.Errorf(
+			"模型 %s 的请求用量无法由 V2 价格链安全预估",
+			relayInfo.OriginModelName,
+		)
 	}
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))

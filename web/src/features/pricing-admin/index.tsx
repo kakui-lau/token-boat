@@ -123,7 +123,7 @@ export function PricingAdmin() {
   const runtimeMutation = useMutation({
     mutationFn: (input: {
       model_name: string
-      runtime_mode: 'legacy' | 'v2'
+      runtime_mode: 'v2'
     }) => setPricingModelRuntime(input),
     onSuccess: async (response) => {
       await Promise.all([
@@ -135,13 +135,9 @@ export function PricingAdmin() {
         }),
       ])
       toast.success(
-        response.data.runtime_mode === 'v2'
-          ? t('V2 enabled for {{count}} channel models', {
-              count: response.data.updated,
-            })
-          : t('{{count}} channel models rolled back to legacy', {
-              count: response.data.updated,
-            })
+        t('V2 enabled for {{count}} channel models', {
+          count: response.data.updated,
+        })
       )
     },
   })
@@ -346,24 +342,20 @@ export function PricingAdmin() {
                     </TableCell>
                     <TableCell className='text-right'>
                       <div className='flex justify-end gap-2'>
-                        <Button
-                          size='sm'
-                          variant={
-                            row.runtime_mode === 'v2' ? 'ghost' : 'default'
-                          }
-                          disabled={runtimeMutation.isPending}
-                          onClick={() =>
-                            runtimeMutation.mutate({
-                              model_name: row.model_name,
-                              runtime_mode:
-                                row.runtime_mode === 'v2' ? 'legacy' : 'v2',
-                            })
-                          }
-                        >
-                          {row.runtime_mode === 'v2'
-                            ? t('Rollback Model')
-                            : t('Enable Model V2')}
-                        </Button>
+                        {row.runtime_mode !== 'v2' ? (
+                          <Button
+                            size='sm'
+                            disabled={runtimeMutation.isPending}
+                            onClick={() =>
+                              runtimeMutation.mutate({
+                                model_name: row.model_name,
+                                runtime_mode: 'v2',
+                              })
+                            }
+                          >
+                            {t('Enable Model V2')}
+                          </Button>
+                        ) : null}
                         <Button
                           size='sm'
                           variant='ghost'

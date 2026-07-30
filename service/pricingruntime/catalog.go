@@ -355,7 +355,7 @@ func RefreshCatalog() error {
 		bundle, err := ValidateV2Activation(channelModel.Id)
 		if err != nil {
 			common.SysError(fmt.Sprintf(
-				"skip invalid v2 channel model %d and fall back its model to legacy: %v",
+				"skip invalid v2 channel model %d and make its model unavailable: %v",
 				channelModel.Id,
 				err,
 			))
@@ -405,7 +405,7 @@ func RefreshCatalog() error {
 		}
 		if err := validateCandidateContracts(bundles); err != nil {
 			common.SysError(fmt.Sprintf(
-				"skip incompatible v2 candidate pool %q and fall back to legacy: %v",
+				"skip incompatible v2 candidate pool %q and make it unavailable: %v",
 				strings.ReplaceAll(key, "\x00", "/"),
 				err,
 			))

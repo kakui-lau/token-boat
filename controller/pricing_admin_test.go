@@ -154,6 +154,30 @@ func TestAdminUpdateChannelModelRejectsIndividualRuntimeSwitch(t *testing.T) {
 	assert.Equal(t, "legacy", stored.RuntimeMode)
 }
 
+func TestAdminSetPricingModelRuntimeRejectsLegacyRollback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/model-runtime",
+		map[string]string{
+			"model_name":   "runtime-model",
+			"runtime_mode": "legacy",
+		},
+	)
+
+	AdminSetPricingModelRuntime(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Contains(t, response.Message, "不允许回退旧版")
+}
+
 func TestAdminListPricingCatalogOptionsOnlyReturnsModelsConfiguredOnChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)

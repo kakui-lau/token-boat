@@ -195,12 +195,28 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		info.PublicTaskID = model.GenerateTaskID()
 	}
 
-	// 4. 价格计算：V2 候选先收集安全的业务用量；旧版仍先解析基础价格，
-	// 因为旧版适配器会在基础价格之上追加时长和分辨率倍率。
+	// 4. 价格计算：任务请求必须由完整 V2 价格链接管。无法在提交前
+	// 安全确定计费用量时明确拒绝，禁止静默回退旧计费。
 	info.OriginModelName = modelName
+	if !pricingruntime.HasCompleteV2Pricing(info.UsingGroup, info.OriginModelName) {
+		return nil, service.TaskErrorWrapper(
+			fmt.Errorf("model %s has no complete v2 price chain", info.OriginModelName),
+			"model_price_error",
+			http.StatusServiceUnavailable,
+		)
+	}
 	v2CandidateSelected := info.DynamicPricingSnapshot != nil
-	if !v2CandidateSelected &&
-		pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) {
+	if !v2CandidateSelected {
+		if !pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) {
+			return nil, service.TaskErrorWrapper(
+				fmt.Errorf(
+					"model %s v2 price requires usage unavailable before task submission",
+					info.OriginModelName,
+				),
+				"model_price_error",
+				http.StatusBadRequest,
+			)
+		}
 		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
 			if bundle.ChannelModel.ChannelId == info.ChannelId {
 				v2CandidateSelected = true
@@ -208,18 +224,19 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			}
 		}
 	}
+	if !v2CandidateSelected {
+		return nil, service.TaskErrorWrapper(
+			fmt.Errorf("selected channel has no v2 price candidate"),
+			"model_price_error",
+			http.StatusServiceUnavailable,
+		)
+	}
 	if v2CandidateSelected {
 		if info.DynamicPricingSnapshot == nil {
 			info.PriceData = hosttypes.PriceData{
 				GroupRatioInfo: helper.HandleGroupRatio(c, info),
 			}
 		}
-	} else {
-		priceData, priceErr := helper.ModelPriceHelperTask(c, info)
-		if priceErr != nil {
-			return nil, service.TaskErrorWrapper(priceErr, "model_price_error", http.StatusBadRequest)
-		}
-		info.PriceData = priceData
 	}
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
@@ -317,15 +334,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 	if v2CandidateSelected && !usesV2Pricing {
-		estimatedRatios := info.PriceData.OtherRatios()
-		legacyPriceData, legacyErr := helper.ModelPriceHelperTask(c, info)
-		if legacyErr != nil {
-			return nil, service.TaskErrorWrapper(legacyErr, "model_price_error", http.StatusBadRequest)
-		}
-		for name, ratio := range estimatedRatios {
-			legacyPriceData.AddOtherRatio(name, ratio)
-		}
-		info.PriceData = legacyPriceData
+		return nil, service.TaskErrorWrapper(
+			fmt.Errorf(
+				"model %s request usage cannot be safely estimated by v2 pricing",
+				info.OriginModelName,
+			),
+			"model_price_error",
+			http.StatusBadRequest,
+		)
 	}
 
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）

@@ -869,8 +869,8 @@ func requireOfficialPrice(id *int) (model.OfficialModelPriceVersion, error) {
 
 func scaleBillingExpression(expression string, factor decimal.Decimal) (string, error) {
 	version, body := billingexpr.ParseExprVersion(expression)
-	if version == 1 {
-		body = fmt.Sprintf("(%s) / 1000000", body)
+	if version != 2 {
+		return "", errors.New("pricing expressions must use schema v2")
 	}
 	return fmt.Sprintf("v2:(%s) * %s", body, factor.String()), nil
 }

@@ -13,7 +13,7 @@ import (
 
 func TestScaleBillingExpressionScalesOneValidRequestAwareExpression(t *testing.T) {
 	scaled, err := scaleBillingExpression(
-		`v1:(tier("base", p * 2)) * (param("service_tier") == "fast" ? 2 : 1)`,
+		`v2:(tier("base", p * 2 / 1000000)) * (param("service_tier") == "fast" ? 2 : 1)`,
 		decimal.RequireFromString("0.5"),
 	)
 	require.NoError(t, err)
@@ -27,6 +27,14 @@ func TestScaleBillingExpressionScalesOneValidRequestAwareExpression(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, 0.0002, result)
 	assert.Equal(t, "base", trace.MatchedTier)
+}
+
+func TestScaleBillingExpressionRejectsLegacySchema(t *testing.T) {
+	_, err := scaleBillingExpression(
+		`v1:tier("base", p * 2)`,
+		decimal.RequireFromString("0.5"),
+	)
+	require.ErrorContains(t, err, "must use schema v2")
 }
 
 func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) {

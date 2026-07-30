@@ -22,9 +22,9 @@ func TestGetActivePriceBundleExplainsMissingPriceStage(t *testing.T) {
 	purchase := model.ChannelModelPurchasePriceVersion{
 		ChannelModelId: 122, BillingMode: "token", PricingMode: "fixed_unit_price",
 		PriceStructure: "flat", PriceComponents: `{"input_unit_price":"1"}`,
-		InputUnitPrice: "1", PurchaseBillingExpr: `v1:tier("base", p * 1)`,
+		InputUnitPrice: "1", PurchaseBillingExpr: `v2:tier("base", p * 1 / 1000000)`,
 		PurchaseExprHash: "purchase", ExpressionSource: "generated",
-		ExpressionSchemaVersion: "v1", Currency: "USD", Version: 1,
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
 		Status: model.PricingVersionStatusActive,
 	}
 	require.NoError(t, model.DB.Create(&purchase).Error)

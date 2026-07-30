@@ -25,7 +25,7 @@ func TestListModelPriceOverviewChoosesEachComponentMinimum(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
 		ChannelModelId: 221, PurchasePriceVersionId: 1, BillingMode: "token",
 		PriceStructure: "flat", RetailBillingExpr: "p * 2 + c * 9",
-		RetailExprHash: "a", ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+		RetailExprHash: "a", ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 		Currency: "USD", InputUnitPrice: "2", OutputUnitPrice: "9",
 		PriceComponents:       `{"input_unit_price":"2","output_unit_price":"9"}`,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0", TargetNetMargin: "0",
@@ -34,7 +34,7 @@ func TestListModelPriceOverviewChoosesEachComponentMinimum(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
 		ChannelModelId: 222, PurchasePriceVersionId: 2, BillingMode: "token",
 		PriceStructure: "flat", RetailBillingExpr: "p * 3 + c * 8",
-		RetailExprHash: "b", ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+		RetailExprHash: "b", ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 		Currency: "USD", InputUnitPrice: "3", OutputUnitPrice: "8",
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0", TargetNetMargin: "0",
 		MinimumMarginRate: "0", Version: 1, Status: model.PricingVersionStatusActive,
@@ -76,7 +76,7 @@ func TestListModelPriceOverviewDoesNotCompareDifferentCurrencies(t *testing.T) {
 		{
 			ChannelModelId: 321, PurchasePriceVersionId: 1, BillingMode: "token",
 			PriceStructure: "flat", RetailBillingExpr: "p * 1", RetailExprHash: "usd",
-			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 			Currency: "USD", InputUnitPrice: "1", TotalVariableCostRate: "0",
 			EffectiveTaxRate: "0", TargetNetMargin: "0", MinimumMarginRate: "0",
 			Version: 1, Status: model.PricingVersionStatusActive,
@@ -84,7 +84,7 @@ func TestListModelPriceOverviewDoesNotCompareDifferentCurrencies(t *testing.T) {
 		{
 			ChannelModelId: 322, PurchasePriceVersionId: 2, BillingMode: "token",
 			PriceStructure: "flat", RetailBillingExpr: "p * 0.8", RetailExprHash: "cny",
-			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 			Currency: "CNY", InputUnitPrice: "0.8", TotalVariableCostRate: "0",
 			EffectiveTaxRate: "0", TargetNetMargin: "0", MinimumMarginRate: "0",
 			Version: 1, Status: model.PricingVersionStatusActive,
@@ -108,16 +108,16 @@ func TestListOfficialPriceOverviewPrefersActiveVersionAndIncludesCoverage(t *tes
 		{
 			ModelId: 401, BillingMode: "token", PriceStructure: "flat",
 			PriceComponents: `{"input_unit_price":"1.25","output_unit_price":"5","cache_read_unit_price":"0.2"}`,
-			BillingExpr:     `v1:tier("active", p * 1.25 + c * 5)`, ExprHash: "active",
-			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			BillingExpr:     `v2:tier("active", (p * 1.25 + c * 5) / 1000000)`, ExprHash: "active",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 			Currency: "USD", Source: "manual", Version: 1,
 			Status: model.PricingVersionStatusActive, EffectiveFrom: 100,
 		},
 		{
 			ModelId: 401, BillingMode: "token", PriceStructure: "flat",
 			PriceComponents: `{"input_unit_price":"2","output_unit_price":"6"}`,
-			BillingExpr:     `v1:tier("draft", p * 2 + c * 6)`, ExprHash: "draft",
-			ExpressionSource: "generated", ExpressionSchemaVersion: "v1",
+			BillingExpr:     `v2:tier("draft", (p * 2 + c * 6) / 1000000)`, ExprHash: "draft",
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 			Currency: "USD", Source: "manual", Version: 2,
 			Status: model.PricingVersionStatusDraft,
 		},

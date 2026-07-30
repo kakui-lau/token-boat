@@ -427,7 +427,7 @@ export function PricingReconciliationPanel() {
       {selectedSnapshot ? (
         <Card size='sm'>
           <CardContent className='space-y-3'>
-            <div className='grid gap-3 md:grid-cols-3'>
+            <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
               <div>
                 <div className='text-muted-foreground text-xs'>
                   {t('Request ID')}
@@ -451,6 +451,40 @@ export function PricingReconciliationPanel() {
                 </div>
                 <div className='font-mono text-xs'>
                   {selectedSnapshot.resolution || '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Created')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.created_at
+                    ? dayjs
+                        .unix(selectedSnapshot.created_at)
+                        .format('YYYY-MM-DD HH:mm:ss')
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Resolved at')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.resolved_at
+                    ? dayjs
+                        .unix(selectedSnapshot.resolved_at)
+                        .format('YYYY-MM-DD HH:mm:ss')
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Resolved by')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.resolved_by
+                    ? `#${selectedSnapshot.resolved_by}`
+                    : '—'}
                 </div>
               </div>
             </div>

@@ -66,6 +66,9 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           retail_price_version_id: 13,
           estimated_usage: '{"video_seconds":3}',
           actual_usage: '',
+          created_at: 1_800_000_000,
+          resolved_at: 1_800_000_100,
+          resolved_by: 7,
           reserved_quota: 80000,
           settled_quota: 0,
           purchase_cost: '0.4',
@@ -102,6 +105,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'View details' }))
   expect(screen.getByText('P#12 · R#13')).toBeInTheDocument()
   expect(screen.getByText(/"video_seconds": 3/)).toBeInTheDocument()
+  expect(screen.getByText('#7')).toBeInTheDocument()
   expect(screen.getByText('0.4 USD')).toBeInTheDocument()
   expect(screen.getByText('0.8 USD')).toBeInTheDocument()
   expect(

@@ -403,6 +403,20 @@ func TestAdminListRequestPricingSnapshotsFiltersCreatedRange(t *testing.T) {
 	assert.Equal(t, "inside-range", response.Data.Items[0].RequestId)
 }
 
+func TestAdminListRequestPricingSnapshotsRejectsReversedCreatedRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots?created_from=250&created_to=150",
+		nil,
+	)
+
+	AdminListRequestPricingSnapshots(context)
+
+	assert.Contains(t, recorder.Body.String(), "created_from 不能晚于 created_to")
+}
+
 func TestAdminListRequestPricingSnapshotsKeepsOrphanedAuditRowsVisible(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)

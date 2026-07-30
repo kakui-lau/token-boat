@@ -439,18 +439,29 @@ func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {
 	if billingMode := strings.TrimSpace(c.Query("billing_mode")); billingMode != "" {
 		query = query.Where("request_pricing_snapshots.billing_mode = ?", billingMode)
 	}
+	var createdFrom int64
+	var createdTo int64
 	if rawCreatedFrom := strings.TrimSpace(c.Query("created_from")); rawCreatedFrom != "" {
-		createdFrom, err := strconv.ParseInt(rawCreatedFrom, 10, 64)
+		parsed, err := strconv.ParseInt(rawCreatedFrom, 10, 64)
+		createdFrom = parsed
 		if err != nil || createdFrom <= 0 {
 			return nil, errors.New("created_from 无效")
 		}
-		query = query.Where("request_pricing_snapshots.created_at >= ?", createdFrom)
 	}
 	if rawCreatedTo := strings.TrimSpace(c.Query("created_to")); rawCreatedTo != "" {
-		createdTo, err := strconv.ParseInt(rawCreatedTo, 10, 64)
+		parsed, err := strconv.ParseInt(rawCreatedTo, 10, 64)
+		createdTo = parsed
 		if err != nil || createdTo <= 0 {
 			return nil, errors.New("created_to 无效")
 		}
+	}
+	if createdFrom > 0 && createdTo > 0 && createdFrom > createdTo {
+		return nil, errors.New("created_from 不能晚于 created_to")
+	}
+	if createdFrom > 0 {
+		query = query.Where("request_pricing_snapshots.created_at >= ?", createdFrom)
+	}
+	if createdTo > 0 {
 		query = query.Where("request_pricing_snapshots.created_at <= ?", createdTo)
 	}
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {

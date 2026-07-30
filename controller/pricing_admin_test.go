@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -610,4 +611,30 @@ func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T)
 	assert.Equal(t, "'=model", records[1][1])
 	assert.Equal(t, "'@provider", records[1][2])
 	assert.Equal(t, "pending", records[1][9])
+}
+
+func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	snapshot := model.RequestPricingSnapshot{
+		RequestId: "confirm-refunded", UserId: 7, ModelId: 1, ChannelModelId: 1,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+		PurchaseCost: "0.01", RetailAmount: "0.02", Currency: "USD",
+		ReservedQuota: 10, Status: pricingruntime.PricingSnapshotStatusPending,
+	}
+	require.NoError(t, model.DB.Create(&snapshot).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodPost,
+		fmt.Sprintf("/api/pricing-admin/request-pricing-snapshots/%d/confirm-refunded", snapshot.Id),
+		nil,
+	)
+	context.Params = gin.Params{{Key: "id", Value: strconv.Itoa(snapshot.Id)}}
+	context.Set("id", 1)
+
+	AdminConfirmRequestPricingSnapshotRefunded(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	require.NoError(t, model.DB.First(&snapshot, snapshot.Id).Error)
+	assert.Equal(t, pricingruntime.PricingSnapshotStatusRefunded, snapshot.Status)
+	assert.Zero(t, snapshot.SettledQuota)
 }

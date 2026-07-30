@@ -359,6 +359,44 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 	writer.Flush()
 }
 
+func AdminConfirmRequestPricingSnapshotRefunded(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "id 无效")
+		return
+	}
+	var snapshot model.RequestPricingSnapshot
+	if err := model.DB.First(&snapshot, id).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if snapshot.Status != pricingruntime.PricingSnapshotStatusPending {
+		common.ApiErrorMsg(c, "只有待确认价格快照可以确认已退款")
+		return
+	}
+	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("id = ? AND status = ?", id, pricingruntime.PricingSnapshotStatusPending).
+		Updates(map[string]any{
+			"settled_quota": 0,
+			"status":        pricingruntime.PricingSnapshotStatusRefunded,
+			"updated_at":    common.GetTimestamp(),
+		})
+	if result.Error != nil {
+		common.ApiError(c, result.Error)
+		return
+	}
+	if result.RowsAffected != 1 {
+		common.ApiErrorMsg(c, "价格快照状态已变化，请刷新后重试")
+		return
+	}
+	recordManageAudit(c, "pricing.reconciliation.confirm_refunded", map[string]interface{}{
+		"snapshot_id": id,
+		"request_id":  snapshot.RequestId,
+		"user_id":     snapshot.UserId,
+	})
+	common.ApiSuccess(c, gin.H{"id": id, "status": pricingruntime.PricingSnapshotStatusRefunded})
+}
+
 func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {
 	query := model.DB.Table("request_pricing_snapshots").
 		Select(

@@ -5809,5 +5809,9 @@
   "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Подходящие запросы маршрутизируются по закупочной стоимости и рассчитываются по зафиксированной цене продажи.",
   "{{v2}} of {{total}} channel models use V2": "{{v2}} из {{total}} моделей каналов используют V2",
   "{{count}} model/group scopes are ready": "Готово областей модель/группа: {{count}}",
-  "{{count}} scopes match the current rollout": "Областей в текущем развёртывании: {{count}}"
+  "{{count}} scopes match the current rollout": "Областей в текущем развёртывании: {{count}}",
+  "Enable Model V2": "Включить V2 для модели",
+  "Rollback Model": "Откатить модель",
+  "V2 enabled for {{count}} channel models": "V2 включён для моделей каналов: {{count}}",
+  "{{count}} channel models rolled back to legacy": "Моделей каналов возвращено к прежнему режиму: {{count}}"
 }

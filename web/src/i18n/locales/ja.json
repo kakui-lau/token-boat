@@ -5809,5 +5809,9 @@
   "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "対象リクエストは仕入原価でルーティングされ、固定された販売価格で精算されます。",
   "{{v2}} of {{total}} channel models use V2": "{{total}} 個のチャネルモデルのうち {{v2}} 個が V2 を使用",
   "{{count}} model/group scopes are ready": "{{count}} 個のモデル/グループ範囲が準備済み",
-  "{{count}} scopes match the current rollout": "{{count}} 個の範囲が現在のロールアウトに一致"
+  "{{count}} scopes match the current rollout": "{{count}} 個の範囲が現在のロールアウトに一致",
+  "Enable Model V2": "モデルの V2 を有効化",
+  "Rollback Model": "モデルをロールバック",
+  "V2 enabled for {{count}} channel models": "{{count}} 個のチャネルモデルで V2 を有効にしました",
+  "{{count}} channel models rolled back to legacy": "{{count}} 個のチャネルモデルを旧方式に戻しました"
 }

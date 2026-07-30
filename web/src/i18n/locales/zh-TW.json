@@ -5809,5 +5809,9 @@
   "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "符合條件的請求將按採購成本路由，並使用凍結的銷售價格結算。",
   "{{v2}} of {{total}} channel models use V2": "{{total}} 個渠道模型中有 {{v2}} 個使用 V2",
   "{{count}} model/group scopes are ready": "{{count}} 個模型/分組範圍已就緒",
-  "{{count}} scopes match the current rollout": "{{count}} 個範圍符合目前灰度設定"
+  "{{count}} scopes match the current rollout": "{{count}} 個範圍符合目前灰度設定",
+  "Enable Model V2": "啟用模型 V2",
+  "Rollback Model": "回退模型",
+  "V2 enabled for {{count}} channel models": "已為 {{count}} 個渠道模型啟用 V2",
+  "{{count}} channel models rolled back to legacy": "已將 {{count}} 個渠道模型回退到舊版"
 }

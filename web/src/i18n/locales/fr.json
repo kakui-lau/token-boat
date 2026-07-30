@@ -5809,5 +5809,9 @@
   "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Les requêtes éligibles utilisent un routage selon le coût d'achat et un règlement au prix de vente figé.",
   "{{v2}} of {{total}} channel models use V2": "{{v2}} modèles de canal sur {{total}} utilisent V2",
   "{{count}} model/group scopes are ready": "{{count}} périmètres modèle/groupe sont prêts",
-  "{{count}} scopes match the current rollout": "{{count}} périmètres correspondent au déploiement actuel"
+  "{{count}} scopes match the current rollout": "{{count}} périmètres correspondent au déploiement actuel",
+  "Enable Model V2": "Activer le modèle V2",
+  "Rollback Model": "Rétablir le modèle",
+  "V2 enabled for {{count}} channel models": "V2 activé pour {{count}} modèles de canal",
+  "{{count}} channel models rolled back to legacy": "{{count}} modèles de canal rétablis en mode historique"
 }

@@ -5809,5 +5809,9 @@
   "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Eligible requests use purchase-cost routing and frozen sales-price settlement.",
   "{{v2}} of {{total}} channel models use V2": "{{v2}} of {{total}} channel models use V2",
   "{{count}} model/group scopes are ready": "{{count}} model/group scopes are ready",
-  "{{count}} scopes match the current rollout": "{{count}} scopes match the current rollout"
+  "{{count}} scopes match the current rollout": "{{count}} scopes match the current rollout",
+  "Enable Model V2": "Enable Model V2",
+  "Rollback Model": "Rollback Model",
+  "V2 enabled for {{count}} channel models": "V2 enabled for {{count}} channel models",
+  "{{count}} channel models rolled back to legacy": "{{count}} channel models rolled back to legacy"
 }

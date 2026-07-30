@@ -27,6 +27,11 @@ type pricingAdminCatalogOption struct {
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 }
 
+type pricingModelRuntimeInput struct {
+	ModelName   string `json:"model_name"`
+	RuntimeMode string `json:"runtime_mode"`
+}
+
 type requestPricingSnapshotAdminRow struct {
 	model.RequestPricingSnapshot
 	ModelName   string `json:"model_name"`
@@ -43,6 +48,37 @@ func AdminGetPricingRuntimeStatus(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, readiness)
+}
+
+func AdminSetPricingModelRuntime(c *gin.Context) {
+	var input pricingModelRuntimeInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	input.ModelName = strings.TrimSpace(input.ModelName)
+	if input.ModelName == "" {
+		common.ApiErrorMsg(c, "模型名称不能为空")
+		return
+	}
+	if input.RuntimeMode != pricingruntime.RuntimeModeLegacy &&
+		input.RuntimeMode != pricingruntime.RuntimeModeV2 {
+		common.ApiErrorMsg(c, "运行模式必须是 legacy 或 v2")
+		return
+	}
+	updated, err := pricingruntime.SetModelRuntimeMode(input.ModelName, input.RuntimeMode)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "pricing.model_runtime.update", map[string]interface{}{
+		"model_name": input.ModelName, "runtime_mode": input.RuntimeMode,
+		"channel_model_count": updated,
+	})
+	common.ApiSuccess(c, gin.H{
+		"model_name": input.ModelName, "runtime_mode": input.RuntimeMode,
+		"updated": updated,
+	})
 }
 
 func AdminListPricingCatalogOptions(c *gin.Context) {

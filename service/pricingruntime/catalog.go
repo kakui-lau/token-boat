@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,17 +49,21 @@ var (
 )
 
 func LoadActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
+	return loadActivePriceBundle(model.DB, channelModelId)
+}
+
+func loadActivePriceBundle(db *gorm.DB, channelModelId int) (ActivePriceBundle, error) {
 	var bundle ActivePriceBundle
 	if channelModelId <= 0 {
 		return bundle, errors.New("channel model is required")
 	}
-	if err := model.DB.First(&bundle.ChannelModel, channelModelId).Error; err != nil {
+	if err := db.First(&bundle.ChannelModel, channelModelId).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return bundle, fmt.Errorf("channel model %d was not found", channelModelId)
 		}
 		return bundle, err
 	}
-	if err := model.DB.Where(
+	if err := db.Where(
 		"channel_model_id = ? AND status = ?",
 		channelModelId,
 		model.PricingVersionStatusActive,
@@ -71,7 +76,7 @@ func LoadActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 		}
 		return bundle, err
 	}
-	if err := model.DB.Where(
+	if err := db.Where(
 		"channel_model_id = ? AND purchase_price_version_id = ? AND status = ?",
 		channelModelId,
 		bundle.Purchase.Id,
@@ -88,7 +93,7 @@ func LoadActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 	}
 	if bundle.Purchase.OfficialPriceVersionId != nil {
 		var official model.OfficialModelPriceVersion
-		if err := model.DB.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
+		if err := db.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return bundle, fmt.Errorf(
 					"active purchase price references missing official price %d",
@@ -104,7 +109,11 @@ func LoadActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
 }
 
 func ValidateV2Activation(channelModelId int) (ActivePriceBundle, error) {
-	bundle, err := LoadActivePriceBundle(channelModelId)
+	return validateV2Activation(model.DB, channelModelId)
+}
+
+func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, error) {
+	bundle, err := loadActivePriceBundle(db, channelModelId)
 	if err != nil {
 		return ActivePriceBundle{}, err
 	}
@@ -135,6 +144,92 @@ func ValidateV2Activation(channelModelId int) (ActivePriceBundle, error) {
 		return ActivePriceBundle{}, fmt.Errorf("compile retail price expression: %w", err)
 	}
 	return bundle, nil
+}
+
+func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
+	if runtimeMode != RuntimeModeLegacy && runtimeMode != RuntimeModeV2 {
+		return 0, fmt.Errorf("unsupported runtime mode %q", runtimeMode)
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return 0, errors.New("model name is required")
+	}
+	updated := 0
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var logicalModel model.Model
+		if err := tx.Where("model_name = ?", modelName).First(&logicalModel).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("model %q was not found", modelName)
+			}
+			return err
+		}
+		query := tx.Model(&model.ChannelModel{}).Where("model_id = ?", logicalModel.Id)
+		if runtimeMode == RuntimeModeV2 {
+			var abilities []model.Ability
+			if err := tx.Where("model = ? AND enabled = ?", modelName, true).
+				Find(&abilities).Error; err != nil {
+				return err
+			}
+			channelIds := make([]int, 0, len(abilities))
+			seenChannelIds := make(map[int]struct{}, len(abilities))
+			for _, ability := range abilities {
+				if _, exists := seenChannelIds[ability.ChannelId]; exists {
+					continue
+				}
+				seenChannelIds[ability.ChannelId] = struct{}{}
+				channelIds = append(channelIds, ability.ChannelId)
+			}
+			if len(channelIds) == 0 {
+				return fmt.Errorf("model %q has no enabled routing abilities", modelName)
+			}
+			var channelModels []model.ChannelModel
+			if err := tx.Where("model_id = ? AND channel_id IN ?", logicalModel.Id, channelIds).
+				Find(&channelModels).Error; err != nil {
+				return err
+			}
+			if len(channelModels) != len(channelIds) {
+				return fmt.Errorf(
+					"model %q has %d enabled channels but only %d channel models",
+					modelName,
+					len(channelIds),
+					len(channelModels),
+				)
+			}
+			ids := make([]int, 0, len(channelModels))
+			for _, channelModel := range channelModels {
+				if _, err := validateV2Activation(tx, channelModel.Id); err != nil {
+					return fmt.Errorf(
+						"channel model %d is not ready for V2: %w",
+						channelModel.Id,
+						err,
+					)
+				}
+				ids = append(ids, channelModel.Id)
+			}
+			query = query.Where("id IN ?", ids)
+		}
+		var targetCount int64
+		if err := query.Count(&targetCount).Error; err != nil {
+			return err
+		}
+		if targetCount == 0 {
+			return fmt.Errorf("model %q has no channel models", modelName)
+		}
+		result := query.Update("runtime_mode", runtimeMode)
+		if result.Error != nil {
+			return result.Error
+		}
+		updated = int(targetCount)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	InvalidateCatalog()
+	if err := RefreshCatalog(); err != nil {
+		return updated, err
+	}
+	return updated, nil
 }
 
 func RefreshCatalog() error {

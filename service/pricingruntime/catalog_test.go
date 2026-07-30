@@ -117,6 +117,48 @@ func TestSetRuntimeModeAllowsVideoDurationPricing(t *testing.T) {
 	assert.Equal(t, RuntimeModeV2, stored.RuntimeMode)
 }
 
+func TestSetModelRuntimeModeActivatesAllEnabledChannelsAtomically(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 1, RuntimeModeLegacy)
+	createRuntimeBundle(t, 2, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 2).
+		Update("model_id", 1).Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	require.NoError(t, err)
+	assert.Equal(t, 2, updated)
+
+	var channelModels []model.ChannelModel
+	require.NoError(t, model.DB.Order("id").Find(&channelModels).Error)
+	require.Len(t, channelModels, 2)
+	assert.Equal(t, RuntimeModeV2, channelModels[0].RuntimeMode)
+	assert.Equal(t, RuntimeModeV2, channelModels[1].RuntimeMode)
+}
+
+func TestSetModelRuntimeModeLeavesEveryChannelLegacyWhenOnePriceChainIsIncomplete(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 1, RuntimeModeLegacy)
+	createRuntimeBundle(t, 2, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 2).
+		Update("model_id", 1).Error)
+	require.NoError(t, model.DB.Delete(
+		&model.ChannelModelRetailPriceVersion{},
+		2,
+	).Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "channel model 2 is not ready for V2")
+
+	var v2Count int64
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("runtime_mode = ?", RuntimeModeV2).
+		Count(&v2Count).Error)
+	assert.Zero(t, v2Count)
+}
+
 func TestPrepareRelayPricingRequiresVideoDurationUsage(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 9, RuntimeModeV2)

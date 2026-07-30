@@ -5809,5 +5809,9 @@
   "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Yêu cầu đủ điều kiện được định tuyến theo chi phí mua và quyết toán theo giá bán đã cố định.",
   "{{v2}} of {{total}} channel models use V2": "{{v2}}/{{total}} mô hình kênh sử dụng V2",
   "{{count}} model/group scopes are ready": "{{count}} phạm vi mô hình/nhóm đã sẵn sàng",
-  "{{count}} scopes match the current rollout": "{{count}} phạm vi khớp với cấu hình triển khai hiện tại"
+  "{{count}} scopes match the current rollout": "{{count}} phạm vi khớp với cấu hình triển khai hiện tại",
+  "Enable Model V2": "Bật V2 cho mô hình",
+  "Rollback Model": "Hoàn tác mô hình",
+  "V2 enabled for {{count}} channel models": "Đã bật V2 cho {{count}} mô hình kênh",
+  "{{count}} channel models rolled back to legacy": "Đã hoàn tác {{count}} mô hình kênh về chế độ cũ"
 }

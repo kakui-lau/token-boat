@@ -29,7 +29,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getChannelModels } from '../api'
+import { getChannelModels, setPricingModelRuntime } from '../api'
 import { PricingAdmin } from '../index'
 
 vi.mock('react-i18next', () => ({
@@ -49,6 +49,16 @@ vi.mock('../api', () => ({
   getPricingCatalogOptions: vi.fn().mockResolvedValue({
     data: { channels: [], models: [] },
   }),
+  getPricingRuntimeStatus: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      total_channel_models: 2,
+      v2_channel_models: 0,
+      complete_group_model_scopes: 0,
+      live_traffic_enabled: false,
+    },
+  }),
+  setPricingModelRuntime: vi.fn(),
   syncLegacyChannelModels: vi.fn(),
 }))
 
@@ -137,5 +147,34 @@ describe('channel model retail publication status', () => {
         expect.objectContaining({ retail_status: 'published' })
       )
     })
+  })
+
+  test('enables V2 for every channel of the selected model', async () => {
+    vi.mocked(setPricingModelRuntime).mockResolvedValue({
+      success: true,
+      data: {
+        model_name: 'published-model',
+        runtime_mode: 'v2',
+        updated: 2,
+      },
+    })
+    renderPricingAdmin()
+
+    const publishedRow = (await screen.findByText('published-model')).closest(
+      'tr'
+    )
+    if (!publishedRow) {
+      throw new Error('expected the published channel model row')
+    }
+    fireEvent.click(
+      within(publishedRow).getByRole('button', { name: 'Enable Model V2' })
+    )
+
+    await waitFor(() =>
+      expect(setPricingModelRuntime).toHaveBeenCalledWith({
+        model_name: 'published-model',
+        runtime_mode: 'v2',
+      })
+    )
   })
 })

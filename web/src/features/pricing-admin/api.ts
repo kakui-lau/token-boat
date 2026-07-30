@@ -44,6 +44,20 @@ export async function getPricingRuntimeStatus(): Promise<
   return requirePricingSuccess(response.data)
 }
 
+export async function setPricingModelRuntime(input: {
+  model_name: string
+  runtime_mode: 'legacy' | 'v2'
+}): Promise<
+  PriceVersionResponse<{
+    model_name: string
+    runtime_mode: 'legacy' | 'v2'
+    updated: number
+  }>
+> {
+  const response = await api.put('/api/pricing-admin/model-runtime', input)
+  return requirePricingSuccess(response.data)
+}
+
 function requirePricingSuccess<
   T extends { success: boolean; message?: string },
 >(response: T): T {

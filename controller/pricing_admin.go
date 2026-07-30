@@ -270,12 +270,13 @@ func AdminListRequestPricingSnapshots(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	query := model.DB.Table("request_pricing_snapshots").
 		Select(
-			"request_pricing_snapshots.*, models.model_name AS model_name, " +
-				"channel_models.channel_id AS channel_id, channels.name AS channel_name",
+			"request_pricing_snapshots.*, COALESCE(models.model_name, '') AS model_name, " +
+				"COALESCE(channel_models.channel_id, 0) AS channel_id, " +
+				"COALESCE(channels.name, '') AS channel_name",
 		).
-		Joins("JOIN models ON models.id = request_pricing_snapshots.model_id").
-		Joins("JOIN channel_models ON channel_models.id = request_pricing_snapshots.channel_model_id").
-		Joins("JOIN channels ON channels.id = channel_models.channel_id")
+		Joins("LEFT JOIN models ON models.id = request_pricing_snapshots.model_id").
+		Joins("LEFT JOIN channel_models ON channel_models.id = request_pricing_snapshots.channel_model_id").
+		Joins("LEFT JOIN channels ON channels.id = channel_models.channel_id")
 	if status := strings.TrimSpace(c.Query("status")); status != "" {
 		switch status {
 		case pricingruntime.PricingSnapshotStatusReserved,

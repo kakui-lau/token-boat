@@ -602,6 +602,45 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	assert.Equal(t, priceData.QuotaToPreConsume, info.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
 }
 
+func TestPrepareRelayPricingUsesRequestHeadersForConditionalPrices(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 17, RuntimeModeV2)
+	purchaseExpr := `v2:tier("base", req * (header("x-priority") == "fast" ? 2 : 1))`
+	retailExpr := `v2:tier("base", req * (header("x-priority") == "fast" ? 4 : 2))`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 17).
+		Updates(map[string]any{
+			"billing_mode":          "request",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 17).
+		Updates(map[string]any{
+			"billing_mode":        "request",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
+
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		17,
+		0,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{Headers: map[string]string{"x-priority": "fast"}},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, 4*int(common.QuotaPerUnit), priceData.QuotaToPreConsume)
+	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
+	assert.Equal(t, "4", info.DynamicPricingSnapshot.Selected.EstimatedRetailUSD)
+}
+
 func TestPrepareRelayPricingRejectsCandidatesBelowMinimumMargin(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 10, RuntimeModeV2)

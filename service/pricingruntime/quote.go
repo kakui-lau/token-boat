@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/shopspring/decimal"
 )
@@ -48,6 +49,20 @@ func parseRate(name string, value string) (decimal.Decimal, error) {
 }
 
 func QuoteCandidates(group string, modelName string, usage pricingengine.Usage) ([]Quote, error) {
+	return QuoteCandidatesWithRequest(
+		group,
+		modelName,
+		usage,
+		billingexpr.RequestInput{Body: []byte(usage.RequestBody)},
+	)
+}
+
+func QuoteCandidatesWithRequest(
+	group string,
+	modelName string,
+	usage pricingengine.Usage,
+	requestInput billingexpr.RequestInput,
+) ([]Quote, error) {
 	if err := pricingengine.ValidateUsage(usage); err != nil {
 		return nil, err
 	}
@@ -57,10 +72,11 @@ func QuoteCandidates(group string, modelName string, usage pricingengine.Usage) 
 	}
 	quotes := make([]Quote, 0, len(bundles))
 	for _, bundle := range bundles {
-		purchase, err := pricingengine.Evaluate(
+		purchase, err := pricingengine.EvaluateWithRequest(
 			bundle.Purchase.PurchaseBillingExpr,
 			bundle.Purchase.PurchaseExprHash,
 			usage,
+			requestInput,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -69,10 +85,11 @@ func QuoteCandidates(group string, modelName string, usage pricingengine.Usage) 
 				err,
 			)
 		}
-		retail, err := pricingengine.Evaluate(
+		retail, err := pricingengine.EvaluateWithRequest(
 			bundle.Retail.RetailBillingExpr,
 			bundle.Retail.RetailExprHash,
 			usage,
+			requestInput,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(

@@ -40,6 +40,20 @@ type Evaluation struct {
 }
 
 func Evaluate(expression string, expressionHash string, usage Usage) (Evaluation, error) {
+	return EvaluateWithRequest(
+		expression,
+		expressionHash,
+		usage,
+		billingexpr.RequestInput{Body: []byte(strings.TrimSpace(usage.RequestBody))},
+	)
+}
+
+func EvaluateWithRequest(
+	expression string,
+	expressionHash string,
+	usage Usage,
+	request billingexpr.RequestInput,
+) (Evaluation, error) {
 	if err := ValidateUsage(usage); err != nil {
 		return Evaluation{}, err
 	}
@@ -65,7 +79,7 @@ func Evaluate(expression string, expressionHash string, usage Usage) (Evaluation
 		expression,
 		expressionHash,
 		params,
-		billingexpr.RequestInput{Body: []byte(strings.TrimSpace(usage.RequestBody))},
+		request,
 	)
 	if err != nil {
 		return Evaluation{}, err

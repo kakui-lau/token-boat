@@ -115,7 +115,12 @@ func PrepareRelayPricing(
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}
-	quotes, err := QuoteCandidates(group, info.OriginModelName, usage)
+	quotes, err := QuoteCandidatesWithRequest(
+		group,
+		info.OriginModelName,
+		usage,
+		requestInput,
+	)
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}

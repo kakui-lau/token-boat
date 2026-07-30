@@ -174,6 +174,12 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	createRuntimeBundle(t, 5, RuntimeModeV2)
 	createRuntimeBundle(t, 6, RuntimeModeV2)
 	require.NoError(t, model.DB.Exec(
+		"UPDATE channel_model_purchase_price_versions SET purchase_billing_expr = ?, purchase_expr_hash = ? WHERE id = ?",
+		`v2:tier("base", p * 0.5 / 1000000)`,
+		billingexpr.ExprHashString(`v2:tier("base", p * 0.5 / 1000000)`),
+		6,
+	).Error)
+	require.NoError(t, model.DB.Exec(
 		"UPDATE channel_model_retail_price_versions SET retail_billing_expr = ?, retail_expr_hash = ? WHERE id = ?",
 		`v2:tier("base", p * 4 / 1000000)`,
 		billingexpr.ExprHashString(`v2:tier("base", p * 4 / 1000000)`),
@@ -194,6 +200,7 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, 4*int(common.QuotaPerUnit), priceData.QuotaToPreConsume)
+	assert.Equal(t, []int{6, 5}, info.DynamicPricingSnapshot.RouteChannelIds)
 	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
 	assert.Equal(t, 5, info.DynamicPricingSnapshot.Selected.ChannelModelId)
 	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 2")
@@ -202,6 +209,27 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	assert.Equal(t, 6, info.DynamicPricingSnapshot.Selected.ChannelModelId)
 	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 4")
 	assert.Equal(t, priceData.QuotaToPreConsume, info.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+}
+
+func TestPrepareRelayPricingRejectsCandidatesBelowMinimumMargin(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 10, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 10).
+		Update("minimum_margin_rate", "0.6").Error)
+	require.NoError(t, RefreshCatalog())
+
+	_, ok, err := PrepareRelayPricing(
+		&relaycommon.RelayInfo{OriginModelName: "runtime-model"},
+		"default",
+		10,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+	)
+	assert.False(t, ok)
+	require.ErrorContains(t, err, "no v2 candidate meets the minimum margin")
 }
 
 func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {

@@ -18,6 +18,7 @@ type DynamicPriceCandidate struct {
 
 type DynamicPricingSnapshot struct {
 	CandidatesByChannelId     map[int]DynamicPriceCandidate
+	RouteChannelIds           []int
 	ReservationQuota          int
 	EstimatedPromptTokens     int
 	EstimatedCompletionTokens int

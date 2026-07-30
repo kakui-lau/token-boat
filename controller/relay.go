@@ -380,32 +380,21 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			}
 			return channel, nil
 		}
-		routeCandidates, err := pricingruntime.PlanV2Route(
-			info.UsingGroup,
-			info.OriginModelName,
-		)
-		if err != nil {
-			return nil, types.NewError(
-				fmt.Errorf("规划 V2 重试渠道失败: %w", err),
-				types.ErrorCodeGetChannelFailed,
-				types.ErrOptionWithSkipRetry(),
-			)
-		}
 		usedChannels := make(map[int]struct{}, len(c.GetStringSlice("use_channel")))
 		for _, value := range c.GetStringSlice("use_channel") {
 			if channelId, parseErr := strconv.Atoi(value); parseErr == nil {
 				usedChannels[channelId] = struct{}{}
 			}
 		}
-		for _, candidate := range routeCandidates {
+		for _, channelId := range info.DynamicPricingSnapshot.RouteChannelIds {
 			if _, frozen := info.DynamicPricingSnapshot.
-				CandidatesByChannelId[candidate.ChannelId]; !frozen {
+				CandidatesByChannelId[channelId]; !frozen {
 				continue
 			}
-			if _, used := usedChannels[candidate.ChannelId]; used {
+			if _, used := usedChannels[channelId]; used {
 				continue
 			}
-			channel, getErr := model.CacheGetChannel(candidate.ChannelId)
+			channel, getErr := model.CacheGetChannel(channelId)
 			if getErr != nil ||
 				channel == nil ||
 				channel.Status != common.ChannelStatusEnabled ||

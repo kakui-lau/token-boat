@@ -2,13 +2,13 @@ package pricingruntime
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	hosttypes "github.com/QuantumNous/new-api/types"
+	"github.com/shopspring/decimal"
 )
 
 const defaultEstimatedCompletionTokens = 8192
@@ -56,34 +56,31 @@ func PrepareRelayPricing(
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}
-	candidates := make(map[int]hosttypes.DynamicPriceCandidate, len(bundles))
-	maximumRetailAmount := 0.0
+	quotes, err := QuoteCandidates(group, info.OriginModelName, usage)
+	if err != nil {
+		return hosttypes.PriceData{}, false, err
+	}
+	bundleById := make(map[int]ActivePriceBundle, len(bundles))
 	for _, bundle := range bundles {
-		purchase, err := pricingengine.Evaluate(
-			bundle.Purchase.PurchaseBillingExpr,
-			bundle.Purchase.PurchaseExprHash,
-			usage,
-		)
-		if err != nil {
-			return hosttypes.PriceData{}, false, fmt.Errorf(
-				"evaluate v2 purchase price for channel model %d: %w",
-				bundle.ChannelModel.Id,
-				err,
-			)
+		bundleById[bundle.ChannelModel.Id] = bundle
+	}
+	candidates := make(map[int]hosttypes.DynamicPriceCandidate, len(bundles))
+	routeCandidates := make([]RouteCandidate, 0, len(bundles))
+	maximumRetailAmount := 0.0
+	for _, quote := range quotes {
+		if !quote.MeetsMinimumMargin {
+			continue
 		}
-		retail, err := pricingengine.Evaluate(
-			bundle.Retail.RetailBillingExpr,
-			bundle.Retail.RetailExprHash,
-			usage,
-		)
+		bundle := bundleById[quote.ChannelModelId]
+		purchaseAmount, err := decimal.NewFromString(quote.PurchaseCost)
 		if err != nil {
-			return hosttypes.PriceData{}, false, fmt.Errorf(
-				"evaluate v2 retail price for channel model %d: %w",
-				bundle.ChannelModel.Id,
-				err,
-			)
+			return hosttypes.PriceData{}, false, err
 		}
-		retailFloat, _ := retail.Amount.Float64()
+		retailAmount, err := decimal.NewFromString(quote.RetailAmount)
+		if err != nil {
+			return hosttypes.PriceData{}, false, err
+		}
+		retailFloat, _ := retailAmount.Float64()
 		if retailFloat > maximumRetailAmount {
 			maximumRetailAmount = retailFloat
 		}
@@ -99,9 +96,26 @@ func PrepareRelayPricing(
 			RetailExpressionHash:   bundle.Retail.RetailExprHash,
 			PricingRevision:        bundle.Revision,
 			Currency:               bundle.Retail.Currency,
-			EstimatedPurchaseUSD:   purchase.Amount.String(),
-			EstimatedRetailUSD:     retail.Amount.String(),
+			EstimatedPurchaseUSD:   purchaseAmount.String(),
+			EstimatedRetailUSD:     retailAmount.String(),
 		}
+		routeCandidates = append(routeCandidates, RouteCandidate{
+			ChannelId:      bundle.ChannelModel.ChannelId,
+			ChannelModelId: bundle.ChannelModel.Id,
+			Priority:       bundle.ChannelModel.Priority,
+			Weight:         bundle.ChannelModel.Weight,
+			PurchaseCost:   purchaseAmount,
+		})
+	}
+	sortRouteCandidates(routeCandidates)
+	routeChannelIds := make([]int, 0, len(routeCandidates))
+	for _, candidate := range routeCandidates {
+		routeChannelIds = append(routeChannelIds, candidate.ChannelId)
+	}
+	if len(routeChannelIds) == 0 {
+		return hosttypes.PriceData{}, false, errors.New(
+			"no v2 candidate meets the minimum margin for estimated usage",
+		)
 	}
 	quotaBeforeGroup := maximumRetailAmount * common.QuotaPerUnit
 	reservationQuota, err := billingexpr.QuotaRoundStrict(
@@ -112,6 +126,7 @@ func PrepareRelayPricing(
 	}
 	info.DynamicPricingSnapshot = &hosttypes.DynamicPricingSnapshot{
 		CandidatesByChannelId:     candidates,
+		RouteChannelIds:           routeChannelIds,
 		ReservationQuota:          reservationQuota,
 		EstimatedPromptTokens:     promptTokens,
 		EstimatedCompletionTokens: maxCompletionTokens,

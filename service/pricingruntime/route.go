@@ -55,6 +55,11 @@ func PlanV2Route(group string, modelName string) ([]RouteCandidate, error) {
 			PurchaseCost:   cost,
 		})
 	}
+	sortRouteCandidates(candidates)
+	return candidates, nil
+}
+
+func sortRouteCandidates(candidates []RouteCandidate) {
 	sort.SliceStable(candidates, func(left int, right int) bool {
 		if !candidates[left].PurchaseCost.Equal(candidates[right].PurchaseCost) {
 			return candidates[left].PurchaseCost.LessThan(candidates[right].PurchaseCost)
@@ -64,5 +69,4 @@ func PlanV2Route(group string, modelName string) ([]RouteCandidate, error) {
 		}
 		return candidates[left].Weight > candidates[right].Weight
 	})
-	return candidates, nil
 }

@@ -475,12 +475,18 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	if reqId == "" {
 		reqId = common.NewRequestId()
 	}
+	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if autoGroup, exists := common.GetContextKey(c, constant.ContextKeyAutoGroup); exists {
+		if selectedGroup, ok := autoGroup.(string); ok && selectedGroup != "" {
+			usingGroup = selectedGroup
+		}
+	}
 	info := &RelayInfo{
 		Request: request,
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UsingGroup: usingGroup,
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
 		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),

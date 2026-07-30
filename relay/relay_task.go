@@ -200,13 +200,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	info.OriginModelName = modelName
 	v2CandidateSelected := info.DynamicPricingSnapshot != nil
 	if !v2CandidateSelected &&
-		pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) &&
-		pricingruntime.ShouldUseV2(
-			info.UserId,
-			info.UsingGroup,
-			info.RequestId,
-			info.OriginModelName,
-		) {
+		pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) {
 		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
 			if bundle.ChannelModel.ChannelId == info.ChannelId {
 				v2CandidateSelected = true

@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,7 +39,6 @@ type RuntimeReadiness struct {
 	TotalChannelModels       int64 `json:"total_channel_models"`
 	V2ChannelModels          int64 `json:"v2_channel_models"`
 	CompleteGroupModelScopes int   `json:"complete_group_model_scopes"`
-	EligibleGroupModelScopes int   `json:"eligible_group_model_scopes"`
 	LiveTrafficEnabled       bool  `json:"live_traffic_enabled"`
 }
 
@@ -227,7 +225,7 @@ func HasCompleteV2Pricing(group string, modelName string) bool {
 	return len(GetCandidateBundles(group, modelName)) > 0
 }
 
-func GetRuntimeReadiness(policy RolloutPolicy) (RuntimeReadiness, error) {
+func GetRuntimeReadiness() (RuntimeReadiness, error) {
 	var readiness RuntimeReadiness
 	if err := model.DB.Model(&model.ChannelModel{}).
 		Count(&readiness.TotalChannelModels).Error; err != nil {
@@ -248,35 +246,13 @@ func GetRuntimeReadiness(policy RolloutPolicy) (RuntimeReadiness, error) {
 	if snapshot == nil {
 		return readiness, nil
 	}
-	for key, complete := range snapshot.CompleteV2ByGroupModel {
+	for _, complete := range snapshot.CompleteV2ByGroupModel {
 		if !complete {
 			continue
 		}
 		readiness.CompleteGroupModelScopes++
-		if len(policy.UserIds) > 0 {
-			readiness.EligibleGroupModelScopes++
-			continue
-		}
-		separator := strings.IndexByte(key, '\x00')
-		if separator < 0 {
-			continue
-		}
-		group := key[:separator]
-		modelName := key[separator+1:]
-		if len(policy.Models) > 0 {
-			if _, allowed := policy.Models[modelName]; !allowed {
-				continue
-			}
-		}
-		if len(policy.Groups) > 0 {
-			if _, allowed := policy.Groups[group]; !allowed {
-				continue
-			}
-		}
-		readiness.EligibleGroupModelScopes++
 	}
-	readiness.LiveTrafficEnabled = readiness.EligibleGroupModelScopes > 0 &&
-		(policy.Percent > 0 || len(policy.UserIds) > 0)
+	readiness.LiveTrafficEnabled = readiness.CompleteGroupModelScopes > 0
 	return readiness, nil
 }
 

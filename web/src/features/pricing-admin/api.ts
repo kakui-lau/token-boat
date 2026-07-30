@@ -28,8 +28,7 @@ import type {
   OfficialPriceOverview,
   OfficialPriceVersion,
   PriceSimulationResult,
-  PricingRolloutPolicy,
-  PricingRolloutPolicySettings,
+  PricingRuntimeStatus,
   PricingCatalogOptionsResponse,
   PriceVersionResponse,
   PublishLatestOfficialPriceDraftsResponse,
@@ -38,17 +37,10 @@ import type {
   RequestPricingSnapshotListResponse,
 } from './types'
 
-export async function getPricingRolloutPolicy(): Promise<
-  PriceVersionResponse<PricingRolloutPolicy>
+export async function getPricingRuntimeStatus(): Promise<
+  PriceVersionResponse<PricingRuntimeStatus>
 > {
-  const response = await api.get('/api/pricing-admin/rollout-policy')
-  return requirePricingSuccess(response.data)
-}
-
-export async function updatePricingRolloutPolicy(
-  input: PricingRolloutPolicySettings
-): Promise<PriceVersionResponse<PricingRolloutPolicy>> {
-  const response = await api.put('/api/pricing-admin/rollout-policy', input)
+  const response = await api.get('/api/pricing-admin/runtime-status')
   return requirePricingSuccess(response.data)
 }
 

@@ -3,7 +3,6 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -28,19 +27,6 @@ type pricingAdminCatalogOption struct {
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 }
 
-type pricingRolloutPolicyInput struct {
-	Percent       int      `json:"percent"`
-	Models        []string `json:"models"`
-	Groups        []string `json:"groups"`
-	UserIds       []int    `json:"user_ids"`
-	ShadowEnabled bool     `json:"shadow_enabled"`
-}
-
-type pricingRolloutPolicyResponse struct {
-	pricingRolloutPolicyInput
-	Runtime pricingruntime.RuntimeReadiness `json:"runtime"`
-}
-
 type requestPricingSnapshotAdminRow struct {
 	model.RequestPricingSnapshot
 	ModelName   string `json:"model_name"`
@@ -50,107 +36,13 @@ type requestPricingSnapshotAdminRow struct {
 
 const pricingReconciliationReservedAgeSeconds = 15 * 60
 
-func AdminGetPricingRolloutPolicy(c *gin.Context) {
-	policy := pricingruntime.CurrentRolloutPolicy()
-	models := make([]string, 0, len(policy.Models))
-	for modelName := range policy.Models {
-		models = append(models, modelName)
-	}
-	groups := make([]string, 0, len(policy.Groups))
-	for group := range policy.Groups {
-		groups = append(groups, group)
-	}
-	userIds := make([]int, 0, len(policy.UserIds))
-	for userId := range policy.UserIds {
-		userIds = append(userIds, userId)
-	}
-	sort.Strings(models)
-	sort.Strings(groups)
-	sort.Ints(userIds)
-	readiness, err := pricingruntime.GetRuntimeReadiness(policy)
+func AdminGetPricingRuntimeStatus(c *gin.Context) {
+	readiness, err := pricingruntime.GetRuntimeReadiness()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, pricingRolloutPolicyResponse{
-		pricingRolloutPolicyInput: pricingRolloutPolicyInput{
-			Percent:       policy.Percent,
-			Models:        models,
-			Groups:        groups,
-			UserIds:       userIds,
-			ShadowEnabled: policy.ShadowEnabled,
-		},
-		Runtime: readiness,
-	})
-}
-
-func AdminUpdatePricingRolloutPolicy(c *gin.Context) {
-	var input pricingRolloutPolicyInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if input.Percent < 0 || input.Percent > 100 {
-		common.ApiErrorMsg(c, "灰度比例必须在 0 到 100 之间")
-		return
-	}
-	modelSet := make(map[string]struct{}, len(input.Models))
-	models := make([]string, 0, len(input.Models))
-	for _, modelName := range input.Models {
-		modelName = strings.TrimSpace(modelName)
-		if modelName == "" {
-			continue
-		}
-		if _, exists := modelSet[modelName]; exists {
-			continue
-		}
-		modelSet[modelName] = struct{}{}
-		models = append(models, modelName)
-	}
-	groupSet := make(map[string]struct{}, len(input.Groups))
-	groups := make([]string, 0, len(input.Groups))
-	for _, group := range input.Groups {
-		group = strings.TrimSpace(group)
-		if group == "" {
-			continue
-		}
-		if _, exists := groupSet[group]; exists {
-			continue
-		}
-		groupSet[group] = struct{}{}
-		groups = append(groups, group)
-	}
-	userSet := make(map[int]struct{}, len(input.UserIds))
-	userIds := make([]string, 0, len(input.UserIds))
-	for _, userId := range input.UserIds {
-		if userId <= 0 {
-			common.ApiErrorMsg(c, "内部用户 ID 必须是正整数")
-			return
-		}
-		if _, exists := userSet[userId]; exists {
-			continue
-		}
-		userSet[userId] = struct{}{}
-		userIds = append(userIds, strconv.Itoa(userId))
-	}
-	sort.Strings(models)
-	sort.Strings(groups)
-	sort.Strings(userIds)
-	if err := model.UpdateOptionsBulk(map[string]string{
-		"PricingV2RolloutPercent": strconv.Itoa(input.Percent),
-		"PricingV2RolloutModels":  strings.Join(models, ","),
-		"PricingV2RolloutGroups":  strings.Join(groups, ","),
-		"PricingV2RolloutUserIds": strings.Join(userIds, ","),
-		"PricingV2ShadowEnabled":  strconv.FormatBool(input.ShadowEnabled),
-	}); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	recordManageAudit(c, "pricing.rollout.update", map[string]interface{}{
-		"percent": input.Percent, "model_count": len(models), "group_count": len(groups),
-		"user_count": len(userIds), "shadow_enabled": input.ShadowEnabled,
-	})
-	AdminGetPricingRolloutPolicy(c)
+	common.ApiSuccess(c, readiness)
 }
 
 func AdminListPricingCatalogOptions(c *gin.Context) {

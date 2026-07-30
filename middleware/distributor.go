@@ -103,46 +103,50 @@ func Distribute() func(c *gin.Context) {
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
 				}
-				if usingGroup != "auto" && pricingruntime.ShouldUseV2(
-					c.GetInt("id"),
-					usingGroup,
-					c.GetString(common.RequestIdKey),
-					modelRequest.Model,
-				) {
+				routeGroups := []string{usingGroup}
+				if usingGroup == "auto" {
+					userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+					routeGroups = service.GetUserAutoGroup(userGroup)
+				}
+				for _, routeGroup := range routeGroups {
 					routeCandidates, routeErr := pricingruntime.PlanV2Route(
-						usingGroup,
+						routeGroup,
 						modelRequest.Model,
 					)
 					if routeErr != nil {
 						common.SysError(fmt.Sprintf(
 							"plan v2 pricing route failed, falling back to legacy: group=%s model=%s error=%v",
-							usingGroup,
+							routeGroup,
 							modelRequest.Model,
 							routeErr,
 						))
-					} else {
-						v2RouteActive = pricingruntime.HasCompleteV2Pricing(
-							usingGroup,
-							modelRequest.Model,
-						)
-						for _, candidate := range routeCandidates {
-							planned, getErr := model.CacheGetChannel(candidate.ChannelId)
-							if getErr != nil ||
-								planned == nil ||
-								planned.Status != common.ChannelStatusEnabled ||
-								!ChannelSupportsRequestPath(
-									planned,
-									c.Request.URL.Path,
-									modelRequest.Model,
-								) ||
-								!pricingruntime.TryAcquireChannel(planned.Id) {
-								continue
-							}
-							channel = planned
-							selectGroup = usingGroup
-							break
-						}
+						continue
 					}
+					if !pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model) {
+						continue
+					}
+					v2RouteActive = true
+					selectGroup = routeGroup
+					if usingGroup == "auto" {
+						common.SetContextKey(c, constant.ContextKeyAutoGroup, routeGroup)
+					}
+					for _, candidate := range routeCandidates {
+						planned, getErr := model.CacheGetChannel(candidate.ChannelId)
+						if getErr != nil ||
+							planned == nil ||
+							planned.Status != common.ChannelStatusEnabled ||
+							!ChannelSupportsRequestPath(
+								planned,
+								c.Request.URL.Path,
+								modelRequest.Model,
+							) ||
+							!pricingruntime.TryAcquireChannel(planned.Id) {
+							continue
+						}
+						channel = planned
+						break
+					}
+					break
 				}
 
 				if channel == nil && v2RouteActive {

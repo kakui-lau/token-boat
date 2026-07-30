@@ -1,10 +1,15 @@
 package common
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	rootcommon "github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,4 +82,15 @@ func TestRelayInfoMetaTypedNilReceiver(t *testing.T) {
 	assert.NotNil(t, firstOptions.Gemini.SupportsImagine)
 	assert.NotNil(t, firstOptions.Gemini.SafetySetting)
 	assert.NotNil(t, firstOptions.PreserveThinkingSuffix)
+}
+
+func TestGenBaseRelayInfoUsesSelectedAutoGroupForPricing(t *testing.T) {
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	rootcommon.SetContextKey(context, constant.ContextKeyUsingGroup, "auto")
+	rootcommon.SetContextKey(context, constant.ContextKeyAutoGroup, "business")
+
+	info := GenRelayInfoOpenAI(context, nil)
+
+	assert.Equal(t, "business", info.UsingGroup)
 }

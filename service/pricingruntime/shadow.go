@@ -21,7 +21,7 @@ func BuildShadowComparison(
 	requestInput billingexpr.RequestInput,
 	businessUsage pricingengine.Usage,
 ) (*hosttypes.PricingShadowComparison, error) {
-	if !CurrentRolloutPolicy().ShadowEnabled {
+	if !ShadowComparisonEnabled() {
 		return nil, nil
 	}
 	bundles := GetCandidateBundles(group, info.OriginModelName)

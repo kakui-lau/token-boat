@@ -21,9 +21,7 @@ func setupRuntimeCatalogTestDB(t *testing.T) {
 	originalDB := model.DB
 	common.OptionMapRWMutex.Lock()
 	originalOptions := common.OptionMap
-	common.OptionMap = map[string]string{
-		"PricingV2RolloutPercent": "100",
-	}
+	common.OptionMap = map[string]string{}
 	common.OptionMapRWMutex.Unlock()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -374,42 +372,17 @@ func TestRuntimeReadinessRequiresEveryEnabledChannelForScope(t *testing.T) {
 	createRuntimeBundle(t, 2, RuntimeModeV2)
 	createRuntimeBundle(t, 3, RuntimeModeLegacy)
 
-	readiness, err := GetRuntimeReadiness(RolloutPolicy{Percent: 100})
+	readiness, err := GetRuntimeReadiness()
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), readiness.TotalChannelModels)
 	assert.Equal(t, int64(1), readiness.V2ChannelModels)
 	assert.Zero(t, readiness.CompleteGroupModelScopes)
-	assert.Zero(t, readiness.EligibleGroupModelScopes)
 	assert.False(t, readiness.LiveTrafficEnabled)
 
 	require.NoError(t, SetRuntimeMode(3, RuntimeModeV2))
-	readiness, err = GetRuntimeReadiness(RolloutPolicy{Percent: 100})
+	readiness, err = GetRuntimeReadiness()
 	require.NoError(t, err)
 	assert.Equal(t, 1, readiness.CompleteGroupModelScopes)
-	assert.Equal(t, 1, readiness.EligibleGroupModelScopes)
-	assert.True(t, readiness.LiveTrafficEnabled)
-}
-
-func TestRuntimeReadinessAppliesRolloutFiltersButInternalUsersOverrideThem(t *testing.T) {
-	setupRuntimeCatalogTestDB(t)
-	createRuntimeBundle(t, 4, RuntimeModeV2)
-	require.NoError(t, RefreshCatalog())
-
-	readiness, err := GetRuntimeReadiness(RolloutPolicy{
-		Percent: 100,
-		Models:  map[string]struct{}{"another-model": {}},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, readiness.CompleteGroupModelScopes)
-	assert.Zero(t, readiness.EligibleGroupModelScopes)
-	assert.False(t, readiness.LiveTrafficEnabled)
-
-	readiness, err = GetRuntimeReadiness(RolloutPolicy{
-		UserIds: map[int]struct{}{42: {}},
-		Models:  map[string]struct{}{"another-model": {}},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, readiness.EligibleGroupModelScopes)
 	assert.True(t, readiness.LiveTrafficEnabled)
 }
 

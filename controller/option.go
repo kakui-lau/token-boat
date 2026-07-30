@@ -178,28 +178,10 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "PricingV2RolloutPercent":
-		percent, parseErr := strconv.Atoi(option.Value.(string))
-		if parseErr != nil || percent < 0 || percent > 100 {
-			common.ApiErrorMsg(c, "PricingV2RolloutPercent 必须是 0 到 100 的整数")
-			return
-		}
 	case "PricingV2ShadowEnabled":
 		if _, parseErr := strconv.ParseBool(option.Value.(string)); parseErr != nil {
 			common.ApiErrorMsg(c, "PricingV2ShadowEnabled 必须是布尔值")
 			return
-		}
-	case "PricingV2RolloutUserIds":
-		for _, value := range strings.Split(option.Value.(string), ",") {
-			value = strings.TrimSpace(value)
-			if value == "" {
-				continue
-			}
-			userId, parseErr := strconv.Atoi(value)
-			if parseErr != nil || userId <= 0 {
-				common.ApiErrorMsg(c, "PricingV2RolloutUserIds 必须是逗号分隔的正整数")
-				return
-			}
 		}
 	case "LinuxDOOAuthEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {

@@ -56,7 +56,7 @@ import {
 import { ChannelModelDialog } from './components/channel-model-dialog'
 import { PriceEditorSheet } from './components/price-editor-sheet'
 import { PricingReconciliationPanel } from './components/pricing-reconciliation-panel'
-import { PricingRolloutControl } from './components/pricing-rollout-control'
+import { PricingRuntimeStatus } from './components/pricing-runtime-status'
 import type { ChannelModel } from './types'
 
 export function PricingAdmin() {
@@ -149,7 +149,7 @@ export function PricingAdmin() {
           {t('Sync Catalog')}
         </Button>
       </SectionPageLayout.Actions>
-      <PricingRolloutControl />
+      <PricingRuntimeStatus />
       <SectionPageLayout.Content>
         <div className='h-full space-y-4 overflow-auto'>
           <PricingReconciliationPanel />

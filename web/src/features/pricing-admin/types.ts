@@ -46,6 +46,7 @@ export type ChannelModelListResponse = {
 
 export type PricingRolloutPolicy = {
   percent: number
+  models: string[]
   groups: string[]
   user_ids: number[]
   shadow_enabled: boolean

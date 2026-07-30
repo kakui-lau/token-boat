@@ -141,7 +141,8 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
-	common.OptionMap["PricingV2RolloutPercent"] = "100"
+	common.OptionMap["PricingV2RolloutPercent"] = "0"
+	common.OptionMap["PricingV2RolloutModels"] = ""
 	common.OptionMap["PricingV2RolloutGroups"] = ""
 	common.OptionMap["PricingV2RolloutUserIds"] = ""
 	common.OptionMap["PricingV2ShadowEnabled"] = "false"

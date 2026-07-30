@@ -34,7 +34,8 @@ import {
 export function PricingRolloutControl() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [percent, setPercent] = useState('100')
+  const [percent, setPercent] = useState('0')
+  const [models, setModels] = useState('')
   const [groups, setGroups] = useState('')
   const [userIds, setUserIds] = useState('')
   const [shadowEnabled, setShadowEnabled] = useState(false)
@@ -48,6 +49,7 @@ export function PricingRolloutControl() {
       return
     }
     setPercent(String(policy.percent))
+    setModels(policy.models.join(','))
     setGroups(policy.groups.join(','))
     setUserIds(policy.user_ids.join(','))
     setShadowEnabled(policy.shadow_enabled)
@@ -56,6 +58,10 @@ export function PricingRolloutControl() {
     mutationFn: () =>
       updatePricingRolloutPolicy({
         percent: Number(percent),
+        models: models
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean),
         groups: groups
           .split(',')
           .map((value) => value.trim())
@@ -75,6 +81,7 @@ export function PricingRolloutControl() {
   })
   const numericPercent = Number(percent)
   const canSave =
+    policyQuery.isSuccess &&
     percent.trim() !== '' &&
     Number.isInteger(numericPercent) &&
     numericPercent >= 0 &&
@@ -86,11 +93,11 @@ export function PricingRolloutControl() {
         <h2 className='font-semibold'>{t('V2 Rollout Control')}</h2>
         <p className='text-muted-foreground text-sm'>
           {t(
-            'Internal users override group and traffic percentage. Shadow mode compares prices without changing billing.'
+            'Internal users override model, group, and traffic percentage. Shadow mode compares prices without changing billing.'
           )}
         </p>
       </div>
-      <div className='grid gap-4 md:grid-cols-4'>
+      <div className='grid gap-4 md:grid-cols-5'>
         <Field>
           <FieldLabel htmlFor='pricing-rollout-percent'>
             {t('Traffic Percentage')}
@@ -103,6 +110,17 @@ export function PricingRolloutControl() {
             step={1}
             value={percent}
             onChange={(event) => setPercent(event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor='pricing-rollout-models'>
+            {t('Models')}
+          </FieldLabel>
+          <Input
+            id='pricing-rollout-models'
+            value={models}
+            placeholder={t('Comma-separated values')}
+            onChange={(event) => setModels(event.target.value)}
           />
         </Field>
         <Field>

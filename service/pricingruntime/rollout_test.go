@@ -39,6 +39,18 @@ func TestRolloutPercentageIsDeterministic(t *testing.T) {
 	assert.Equal(t, first, ShouldUseV2(7, "default", "request-a", "model"))
 }
 
+func TestRolloutRestrictsNonInternalUsersToConfiguredModels(t *testing.T) {
+	setRolloutOptionsForTest(t, map[string]string{
+		"PricingV2RolloutPercent": "100",
+		"PricingV2RolloutModels":  "gpt-5, claude-4",
+		"PricingV2RolloutUserIds": "42",
+	})
+
+	assert.True(t, ShouldUseV2(7, "default", "request", "gpt-5"))
+	assert.False(t, ShouldUseV2(7, "default", "request", "gemini"))
+	assert.True(t, ShouldUseV2(42, "default", "request", "gemini"))
+}
+
 func TestInvalidRolloutPercentageFailsClosed(t *testing.T) {
 	setRolloutOptionsForTest(t, map[string]string{
 		"PricingV2RolloutPercent": "101",

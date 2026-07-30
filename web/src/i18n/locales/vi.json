@@ -2555,6 +2555,7 @@
     "Internal Server Error!": "Lỗi máy chủ nội bộ!",
     "Internal User IDs": "ID người dùng nội bộ",
     "Internal users override group and traffic percentage. Shadow mode compares prices without changing billing.": "Người dùng nội bộ được ưu tiên hơn nhóm và tỷ lệ lưu lượng. Chế độ bóng chỉ so sánh giá mà không thay đổi tính phí.",
+    "Internal users override model, group, and traffic percentage. Shadow mode compares prices without changing billing.": "Người dùng nội bộ không bị giới hạn theo mô hình, nhóm và tỷ lệ lưu lượng. Chế độ đối chiếu chỉ so sánh giá, không thay đổi tính phí.",
     "Invalid (NaN)": "Không hợp lệ (NaN)",
     "Invalid chat link. Please contact the administrator.": "Liên kết trò chuyện không hợp lệ. Vui lòng liên hệ quản trị viên.",
     "Invalid chat link. Please contact your administrator.": "Liên kết trò chuyện không hợp lệ. Vui lòng liên hệ với quản trị viên của bạn.",

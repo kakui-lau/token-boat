@@ -2555,6 +2555,7 @@
     "Internal Server Error!": "內部伺服器錯誤！",
     "Internal User IDs": "內部使用者 ID",
     "Internal users override group and traffic percentage. Shadow mode compares prices without changing billing.": "內部使用者優先於群組和流量比例。影子模式僅比較價格，不變更實際計費。",
+    "Internal users override model, group, and traffic percentage. Shadow mode compares prices without changing billing.": "內部使用者不受模型、群組和流量比例限制。影子模式只比較價格，不改變實際計費。",
     "Invalid (NaN)": "無效 (NaN)",
     "Invalid chat link. Please contact the administrator.": "無效的聊天連結。請聯絡管理員。",
     "Invalid chat link. Please contact your administrator.": "無效的聊天連結。請聯絡您的管理員。",

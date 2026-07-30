@@ -11,6 +11,7 @@ import (
 
 type RolloutPolicy struct {
 	Percent       int
+	Models        map[string]struct{}
 	Groups        map[string]struct{}
 	UserIds       map[int]struct{}
 	ShadowEnabled bool
@@ -19,6 +20,7 @@ type RolloutPolicy struct {
 func CurrentRolloutPolicy() RolloutPolicy {
 	common.OptionMapRWMutex.RLock()
 	percentText := common.OptionMap["PricingV2RolloutPercent"]
+	modelsText := common.OptionMap["PricingV2RolloutModels"]
 	groupsText := common.OptionMap["PricingV2RolloutGroups"]
 	userIdsText := common.OptionMap["PricingV2RolloutUserIds"]
 	shadowText := common.OptionMap["PricingV2ShadowEnabled"]
@@ -30,9 +32,15 @@ func CurrentRolloutPolicy() RolloutPolicy {
 	}
 	policy := RolloutPolicy{
 		Percent:       percent,
+		Models:        make(map[string]struct{}),
 		Groups:        make(map[string]struct{}),
 		UserIds:       make(map[int]struct{}),
 		ShadowEnabled: strings.EqualFold(strings.TrimSpace(shadowText), "true"),
+	}
+	for _, modelName := range strings.Split(modelsText, ",") {
+		if modelName = strings.TrimSpace(modelName); modelName != "" {
+			policy.Models[modelName] = struct{}{}
+		}
 	}
 	for _, group := range strings.Split(groupsText, ",") {
 		if group = strings.TrimSpace(group); group != "" {
@@ -52,6 +60,11 @@ func ShouldUseV2(userId int, group string, requestId string, modelName string) b
 	policy := CurrentRolloutPolicy()
 	if _, allowed := policy.UserIds[userId]; allowed {
 		return true
+	}
+	if len(policy.Models) > 0 {
+		if _, allowed := policy.Models[modelName]; !allowed {
+			return false
+		}
 	}
 	if len(policy.Groups) > 0 {
 		if _, allowed := policy.Groups[group]; !allowed {

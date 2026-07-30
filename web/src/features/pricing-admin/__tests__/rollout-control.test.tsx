@@ -50,6 +50,7 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
     success: true,
     data: {
       percent: 10,
+      models: ['gpt-5'],
       groups: ['vip'],
       user_ids: [42],
       shadow_enabled: false,
@@ -59,6 +60,7 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
     success: true,
     data: {
       percent: 50,
+      models: ['gpt-5', 'claude-4'],
       groups: ['vip', 'internal'],
       user_ids: [42],
       shadow_enabled: true,
@@ -79,6 +81,9 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
   fireEvent.change(screen.getByLabelText('Traffic Percentage'), {
     target: { value: '50' },
   })
+  fireEvent.change(screen.getByLabelText('Models'), {
+    target: { value: 'gpt-5, claude-4' },
+  })
   fireEvent.change(screen.getByLabelText('Groups'), {
     target: { value: 'vip, internal' },
   })
@@ -90,6 +95,7 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
   await waitFor(() =>
     expect(updatePricingRolloutPolicy).toHaveBeenCalledWith({
       percent: 50,
+      models: ['gpt-5', 'claude-4'],
       groups: ['vip', 'internal'],
       user_ids: [42],
       shadow_enabled: true,
@@ -102,6 +108,7 @@ test('disables saving when traffic percentage is outside the supported range', a
     success: true,
     data: {
       percent: 101,
+      models: [],
       groups: [],
       user_ids: [],
       shadow_enabled: false,

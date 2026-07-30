@@ -2555,6 +2555,7 @@
     "Internal Server Error!": "Internal Server Error!",
     "Internal User IDs": "Internal User IDs",
     "Internal users override group and traffic percentage. Shadow mode compares prices without changing billing.": "Internal users override group and traffic percentage. Shadow mode compares prices without changing billing.",
+    "Internal users override model, group, and traffic percentage. Shadow mode compares prices without changing billing.": "Internal users override model, group, and traffic percentage. Shadow mode compares prices without changing billing.",
     "Invalid (NaN)": "Invalid (NaN)",
     "Invalid chat link. Please contact the administrator.": "Invalid chat link. Please contact the administrator.",
     "Invalid chat link. Please contact your administrator.": "Invalid chat link. Please contact your administrator.",

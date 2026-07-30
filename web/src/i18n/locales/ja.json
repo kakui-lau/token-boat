@@ -2555,6 +2555,7 @@
     "Internal Server Error!": "内部サーバーエラー！",
     "Internal User IDs": "内部ユーザー ID",
     "Internal users override group and traffic percentage. Shadow mode compares prices without changing billing.": "内部ユーザーはグループとトラフィック比率より優先されます。シャドウモードでは課金を変更せず価格を比較します。",
+    "Internal users override model, group, and traffic percentage. Shadow mode compares prices without changing billing.": "内部ユーザーはモデル、グループ、トラフィック比率の制限を受けません。シャドーモードは課金を変更せず価格のみ比較します。",
     "Invalid (NaN)": "無効 (NaN)",
     "Invalid chat link. Please contact the administrator.": "無効なチャットリンクです。管理者に連絡してください。",
     "Invalid chat link. Please contact your administrator.": "無効なチャットリンクです。管理者に連絡してください。",

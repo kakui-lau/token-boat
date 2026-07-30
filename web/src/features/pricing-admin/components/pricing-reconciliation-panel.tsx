@@ -30,6 +30,15 @@ import {
   getRequestPricingSnapshots,
 } from '../api'
 
+function formatPricingUsage(value?: string): string {
+  if (!value) return '—'
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
+}
+
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -38,6 +47,9 @@ export function PricingReconciliationPanel() {
   const [showAllRecords, setShowAllRecords] = useState(false)
   const [statusFilter, setStatusFilter] = useState('')
   const [billingModeFilter, setBillingModeFilter] = useState('')
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(
+    null
+  )
   const [keyword, setKeyword] = useState('')
   const [appliedKeyword, setAppliedKeyword] = useState('')
   const pageSize = 20
@@ -79,6 +91,8 @@ export function PricingReconciliationPanel() {
     },
   })
   const rows = snapshotsQuery.data?.data.items ?? []
+  const selectedSnapshot =
+    rows.find((row) => row.id === selectedSnapshotId) ?? null
   const total = snapshotsQuery.data?.data.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const statusLabels = {
@@ -340,17 +354,28 @@ export function PricingReconciliationPanel() {
                   {dayjs.unix(row.updated_at).format('YYYY-MM-DD HH:mm')}
                 </TableCell>
                 <TableCell>
-                  {row.status === 'pending' ? (
+                  <div className='flex items-center gap-2'>
                     <Button
                       size='sm'
-                      variant='outline'
-                      onClick={() => setConfirmRefundId(row.id)}
+                      variant='ghost'
+                      onClick={() =>
+                        setSelectedSnapshotId(
+                          selectedSnapshotId === row.id ? null : row.id
+                        )
+                      }
                     >
-                      {t('Confirm Refunded')}
+                      {t('View details')}
                     </Button>
-                  ) : (
-                    '—'
-                  )}
+                    {row.status === 'pending' ? (
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => setConfirmRefundId(row.id)}
+                      >
+                        {t('Confirm Refunded')}
+                      </Button>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -367,6 +392,60 @@ export function PricingReconciliationPanel() {
           </TableBody>
         </Table>
       </div>
+      {selectedSnapshot ? (
+        <Card size='sm'>
+          <CardContent className='space-y-3'>
+            <div className='grid gap-3 md:grid-cols-3'>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Request ID')}
+                </div>
+                <div className='font-mono text-xs break-all'>
+                  {selectedSnapshot.request_id}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Price versions')}
+                </div>
+                <div className='font-mono text-xs'>
+                  P#{selectedSnapshot.purchase_price_version_id ?? '—'} · R#
+                  {selectedSnapshot.retail_price_version_id ?? '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Resolution')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.resolution || '—'}
+                </div>
+              </div>
+            </div>
+            <div className='grid gap-3 lg:grid-cols-2'>
+              {[
+                {
+                  label: t('Estimated usage'),
+                  value: selectedSnapshot.estimated_usage,
+                },
+                {
+                  label: t('Actual usage'),
+                  value: selectedSnapshot.actual_usage,
+                },
+              ].map((item) => (
+                <div key={item.label}>
+                  <div className='text-muted-foreground mb-1 text-xs'>
+                    {item.label}
+                  </div>
+                  <pre className='bg-muted max-h-64 overflow-auto rounded-md p-3 font-mono text-xs whitespace-pre-wrap'>
+                    {formatPricingUsage(item.value)}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
       {total > pageSize ? (
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <p className='text-muted-foreground text-sm'>

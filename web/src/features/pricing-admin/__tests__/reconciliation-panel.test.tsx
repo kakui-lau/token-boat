@@ -62,6 +62,10 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           channel_id: 2,
           channel_name: 'video-provider',
           billing_mode: 'video_duration',
+          purchase_price_version_id: 12,
+          retail_price_version_id: 13,
+          estimated_usage: '{"video_seconds":3}',
+          actual_usage: '',
           reserved_quota: 80000,
           settled_quota: 0,
           purchase_cost: '0.4',
@@ -95,6 +99,9 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(
     screen.getByRole('button', { name: 'Confirm Refunded' })
   ).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+  expect(screen.getByText('P#12 · R#13')).toBeInTheDocument()
+  expect(screen.getByText(/"video_seconds": 3/)).toBeInTheDocument()
   expect(screen.getByText('0.4 USD')).toBeInTheDocument()
   expect(screen.getByText('0.8 USD')).toBeInTheDocument()
   expect(

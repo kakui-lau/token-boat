@@ -87,6 +87,10 @@ export type RequestPricingSnapshot = {
   channel_id: number
   channel_name: string
   billing_mode: string
+  purchase_price_version_id?: number
+  retail_price_version_id?: number
+  estimated_usage?: string
+  actual_usage?: string
   reserved_quota: number
   settled_quota: number
   purchase_cost: string
@@ -99,6 +103,7 @@ export type RequestPricingSnapshot = {
   resolved_at?: number
   resolved_by?: number
   updated_at: number
+  created_at?: number
 }
 
 export type RequestPricingSnapshotListResponse = {

@@ -153,10 +153,10 @@ describe('Pricing admin editor layout', () => {
     )
   })
 
-  test('submits the selected v2 runtime mode when editing a channel model', async () => {
+  test('keeps runtime switching out of channel model editing', async () => {
     vi.mocked(updateChannelModel).mockResolvedValue({
       success: true,
-      data: { ...channelModel, runtime_mode: 'v2' },
+      data: channelModel,
     })
     renderWithQueryClient(
       <ChannelModelDialog
@@ -167,15 +167,13 @@ describe('Pricing admin editor layout', () => {
       />
     )
 
-    fireEvent.change(screen.getByLabelText('Runtime'), {
-      target: { value: 'v2' },
-    })
+    expect(screen.queryByLabelText('Runtime')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() =>
       expect(updateChannelModel).toHaveBeenCalledWith(
         channelModel.id,
-        expect.objectContaining({ runtime_mode: 'v2' })
+        expect.not.objectContaining({ runtime_mode: expect.anything() })
       )
     )
   })

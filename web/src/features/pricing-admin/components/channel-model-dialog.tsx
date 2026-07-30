@@ -54,7 +54,6 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
   const [modelId, setModelId] = useState('')
   const [upstreamModelName, setUpstreamModelName] = useState('')
   const [status, setStatus] = useState('1')
-  const [runtimeMode, setRuntimeMode] = useState<'legacy' | 'v2'>('legacy')
   const [priority, setPriority] = useState('0')
   const [weight, setWeight] = useState('0')
   const [region, setRegion] = useState('')
@@ -68,7 +67,6 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
     setModelId(props.channelModel ? String(props.channelModel.model_id) : '')
     setUpstreamModelName(props.channelModel?.upstream_model_name ?? '')
     setStatus(String(props.channelModel?.status ?? 1))
-    setRuntimeMode(props.channelModel?.runtime_mode ?? 'legacy')
     setPriority(String(props.channelModel?.priority ?? 0))
     setWeight(String(props.channelModel?.weight ?? 0))
     setRegion(props.channelModel?.region ?? '')
@@ -94,7 +92,6 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
             priority: Number(priority),
             weight: Number(weight),
             region: region.trim(),
-            runtime_mode: runtimeMode,
           })
         : createChannelModel({
             channel_id: Number(channelId),
@@ -122,7 +119,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
     Number.isInteger(Number(priority)) &&
     Number.isInteger(Number(weight)) &&
     Number(weight) >= 0 &&
-    !(runtimeMode === 'v2' && status === '0')
+    !(props.channelModel?.runtime_mode === 'v2' && status === '0')
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -243,28 +240,6 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
               onChange={(event) => setRegion(event.target.value)}
             />
           </Field>
-          {props.channelModel ? (
-            <Field>
-              <FieldLabel htmlFor='channel-model-runtime'>
-                {t('Runtime')}
-              </FieldLabel>
-              <NativeSelect
-                id='channel-model-runtime'
-                className='w-full'
-                value={runtimeMode}
-                onChange={(event) =>
-                  setRuntimeMode(event.target.value as 'legacy' | 'v2')
-                }
-              >
-                <NativeSelectOption value='legacy'>
-                  {t('Legacy Billing')}
-                </NativeSelectOption>
-                <NativeSelectOption value='v2'>
-                  {t('V2 Pricing')}
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-          ) : null}
           <Field>
             <FieldLabel htmlFor='channel-model-priority'>
               {t('Priority')}

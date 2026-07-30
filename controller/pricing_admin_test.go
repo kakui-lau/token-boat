@@ -115,6 +115,41 @@ func TestAdminUpdateChannelModelRejectsIdentityMutation(t *testing.T) {
 	assert.Equal(t, 61, stored.ChannelId)
 }
 
+func TestAdminUpdateChannelModelRejectsIndividualRuntimeSwitch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 65, Name: "channel-runtime"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 66, ModelName: "runtime-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 67, ChannelId: 65, ModelId: 66, UpstreamModelName: "runtime-model",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodPut,
+		"/api/pricing-admin/channel-models/67",
+		model.ChannelModel{
+			ChannelId: 65, ModelId: 66, UpstreamModelName: "runtime-model",
+			Status: 1, RuntimeMode: "v2",
+		},
+	)
+	context.Params = gin.Params{{Key: "id", Value: "67"}}
+
+	AdminUpdateChannelModel(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Contains(t, response.Message, "模型级")
+
+	var stored model.ChannelModel
+	require.NoError(t, model.DB.First(&stored, 67).Error)
+	assert.Equal(t, "legacy", stored.RuntimeMode)
+}
+
 func TestAdminListPricingCatalogOptionsOnlyReturnsModelsConfiguredOnChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)

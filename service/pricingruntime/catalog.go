@@ -146,6 +146,27 @@ func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, e
 	return bundle, nil
 }
 
+func validateCandidateContracts(bundles []ActivePriceBundle) error {
+	if len(bundles) < 2 {
+		return nil
+	}
+	reference := bundles[0]
+	for _, candidate := range bundles[1:] {
+		if candidate.Purchase.Currency != reference.Purchase.Currency ||
+			candidate.Retail.Currency != reference.Retail.Currency ||
+			candidate.Purchase.BillingMode != reference.Purchase.BillingMode ||
+			candidate.Purchase.PriceStructure != reference.Purchase.PriceStructure ||
+			candidate.Retail.PriceStructure != reference.Retail.PriceStructure {
+			return fmt.Errorf(
+				"channel model %d billing contract does not match channel model %d",
+				candidate.ChannelModel.Id,
+				reference.ChannelModel.Id,
+			)
+		}
+	}
+	return nil
+}
+
 func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 	if runtimeMode != RuntimeModeLegacy && runtimeMode != RuntimeModeV2 {
 		return 0, fmt.Errorf("unsupported runtime mode %q", runtimeMode)
@@ -196,8 +217,10 @@ func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 				)
 			}
 			ids := make([]int, 0, len(channelModels))
+			bundles := make([]ActivePriceBundle, 0, len(channelModels))
 			for _, channelModel := range channelModels {
-				if _, err := validateV2Activation(tx, channelModel.Id); err != nil {
+				bundle, err := validateV2Activation(tx, channelModel.Id)
+				if err != nil {
 					return fmt.Errorf(
 						"channel model %d is not ready for V2: %w",
 						channelModel.Id,
@@ -205,6 +228,10 @@ func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 					)
 				}
 				ids = append(ids, channelModel.Id)
+				bundles = append(bundles, bundle)
+			}
+			if err := validateCandidateContracts(bundles); err != nil {
+				return fmt.Errorf("model %q cannot enable V2: %w", modelName, err)
 			}
 			query = query.Where("id IN ?", ids)
 		}
@@ -291,8 +318,23 @@ func RefreshCatalog() error {
 		}
 	}
 	for key, count := range enabledCount {
-		next.CompleteV2ByGroupModel[key] =
-			count > 0 && len(next.CandidatesByGroupModel[key]) == count
+		candidateIds := next.CandidatesByGroupModel[key]
+		if count == 0 || len(candidateIds) != count {
+			continue
+		}
+		bundles := make([]ActivePriceBundle, 0, len(candidateIds))
+		for _, channelModelId := range candidateIds {
+			bundles = append(bundles, next.BundleByChannelModel[channelModelId])
+		}
+		if err := validateCandidateContracts(bundles); err != nil {
+			common.SysError(fmt.Sprintf(
+				"skip incompatible v2 candidate pool %q and fall back to legacy: %v",
+				strings.ReplaceAll(key, "\x00", "/"),
+				err,
+			))
+			continue
+		}
+		next.CompleteV2ByGroupModel[key] = true
 	}
 	currentCatalog.Store(next)
 	return nil

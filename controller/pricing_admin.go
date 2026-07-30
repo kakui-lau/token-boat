@@ -349,17 +349,13 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		common.ApiErrorMsg(c, "渠道模型标识创建后不可修改，请新建渠道模型")
 		return
 	}
-	runtimeMode := input.RuntimeMode
-	if runtimeMode == "" {
-		runtimeMode = current.RuntimeMode
+	if input.RuntimeMode != "" && input.RuntimeMode != current.RuntimeMode {
+		common.ApiErrorMsg(c, "运行模式只能通过模型级启用 V2 或回退操作修改")
+		return
 	}
-	if runtimeMode == pricingruntime.RuntimeModeV2 {
+	if current.RuntimeMode == pricingruntime.RuntimeModeV2 {
 		if input.Status == 0 {
 			common.ApiErrorMsg(c, "停用的渠道模型不能启用 V2 运行时")
-			return
-		}
-		if _, err := pricingruntime.ValidateV2Activation(current.Id); err != nil {
-			common.ApiError(c, err)
 			return
 		}
 	}
@@ -371,7 +367,6 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		"data_policy":       input.DataPolicy,
 		"capability_config": input.CapabilityConfig,
 		"routing_tags":      input.RoutingTags,
-		"runtime_mode":      runtimeMode,
 		"updated_at":        common.GetTimestamp(),
 	}
 	if err := model.DB.Model(&current).Updates(updates).Error; err != nil {
@@ -379,7 +374,7 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		return
 	}
 	pricingruntime.InvalidateCatalog()
-	if runtimeMode == pricingruntime.RuntimeModeV2 {
+	if current.RuntimeMode == pricingruntime.RuntimeModeV2 {
 		if err := pricingruntime.RefreshCatalog(); err != nil {
 			common.ApiError(c, err)
 			return

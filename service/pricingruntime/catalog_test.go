@@ -159,6 +159,49 @@ func TestSetModelRuntimeModeLeavesEveryChannelLegacyWhenOnePriceChainIsIncomplet
 	assert.Zero(t, v2Count)
 }
 
+func TestSetModelRuntimeModeRejectsMismatchedCandidateBillingContracts(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 1, RuntimeModeLegacy)
+	createRuntimeBundle(t, 2, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 2).
+		Update("model_id", 1).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 2).
+		Update("billing_mode", "video_duration").Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 2).
+		Update("billing_mode", "video_duration").Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "billing contract does not match")
+
+	var v2Count int64
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("runtime_mode = ?", RuntimeModeV2).
+		Count(&v2Count).Error)
+	assert.Zero(t, v2Count)
+}
+
+func TestRefreshCatalogRejectsMismatchedCandidateBillingContracts(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 1, RuntimeModeV2)
+	createRuntimeBundle(t, 2, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 2).
+		Update("model_id", 1).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 2).
+		Update("price_structure", "expression").Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 2).
+		Update("price_structure", "expression").Error)
+
+	require.NoError(t, RefreshCatalog())
+	assert.False(t, HasCompleteV2Pricing("default", "runtime-model"))
+}
+
 func TestPrepareRelayPricingRequiresVideoDurationUsage(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 9, RuntimeModeV2)

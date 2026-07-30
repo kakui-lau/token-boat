@@ -36,6 +36,13 @@ type pricingRolloutPolicyInput struct {
 	ShadowEnabled bool     `json:"shadow_enabled"`
 }
 
+type requestPricingSnapshotAdminRow struct {
+	model.RequestPricingSnapshot
+	ModelName   string `json:"model_name"`
+	ChannelId   int    `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+}
+
 func AdminGetPricingRolloutPolicy(c *gin.Context) {
 	policy := pricingruntime.CurrentRolloutPolicy()
 	models := make([]string, 0, len(policy.Models))
@@ -245,6 +252,61 @@ func AdminListChannelModels(c *gin.Context) {
 	}
 	var rows []channelModelAdminRow
 	if err := query.Order("channel_models.id DESC").
+		Offset(pageInfo.GetStartIdx()).
+		Limit(pageInfo.GetPageSize()).
+		Scan(&rows).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items":     rows,
+		"total":     total,
+		"page":      pageInfo.GetPage(),
+		"page_size": pageInfo.GetPageSize(),
+	})
+}
+
+func AdminListRequestPricingSnapshots(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	query := model.DB.Table("request_pricing_snapshots").
+		Select(
+			"request_pricing_snapshots.*, models.model_name AS model_name, " +
+				"channel_models.channel_id AS channel_id, channels.name AS channel_name",
+		).
+		Joins("JOIN models ON models.id = request_pricing_snapshots.model_id").
+		Joins("JOIN channel_models ON channel_models.id = request_pricing_snapshots.channel_model_id").
+		Joins("JOIN channels ON channels.id = channel_models.channel_id")
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		switch status {
+		case pricingruntime.PricingSnapshotStatusReserved,
+			pricingruntime.PricingSnapshotStatusPending,
+			pricingruntime.PricingSnapshotStatusSettled:
+			query = query.Where("request_pricing_snapshots.status = ?", status)
+		default:
+			common.ApiErrorMsg(c, "status 无效")
+			return
+		}
+	}
+	if billingMode := strings.TrimSpace(c.Query("billing_mode")); billingMode != "" {
+		query = query.Where("request_pricing_snapshots.billing_mode = ?", billingMode)
+	}
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where(
+			"request_pricing_snapshots.request_id LIKE ? OR models.model_name LIKE ? OR channels.name LIKE ?",
+			like,
+			like,
+			like,
+		)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var rows []requestPricingSnapshotAdminRow
+	if err := query.Order("request_pricing_snapshots.id DESC").
 		Offset(pageInfo.GetStartIdx()).
 		Limit(pageInfo.GetPageSize()).
 		Scan(&rows).Error; err != nil {

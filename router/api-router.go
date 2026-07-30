@@ -372,6 +372,7 @@ func SetApiRouter(router *gin.Engine) {
 		pricingAdminRoute.Use(middleware.RootAuth())
 		{
 			pricingAdminRoute.GET("/channel-models", controller.AdminListChannelModels)
+			pricingAdminRoute.GET("/request-pricing-snapshots", controller.AdminListRequestPricingSnapshots)
 			pricingAdminRoute.GET("/catalog-options", controller.AdminListPricingCatalogOptions)
 			pricingAdminRoute.GET("/rollout-policy", controller.AdminGetPricingRolloutPolicy)
 			pricingAdminRoute.PUT("/rollout-policy", controller.AdminUpdatePricingRolloutPolicy)

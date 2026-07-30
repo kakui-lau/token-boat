@@ -29,6 +29,7 @@ func setupPricingAdminControllerTestDB(t *testing.T) {
 		&model.OfficialModelPriceVersion{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
+		&model.RequestPricingSnapshot{},
 	))
 	t.Cleanup(func() {
 		model.DB = originalDB
@@ -251,4 +252,80 @@ func TestAdminListChannelModelsReturnsAndFiltersActiveRetailPriceStatus(t *testi
 	unpublishedRows := list("/api/pricing-admin/channel-models?retail_status=unpublished")
 	require.Len(t, unpublishedRows, 1)
 	assert.Equal(t, 95, unpublishedRows[0].Id)
+}
+
+func TestAdminListRequestPricingSnapshotsFiltersPendingReconciliation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 101, Name: "audit-channel",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 102, ModelName: "audit-video-model",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 103, ChannelId: 101, ModelId: 102, UpstreamModelName: "audit-video-model",
+		Status: 1, RuntimeMode: "v2",
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.RequestPricingSnapshot{
+		{
+			RequestId: "request-pending", UserId: 1, ModelId: 102, ChannelModelId: 103,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 2,
+			BillingMode: "video_duration", ReservedQuota: 100, SettledQuota: 0,
+			PurchaseCost: "0.04", RetailAmount: "0.08", Currency: "USD",
+			Status: "pending",
+		},
+		{
+			RequestId: "request-settled", UserId: 2, ModelId: 102, ChannelModelId: 103,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 2,
+			BillingMode: "video_duration", ReservedQuota: 100, SettledQuota: 100,
+			PurchaseCost: "0.04", RetailAmount: "0.08", Currency: "USD",
+			Status: "settled",
+		},
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots?status=pending&keyword=audit-video",
+		nil,
+	)
+	AdminListRequestPricingSnapshots(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []requestPricingSnapshotAdminRow `json:"items"`
+			Total int64                            `json:"total"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.EqualValues(t, 1, response.Data.Total)
+	require.Len(t, response.Data.Items, 1)
+	assert.Equal(t, "request-pending", response.Data.Items[0].RequestId)
+	assert.Equal(t, "audit-video-model", response.Data.Items[0].ModelName)
+	assert.Equal(t, 101, response.Data.Items[0].ChannelId)
+	assert.Equal(t, "audit-channel", response.Data.Items[0].ChannelName)
+}
+
+func TestAdminListRequestPricingSnapshotsRejectsInvalidStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots?status=unknown",
+		nil,
+	)
+
+	AdminListRequestPricingSnapshots(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Contains(t, response.Message, "status")
 }

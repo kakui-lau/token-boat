@@ -149,6 +149,7 @@ describe('channel model retail publication status', () => {
     const publishedRow = (await screen.findByText('published-model')).closest(
       'tr'
     )
+    expect(screen.queryByText('Billing Anomalies')).not.toBeInTheDocument()
     const unpublishedRow = screen.getByText('unpublished-model').closest('tr')
     if (!publishedRow || !unpublishedRow) {
       throw new Error('expected both channel model rows')

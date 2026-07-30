@@ -22,6 +22,7 @@ import {
   Box,
   ChartNoAxesCombined,
   CircleDollarSign,
+  ClipboardCheck,
   Coins,
   CreditCard,
   FileText,
@@ -151,6 +152,12 @@ export function useSidebarData(): SidebarData {
             title: t('Price Comparison'),
             url: '/price-comparison',
             icon: GitCompareArrows,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Pricing Reconciliation'),
+            url: '/pricing-reconciliation',
+            icon: ClipboardCheck,
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {

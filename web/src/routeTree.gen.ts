@@ -54,6 +54,7 @@ import { Route as AuthenticatedOfficialPricingIndexRouteImport } from './routes/
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedPriceComparisonIndexRouteImport } from './routes/_authenticated/price-comparison/index'
 import { Route as AuthenticatedPricingAdminIndexRouteImport } from './routes/_authenticated/pricing-admin/index'
+import { Route as AuthenticatedPricingReconciliationIndexRouteImport } from './routes/_authenticated/pricing-reconciliation/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRechargeIndexRouteImport } from './routes/_authenticated/recharge/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
@@ -318,6 +319,12 @@ const AuthenticatedPricingAdminIndexRoute =
     path: '/pricing-admin/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPricingReconciliationIndexRoute =
+  AuthenticatedPricingReconciliationIndexRouteImport.update({
+    id: '/pricing-reconciliation/',
+    path: '/pricing-reconciliation/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProfileIndexRoute =
   AuthenticatedProfileIndexRouteImport.update({
     id: '/profile/',
@@ -512,6 +519,7 @@ export interface FileRoutesByFullPath {
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/price-comparison/': typeof AuthenticatedPriceComparisonIndexRoute
   '/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
+  '/pricing-reconciliation/': typeof AuthenticatedPricingReconciliationIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -581,6 +589,7 @@ export interface FileRoutesByTo {
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/price-comparison': typeof AuthenticatedPriceComparisonIndexRoute
   '/pricing-admin': typeof AuthenticatedPricingAdminIndexRoute
+  '/pricing-reconciliation': typeof AuthenticatedPricingReconciliationIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/recharge': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -654,6 +663,7 @@ export interface FileRoutesById {
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/price-comparison/': typeof AuthenticatedPriceComparisonIndexRoute
   '/_authenticated/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
+  '/_authenticated/pricing-reconciliation/': typeof AuthenticatedPricingReconciliationIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -726,6 +736,7 @@ export interface FileRouteTypes {
     | '/playground/'
     | '/price-comparison/'
     | '/pricing-admin/'
+    | '/pricing-reconciliation/'
     | '/profile/'
     | '/recharge/'
     | '/redemption-codes/'
@@ -795,6 +806,7 @@ export interface FileRouteTypes {
     | '/playground'
     | '/price-comparison'
     | '/pricing-admin'
+    | '/pricing-reconciliation'
     | '/profile'
     | '/recharge'
     | '/redemption-codes'
@@ -867,6 +879,7 @@ export interface FileRouteTypes {
     | '/_authenticated/playground/'
     | '/_authenticated/price-comparison/'
     | '/_authenticated/pricing-admin/'
+    | '/_authenticated/pricing-reconciliation/'
     | '/_authenticated/profile/'
     | '/_authenticated/recharge/'
     | '/_authenticated/redemption-codes/'
@@ -1235,6 +1248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPricingAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/pricing-reconciliation/': {
+      id: '/_authenticated/pricing-reconciliation/'
+      path: '/pricing-reconciliation'
+      fullPath: '/pricing-reconciliation/'
+      preLoaderRoute: typeof AuthenticatedPricingReconciliationIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile/': {
       id: '/_authenticated/profile/'
       path: '/profile'
@@ -1514,6 +1534,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedPriceComparisonIndexRoute: typeof AuthenticatedPriceComparisonIndexRoute
   AuthenticatedPricingAdminIndexRoute: typeof AuthenticatedPricingAdminIndexRoute
+  AuthenticatedPricingReconciliationIndexRoute: typeof AuthenticatedPricingReconciliationIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRechargeIndexRoute: typeof AuthenticatedRechargeIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
@@ -1547,6 +1568,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPriceComparisonIndexRoute:
     AuthenticatedPriceComparisonIndexRoute,
   AuthenticatedPricingAdminIndexRoute: AuthenticatedPricingAdminIndexRoute,
+  AuthenticatedPricingReconciliationIndexRoute:
+    AuthenticatedPricingReconciliationIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRechargeIndexRoute: AuthenticatedRechargeIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:

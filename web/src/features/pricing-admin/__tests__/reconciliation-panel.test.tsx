@@ -16,6 +16,7 @@ import {
   getRequestPricingSnapshots,
 } from '../api'
 import { PricingReconciliationPanel } from '../components/pricing-reconciliation-panel'
+import { PricingReconciliationPage } from '../../pricing-reconciliation'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -89,7 +90,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
 
   render(
     <QueryClientProvider client={queryClient}>
-      <PricingReconciliationPanel />
+      <PricingReconciliationPage />
     </QueryClientProvider>
   )
 
@@ -115,6 +116,9 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     screen.getByRole('columnheader', { name: 'Retail amount' })
   ).toBeInTheDocument()
   expect(screen.getByText('Billing Anomalies')).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'Pricing Reconciliation' })
+  ).toBeInTheDocument()
   expect(
     screen.getByText(
       'Shows settlement failures and reservations still incomplete after 15 minutes.'

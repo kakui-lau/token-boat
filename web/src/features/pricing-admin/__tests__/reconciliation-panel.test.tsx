@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { getRequestPricingSnapshots } from '../api'
+import {
+  getPricingReconciliationSummary,
+  getRequestPricingSnapshots,
+} from '../api'
 import { PricingReconciliationPanel } from '../components/pricing-reconciliation-panel'
 
 vi.mock('react-i18next', () => ({
@@ -17,12 +20,23 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('../api', () => ({
+  getPricingReconciliationSummary: vi.fn(),
   getRequestPricingSnapshots: vi.fn(),
 }))
 
 afterEach(cleanup)
 
 test('shows pending pricing snapshots with reconciliation context', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 1,
+      stale_reserved: 2,
+      settled_last_24h: 12,
+      refunded_last_24h: 3,
+      oldest_anomaly_created_at: 1_800_000_000,
+    },
+  })
   vi.mocked(getRequestPricingSnapshots).mockResolvedValue({
     success: true,
     data: {
@@ -71,6 +85,10 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     )
   ).toBeInTheDocument()
   expect(screen.getByText('1 billing anomalies')).toBeInTheDocument()
+  expect(screen.getByText('Pending anomalies')).toBeInTheDocument()
+  expect(screen.getByText('Stale reservations')).toBeInTheDocument()
+  expect(screen.getByText('Settled (24h)')).toBeInTheDocument()
+  expect(screen.getByText('Refunded (24h)')).toBeInTheDocument()
   expect(getRequestPricingSnapshots).toHaveBeenCalledWith({
     reconciliation: true,
     page: 1,
@@ -79,6 +97,16 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
 })
 
 test('shows an explicit empty state when reconciliation is clear', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 0,
+      stale_reserved: 0,
+      settled_last_24h: 0,
+      refunded_last_24h: 0,
+      oldest_anomaly_created_at: 0,
+    },
+  })
   vi.mocked(getRequestPricingSnapshots).mockResolvedValue({
     success: true,
     data: {

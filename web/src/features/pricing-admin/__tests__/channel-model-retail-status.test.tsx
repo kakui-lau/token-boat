@@ -53,6 +53,20 @@ vi.mock('../api', () => ({
     success: true,
     data: { channels: [], events: [] },
   }),
+  getPricingReconciliationSummary: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      pending: 0,
+      stale_reserved: 0,
+      settled_last_24h: 0,
+      refunded_last_24h: 0,
+      oldest_anomaly_created_at: 0,
+    },
+  }),
+  getRequestPricingSnapshots: vi.fn().mockResolvedValue({
+    success: true,
+    data: { items: [], total: 0, page: 1, page_size: 20 },
+  }),
   resetPricingCircuit: vi.fn(),
   getPricingRuntimeStatus: vi.fn().mockResolvedValue({
     success: true,

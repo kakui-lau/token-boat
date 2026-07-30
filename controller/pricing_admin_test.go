@@ -507,3 +507,61 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 	assert.True(t, resetResponse.Data.Reset)
 	assert.Equal(t, 121, resetResponse.Data.ChannelId)
 }
+
+func TestAdminPricingReconciliationSummarySeparatesBacklogAndRecentOutcomes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	now := common.GetTimestamp()
+	snapshots := []model.RequestPricingSnapshot{
+		{RequestId: "summary-pending", Status: pricingruntime.PricingSnapshotStatusPending},
+		{RequestId: "summary-stale", Status: pricingruntime.PricingSnapshotStatusReserved},
+		{RequestId: "summary-fresh", Status: pricingruntime.PricingSnapshotStatusReserved},
+		{RequestId: "summary-settled", Status: pricingruntime.PricingSnapshotStatusSettled},
+		{RequestId: "summary-refunded", Status: pricingruntime.PricingSnapshotStatusRefunded},
+	}
+	for index := range snapshots {
+		snapshots[index].UserId = 1
+		snapshots[index].ModelId = 1
+		snapshots[index].ChannelModelId = 1
+		snapshots[index].BillingMode = "token"
+		snapshots[index].Currency = "USD"
+		snapshots[index].PurchaseCost = "0"
+		snapshots[index].RetailAmount = "0"
+		require.NoError(t, model.DB.Create(&snapshots[index]).Error)
+	}
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id IN ?", []string{"summary-pending", "summary-stale"}).
+		Updates(map[string]interface{}{
+			"created_at": now - pricingReconciliationReservedAgeSeconds - 60,
+			"updated_at": now - pricingReconciliationReservedAgeSeconds - 60,
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id IN ?", []string{"summary-settled", "summary-refunded"}).
+		UpdateColumn("updated_at", now-60).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/summary",
+		nil,
+	)
+	AdminGetPricingReconciliationSummary(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Pending                int64 `json:"pending"`
+			StaleReserved          int64 `json:"stale_reserved"`
+			SettledLast24h         int64 `json:"settled_last_24h"`
+			RefundedLast24h        int64 `json:"refunded_last_24h"`
+			OldestAnomalyCreatedAt int64 `json:"oldest_anomaly_created_at"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.EqualValues(t, 1, response.Data.Pending)
+	assert.EqualValues(t, 1, response.Data.StaleReserved)
+	assert.EqualValues(t, 1, response.Data.SettledLast24h)
+	assert.EqualValues(t, 1, response.Data.RefundedLast24h)
+	assert.Equal(t, now-pricingReconciliationReservedAgeSeconds-60, response.Data.OldestAnomalyCreatedAt)
+}

@@ -357,6 +357,75 @@ func AdminListRequestPricingSnapshots(c *gin.Context) {
 	})
 }
 
+func AdminGetPricingReconciliationSummary(c *gin.Context) {
+	now := common.GetTimestamp()
+	staleBefore := now - pricingReconciliationReservedAgeSeconds
+	recentSince := now - 24*60*60
+	var pendingCount int64
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ?", pricingruntime.PricingSnapshotStatusPending).
+		Count(&pendingCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var staleReservedCount int64
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ? AND created_at <= ?",
+			pricingruntime.PricingSnapshotStatusReserved,
+			staleBefore,
+		).
+		Count(&staleReservedCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var settledRecentCount int64
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ? AND updated_at >= ?",
+			pricingruntime.PricingSnapshotStatusSettled,
+			recentSince,
+		).
+		Count(&settledRecentCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var refundedRecentCount int64
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ? AND updated_at >= ?",
+			pricingruntime.PricingSnapshotStatusRefunded,
+			recentSince,
+		).
+		Count(&refundedRecentCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var oldestAnomaly model.RequestPricingSnapshot
+	oldestAnomalyCreatedAt := int64(0)
+	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where(
+			"status = ? OR (status = ? AND created_at <= ?)",
+			pricingruntime.PricingSnapshotStatusPending,
+			pricingruntime.PricingSnapshotStatusReserved,
+			staleBefore,
+		).
+		Order("created_at ASC").
+		Limit(1).
+		Find(&oldestAnomaly)
+	if result.Error != nil {
+		common.ApiError(c, result.Error)
+		return
+	}
+	if result.RowsAffected == 1 {
+		oldestAnomalyCreatedAt = oldestAnomaly.CreatedAt
+	}
+	common.ApiSuccess(c, gin.H{
+		"pending":                   pendingCount,
+		"stale_reserved":            staleReservedCount,
+		"settled_last_24h":          settledRecentCount,
+		"refunded_last_24h":         refundedRecentCount,
+		"oldest_anomaly_created_at": oldestAnomalyCreatedAt,
+	})
+}
+
 func AdminCreateChannelModel(c *gin.Context) {
 	var input model.ChannelModel
 	if err := c.ShouldBindJSON(&input); err != nil {

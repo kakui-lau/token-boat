@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -14,7 +15,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-import { getRequestPricingSnapshots } from '../api'
+import {
+  getPricingReconciliationSummary,
+  getRequestPricingSnapshots,
+} from '../api'
 
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
@@ -26,6 +30,10 @@ export function PricingReconciliationPanel() {
         page: 1,
         page_size: 20,
       }),
+  })
+  const summaryQuery = useQuery({
+    queryKey: ['pricing-admin', 'request-pricing-snapshots', 'summary'],
+    queryFn: getPricingReconciliationSummary,
   })
   const rows = snapshotsQuery.data?.data.items ?? []
   const total = snapshotsQuery.data?.data.total ?? 0
@@ -49,12 +57,54 @@ export function PricingReconciliationPanel() {
         <Button
           size='sm'
           variant='outline'
-          disabled={snapshotsQuery.isFetching}
-          onClick={() => snapshotsQuery.refetch()}
+          disabled={snapshotsQuery.isFetching || summaryQuery.isFetching}
+          onClick={() => {
+            void Promise.all([snapshotsQuery.refetch(), summaryQuery.refetch()])
+          }}
         >
           <RefreshCw aria-hidden='true' />
           {t('Refresh')}
         </Button>
+      </div>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
+        {[
+          {
+            label: t('Pending anomalies'),
+            value: summaryQuery.data?.data.pending ?? 0,
+          },
+          {
+            label: t('Stale reservations'),
+            value: summaryQuery.data?.data.stale_reserved ?? 0,
+          },
+          {
+            label: t('Settled (24h)'),
+            value: summaryQuery.data?.data.settled_last_24h ?? 0,
+          },
+          {
+            label: t('Refunded (24h)'),
+            value: summaryQuery.data?.data.refunded_last_24h ?? 0,
+          },
+          {
+            label: t('Oldest anomaly'),
+            value:
+              (summaryQuery.data?.data.oldest_anomaly_created_at ?? 0) > 0
+                ? dayjs
+                    .unix(
+                      summaryQuery.data?.data.oldest_anomaly_created_at ?? 0
+                    )
+                    .format('YYYY-MM-DD HH:mm')
+                : '—',
+          },
+        ].map((item) => (
+          <Card key={item.label} size='sm'>
+            <CardContent>
+              <div className='text-muted-foreground text-xs'>{item.label}</div>
+              <div className='mt-1 font-mono text-lg font-semibold tabular-nums'>
+                {item.value}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
       <div className='overflow-x-auto rounded-lg border'>
         <Table>

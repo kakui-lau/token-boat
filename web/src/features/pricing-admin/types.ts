@@ -107,6 +107,14 @@ export type RequestPricingSnapshotListResponse = {
   }
 }
 
+export type PricingReconciliationSummary = {
+  pending: number
+  stale_reserved: number
+  settled_last_24h: number
+  refunded_last_24h: number
+  oldest_anomaly_created_at: number
+}
+
 export type ImportResult = {
   created: number
   updated?: number

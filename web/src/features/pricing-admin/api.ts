@@ -30,6 +30,7 @@ import type {
   OfficialPriceVersion,
   PriceSimulationResult,
   PricingRuntimeStatus,
+  PricingReconciliationSummary,
   PricingCatalogOptionsResponse,
   PriceVersionResponse,
   PublishLatestOfficialPriceDraftsResponse,
@@ -110,6 +111,15 @@ export async function getRequestPricingSnapshots(params: {
   const response = await api.get(
     '/api/pricing-admin/request-pricing-snapshots',
     { params }
+  )
+  return requirePricingSuccess(response.data)
+}
+
+export async function getPricingReconciliationSummary(): Promise<
+  PriceVersionResponse<PricingReconciliationSummary>
+> {
+  const response = await api.get(
+    '/api/pricing-admin/request-pricing-snapshots/summary'
   )
   return requirePricingSuccess(response.data)
 }

@@ -31,7 +31,8 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	retailExpr := `v2:tier("base", p * 2 / 1000000)`
 	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
 		Id: 84, ChannelModelId: 82, BillingMode: "token",
-		PriceStructure: "flat", PurchaseBillingExpr: purchaseExpr,
+		PricingMode: "fixed_unit_price", PriceStructure: "flat",
+		PurchaseBillingExpr:     purchaseExpr,
 		PurchaseExprHash:        billingexpr.ExprHashString(purchaseExpr),
 		ExpressionSchemaVersion: "v2",
 		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,

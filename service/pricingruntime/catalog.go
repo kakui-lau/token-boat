@@ -124,10 +124,38 @@ func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, e
 	if bundle.Purchase.Currency != "USD" || bundle.Retail.Currency != "USD" {
 		return ActivePriceBundle{}, errors.New("v2 runtime requires USD purchase and retail prices")
 	}
+	switch bundle.Purchase.PricingMode {
+	case "official_ratio", "component_ratio", "fixed_unit_price", "hybrid", "custom_expr":
+	default:
+		return ActivePriceBundle{}, fmt.Errorf(
+			"v2 runtime does not support pricing mode %q",
+			bundle.Purchase.PricingMode,
+		)
+	}
+	requiresOfficialPrice := bundle.Purchase.PricingMode == "official_ratio" ||
+		bundle.Purchase.PricingMode == "component_ratio" ||
+		bundle.Purchase.PricingMode == "hybrid"
+	if requiresOfficialPrice && bundle.Official == nil {
+		return ActivePriceBundle{}, errors.New(
+			"v2 ratio pricing requires a published official price",
+		)
+	}
 	if bundle.Official != nil {
 		if !officialPriceCanRunInV2(*bundle.Official) {
 			return ActivePriceBundle{}, errors.New(
 				"v2 runtime requires a published v2 official price with a valid expression hash",
+			)
+		}
+		if bundle.Official.ModelId != bundle.ChannelModel.ModelId {
+			return ActivePriceBundle{}, errors.New(
+				"v2 official price and channel model belong to different logical models",
+			)
+		}
+		if bundle.Official.BillingMode != bundle.Purchase.BillingMode ||
+			bundle.Official.PriceStructure != bundle.Purchase.PriceStructure ||
+			bundle.Official.Currency != bundle.Purchase.Currency {
+			return ActivePriceBundle{}, errors.New(
+				"v2 purchase billing contract does not match official price",
 			)
 		}
 	}

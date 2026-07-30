@@ -233,6 +233,41 @@ func TestSetModelRuntimeModeRejectsLegacyOfficialPriceReference(t *testing.T) {
 	require.ErrorContains(t, err, "requires a published v2 official price")
 }
 
+func TestSetModelRuntimeModeRejectsRatioPricingWithoutOfficialPrice(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 21, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 21).
+		Update("pricing_mode", "official_ratio").Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "ratio pricing requires a published official price")
+}
+
+func TestSetModelRuntimeModeRejectsOfficialPriceFromDifferentModel(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 22, RuntimeModeLegacy)
+	expression := `v2:tier("base", p * 2 / 1000000)`
+	official := model.OfficialModelPriceVersion{
+		ModelId: 999, BillingMode: "token", PriceStructure: "flat",
+		BillingExpr: expression, ExprHash: billingexpr.ExprHashString(expression),
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+		Version: 1, Status: model.PricingVersionStatusActive,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 22).
+		Updates(map[string]any{
+			"pricing_mode":              "official_ratio",
+			"official_price_version_id": official.Id,
+		}).Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "belong to different logical models")
+}
+
 func TestSetModelRuntimeModeRejectsExpressionThatFailsSmokeExecution(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 19, RuntimeModeLegacy)

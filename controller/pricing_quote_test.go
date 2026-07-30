@@ -32,14 +32,16 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
 		Id: 84, ChannelModelId: 82, BillingMode: "token",
 		PriceStructure: "flat", PurchaseBillingExpr: purchaseExpr,
-		PurchaseExprHash: billingexpr.ExprHashString(purchaseExpr),
-		Currency:         "USD", Version: 1, Status: model.PricingVersionStatusActive,
+		PurchaseExprHash:        billingexpr.ExprHashString(purchaseExpr),
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
 		Id: 85, ChannelModelId: 82, PurchasePriceVersionId: 84,
 		BillingMode: "token", PriceStructure: "flat", RetailBillingExpr: retailExpr,
-		RetailExprHash: billingexpr.ExprHashString(retailExpr),
-		Currency:       "USD", Version: 1, Status: model.PricingVersionStatusActive,
+		RetailExprHash:          billingexpr.ExprHashString(retailExpr),
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
 		MinimumMarginRate: "0.1", TargetNetMargin: "0.2",
 	}).Error)

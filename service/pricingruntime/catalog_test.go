@@ -196,6 +196,34 @@ func TestSetModelRuntimeModeRejectsMismatchedCandidateBillingContracts(t *testin
 	assert.Zero(t, v2Count)
 }
 
+func TestSetModelRuntimeModeRejectsCorruptedExpressionHash(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 18, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 18).
+		Update("retail_expr_hash", billingexpr.ExprHashString(`v2:tier("other", req)`)).Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "retail price expression hash does not match")
+}
+
+func TestSetModelRuntimeModeRejectsExpressionThatFailsSmokeExecution(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 19, RuntimeModeLegacy)
+	invalidAtRuntime := `v2:tier("base", 1 / req)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 19).
+		Updates(map[string]any{
+			"retail_billing_expr": invalidAtRuntime,
+			"retail_expr_hash":    billingexpr.ExprHashString(invalidAtRuntime),
+		}).Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "smoke test")
+}
+
 func TestRefreshCatalogRejectsMismatchedCandidateBillingContracts(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 1, RuntimeModeV2)
@@ -490,9 +518,11 @@ func TestCatalogSnapshotStaysFrozenUntilInvalidated(t *testing.T) {
 
 	before, ok := GetActiveBundle(3)
 	require.True(t, ok)
+	updatedExpr := `v2:tier("base", p * 3 / 1000000)`
 	require.NoError(t, model.DB.Exec(
-		"UPDATE channel_model_retail_price_versions SET retail_billing_expr = ? WHERE id = ?",
-		`v2:tier("base", p * 3 / 1000000)`,
+		"UPDATE channel_model_retail_price_versions SET retail_billing_expr = ?, retail_expr_hash = ? WHERE id = ?",
+		updatedExpr,
+		billingexpr.ExprHashString(updatedExpr),
 		3,
 	).Error)
 

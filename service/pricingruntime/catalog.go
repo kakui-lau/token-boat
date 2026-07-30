@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"gorm.io/gorm"
 )
 
@@ -137,11 +138,43 @@ func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, e
 			"v2 runtime does not support this billing mode",
 		)
 	}
-	if _, err := billingexpr.CompileFromCache(bundle.Purchase.PurchaseBillingExpr); err != nil {
-		return ActivePriceBundle{}, fmt.Errorf("compile purchase price expression: %w", err)
+	expressions := []struct {
+		name          string
+		schemaVersion string
+		expression    string
+		hash          string
+	}{
+		{
+			name: "purchase", schemaVersion: bundle.Purchase.ExpressionSchemaVersion,
+			expression: bundle.Purchase.PurchaseBillingExpr, hash: bundle.Purchase.PurchaseExprHash,
+		},
+		{
+			name: "retail", schemaVersion: bundle.Retail.ExpressionSchemaVersion,
+			expression: bundle.Retail.RetailBillingExpr, hash: bundle.Retail.RetailExprHash,
+		},
 	}
-	if _, err := billingexpr.CompileFromCache(bundle.Retail.RetailBillingExpr); err != nil {
-		return ActivePriceBundle{}, fmt.Errorf("compile retail price expression: %w", err)
+	for _, priceExpression := range expressions {
+		if priceExpression.schemaVersion != "v2" ||
+			billingexpr.ExprVersion(priceExpression.expression) != 2 {
+			return ActivePriceBundle{}, fmt.Errorf(
+				"%s price expression must use the v2 schema",
+				priceExpression.name,
+			)
+		}
+		if priceExpression.hash == "" ||
+			priceExpression.hash != billingexpr.ExprHashString(priceExpression.expression) {
+			return ActivePriceBundle{}, fmt.Errorf(
+				"%s price expression hash does not match",
+				priceExpression.name,
+			)
+		}
+		if err := billing_setting.SmokeTestExpr(priceExpression.expression); err != nil {
+			return ActivePriceBundle{}, fmt.Errorf(
+				"execute %s price expression smoke test: %w",
+				priceExpression.name,
+				err,
+			)
+		}
 	}
 	return bundle, nil
 }

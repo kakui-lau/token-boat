@@ -22,7 +22,7 @@ export function PricingReconciliationPanel() {
     queryKey: ['pricing-admin', 'request-pricing-snapshots', 'pending'],
     queryFn: () =>
       getRequestPricingSnapshots({
-        status: 'pending',
+        reconciliation: true,
         page: 1,
         page_size: 20,
       }),
@@ -38,7 +38,7 @@ export function PricingReconciliationPanel() {
             {t('Pricing Reconciliation')}
           </h2>
           <p className='text-muted-foreground text-sm'>
-            {t('{{total}} pending pricing snapshots', { total })}
+            {t('{{total}} pricing snapshots require review', { total })}
           </p>
         </div>
         <Button
@@ -61,6 +61,7 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Billing mode')}</TableHead>
               <TableHead>{t('Reserved quota')}</TableHead>
               <TableHead>{t('Settled quota')}</TableHead>
+              <TableHead>{t('Status')}</TableHead>
               <TableHead>{t('Updated')}</TableHead>
             </TableRow>
           </TableHeader>
@@ -81,6 +82,13 @@ export function PricingReconciliationPanel() {
                 <TableCell className='font-mono tabular-nums'>
                   {row.settled_quota}
                 </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={row.status === 'pending' ? 'default' : 'secondary'}
+                  >
+                    {row.status === 'pending' ? t('Pending') : t('Reserved')}
+                  </Badge>
+                </TableCell>
                 <TableCell className='whitespace-nowrap'>
                   {dayjs.unix(row.updated_at).format('YYYY-MM-DD HH:mm')}
                 </TableCell>
@@ -89,10 +97,10 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className='text-muted-foreground h-20 text-center'
                 >
-                  {t('No pending pricing snapshots')}
+                  {t('No pricing snapshots require review')}
                 </TableCell>
               </TableRow>
             ) : null}

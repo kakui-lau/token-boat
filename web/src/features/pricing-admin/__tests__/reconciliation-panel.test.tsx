@@ -64,9 +64,11 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('seedance-2.0')).toBeInTheDocument()
   expect(screen.getByText('video-provider')).toBeInTheDocument()
   expect(screen.getByText('video_duration')).toBeInTheDocument()
-  expect(screen.getByText('1 pending pricing snapshots')).toBeInTheDocument()
+  expect(
+    screen.getByText('1 pricing snapshots require review')
+  ).toBeInTheDocument()
   expect(getRequestPricingSnapshots).toHaveBeenCalledWith({
-    status: 'pending',
+    reconciliation: true,
     page: 1,
     page_size: 20,
   })
@@ -93,6 +95,8 @@ test('shows an explicit empty state when reconciliation is clear', async () => {
   )
 
   await waitFor(() =>
-    expect(screen.getByText('No pending pricing snapshots')).toBeInTheDocument()
+    expect(
+      screen.getByText('No pricing snapshots require review')
+    ).toBeInTheDocument()
   )
 })

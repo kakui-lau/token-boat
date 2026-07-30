@@ -43,6 +43,8 @@ type requestPricingSnapshotAdminRow struct {
 	ChannelName string `json:"channel_name"`
 }
 
+const pricingReconciliationReservedAgeSeconds = 15 * 60
+
 func AdminGetPricingRolloutPolicy(c *gin.Context) {
 	policy := pricingruntime.CurrentRolloutPolicy()
 	models := make([]string, 0, len(policy.Models))
@@ -277,6 +279,22 @@ func AdminListRequestPricingSnapshots(c *gin.Context) {
 		Joins("LEFT JOIN models ON models.id = request_pricing_snapshots.model_id").
 		Joins("LEFT JOIN channel_models ON channel_models.id = request_pricing_snapshots.channel_model_id").
 		Joins("LEFT JOIN channels ON channels.id = channel_models.channel_id")
+	if rawReconciliation := strings.TrimSpace(c.Query("reconciliation")); rawReconciliation != "" {
+		reconciliation, err := strconv.ParseBool(rawReconciliation)
+		if err != nil {
+			common.ApiErrorMsg(c, "reconciliation 无效")
+			return
+		}
+		if reconciliation {
+			query = query.Where(
+				"request_pricing_snapshots.status = ? OR "+
+					"(request_pricing_snapshots.status = ? AND request_pricing_snapshots.created_at <= ?)",
+				pricingruntime.PricingSnapshotStatusPending,
+				pricingruntime.PricingSnapshotStatusReserved,
+				common.GetTimestamp()-pricingReconciliationReservedAgeSeconds,
+			)
+		}
+	}
 	if status := strings.TrimSpace(c.Query("status")); status != "" {
 		switch status {
 		case pricingruntime.PricingSnapshotStatusReserved,

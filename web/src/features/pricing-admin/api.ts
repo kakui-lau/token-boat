@@ -77,6 +77,7 @@ export async function getChannelModels(params: {
 
 export async function getRequestPricingSnapshots(params: {
   status?: 'reserved' | 'pending' | 'settled'
+  reconciliation?: boolean
   billing_mode?: string
   keyword?: string
   page?: number

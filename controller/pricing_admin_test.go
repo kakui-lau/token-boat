@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -364,4 +365,54 @@ func TestAdminListRequestPricingSnapshotsKeepsOrphanedAuditRowsVisible(t *testin
 	assert.Empty(t, response.Data.Items[0].ModelName)
 	assert.Zero(t, response.Data.Items[0].ChannelId)
 	assert.Empty(t, response.Data.Items[0].ChannelName)
+}
+
+func TestAdminListRequestPricingSnapshotsFindsPendingAndStaleReservedRows(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 111, Name: "reconciliation-channel",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 112, ModelName: "reconciliation-model",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 113, ChannelId: 111, ModelId: 112, UpstreamModelName: "reconciliation-model",
+		Status: 1, RuntimeMode: "v2",
+	}).Error)
+	for index, status := range []string{"pending", "reserved", "reserved", "settled"} {
+		require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
+			RequestId: fmt.Sprintf("reconciliation-%d", index),
+			UserId:    1, ModelId: 112, ChannelModelId: 113,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 2,
+			BillingMode: "token", ReservedQuota: 100,
+			PurchaseCost: "0.04", RetailAmount: "0.08", Currency: "USD",
+			Status: status,
+		}).Error)
+	}
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", "reconciliation-1").
+		Update("created_at", common.GetTimestamp()-pricingReconciliationReservedAgeSeconds-1).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots?reconciliation=true",
+		nil,
+	)
+	AdminListRequestPricingSnapshots(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []requestPricingSnapshotAdminRow `json:"items"`
+			Total int64                            `json:"total"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.EqualValues(t, 2, response.Data.Total)
+	require.Len(t, response.Data.Items, 2)
+	assert.Equal(t, "reconciliation-1", response.Data.Items[0].RequestId)
+	assert.Equal(t, "reconciliation-0", response.Data.Items[1].RequestId)
 }

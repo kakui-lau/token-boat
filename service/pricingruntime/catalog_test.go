@@ -173,6 +173,85 @@ func TestPrepareRelayPricingRequiresVideoDurationUsage(t *testing.T) {
 	assert.Equal(t, int(0.8*common.QuotaPerUnit), priceData.QuotaToPreConsume)
 }
 
+func TestPrepareRelayPricingMixedModeRequiresReferencedDurations(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 10, RuntimeModeV2)
+	purchaseExpr := `v2:tier("mixed", p * 1 / 1000000 + video_s * 0.04)`
+	retailExpr := `v2:tier("mixed", p * 2 / 1000000 + video_s * 0.08)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 10).
+		Updates(map[string]any{
+			"billing_mode":          "mixed",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 10).
+		Updates(map[string]any{
+			"billing_mode":        "mixed",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+	assert.False(t, SupportsFixedVideoTaskPricing("default", "runtime-model"))
+
+	info := &relaycommon.RelayInfo{
+		RequestId: "mixed-duration-missing",
+		UserId:    10, OriginModelName: "runtime-model",
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		10,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	info.RequestId = "mixed-duration-valid"
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		10,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1, VideoSeconds: 10},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, int(2.8*common.QuotaPerUnit), priceData.QuotaToPreConsume)
+}
+
+func TestSupportsFixedVideoTaskPricingAllowsRequestAndDurationOnly(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 12, RuntimeModeV2)
+	purchaseExpr := `v2:tier("video", req * 0.01 + video_s * 0.04)`
+	retailExpr := `v2:tier("video", req * 0.02 + video_s * 0.08)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 12).
+		Updates(map[string]any{
+			"billing_mode":          "mixed",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 12).
+		Updates(map[string]any{
+			"billing_mode":        "mixed",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	assert.True(t, SupportsFixedVideoTaskPricing("default", "runtime-model"))
+}
+
 func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 11, RuntimeModeLegacy)

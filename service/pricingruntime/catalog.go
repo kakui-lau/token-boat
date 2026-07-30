@@ -109,7 +109,7 @@ func ValidateV2Activation(channelModelId int) (ActivePriceBundle, error) {
 	}
 	supportedBillingModes := map[string]struct{}{
 		"token": {}, "request": {}, "image": {}, "character": {},
-		"audio_duration": {}, "video_duration": {},
+		"audio_duration": {}, "video_duration": {}, "mixed": {},
 	}
 	if bundle.Purchase.BillingMode != bundle.Retail.BillingMode {
 		return ActivePriceBundle{}, errors.New(
@@ -118,7 +118,7 @@ func ValidateV2Activation(channelModelId int) (ActivePriceBundle, error) {
 	}
 	if _, supported := supportedBillingModes[bundle.Purchase.BillingMode]; !supported {
 		return ActivePriceBundle{}, errors.New(
-			"v2 runtime supports token, request, image, character, audio duration, and video duration billing",
+			"v2 runtime does not support this billing mode",
 		)
 	}
 	if _, err := billingexpr.CompileFromCache(bundle.Purchase.PurchaseBillingExpr); err != nil {

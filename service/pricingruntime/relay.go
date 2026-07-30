@@ -13,6 +13,37 @@ import (
 
 const defaultEstimatedCompletionTokens = 8192
 
+// SupportsFixedVideoTaskPricing reports whether every active expression can be
+// evaluated from the business usage known before an asynchronous video task is
+// submitted. Token and output-derived quantities are deliberately excluded.
+func SupportsFixedVideoTaskPricing(group string, modelName string) bool {
+	bundles := GetCandidateBundles(group, modelName)
+	if len(bundles) == 0 {
+		return false
+	}
+	unsupported := map[string]bool{
+		"p": true, "c": true, "len": true,
+		"cr": true, "cc": true, "cc1h": true,
+		"img": true, "img_o": true, "ai": true, "ao": true,
+		"images": true, "audio_s": true, "chars": true,
+		"header": true, "hour": true, "minute": true,
+		"weekday": true, "month": true, "day": true,
+	}
+	for _, bundle := range bundles {
+		for _, expression := range []string{
+			bundle.Purchase.PurchaseBillingExpr,
+			bundle.Retail.RetailBillingExpr,
+		} {
+			for name, used := range billingexpr.UsedVars(expression) {
+				if used && unsupported[name] {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 func PrepareRelayPricing(
 	info *relaycommon.RelayInfo,
 	group string,
@@ -46,9 +77,22 @@ func PrepareRelayPricing(
 		return hosttypes.PriceData{}, false, nil
 	}
 	billingMode := bundles[0].Purchase.BillingMode
+	usedVars := make(map[string]bool)
+	for _, bundle := range bundles {
+		for name, used := range billingexpr.UsedVars(bundle.Purchase.PurchaseBillingExpr) {
+			if used {
+				usedVars[name] = true
+			}
+		}
+		for name, used := range billingexpr.UsedVars(bundle.Retail.RetailBillingExpr) {
+			if used {
+				usedVars[name] = true
+			}
+		}
+	}
 	if maxCompletionTokens <= 0 &&
 		groupRatioInfo.GroupRatio != 0 &&
-		billingMode == "token" {
+		usedVars["c"] {
 		maxCompletionTokens = defaultEstimatedCompletionTokens
 	}
 	usage := businessUsage
@@ -59,6 +103,12 @@ func PrepareRelayPricing(
 		return hosttypes.PriceData{}, false, nil
 	}
 	if billingMode == "video_duration" && usage.VideoSeconds <= 0 {
+		return hosttypes.PriceData{}, false, nil
+	}
+	if usedVars["audio_s"] && usage.AudioSeconds <= 0 {
+		return hosttypes.PriceData{}, false, nil
+	}
+	if usedVars["video_s"] && usage.VideoSeconds <= 0 {
 		return hosttypes.PriceData{}, false, nil
 	}
 	estimatedUsageJSON, err := common.Marshal(usage)

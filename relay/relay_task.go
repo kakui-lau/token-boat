@@ -199,12 +199,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 因为旧版适配器会在基础价格之上追加时长和分辨率倍率。
 	info.OriginModelName = modelName
 	v2CandidateSelected := info.DynamicPricingSnapshot != nil
-	if !v2CandidateSelected && pricingruntime.ShouldUseV2(
-		info.UserId,
-		info.UsingGroup,
-		info.RequestId,
-		info.OriginModelName,
-	) {
+	if !v2CandidateSelected &&
+		pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) &&
+		pricingruntime.ShouldUseV2(
+			info.UserId,
+			info.UsingGroup,
+			info.RequestId,
+			info.OriginModelName,
+		) {
 		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
 			if bundle.ChannelModel.ChannelId == info.ChannelId {
 				v2CandidateSelected = true

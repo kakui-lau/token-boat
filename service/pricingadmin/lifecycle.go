@@ -1,107 +1,22 @@
 package pricingadmin
 
 import (
-	"crypto/sha256"
 	"errors"
-	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"gorm.io/gorm"
 )
 
-type ActivePriceBundle struct {
-	ChannelModel model.ChannelModel                     `json:"channel_model"`
-	Official     *model.OfficialModelPriceVersion       `json:"official_price,omitempty"`
-	Purchase     model.ChannelModelPurchasePriceVersion `json:"purchase_price"`
-	Retail       model.ChannelModelRetailPriceVersion   `json:"retail_price"`
-	Revision     string                                 `json:"revision"`
-}
+type ActivePriceBundle = pricingruntime.ActivePriceBundle
 
 func GetActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
-	var bundle ActivePriceBundle
-	if channelModelId <= 0 {
-		return bundle, errors.New("channel model is required")
-	}
-	if err := model.DB.First(&bundle.ChannelModel, channelModelId).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return bundle, fmt.Errorf("channel model %d was not found", channelModelId)
-		}
-		return bundle, err
-	}
-	if err := model.DB.Where(
-		"channel_model_id = ? AND status = ?",
-		channelModelId,
-		model.PricingVersionStatusActive,
-	).First(&bundle.Purchase).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return bundle, fmt.Errorf(
-				"channel model %d has no active purchase price; publish a purchase price first",
-				channelModelId,
-			)
-		}
-		return bundle, err
-	}
-	if err := model.DB.Where(
-		"channel_model_id = ? AND purchase_price_version_id = ? AND status = ?",
-		channelModelId,
-		bundle.Purchase.Id,
-		model.PricingVersionStatusActive,
-	).First(&bundle.Retail).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return bundle, fmt.Errorf(
-				"channel model %d has no active retail price for active purchase version %d; publish a linked retail price",
-				channelModelId,
-				bundle.Purchase.Version,
-			)
-		}
-		return bundle, err
-	}
-	if bundle.Purchase.OfficialPriceVersionId != nil {
-		var official model.OfficialModelPriceVersion
-		if err := model.DB.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return bundle, fmt.Errorf(
-					"active purchase price references missing official price %d",
-					*bundle.Purchase.OfficialPriceVersionId,
-				)
-			}
-			return bundle, err
-		}
-		bundle.Official = &official
-	}
-	officialIdentity := "none"
-	if bundle.Official != nil {
-		officialIdentity = fmt.Sprintf(
-			"%d:%d:%s:%s",
-			bundle.Official.Id,
-			bundle.Official.UpdatedAt,
-			bundle.Official.Status,
-			bundle.Official.ExprHash,
-		)
-	}
-	revisionPayload := fmt.Sprintf(
-		"cm=%d:%d:%d:%s|official=%s|purchase=%d:%d:%s:%s|retail=%d:%d:%s:%s",
-		bundle.ChannelModel.Id,
-		bundle.ChannelModel.UpdatedAt,
-		bundle.ChannelModel.Status,
-		bundle.ChannelModel.RuntimeMode,
-		officialIdentity,
-		bundle.Purchase.Id,
-		bundle.Purchase.UpdatedAt,
-		bundle.Purchase.Status,
-		bundle.Purchase.PurchaseExprHash,
-		bundle.Retail.Id,
-		bundle.Retail.UpdatedAt,
-		bundle.Retail.Status,
-		bundle.Retail.RetailExprHash,
-	)
-	bundle.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(revisionPayload)))
-	return bundle, nil
+	return pricingruntime.LoadActivePriceBundle(channelModelId)
 }
 
 func SuspendPurchasePriceVersion(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)
 		if err != nil {
 			return err
@@ -120,10 +35,14 @@ func SuspendPurchasePriceVersion(id int) error {
 		}
 		return suspendVersion(tx, &model.ChannelModelPurchasePriceVersion{}, id)
 	})
+	if err == nil {
+		pricingruntime.InvalidateCatalog()
+	}
+	return err
 }
 
 func SuspendRetailPriceVersion(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetRetailPriceVersionForUpdate(tx, id)
 		if err != nil {
 			return err
@@ -133,6 +52,10 @@ func SuspendRetailPriceVersion(id int) error {
 		}
 		return suspendVersion(tx, &model.ChannelModelRetailPriceVersion{}, id)
 	})
+	if err == nil {
+		pricingruntime.InvalidateCatalog()
+	}
+	return err
 }
 
 func DeleteOfficialPriceDraft(id int) error {

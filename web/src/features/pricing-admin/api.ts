@@ -107,6 +107,7 @@ export async function updateChannelModel(
     priority: number
     weight: number
     region: string
+    runtime_mode: 'legacy' | 'v2'
   }
 ): Promise<PriceVersionResponse<ChannelModel>> {
   const response = await api.put(

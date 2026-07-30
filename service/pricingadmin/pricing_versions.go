@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/shopspring/decimal"
@@ -346,9 +347,13 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 }
 
 func PublishOfficialPriceVersion(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		return publishOfficialPriceVersion(tx, id)
 	})
+	if err == nil {
+		pricingruntime.InvalidateCatalog()
+	}
+	return err
 }
 
 type PublishLatestOfficialPriceDraftsResult struct {
@@ -384,6 +389,8 @@ func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult,
 	})
 	if err != nil {
 		result.Published = 0
+	} else {
+		pricingruntime.InvalidateCatalog()
 	}
 	return result, err
 }
@@ -587,7 +594,7 @@ func upgradePurchasePriceDraftExpressionToV2(
 }
 
 func PublishPurchasePriceVersion(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)
 		if err != nil {
 			return err
@@ -619,10 +626,14 @@ func PublishPurchasePriceVersion(id int) error {
 		}
 		return model.ActivatePurchasePriceVersion(tx, version, common.GetTimestamp())
 	})
+	if err == nil {
+		pricingruntime.InvalidateCatalog()
+	}
+	return err
 }
 
 func PublishRetailPriceVersion(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetRetailPriceVersionForUpdate(tx, id)
 		if err != nil {
 			return err
@@ -712,6 +723,10 @@ func PublishRetailPriceVersion(id int) error {
 		}
 		return model.ActivateRetailPriceVersion(tx, version, now)
 	})
+	if err == nil {
+		pricingruntime.InvalidateCatalog()
+	}
+	return err
 }
 
 // ImportLegacyOfficialPriceDrafts snapshots the current legacy pricing config

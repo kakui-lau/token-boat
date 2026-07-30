@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
 )
 
@@ -164,8 +165,8 @@ func AdminCreateChannelModel(c *gin.Context) {
 		common.ApiErrorMsg(c, "渠道、模型和上游模型名称不能为空")
 		return
 	}
-	if input.RuntimeMode != "" && input.RuntimeMode != "legacy" {
-		common.ApiErrorMsg(c, "V2 运行时尚未启用，新渠道模型必须使用 legacy 模式")
+	if input.RuntimeMode != "" && input.RuntimeMode != pricingruntime.RuntimeModeLegacy {
+		common.ApiErrorMsg(c, "新渠道模型必须先使用 legacy 模式并发布完整价格链")
 		return
 	}
 	if err := requireChannelModelReferences(input.ChannelId, input.ModelId); err != nil {
@@ -177,7 +178,7 @@ func AdminCreateChannelModel(c *gin.Context) {
 		return
 	}
 	input.Id = 0
-	input.RuntimeMode = "legacy"
+	input.RuntimeMode = pricingruntime.RuntimeModeLegacy
 	input.UpstreamModelName = strings.TrimSpace(input.UpstreamModelName)
 	if err := model.DB.Create(&input).Error; err != nil {
 		common.ApiError(c, err)
@@ -201,8 +202,10 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		common.ApiErrorMsg(c, "渠道、模型和上游模型名称不能为空")
 		return
 	}
-	if input.RuntimeMode != "" && input.RuntimeMode != "legacy" {
-		common.ApiErrorMsg(c, "V2 运行时尚未启用，当前只能保存 legacy 模式")
+	if input.RuntimeMode != "" &&
+		input.RuntimeMode != pricingruntime.RuntimeModeLegacy &&
+		input.RuntimeMode != pricingruntime.RuntimeModeV2 {
+		common.ApiErrorMsg(c, "运行模式必须是 legacy 或 v2")
 		return
 	}
 	if err := requireChannelModelReferences(input.ChannelId, input.ModelId); err != nil {
@@ -220,6 +223,20 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		common.ApiErrorMsg(c, "渠道模型标识创建后不可修改，请新建渠道模型")
 		return
 	}
+	runtimeMode := input.RuntimeMode
+	if runtimeMode == "" {
+		runtimeMode = current.RuntimeMode
+	}
+	if runtimeMode == pricingruntime.RuntimeModeV2 {
+		if input.Status == 0 {
+			common.ApiErrorMsg(c, "停用的渠道模型不能启用 V2 运行时")
+			return
+		}
+		if _, err := pricingruntime.ValidateV2Activation(current.Id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	updates := map[string]any{
 		"status":            input.Status,
 		"priority":          input.Priority,
@@ -228,12 +245,19 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		"data_policy":       input.DataPolicy,
 		"capability_config": input.CapabilityConfig,
 		"routing_tags":      input.RoutingTags,
-		"runtime_mode":      "legacy",
+		"runtime_mode":      runtimeMode,
 		"updated_at":        common.GetTimestamp(),
 	}
 	if err := model.DB.Model(&current).Updates(updates).Error; err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	pricingruntime.InvalidateCatalog()
+	if runtimeMode == pricingruntime.RuntimeModeV2 {
+		if err := pricingruntime.RefreshCatalog(); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if err := model.DB.First(&current, id).Error; err != nil {
 		common.ApiError(c, err)

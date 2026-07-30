@@ -28,7 +28,11 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getPricingCatalogOptions, updateOfficialFlatDraft } from '../api'
+import {
+  getPricingCatalogOptions,
+  updateChannelModel,
+  updateOfficialFlatDraft,
+} from '../api'
 import { ChannelModelDialog } from '../components/channel-model-dialog'
 import { ModelPriceOverview } from '../components/model-price-overview'
 import { OfficialPriceConfigurationEditor } from '../components/official-price-configuration-editor'
@@ -146,6 +150,33 @@ describe('Pricing admin editor layout', () => {
       'sm:max-w-2xl',
       'max-h-[90vh]',
       'overflow-y-auto'
+    )
+  })
+
+  test('submits the selected v2 runtime mode when editing a channel model', async () => {
+    vi.mocked(updateChannelModel).mockResolvedValue({
+      success: true,
+      data: { ...channelModel, runtime_mode: 'v2' },
+    })
+    renderWithQueryClient(
+      <ChannelModelDialog
+        open
+        channelModel={channelModel}
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
+
+    fireEvent.change(screen.getByLabelText('Runtime'), {
+      target: { value: 'v2' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(updateChannelModel).toHaveBeenCalledWith(
+        channelModel.id,
+        expect.objectContaining({ runtime_mode: 'v2' })
+      )
     )
   })
 

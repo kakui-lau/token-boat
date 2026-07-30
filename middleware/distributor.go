@@ -139,8 +139,7 @@ func Distribute() func(c *gin.Context) {
 								planned,
 								c.Request.URL.Path,
 								modelRequest.Model,
-							) ||
-							!pricingruntime.TryAcquireChannel(planned.Id) {
+							) {
 							continue
 						}
 						channel = planned
@@ -227,7 +226,10 @@ func Distribute() func(c *gin.Context) {
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
-			service.RecordChannelAffinity(c, channel.Id)
+			service.RecordChannelAffinity(
+				c,
+				common.GetContextKeyInt(c, constant.ContextKeyChannelId),
+			)
 		}
 	}
 }

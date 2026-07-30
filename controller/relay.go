@@ -204,6 +204,55 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
+	if usesV2Pricing {
+		selected := false
+		for _, channelId := range relayInfo.DynamicPricingSnapshot.RouteChannelIds {
+			channel, getErr := model.CacheGetChannel(channelId)
+			if getErr != nil ||
+				channel == nil ||
+				channel.Status != common.ChannelStatusEnabled ||
+				!middleware.ChannelSupportsRequestPath(
+					channel,
+					c.Request.URL.Path,
+					relayInfo.OriginModelName,
+				) ||
+				!pricingruntime.TryAcquireChannel(channel.Id) {
+				continue
+			}
+			if setupErr := middleware.SetupContextForSelectedChannel(
+				c,
+				channel,
+				relayInfo.OriginModelName,
+			); setupErr != nil {
+				continue
+			}
+			if bindErr := pricingruntime.BindSelectedChannel(
+				relayInfo,
+				channel.Id,
+			); bindErr != nil {
+				newAPIError = types.NewError(
+					bindErr,
+					types.ErrorCodeModelPriceError,
+					types.ErrOptionWithSkipRetry(),
+				)
+				return
+			}
+			selected = true
+			break
+		}
+		if !selected {
+			newAPIError = types.NewError(
+				fmt.Errorf(
+					"分组 %s 下模型 %s 没有可用的 V2 渠道",
+					relayInfo.UsingGroup,
+					relayInfo.OriginModelName,
+				),
+				types.ErrorCodeGetChannelFailed,
+				types.ErrOptionWithSkipRetry(),
+			)
+			return
+		}
+	}
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 

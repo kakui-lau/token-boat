@@ -3,8 +3,13 @@ package pricingruntime
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service/pricingengine"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +29,7 @@ func setupRuntimeCatalogTestDB(t *testing.T) {
 		&model.OfficialModelPriceVersion{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
+		&model.RequestPricingSnapshot{},
 	))
 	InvalidateCatalog()
 	t.Cleanup(func() {
@@ -49,16 +55,22 @@ func createRuntimeBundle(t *testing.T, channelModelId int, runtimeMode string) {
 		Id: channelModelId, ChannelModelId: channelModelId,
 		BillingMode: "token", PricingMode: "fixed_unit_price", PriceStructure: "flat",
 		PurchaseBillingExpr: `v2:tier("base", p * 1 / 1000000)`,
-		PurchaseExprHash:    "purchase", ExpressionSchemaVersion: "v2",
-		Currency: "USD", Version: 1, Status: model.PricingVersionStatusActive,
+		PurchaseExprHash: billingexpr.ExprHashString(
+			`v2:tier("base", p * 1 / 1000000)`,
+		),
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,
 	}
 	require.NoError(t, model.DB.Create(&purchase).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
 		Id: channelModelId, ChannelModelId: channelModelId, PurchasePriceVersionId: purchase.Id,
 		BillingMode: "token", PriceStructure: "flat",
 		RetailBillingExpr: `v2:tier("base", p * 2 / 1000000)`,
-		RetailExprHash:    "retail", ExpressionSchemaVersion: "v2",
-		Currency: "USD", Version: 1, Status: model.PricingVersionStatusActive,
+		RetailExprHash: billingexpr.ExprHashString(
+			`v2:tier("base", p * 2 / 1000000)`,
+		),
+		ExpressionSchemaVersion: "v2",
+		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
 		MinimumMarginRate: "0.1", TargetNetMargin: "0.2",
 	}).Error)
@@ -132,4 +144,126 @@ func TestQuoteCandidatesUsesFrozenPurchaseAndRetailExpressions(t *testing.T) {
 	assert.Equal(t, "2", quotes[0].RetailAmount)
 	assert.True(t, quotes[0].MeetsMinimumMargin)
 	assert.Equal(t, "0.5", quotes[0].EstimatedNetMarginRate)
+}
+
+func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 5, RuntimeModeV2)
+	createRuntimeBundle(t, 6, RuntimeModeV2)
+	require.NoError(t, model.DB.Exec(
+		"UPDATE channel_model_retail_price_versions SET retail_billing_expr = ?, retail_expr_hash = ? WHERE id = ?",
+		`v2:tier("base", p * 4 / 1000000)`,
+		billingexpr.ExprHashString(`v2:tier("base", p * 4 / 1000000)`),
+		6,
+	).Error)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
+
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		5,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, 4*int(common.QuotaPerUnit), priceData.QuotaToPreConsume)
+	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
+	assert.Equal(t, 5, info.DynamicPricingSnapshot.Selected.ChannelModelId)
+	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 2")
+
+	require.NoError(t, BindSelectedChannel(info, 6))
+	assert.Equal(t, 6, info.DynamicPricingSnapshot.Selected.ChannelModelId)
+	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 4")
+	assert.Equal(t, priceData.QuotaToPreConsume, info.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+}
+
+func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 7, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-v2-audit", UserId: 9, OriginModelName: "runtime-model",
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		7,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+
+	var reserved model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&reserved).Error)
+	assert.Equal(t, PricingSnapshotStatusReserved, reserved.Status)
+	assert.Equal(t, 7, reserved.PurchasePriceVersionId)
+	assert.Equal(t, int64(2*int(common.QuotaPerUnit)), reserved.ReservedQuota)
+
+	require.NoError(t, SettleRequestPricingSnapshot(info, &dto.Usage{
+		PromptTokens: 500_000,
+	}, int(common.QuotaPerUnit)))
+	var settled model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&settled).Error)
+	assert.Equal(t, PricingSnapshotStatusSettled, settled.Status)
+	assert.Equal(t, "0.5", settled.PurchaseCost)
+	assert.Equal(t, "1", settled.RetailAmount)
+	assert.Equal(t, int64(common.QuotaPerUnit), settled.SettledQuota)
+}
+
+func TestPlanV2RouteOrdersByPurchaseCostBeforePriority(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 8, RuntimeModeV2)
+	createRuntimeBundle(t, 9, RuntimeModeV2)
+	require.NoError(t, model.DB.Exec(
+		"UPDATE channel_model_purchase_price_versions SET purchase_billing_expr = ?, purchase_expr_hash = ? WHERE id = ?",
+		`v2:tier("base", p * 0.5 / 1000000)`,
+		billingexpr.ExprHashString(`v2:tier("base", p * 0.5 / 1000000)`),
+		9,
+	).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 8).
+		UpdateColumn("priority", 100).Error)
+	require.NoError(t, RefreshCatalog())
+
+	candidates, err := PlanV2Route("default", "runtime-model")
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	assert.Equal(t, 9, candidates[0].ChannelModelId)
+	assert.Equal(t, 8, candidates[1].ChannelModelId)
+}
+
+func TestMixedLegacyAndV2CandidatesFallBackAsOneModel(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 10, RuntimeModeV2)
+	createRuntimeBundle(t, 11, RuntimeModeLegacy)
+	require.NoError(t, RefreshCatalog())
+
+	assert.Empty(t, GetCandidateBundles("default", "runtime-model"))
+	candidates, err := PlanV2Route("default", "runtime-model")
+	require.NoError(t, err)
+	assert.Empty(t, candidates)
+}
+
+func TestApplyV2RetailPricingPublishesActiveRetailExpression(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 12, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+
+	result := ApplyV2RetailPricing([]model.Pricing{{
+		ModelName: "runtime-model", BillingMode: "ratio", PricingVersion: "legacy",
+	}}, map[string]string{"default": "Default"})
+
+	require.Len(t, result, 1)
+	assert.Equal(t, "tiered_expr", result[0].BillingMode)
+	assert.Contains(t, result[0].BillingExpr, "p * 2")
+	assert.Equal(t, "v2_dynamic", result[0].PricingSource)
+	assert.Len(t, result[0].PricingVersion, 64)
 }

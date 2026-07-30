@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"gorm.io/gorm"
@@ -26,9 +28,11 @@ type ActivePriceBundle struct {
 }
 
 type CatalogSnapshot struct {
+	CreatedAt              time.Time
 	RevisionByChannelModel map[int]string
 	BundleByChannelModel   map[int]ActivePriceBundle
 	CandidatesByGroupModel map[string][]int
+	CompleteV2ByGroupModel map[string]bool
 }
 
 var (
@@ -121,14 +125,21 @@ func RefreshCatalog() error {
 		return err
 	}
 	next := &CatalogSnapshot{
+		CreatedAt:              time.Now(),
 		RevisionByChannelModel: make(map[int]string, len(channelModels)),
 		BundleByChannelModel:   make(map[int]ActivePriceBundle, len(channelModels)),
 		CandidatesByGroupModel: make(map[string][]int),
+		CompleteV2ByGroupModel: make(map[string]bool),
 	}
 	for _, channelModel := range channelModels {
 		bundle, err := ValidateV2Activation(channelModel.Id)
 		if err != nil {
-			return fmt.Errorf("load v2 channel model %d: %w", channelModel.Id, err)
+			common.SysError(fmt.Sprintf(
+				"skip invalid v2 channel model %d and fall back its model to legacy: %v",
+				channelModel.Id,
+				err,
+			))
+			continue
 		}
 		next.RevisionByChannelModel[channelModel.Id] = bundle.Revision
 		next.BundleByChannelModel[channelModel.Id] = bundle
@@ -145,32 +156,41 @@ func RefreshCatalog() error {
 	if err := model.DB.Where("enabled = ?", true).Find(&abilities).Error; err != nil {
 		return err
 	}
+	enabledCount := make(map[string]int)
 	for _, ability := range abilities {
+		key := ability.Group + "\x00" + ability.Model
+		enabledCount[key]++
 		for _, channelModel := range channelModels {
 			if channelModel.ChannelId != ability.ChannelId ||
 				modelNameById[channelModel.ModelId] != ability.Model {
 				continue
 			}
-			key := ability.Group + "\x00" + ability.Model
+			if _, valid := next.BundleByChannelModel[channelModel.Id]; !valid {
+				continue
+			}
 			next.CandidatesByGroupModel[key] = append(
 				next.CandidatesByGroupModel[key],
 				channelModel.Id,
 			)
 		}
 	}
+	for key, count := range enabledCount {
+		next.CompleteV2ByGroupModel[key] =
+			count > 0 && len(next.CandidatesByGroupModel[key]) == count
+	}
 	currentCatalog.Store(next)
 	return nil
 }
 
 func GetCandidateBundles(group string, modelName string) []ActivePriceBundle {
-	snapshot := currentCatalog.Load()
-	if snapshot == nil {
-		if err := RefreshCatalog(); err != nil {
-			return nil
-		}
-		snapshot = currentCatalog.Load()
+	snapshot, ok := getCatalogSnapshot()
+	if !ok {
+		return nil
 	}
 	ids := snapshot.CandidatesByGroupModel[group+"\x00"+modelName]
+	if !snapshot.CompleteV2ByGroupModel[group+"\x00"+modelName] {
+		return nil
+	}
 	bundles := make([]ActivePriceBundle, 0, len(ids))
 	for _, id := range ids {
 		if bundle, ok := snapshot.BundleByChannelModel[id]; ok {
@@ -181,15 +201,23 @@ func GetCandidateBundles(group string, modelName string) []ActivePriceBundle {
 }
 
 func GetActiveBundle(channelModelId int) (ActivePriceBundle, bool) {
+	snapshot, ok := getCatalogSnapshot()
+	if !ok {
+		return ActivePriceBundle{}, false
+	}
+	bundle, exists := snapshot.BundleByChannelModel[channelModelId]
+	return bundle, exists
+}
+
+func getCatalogSnapshot() (*CatalogSnapshot, bool) {
 	snapshot := currentCatalog.Load()
-	if snapshot == nil {
+	if snapshot == nil || time.Since(snapshot.CreatedAt) >= time.Minute {
 		if err := RefreshCatalog(); err != nil {
-			return ActivePriceBundle{}, false
+			return nil, false
 		}
 		snapshot = currentCatalog.Load()
 	}
-	bundle, ok := snapshot.BundleByChannelModel[channelModelId]
-	return bundle, ok
+	return snapshot, snapshot != nil
 }
 
 func InvalidateCatalog() {

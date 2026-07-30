@@ -17,6 +17,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -450,6 +451,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+		pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+	} else if err := pricingruntime.SettleRequestPricingSnapshot(
+		relayInfo,
+		billingUsage,
+		summary.Quota,
+	); err != nil {
+		logger.LogError(ctx, "error settling v2 pricing snapshot: "+err.Error())
 	}
 
 	logModel := summary.ModelName

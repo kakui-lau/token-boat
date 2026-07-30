@@ -82,6 +82,20 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		other["customer_final_quota"] = finalQuota
 		other["adjustment_quota"] = finalQuota - relayInfo.FinalPreConsumedQuota
 	}
+	if snapshot := relayInfo.DynamicPricingSnapshot; snapshot != nil && snapshot.Selected != nil {
+		other["billing_mode"] = "v2_dynamic"
+		adminInfo, _ := other["admin_info"].(map[string]interface{})
+		if adminInfo == nil {
+			adminInfo = make(map[string]interface{})
+			other["admin_info"] = adminInfo
+		}
+		adminInfo["channel_model_id"] = snapshot.Selected.ChannelModelId
+		adminInfo["purchase_price_version_id"] = snapshot.Selected.PurchasePriceVersion
+		adminInfo["retail_price_version_id"] = snapshot.Selected.RetailPriceVersion
+		adminInfo["pricing_revision"] = snapshot.Selected.PricingRevision
+		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
+		adminInfo["estimated_retail_usd"] = snapshot.Selected.EstimatedRetailUSD
+	}
 
 	if relayInfo.ChannelMeta == nil || relayInfo.ChannelType != constant.ChannelTypeOpenRouter || usage == nil {
 		return

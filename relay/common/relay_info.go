@@ -167,8 +167,9 @@ type RelayInfo struct {
 
 	// TieredBillingSnapshot is a frozen snapshot of tiered billing rules
 	// captured at pre-consume time. Non-nil only when billing mode is "tiered_expr".
-	TieredBillingSnapshot *billingexpr.BillingSnapshot
-	BillingRequestInput   *billingexpr.RequestInput
+	TieredBillingSnapshot  *billingexpr.BillingSnapshot
+	BillingRequestInput    *billingexpr.RequestInput
+	DynamicPricingSnapshot *hosttypes.DynamicPricingSnapshot
 
 	Request dto.Request
 

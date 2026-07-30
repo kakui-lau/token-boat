@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -153,7 +154,23 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	relayInfo.SetEstimatePromptTokens(tokens)
 
-	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+	requestInput, err := helper.ResolveIncomingBillingExprRequestInput(c, relayInfo)
+	if err != nil {
+		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+		return
+	}
+	priceData, usesV2Pricing, err := pricingruntime.PrepareRelayPricing(
+		relayInfo,
+		relayInfo.UsingGroup,
+		common.GetContextKeyInt(c, constant.ContextKeyChannelId),
+		tokens,
+		meta.MaxTokens,
+		helper.HandleGroupRatio(c, relayInfo),
+		requestInput,
+	)
+	if err == nil && !usesV2Pricing {
+		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+	}
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
@@ -168,6 +185,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			return
 		}
+	}
+	if err := pricingruntime.CreateRequestPricingSnapshot(relayInfo); err != nil {
+		if relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(c)
+		}
+		newAPIError = types.NewError(
+			fmt.Errorf("create v2 pricing snapshot: %w", err),
+			types.ErrorCodeModelPriceError,
+			types.ErrOptionWithSkipRetry(),
+		)
+		return
 	}
 
 	defer func() {
@@ -321,6 +349,13 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
 		return nil, newAPIError
+	}
+	if err := pricingruntime.BindSelectedChannel(info, channel.Id); err != nil {
+		return nil, types.NewError(
+			fmt.Errorf("渠道 %d 缺少请求冻结的 V2 价格: %w", channel.Id, err),
+			types.ErrorCodeModelPriceError,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 	return channel, nil
 }

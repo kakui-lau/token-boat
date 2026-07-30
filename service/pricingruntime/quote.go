@@ -3,6 +3,7 @@ package pricingruntime
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/shopspring/decimal"
@@ -22,6 +23,13 @@ type Quote struct {
 	MeetsMinimumMargin     bool   `json:"meets_minimum_margin"`
 	MinimumMarginRate      string `json:"minimum_margin_rate"`
 	EstimatedNetMarginRate string `json:"estimated_net_margin_rate"`
+}
+
+type RetailQuoteRange struct {
+	Currency                 string `json:"currency"`
+	MinimumRetailAmount      string `json:"minimum_retail_amount"`
+	MaximumReservationAmount string `json:"maximum_reservation_amount"`
+	EligibleCandidateCount   int    `json:"eligible_candidate_count"`
 }
 
 func parseMargin(value string) (decimal.Decimal, error) {
@@ -115,4 +123,51 @@ func QuoteCandidates(group string, modelName string, usage pricingengine.Usage) 
 		})
 	}
 	return quotes, nil
+}
+
+func QuoteRetailRange(
+	group string,
+	modelName string,
+	usage pricingengine.Usage,
+	groupRatio float64,
+) (RetailQuoteRange, error) {
+	if groupRatio < 0 || math.IsNaN(groupRatio) || math.IsInf(groupRatio, 0) {
+		return RetailQuoteRange{}, errors.New("group ratio must be a finite non-negative number")
+	}
+	quotes, err := QuoteCandidates(group, modelName, usage)
+	if err != nil {
+		return RetailQuoteRange{}, err
+	}
+	ratio := decimal.NewFromFloat(groupRatio)
+	minimum := decimal.Zero
+	maximum := decimal.Zero
+	eligibleCount := 0
+	for _, quote := range quotes {
+		if !quote.MeetsMinimumMargin {
+			continue
+		}
+		amount, err := decimal.NewFromString(quote.RetailAmount)
+		if err != nil {
+			return RetailQuoteRange{}, err
+		}
+		amount = amount.Mul(ratio)
+		if eligibleCount == 0 || amount.LessThan(minimum) {
+			minimum = amount
+		}
+		if eligibleCount == 0 || amount.GreaterThan(maximum) {
+			maximum = amount
+		}
+		eligibleCount++
+	}
+	if eligibleCount == 0 {
+		return RetailQuoteRange{}, errors.New(
+			"no v2 candidate meets the minimum margin for estimated usage",
+		)
+	}
+	return RetailQuoteRange{
+		Currency:                 "USD",
+		MinimumRetailAmount:      minimum.String(),
+		MaximumReservationAmount: maximum.String(),
+		EligibleCandidateCount:   eligibleCount,
+	}, nil
 }

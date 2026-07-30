@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 )
 
 func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
@@ -101,32 +100,22 @@ func QuotePricing(c *gin.Context) {
 		return
 	}
 	group := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	quotes, err := pricingruntime.QuoteCandidates(group, input.ModelName, input.Usage)
+	quoteRange, err := pricingruntime.QuoteRetailRange(
+		group,
+		input.ModelName,
+		input.Usage,
+		service.GetUserGroupRatio(group, group),
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	minimum := decimal.Zero
-	maximum := decimal.Zero
-	for index, quote := range quotes {
-		amount, err := decimal.NewFromString(quote.RetailAmount)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		if index == 0 || amount.LessThan(minimum) {
-			minimum = amount
-		}
-		if amount.GreaterThan(maximum) {
-			maximum = amount
-		}
-	}
 	common.ApiSuccess(c, gin.H{
 		"model_name":                 input.ModelName,
-		"currency":                   "USD",
-		"minimum_retail_amount":      minimum.String(),
-		"maximum_reservation_amount": maximum.String(),
-		"quotes":                     quotes,
+		"currency":                   quoteRange.Currency,
+		"minimum_retail_amount":      quoteRange.MinimumRetailAmount,
+		"maximum_reservation_amount": quoteRange.MaximumReservationAmount,
+		"eligible_candidate_count":   quoteRange.EligibleCandidateCount,
 	})
 }
 

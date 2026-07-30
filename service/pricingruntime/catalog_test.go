@@ -522,6 +522,43 @@ func TestQuoteCandidatesUsesFrozenPurchaseAndRetailExpressions(t *testing.T) {
 	assert.Equal(t, "0.5", quotes[0].EstimatedNetMarginRate)
 }
 
+func TestQuoteRetailRangeAppliesGroupRatioAndExcludesBelowMargin(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 15, RuntimeModeV2)
+	createRuntimeBundle(t, 16, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 16).
+		Update("model_id", 15).Error)
+	lowMarginExpr := `v2:tier("base", p * 1.05 / 1000000)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 16).
+		Updates(map[string]any{
+			"retail_billing_expr": lowMarginExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(lowMarginExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	quoteRange, err := QuoteRetailRange(
+		"default",
+		"runtime-model",
+		pricingengine.Usage{PromptTokens: 1_000_000},
+		1.5,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "USD", quoteRange.Currency)
+	assert.Equal(t, "3", quoteRange.MinimumRetailAmount)
+	assert.Equal(t, "3", quoteRange.MaximumReservationAmount)
+	assert.Equal(t, 1, quoteRange.EligibleCandidateCount)
+
+	_, err = QuoteRetailRange(
+		"default",
+		"runtime-model",
+		pricingengine.Usage{PromptTokens: 1_000_000},
+		-1,
+	)
+	require.ErrorContains(t, err, "finite non-negative")
+}
+
 func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 5, RuntimeModeV2)

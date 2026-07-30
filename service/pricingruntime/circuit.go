@@ -86,6 +86,20 @@ func RecordChannelSuccess(channelId int) {
 	channelCircuits.Unlock()
 }
 
+func ResetChannelCircuit(channelId int) bool {
+	if channelId <= 0 {
+		return false
+	}
+	channelCircuits.Lock()
+	defer channelCircuits.Unlock()
+	if _, exists := channelCircuits.byChannelId[channelId]; !exists {
+		return false
+	}
+	delete(channelCircuits.byChannelId, channelId)
+	appendChannelCircuitEventLocked(channelId, "manual_reset", 0, time.Now())
+	return true
+}
+
 func RecordChannelFailure(channelId int, statusCode int) {
 	recordChannelFailureAt(channelId, statusCode, time.Now())
 }

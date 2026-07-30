@@ -85,3 +85,19 @@ func TestChannelCircuitEventHistoryKeepsNewestBoundedEvents(t *testing.T) {
 	assert.Equal(t, 33, overview.Events[0].ChannelId)
 	assert.Equal(t, 30+channelCircuitEventLimit+2, overview.Events[len(overview.Events)-1].ChannelId)
 }
+
+func TestResetChannelCircuitClearsActiveStateAndRecordsAuditEvent(t *testing.T) {
+	resetChannelCircuits()
+	t.Cleanup(resetChannelCircuits)
+	now := time.Now()
+	recordChannelFailureAt(41, 429, now)
+
+	assert.True(t, ResetChannelCircuit(41))
+	assert.True(t, tryAcquireChannelAt(41, now))
+	assert.False(t, ResetChannelCircuit(41))
+
+	overview := GetChannelCircuitOverview()
+	assert.Empty(t, overview.Channels)
+	require.Len(t, overview.Events, 2)
+	assert.Equal(t, "manual_reset", overview.Events[1].Event)
+}

@@ -53,6 +53,7 @@ vi.mock('../api', () => ({
     success: true,
     data: { channels: [], events: [] },
   }),
+  resetPricingCircuit: vi.fn(),
   getPricingRuntimeStatus: vi.fn().mockResolvedValue({
     success: true,
     data: {

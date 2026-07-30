@@ -39,6 +39,16 @@ type requestPricingSnapshotAdminRow struct {
 	ChannelName string `json:"channel_name"`
 }
 
+type pricingCircuitChannelAdminRow struct {
+	pricingruntime.ChannelCircuitStatus
+	ChannelName string `json:"channel_name"`
+}
+
+type pricingCircuitEventAdminRow struct {
+	pricingruntime.ChannelCircuitEvent
+	ChannelName string `json:"channel_name"`
+}
+
 const pricingReconciliationReservedAgeSeconds = 15 * 60
 
 func AdminGetPricingRuntimeStatus(c *gin.Context) {
@@ -51,7 +61,68 @@ func AdminGetPricingRuntimeStatus(c *gin.Context) {
 }
 
 func AdminGetPricingCircuitOverview(c *gin.Context) {
-	common.ApiSuccess(c, pricingruntime.GetChannelCircuitOverview())
+	overview := pricingruntime.GetChannelCircuitOverview()
+	channelIds := make([]int, 0, len(overview.Channels)+len(overview.Events))
+	seenChannelIds := make(map[int]struct{}, len(overview.Channels)+len(overview.Events))
+	for _, channel := range overview.Channels {
+		if _, exists := seenChannelIds[channel.ChannelId]; !exists {
+			seenChannelIds[channel.ChannelId] = struct{}{}
+			channelIds = append(channelIds, channel.ChannelId)
+		}
+	}
+	for _, event := range overview.Events {
+		if _, exists := seenChannelIds[event.ChannelId]; !exists {
+			seenChannelIds[event.ChannelId] = struct{}{}
+			channelIds = append(channelIds, event.ChannelId)
+		}
+	}
+	type channelNameRow struct {
+		Id   int
+		Name string
+	}
+	var channelNames []channelNameRow
+	if len(channelIds) > 0 {
+		if err := model.DB.Model(&model.Channel{}).
+			Select("id, name").
+			Where("id IN ?", channelIds).
+			Scan(&channelNames).Error; err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	nameByChannelId := make(map[int]string, len(channelNames))
+	for _, channel := range channelNames {
+		nameByChannelId[channel.Id] = channel.Name
+	}
+	channels := make([]pricingCircuitChannelAdminRow, 0, len(overview.Channels))
+	for _, channel := range overview.Channels {
+		channels = append(channels, pricingCircuitChannelAdminRow{
+			ChannelCircuitStatus: channel,
+			ChannelName:          nameByChannelId[channel.ChannelId],
+		})
+	}
+	events := make([]pricingCircuitEventAdminRow, 0, len(overview.Events))
+	for _, event := range overview.Events {
+		events = append(events, pricingCircuitEventAdminRow{
+			ChannelCircuitEvent: event,
+			ChannelName:         nameByChannelId[event.ChannelId],
+		})
+	}
+	common.ApiSuccess(c, gin.H{"channels": channels, "events": events})
+}
+
+func AdminResetPricingCircuit(c *gin.Context) {
+	channelId, err := strconv.Atoi(c.Param("channel_id"))
+	if err != nil || channelId <= 0 {
+		common.ApiErrorMsg(c, "channel_id 无效")
+		return
+	}
+	reset := pricingruntime.ResetChannelCircuit(channelId)
+	recordManageAudit(c, "pricing.channel_circuit.reset", map[string]interface{}{
+		"channel_id": channelId,
+		"reset":      reset,
+	})
+	common.ApiSuccess(c, gin.H{"channel_id": channelId, "reset": reset})
 }
 
 func AdminSetPricingModelRuntime(c *gin.Context) {

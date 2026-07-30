@@ -52,6 +52,15 @@ export async function getPricingCircuitOverview(): Promise<
   return requirePricingSuccess(response.data)
 }
 
+export async function resetPricingCircuit(
+  channelId: number
+): Promise<PriceVersionResponse<{ channel_id: number; reset: boolean }>> {
+  const response = await api.post(
+    `/api/pricing-admin/circuit-overview/${channelId}/reset`
+  )
+  return requirePricingSuccess(response.data)
+}
+
 export async function setPricingModelRuntime(input: {
   model_name: string
   runtime_mode: 'legacy' | 'v2'

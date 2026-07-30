@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -450,4 +451,59 @@ func TestAdminListRequestPricingSnapshotsFindsPendingAndStaleReservedRows(t *tes
 	require.Len(t, response.Data.Items, 2)
 	assert.Equal(t, "reconciliation-1", response.Data.Items[0].RequestId)
 	assert.Equal(t, "reconciliation-0", response.Data.Items[1].RequestId)
+}
+
+func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 121, Name: "circuit-provider",
+	}).Error)
+	pricingruntime.RecordChannelFailure(121, 500)
+	pricingruntime.RecordChannelFailure(121, 502)
+	pricingruntime.RecordChannelFailure(121, 503)
+	t.Cleanup(func() {
+		pricingruntime.ResetChannelCircuit(121)
+	})
+
+	overviewContext, overviewRecorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/circuit-overview",
+		nil,
+	)
+	AdminGetPricingCircuitOverview(overviewContext)
+
+	var overviewResponse struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Channels []pricingCircuitChannelAdminRow `json:"channels"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(overviewRecorder.Body.Bytes(), &overviewResponse))
+	require.True(t, overviewResponse.Success)
+	require.Len(t, overviewResponse.Data.Channels, 1)
+	assert.Equal(t, "circuit-provider", overviewResponse.Data.Channels[0].ChannelName)
+	assert.Equal(t, "open", overviewResponse.Data.Channels[0].State)
+
+	resetContext, resetRecorder := newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/circuit-overview/121/reset",
+		nil,
+	)
+	resetContext.Params = gin.Params{{Key: "channel_id", Value: "121"}}
+	AdminResetPricingCircuit(resetContext)
+
+	var resetResponse struct {
+		Success bool `json:"success"`
+		Data    struct {
+			ChannelId int  `json:"channel_id"`
+			Reset     bool `json:"reset"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(resetRecorder.Body.Bytes(), &resetResponse))
+	assert.True(t, resetResponse.Success)
+	assert.True(t, resetResponse.Data.Reset)
+	assert.Equal(t, 121, resetResponse.Data.ChannelId)
 }

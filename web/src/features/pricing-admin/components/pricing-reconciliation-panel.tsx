@@ -35,10 +35,15 @@ export function PricingReconciliationPanel() {
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <div>
           <h2 id='pricing-reconciliation' className='font-medium'>
-            {t('Pricing Reconciliation')}
+            {t('Billing Anomalies')}
           </h2>
           <p className='text-muted-foreground text-sm'>
-            {t('{{total}} pricing snapshots require review', { total })}
+            {t(
+              'Shows settlement failures and reservations still incomplete after 15 minutes.'
+            )}
+          </p>
+          <p className='text-muted-foreground text-sm'>
+            {t('{{total}} billing anomalies', { total })}
           </p>
         </div>
         <Button
@@ -100,7 +105,7 @@ export function PricingReconciliationPanel() {
                   colSpan={8}
                   className='text-muted-foreground h-20 text-center'
                 >
-                  {t('No pricing snapshots require review')}
+                  {t('No billing anomalies')}
                 </TableCell>
               </TableRow>
             ) : null}

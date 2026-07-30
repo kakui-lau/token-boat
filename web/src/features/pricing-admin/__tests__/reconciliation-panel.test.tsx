@@ -64,9 +64,13 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('seedance-2.0')).toBeInTheDocument()
   expect(screen.getByText('video-provider')).toBeInTheDocument()
   expect(screen.getByText('video_duration')).toBeInTheDocument()
+  expect(screen.getByText('Billing Anomalies')).toBeInTheDocument()
   expect(
-    screen.getByText('1 pricing snapshots require review')
+    screen.getByText(
+      'Shows settlement failures and reservations still incomplete after 15 minutes.'
+    )
   ).toBeInTheDocument()
+  expect(screen.getByText('1 billing anomalies')).toBeInTheDocument()
   expect(getRequestPricingSnapshots).toHaveBeenCalledWith({
     reconciliation: true,
     page: 1,
@@ -95,8 +99,6 @@ test('shows an explicit empty state when reconciliation is clear', async () => {
   )
 
   await waitFor(() =>
-    expect(
-      screen.getByText('No pricing snapshots require review')
-    ).toBeInTheDocument()
+    expect(screen.getByText('No billing anomalies')).toBeInTheDocument()
   )
 })

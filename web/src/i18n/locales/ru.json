@@ -5796,5 +5796,9 @@
   },
   "Publish a purchase price to start the active version chain.": "Опубликуйте закупочную цену, чтобы запустить активную цепочку версий.",
   "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "Опубликуйте розничную цену, связанную с версией закупочной цены {{version}}, чтобы завершить активную цепочку версий.",
-  "The active price chain is being refreshed. Retry if it does not appear shortly.": "Активная цепочка цен обновляется. Повторите попытку, если она не появится в ближайшее время."
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "Активная цепочка цен обновляется. Повторите попытку, если она не появится в ближайшее время.",
+  "Billing Anomalies": "Ошибки тарификации",
+  "Shows settlement failures and reservations still incomplete after 15 minutes.": "Показывает ошибки расчёта и резервирования, не завершённые более 15 минут.",
+  "{{total}} billing anomalies": "Ошибок тарификации: {{total}}",
+  "No billing anomalies": "Ошибок тарификации нет"
 }

@@ -5796,5 +5796,9 @@
   },
   "Publish a purchase price to start the active version chain.": "请先发布采购价，以启动生效版本链。",
   "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "请发布关联采购价版本 {{version}} 的销售价，以完成生效版本链。",
-  "The active price chain is being refreshed. Retry if it does not appear shortly.": "生效价格链正在刷新；若稍后仍未显示，请重试。"
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "生效价格链正在刷新；若稍后仍未显示，请重试。",
+  "Billing Anomalies": "计费异常",
+  "Shows settlement failures and reservations still incomplete after 15 minutes.": "显示结算失败或预扣超过 15 分钟仍未完成的请求。",
+  "{{total}} billing anomalies": "{{total}} 条计费异常",
+  "No billing anomalies": "当前没有计费异常"
 }

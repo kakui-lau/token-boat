@@ -5796,5 +5796,9 @@
   },
   "Publish a purchase price to start the active version chain.": "Publiez un prix d’achat pour démarrer la chaîne de versions active.",
   "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "Publiez un prix de vente lié à la version d’achat {{version}} pour compléter la chaîne de versions active.",
-  "The active price chain is being refreshed. Retry if it does not appear shortly.": "La chaîne de prix active est en cours d’actualisation. Réessayez si elle ne s’affiche pas rapidement."
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "La chaîne de prix active est en cours d’actualisation. Réessayez si elle ne s’affiche pas rapidement.",
+  "Billing Anomalies": "Anomalies de facturation",
+  "Shows settlement failures and reservations still incomplete after 15 minutes.": "Affiche les échecs de règlement et les réservations non finalisées après 15 minutes.",
+  "{{total}} billing anomalies": "{{total}} anomalies de facturation",
+  "No billing anomalies": "Aucune anomalie de facturation"
 }

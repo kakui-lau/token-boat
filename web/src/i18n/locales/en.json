@@ -5796,5 +5796,9 @@
   },
   "Publish a purchase price to start the active version chain.": "Publish a purchase price to start the active version chain.",
   "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "Publish a retail price linked to purchase version {{version}} to complete the active version chain.",
-  "The active price chain is being refreshed. Retry if it does not appear shortly.": "The active price chain is being refreshed. Retry if it does not appear shortly."
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "The active price chain is being refreshed. Retry if it does not appear shortly.",
+  "Billing Anomalies": "Billing Anomalies",
+  "Shows settlement failures and reservations still incomplete after 15 minutes.": "Shows settlement failures and reservations still incomplete after 15 minutes.",
+  "{{total}} billing anomalies": "{{total}} billing anomalies",
+  "No billing anomalies": "No billing anomalies"
 }

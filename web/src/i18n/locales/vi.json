@@ -5796,5 +5796,9 @@
   },
   "Publish a purchase price to start the active version chain.": "Hãy phát hành giá mua để bắt đầu chuỗi phiên bản đang hoạt động.",
   "Publish a retail price linked to purchase version {{version}} to complete the active version chain.": "Hãy phát hành giá bán liên kết với phiên bản giá mua {{version}} để hoàn tất chuỗi phiên bản đang hoạt động.",
-  "The active price chain is being refreshed. Retry if it does not appear shortly.": "Chuỗi giá đang hoạt động đang được làm mới. Hãy thử lại nếu chưa xuất hiện sau ít phút."
+  "The active price chain is being refreshed. Retry if it does not appear shortly.": "Chuỗi giá đang hoạt động đang được làm mới. Hãy thử lại nếu chưa xuất hiện sau ít phút.",
+  "Billing Anomalies": "Bất thường tính phí",
+  "Shows settlement failures and reservations still incomplete after 15 minutes.": "Hiển thị các yêu cầu quyết toán thất bại hoặc vẫn chưa hoàn tất sau 15 phút giữ hạn mức.",
+  "{{total}} billing anomalies": "{{total}} bất thường tính phí",
+  "No billing anomalies": "Không có bất thường tính phí"
 }

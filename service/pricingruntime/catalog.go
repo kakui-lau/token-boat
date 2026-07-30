@@ -205,6 +205,10 @@ func GetCandidateBundles(group string, modelName string) []ActivePriceBundle {
 	return bundles
 }
 
+func HasCompleteV2Pricing(group string, modelName string) bool {
+	return len(GetCandidateBundles(group, modelName)) > 0
+}
+
 func GetActiveBundle(channelModelId int) (ActivePriceBundle, bool) {
 	snapshot, ok := getCatalogSnapshot()
 	if !ok {

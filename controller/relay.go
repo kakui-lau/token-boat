@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -278,6 +279,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		if newAPIError == nil {
+			if relayInfo.DynamicPricingSnapshot != nil {
+				pricingruntime.RecordChannelSuccess(channel.Id)
+			}
 			relayInfo.LastError = nil
 			return
 		}
@@ -286,6 +290,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		if relayInfo.DynamicPricingSnapshot != nil {
+			pricingruntime.RecordChannelFailure(channel.Id, newAPIError.StatusCode)
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -359,6 +366,83 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			Name:    c.GetString("channel_name"),
 			AutoBan: &autoBanInt,
 		}, nil
+	}
+	if info.DynamicPricingSnapshot != nil {
+		if retryParam.GetRetry() == 0 {
+			channelId := common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+			channel, err := model.CacheGetChannel(channelId)
+			if err != nil || channel == nil {
+				return nil, types.NewError(
+					fmt.Errorf("获取 V2 首选渠道 %d 失败: %v", channelId, err),
+					types.ErrorCodeGetChannelFailed,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			return channel, nil
+		}
+		routeCandidates, err := pricingruntime.PlanV2Route(
+			info.UsingGroup,
+			info.OriginModelName,
+		)
+		if err != nil {
+			return nil, types.NewError(
+				fmt.Errorf("规划 V2 重试渠道失败: %w", err),
+				types.ErrorCodeGetChannelFailed,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		usedChannels := make(map[int]struct{}, len(c.GetStringSlice("use_channel")))
+		for _, value := range c.GetStringSlice("use_channel") {
+			if channelId, parseErr := strconv.Atoi(value); parseErr == nil {
+				usedChannels[channelId] = struct{}{}
+			}
+		}
+		for _, candidate := range routeCandidates {
+			if _, frozen := info.DynamicPricingSnapshot.
+				CandidatesByChannelId[candidate.ChannelId]; !frozen {
+				continue
+			}
+			if _, used := usedChannels[candidate.ChannelId]; used {
+				continue
+			}
+			channel, getErr := model.CacheGetChannel(candidate.ChannelId)
+			if getErr != nil ||
+				channel == nil ||
+				channel.Status != common.ChannelStatusEnabled ||
+				!middleware.ChannelSupportsRequestPath(
+					channel,
+					c.Request.URL.Path,
+					info.OriginModelName,
+				) ||
+				!pricingruntime.TryAcquireChannel(channel.Id) {
+				continue
+			}
+			if newAPIError := middleware.SetupContextForSelectedChannel(
+				c,
+				channel,
+				info.OriginModelName,
+			); newAPIError != nil {
+				continue
+			}
+			if bindErr := pricingruntime.BindSelectedChannel(info, channel.Id); bindErr != nil {
+				return nil, types.NewError(
+					fmt.Errorf("渠道 %d 缺少请求冻结的 V2 价格: %w", channel.Id, bindErr),
+					types.ErrorCodeModelPriceError,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+			return channel, nil
+		}
+		return nil, types.NewError(
+			fmt.Errorf(
+				"分组 %s 下模型 %s 没有剩余的 V2 重试渠道",
+				info.UsingGroup,
+				info.OriginModelName,
+			),
+			types.ErrorCodeGetChannelFailed,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 

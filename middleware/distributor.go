@@ -84,6 +84,7 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 				var selectGroup string
+				v2RouteActive := false
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
@@ -120,15 +121,21 @@ func Distribute() func(c *gin.Context) {
 							routeErr,
 						))
 					} else {
+						v2RouteActive = pricingruntime.HasCompleteV2Pricing(
+							usingGroup,
+							modelRequest.Model,
+						)
 						for _, candidate := range routeCandidates {
 							planned, getErr := model.CacheGetChannel(candidate.ChannelId)
 							if getErr != nil ||
+								planned == nil ||
 								planned.Status != common.ChannelStatusEnabled ||
-								!channelSupportsRequestPath(
+								!ChannelSupportsRequestPath(
 									planned,
 									c.Request.URL.Path,
 									modelRequest.Model,
-								) {
+								) ||
+								!pricingruntime.TryAcquireChannel(planned.Id) {
 								continue
 							}
 							channel = planned
@@ -138,12 +145,25 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
+				if channel == nil && v2RouteActive {
+					abortWithOpenAiMessage(
+						c,
+						http.StatusServiceUnavailable,
+						i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{
+							"Group": usingGroup,
+							"Model": modelRequest.Model,
+						}),
+						types.ErrorCodeModelNotFound,
+					)
+					return
+				}
+
 				if channel == nil {
 					if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 						affinityUsable := false
 						preferred, err := model.CacheGetChannel(preferredChannelID)
 						if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
-							channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
+							ChannelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
 							if usingGroup == "auto" {
 								userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 								autoGroups := service.GetUserAutoGroup(userGroup)
@@ -208,10 +228,10 @@ func Distribute() func(c *gin.Context) {
 	}
 }
 
-// channelSupportsRequestPath reports whether a channel can serve the request path.
+// ChannelSupportsRequestPath reports whether a channel can serve the request path.
 // Only Advanced Custom (type 58) channels are path-checked; all other channel types
 // always pass. A type-58 channel is usable only when one of its routes matches.
-func channelSupportsRequestPath(channel *model.Channel, requestPath string, requestModel string) bool {
+func ChannelSupportsRequestPath(channel *model.Channel, requestPath string, requestModel string) bool {
 	if channel == nil {
 		return false
 	}

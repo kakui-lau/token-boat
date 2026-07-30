@@ -83,7 +83,18 @@ func createRuntimeBundle(t *testing.T, channelModelId int, runtimeMode string) {
 	}).Error)
 }
 
-func TestSetRuntimeModeRejectsIncompletePriceChain(t *testing.T) {
+func setRuntimeModeForTest(t *testing.T, channelModelId int, runtimeMode string) {
+	t.Helper()
+	result := model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", channelModelId).
+		Update("runtime_mode", runtimeMode)
+	require.NoError(t, result.Error)
+	require.Equal(t, int64(1), result.RowsAffected)
+	InvalidateCatalog()
+	require.NoError(t, RefreshCatalog())
+}
+
+func TestValidateV2ActivationRejectsIncompletePriceChain(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 1, ModelName: "incomplete"}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
@@ -91,7 +102,7 @@ func TestSetRuntimeModeRejectsIncompletePriceChain(t *testing.T) {
 		Status: 1, RuntimeMode: RuntimeModeLegacy,
 	}).Error)
 
-	err := SetRuntimeMode(1, RuntimeModeV2)
+	_, err := ValidateV2Activation(1)
 	require.ErrorContains(t, err, "no active purchase price")
 
 	var stored model.ChannelModel
@@ -99,7 +110,7 @@ func TestSetRuntimeModeRejectsIncompletePriceChain(t *testing.T) {
 	assert.Equal(t, RuntimeModeLegacy, stored.RuntimeMode)
 }
 
-func TestSetRuntimeModeAllowsVideoDurationPricing(t *testing.T) {
+func TestSetModelRuntimeModeAllowsVideoDurationPricing(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 9, RuntimeModeLegacy)
 	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
@@ -109,8 +120,9 @@ func TestSetRuntimeModeAllowsVideoDurationPricing(t *testing.T) {
 		Where("id = ?", 9).
 		Update("billing_mode", "video_duration").Error)
 
-	err := SetRuntimeMode(9, RuntimeModeV2)
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
 	require.NoError(t, err)
+	assert.Equal(t, 1, updated)
 
 	var stored model.ChannelModel
 	require.NoError(t, model.DB.First(&stored, 9).Error)
@@ -354,7 +366,7 @@ func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) 
 			"retail_billing_expr": retailExpr,
 			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
 		}).Error)
-	require.NoError(t, SetRuntimeMode(11, RuntimeModeV2))
+	setRuntimeModeForTest(t, 11, RuntimeModeV2)
 
 	info := &relaycommon.RelayInfo{
 		RequestId: "request-v2-image", UserId: 9, OriginModelName: "runtime-model",
@@ -404,7 +416,7 @@ func TestAudioDurationBillingRequiresKnownDuration(t *testing.T) {
 			"retail_billing_expr": retailExpr,
 			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
 		}).Error)
-	require.NoError(t, SetRuntimeMode(14, RuntimeModeV2))
+	setRuntimeModeForTest(t, 14, RuntimeModeV2)
 
 	info := &relaycommon.RelayInfo{
 		RequestId: "request-v2-audio", UserId: 9, OriginModelName: "runtime-model",
@@ -440,14 +452,14 @@ func TestAudioDurationBillingRequiresKnownDuration(t *testing.T) {
 func TestCatalogContainsOnlyValidatedV2Bundles(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 2, RuntimeModeLegacy)
-	require.NoError(t, SetRuntimeMode(2, RuntimeModeV2))
+	setRuntimeModeForTest(t, 2, RuntimeModeV2)
 
 	bundle, ok := GetActiveBundle(2)
 	require.True(t, ok)
 	assert.Equal(t, 2, bundle.Retail.Id)
 	assert.Len(t, bundle.Revision, 64)
 
-	require.NoError(t, SetRuntimeMode(2, RuntimeModeLegacy))
+	setRuntimeModeForTest(t, 2, RuntimeModeLegacy)
 	_, ok = GetActiveBundle(2)
 	assert.False(t, ok)
 }
@@ -464,7 +476,7 @@ func TestRuntimeReadinessRequiresEveryEnabledChannelForScope(t *testing.T) {
 	assert.Zero(t, readiness.CompleteGroupModelScopes)
 	assert.False(t, readiness.LiveTrafficEnabled)
 
-	require.NoError(t, SetRuntimeMode(3, RuntimeModeV2))
+	setRuntimeModeForTest(t, 3, RuntimeModeV2)
 	readiness, err = GetRuntimeReadiness()
 	require.NoError(t, err)
 	assert.Equal(t, 1, readiness.CompleteGroupModelScopes)

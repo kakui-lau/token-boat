@@ -417,33 +417,6 @@ func InvalidateCatalog() {
 	currentCatalog.Store(nil)
 }
 
-func SetRuntimeMode(channelModelId int, runtimeMode string) error {
-	if runtimeMode != RuntimeModeLegacy && runtimeMode != RuntimeModeV2 {
-		return fmt.Errorf("unsupported runtime mode %q", runtimeMode)
-	}
-	if runtimeMode == RuntimeModeV2 {
-		if _, err := ValidateV2Activation(channelModelId); err != nil {
-			return err
-		}
-	}
-	result := model.DB.Model(&model.ChannelModel{}).
-		Where("id = ?", channelModelId).
-		Updates(map[string]any{
-			"runtime_mode": runtimeMode,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return fmt.Errorf("channel model %d was not found", channelModelId)
-	}
-	InvalidateCatalog()
-	if runtimeMode == RuntimeModeV2 {
-		return RefreshCatalog()
-	}
-	return nil
-}
-
 func bundleRevision(bundle ActivePriceBundle) string {
 	officialIdentity := "none"
 	if bundle.Official != nil {

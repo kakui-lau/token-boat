@@ -19,12 +19,53 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	relaykitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingengine"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
+
+func prepareMidjourneyV2Pricing(
+	c *gin.Context,
+	info *relaycommon.RelayInfo,
+	modelName string,
+) (hosttypes.PriceData, error) {
+	info.OriginModelName = modelName
+	requestInput, err := helper.ResolveIncomingBillingExprRequestInput(c, info)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	priceData, ok, err := pricingruntime.PrepareRelayPricing(
+		info,
+		info.UsingGroup,
+		info.ChannelId,
+		0,
+		0,
+		helper.HandleGroupRatio(c, info),
+		requestInput,
+		pricingengine.Usage{RequestCount: 1},
+	)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if !ok {
+		return hosttypes.PriceData{}, fmt.Errorf(
+			"model %s has no complete v2 request price",
+			modelName,
+		)
+	}
+	priceData.Quota = priceData.QuotaToPreConsume
+	info.PriceData = priceData
+	if err := pricingruntime.CreateRequestPricingSnapshot(info); err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	return priceData, nil
+}
 
 func RelayMidjourneyImage(c *gin.Context) {
 	taskId := c.Param("id")
@@ -203,7 +244,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	}
 	modelName := service.CovertMjpActionToModelName(constant.MjActionSwapFace)
 
-	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	priceData, err := prepareMidjourneyV2Pricing(c, info, modelName)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -230,13 +271,35 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
 	mjResp, _, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
+		if snapshotErr := pricingruntime.MarkRequestPricingRefunded(info.RequestId); snapshotErr != nil {
+			common.SysError("mark failed Midjourney pricing snapshot refunded: " + snapshotErr.Error())
+		}
 		return &mjResp.Response
 	}
 	defer func() {
+		if mjResp.StatusCode != 200 || mjResp.Response.Code != 1 {
+			if err := pricingruntime.MarkRequestPricingRefunded(info.RequestId); err != nil {
+				common.SysError("mark uncharged Midjourney pricing snapshot refunded: " + err.Error())
+			}
+			return
+		}
 		if mjResp.StatusCode == 200 && mjResp.Response.Code == 1 {
 			err := service.PostConsumeQuota(info, priceData.Quota, 0, true)
 			if err != nil {
+				pricingruntime.MarkRequestPricingPendingWithReason(
+					info.RequestId,
+					"post_charge_failed",
+					err.Error(),
+				)
 				common.SysLog("error consuming token remain quota: " + err.Error())
+				return
+			}
+			if err := pricingruntime.SettleRequestPricingSnapshot(
+				info,
+				&relaykitdto.Usage{},
+				priceData.Quota,
+			); err != nil {
+				common.SysError("settle Midjourney pricing snapshot: " + err.Error())
 			}
 
 			tokenName := c.GetString("token_name")
@@ -510,7 +573,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 
 	modelName := service.CovertMjpActionToModelName(midjRequest.Action)
 
-	priceData, err := helper.ModelPriceHelperPerCall(c, relayInfo)
+	priceData, err := prepareMidjourneyV2Pricing(c, relayInfo, modelName)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -535,15 +598,37 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
+		if snapshotErr := pricingruntime.MarkRequestPricingRefunded(relayInfo.RequestId); snapshotErr != nil {
+			common.SysError("mark failed Midjourney pricing snapshot refunded: " + snapshotErr.Error())
+		}
 		return &midjResponseWithStatus.Response
 	}
 	midjResponse := &midjResponseWithStatus.Response
 
 	defer func() {
+		if !consumeQuota || midjResponseWithStatus.StatusCode != 200 {
+			if err := pricingruntime.MarkRequestPricingRefunded(relayInfo.RequestId); err != nil {
+				common.SysError("mark uncharged Midjourney pricing snapshot refunded: " + err.Error())
+			}
+			return
+		}
 		if consumeQuota && midjResponseWithStatus.StatusCode == 200 {
 			err := service.PostConsumeQuota(relayInfo, priceData.Quota, 0, true)
 			if err != nil {
+				pricingruntime.MarkRequestPricingPendingWithReason(
+					relayInfo.RequestId,
+					"post_charge_failed",
+					err.Error(),
+				)
 				common.SysLog("error consuming token remain quota: " + err.Error())
+				return
+			}
+			if err := pricingruntime.SettleRequestPricingSnapshot(
+				relayInfo,
+				&relaykitdto.Usage{},
+				priceData.Quota,
+			); err != nil {
+				common.SysError("settle Midjourney pricing snapshot: " + err.Error())
 			}
 			tokenName := c.GetString("token_name")
 			logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)

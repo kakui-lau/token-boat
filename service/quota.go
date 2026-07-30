@@ -234,7 +234,9 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
-		pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+		pricingruntime.MarkRequestPricingPendingWithReason(
+			relayInfo.RequestId, "billing_settlement_failed", err.Error(),
+		)
 	} else if err := pricingruntime.SettleRequestPricingSnapshot(
 		relayInfo,
 		&dto.Usage{
@@ -383,7 +385,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
-		pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+		pricingruntime.MarkRequestPricingPendingWithReason(
+			relayInfo.RequestId, "billing_settlement_failed", err.Error(),
+		)
 	} else if err := pricingruntime.SettleRequestPricingSnapshot(
 		relayInfo,
 		usage,

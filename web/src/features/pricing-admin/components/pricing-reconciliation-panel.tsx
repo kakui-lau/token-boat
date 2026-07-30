@@ -194,6 +194,7 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Purchase cost')}</TableHead>
               <TableHead>{t('Retail amount')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
+              <TableHead>{t('Failure reason')}</TableHead>
               <TableHead>{t('Updated')}</TableHead>
               <TableHead>{t('Actions')}</TableHead>
             </TableRow>
@@ -228,6 +229,19 @@ export function PricingReconciliationPanel() {
                     {row.status === 'pending' ? t('Pending') : t('Reserved')}
                   </Badge>
                 </TableCell>
+                <TableCell
+                  className='max-w-72'
+                  title={row.failure_reason || undefined}
+                >
+                  <div className='truncate'>
+                    {row.failure_reason || row.failure_code || '—'}
+                  </div>
+                  {row.failure_code ? (
+                    <div className='text-muted-foreground font-mono text-xs'>
+                      {row.failure_code}
+                    </div>
+                  ) : null}
+                </TableCell>
                 <TableCell className='whitespace-nowrap'>
                   {dayjs.unix(row.updated_at).format('YYYY-MM-DD HH:mm')}
                 </TableCell>
@@ -249,7 +263,7 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={11}
+                  colSpan={12}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}

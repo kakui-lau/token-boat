@@ -93,6 +93,8 @@ export type RequestPricingSnapshot = {
   retail_amount: string
   currency: string
   status: 'reserved' | 'pending' | 'settled' | 'refunded'
+  failure_code?: string
+  failure_reason?: string
   resolution?: '' | 'automatic_refund' | 'admin_confirmed_refund'
   resolved_at?: number
   resolved_by?: number

@@ -260,7 +260,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					requestId := relayInfo.RequestId
 					relayInfo.Billing.RefundWithResult(c, func(refundErr error) {
 						if refundErr != nil {
-							pricingruntime.MarkRequestPricingPending(requestId)
+							pricingruntime.MarkRequestPricingPendingWithReason(
+								requestId, "refund_failed", refundErr.Error(),
+							)
 							return
 						}
 						if err := pricingruntime.MarkRequestPricingRefunded(requestId); err != nil {
@@ -729,7 +731,9 @@ func RelayTask(c *gin.Context) {
 				requestId := relayInfo.RequestId
 				relayInfo.Billing.RefundWithResult(c, func(refundErr error) {
 					if refundErr != nil {
-						pricingruntime.MarkRequestPricingPending(requestId)
+						pricingruntime.MarkRequestPricingPendingWithReason(
+							requestId, "refund_failed", refundErr.Error(),
+						)
 						return
 					}
 					if err := pricingruntime.MarkRequestPricingRefunded(requestId); err != nil {
@@ -872,11 +876,15 @@ func RelayTask(c *gin.Context) {
 					&dto.Usage{},
 					chargedQuota,
 				); snapshotErr != nil {
-					pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+					pricingruntime.MarkRequestPricingPendingWithReason(
+						relayInfo.RequestId, "task_snapshot_settlement_failed", snapshotErr.Error(),
+					)
 					common.SysError("settle task pricing snapshot error: " + snapshotErr.Error())
 				}
 			} else if relayInfo.DynamicPricingSnapshot != nil {
-				pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+				pricingruntime.MarkRequestPricingPendingWithReason(
+					relayInfo.RequestId, "task_billing_settlement_failed", "task billing settlement did not complete",
+				)
 			}
 			service.LogTaskConsumption(c, relayInfo, chargedQuota)
 			if response, exists := c.Get("deferred_task_response"); exists {

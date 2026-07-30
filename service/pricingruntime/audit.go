@@ -91,7 +91,7 @@ func SettleRequestPricingSnapshot(
 		info.DynamicPricingSnapshot.EstimatedUsage,
 		&actualUsage,
 	); err != nil {
-		markPricingSnapshotPending(info.RequestId)
+		markPricingSnapshotPending(info.RequestId, "usage_decode_failed", err.Error())
 		return fmt.Errorf("decode estimated business usage: %w", err)
 	}
 	actualUsage.PromptTokens = float64(usage.PromptTokens)
@@ -112,7 +112,7 @@ func SettleRequestPricingSnapshot(
 		actualUsage,
 	)
 	if err != nil {
-		markPricingSnapshotPending(info.RequestId)
+		markPricingSnapshotPending(info.RequestId, "purchase_evaluation_failed", err.Error())
 		return fmt.Errorf("evaluate settled purchase price: %w", err)
 	}
 	retail, err := pricingengine.Evaluate(
@@ -121,13 +121,13 @@ func SettleRequestPricingSnapshot(
 		actualUsage,
 	)
 	if err != nil {
-		markPricingSnapshotPending(info.RequestId)
+		markPricingSnapshotPending(info.RequestId, "retail_evaluation_failed", err.Error())
 		return fmt.Errorf("evaluate settled retail price: %w", err)
 	}
 	actualUsage.RequestBody = ""
 	usageJSON, err := common.Marshal(actualUsage)
 	if err != nil {
-		markPricingSnapshotPending(info.RequestId)
+		markPricingSnapshotPending(info.RequestId, "actual_usage_encode_failed", err.Error())
 		return err
 	}
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
@@ -149,7 +149,7 @@ func SettleRequestPricingSnapshot(
 			"updated_at":                common.GetTimestamp(),
 		})
 	if result.Error != nil {
-		markPricingSnapshotPending(info.RequestId)
+		markPricingSnapshotPending(info.RequestId, "snapshot_update_failed", result.Error.Error())
 		return result.Error
 	}
 	if result.RowsAffected != 1 {
@@ -158,20 +158,30 @@ func SettleRequestPricingSnapshot(
 	return nil
 }
 
-func markPricingSnapshotPending(requestId string) {
+func markPricingSnapshotPending(requestId string, failureCode string, failureReason string) {
 	if requestId == "" {
 		return
+	}
+	reasonRunes := []rune(failureReason)
+	if len(reasonRunes) > 1000 {
+		failureReason = string(reasonRunes[:1000])
 	}
 	_ = model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where("request_id = ? AND status = ?", requestId, PricingSnapshotStatusReserved).
 		Updates(map[string]any{
-			"status":     PricingSnapshotStatusPending,
-			"updated_at": common.GetTimestamp(),
+			"status":         PricingSnapshotStatusPending,
+			"failure_code":   failureCode,
+			"failure_reason": failureReason,
+			"updated_at":     common.GetTimestamp(),
 		}).Error
 }
 
 func MarkRequestPricingPending(requestId string) {
-	markPricingSnapshotPending(requestId)
+	markPricingSnapshotPending(requestId, "settlement_failed", "pricing settlement requires reconciliation")
+}
+
+func MarkRequestPricingPendingWithReason(requestId string, failureCode string, failureReason string) {
+	markPricingSnapshotPending(requestId, failureCode, failureReason)
 }
 
 func MarkRequestPricingRefunded(requestId string) error {

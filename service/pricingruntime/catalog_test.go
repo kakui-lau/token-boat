@@ -1,6 +1,7 @@
 package pricingruntime
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -817,6 +818,27 @@ func TestRequestPricingSnapshotRecordsCompletedRefund(t *testing.T) {
 	require.NoError(t, model.DB.Where("request_id = ?", "request-refunded").First(&snapshot).Error)
 	assert.Equal(t, PricingSnapshotStatusRefunded, snapshot.Status)
 	assert.Zero(t, snapshot.SettledQuota)
+	assert.Equal(t, "automatic_refund", snapshot.Resolution)
+	assert.Positive(t, snapshot.ResolvedAt)
+}
+
+func TestRequestPricingSnapshotPendingStoresBoundedFailureReason(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
+		RequestId: "request-failed", UserId: 1, ModelId: 2,
+		ChannelModelId: 3, BillingMode: "token",
+		Status: PricingSnapshotStatusReserved,
+	}).Error)
+
+	MarkRequestPricingPendingWithReason(
+		"request-failed", "refund_failed", strings.Repeat("错", 1100),
+	)
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", "request-failed").First(&snapshot).Error)
+	assert.Equal(t, PricingSnapshotStatusPending, snapshot.Status)
+	assert.Equal(t, "refund_failed", snapshot.FailureCode)
+	assert.Len(t, []rune(snapshot.FailureReason), 1000)
 }
 
 func TestReconcileStaleRequestPricingSnapshotsMarksOnlyOldReservations(t *testing.T) {

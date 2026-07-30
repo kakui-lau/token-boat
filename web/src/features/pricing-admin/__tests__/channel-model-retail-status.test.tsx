@@ -49,6 +49,10 @@ vi.mock('../api', () => ({
   getPricingCatalogOptions: vi.fn().mockResolvedValue({
     data: { channels: [], models: [] },
   }),
+  getPricingCircuitOverview: vi.fn().mockResolvedValue({
+    success: true,
+    data: { channels: [], events: [] },
+  }),
   getPricingRuntimeStatus: vi.fn().mockResolvedValue({
     success: true,
     data: {

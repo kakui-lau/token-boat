@@ -56,6 +56,7 @@ import {
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
 import { PriceEditorSheet } from './components/price-editor-sheet'
+import { PricingCircuitPanel } from './components/pricing-circuit-panel'
 import { PricingReconciliationPanel } from './components/pricing-reconciliation-panel'
 import { PricingRuntimeStatus } from './components/pricing-runtime-status'
 import type { ChannelModel } from './types'
@@ -178,6 +179,7 @@ export function PricingAdmin() {
       <PricingRuntimeStatus />
       <SectionPageLayout.Content>
         <div className='h-full space-y-4 overflow-auto'>
+          <PricingCircuitPanel />
           <PricingReconciliationPanel />
 
           <FieldGroup className='flex-row flex-wrap items-end gap-3'>

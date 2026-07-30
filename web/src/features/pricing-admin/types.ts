@@ -51,6 +51,27 @@ export type PricingRuntimeStatus = {
   live_traffic_enabled: boolean
 }
 
+export type ChannelCircuitStatus = {
+  channel_id: number
+  state: 'monitoring' | 'open' | 'half_open'
+  consecutive_failures: number
+  open_until: number
+  probe_until: number
+}
+
+export type ChannelCircuitEvent = {
+  id: number
+  channel_id: number
+  event: 'failure' | 'opened' | 'rate_limited' | 'half_open_probe' | 'recovered'
+  status_code: number
+  occurred_at: number
+}
+
+export type ChannelCircuitOverview = {
+  channels: ChannelCircuitStatus[]
+  events: ChannelCircuitEvent[]
+}
+
 export type RequestPricingSnapshot = {
   id: number
   request_id: string

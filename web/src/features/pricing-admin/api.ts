@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   ActivePriceBundle,
+  ChannelCircuitOverview,
   ChannelModel,
   ChannelModelListResponse,
   FlatTokenPrices,
@@ -41,6 +42,13 @@ export async function getPricingRuntimeStatus(): Promise<
   PriceVersionResponse<PricingRuntimeStatus>
 > {
   const response = await api.get('/api/pricing-admin/runtime-status')
+  return requirePricingSuccess(response.data)
+}
+
+export async function getPricingCircuitOverview(): Promise<
+  PriceVersionResponse<ChannelCircuitOverview>
+> {
+  const response = await api.get('/api/pricing-admin/circuit-overview')
   return requirePricingSuccess(response.data)
 }
 

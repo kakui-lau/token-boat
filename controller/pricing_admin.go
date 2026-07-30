@@ -50,6 +50,10 @@ func AdminGetPricingRuntimeStatus(c *gin.Context) {
 	common.ApiSuccess(c, readiness)
 }
 
+func AdminGetPricingCircuitOverview(c *gin.Context) {
+	common.ApiSuccess(c, pricingruntime.GetChannelCircuitOverview())
+}
+
 func AdminSetPricingModelRuntime(c *gin.Context) {
 	var input pricingModelRuntimeInput
 	if err := c.ShouldBindJSON(&input); err != nil {

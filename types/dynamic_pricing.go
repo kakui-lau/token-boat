@@ -4,6 +4,7 @@ type DynamicPriceCandidate struct {
 	ChannelModelId         int
 	ChannelId              int
 	ModelId                int
+	BillingMode            string
 	PurchasePriceVersion   int
 	RetailPriceVersion     int
 	PurchaseExpression     string

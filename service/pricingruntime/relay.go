@@ -155,6 +155,7 @@ func PrepareRelayPricing(
 			ChannelModelId:         bundle.ChannelModel.Id,
 			ChannelId:              bundle.ChannelModel.ChannelId,
 			ModelId:                bundle.ChannelModel.ModelId,
+			BillingMode:            bundle.Purchase.BillingMode,
 			PurchasePriceVersion:   bundle.Purchase.Id,
 			RetailPriceVersion:     bundle.Retail.Id,
 			PurchaseExpression:     bundle.Purchase.PurchaseBillingExpr,

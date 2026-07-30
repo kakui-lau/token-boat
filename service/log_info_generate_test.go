@@ -39,7 +39,7 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 			Selected: &types.DynamicPriceCandidate{
 				ChannelModelId: 4, PurchasePriceVersion: 5, RetailPriceVersion: 6,
 				PricingRevision: "revision", EstimatedPurchaseUSD: "0.4",
-				EstimatedRetailUSD: "0.8",
+				EstimatedRetailUSD: "0.8", BillingMode: "video_duration",
 			},
 		},
 	}
@@ -51,6 +51,7 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, 4, adminInfo["channel_model_id"])
+	assert.Equal(t, "video_duration", adminInfo["pricing_billing_mode"])
 	assert.Equal(t, 5, adminInfo["purchase_price_version_id"])
 	assert.Equal(t, 6, adminInfo["retail_price_version_id"])
 	assert.Equal(t, "revision", adminInfo["pricing_revision"])

@@ -296,6 +296,7 @@ func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) 
 	}, priceData.QuotaToPreConsume))
 	var snapshot model.RequestPricingSnapshot
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.Equal(t, "image", snapshot.BillingMode)
 	assert.Equal(t, "0.06", snapshot.PurchaseCost)
 	assert.Equal(t, "0.12", snapshot.RetailAmount)
 	assert.Contains(t, snapshot.ActualUsage, `"image_count":3`)
@@ -497,6 +498,7 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&reserved).Error)
 	assert.Equal(t, PricingSnapshotStatusReserved, reserved.Status)
 	assert.Equal(t, 7, reserved.PurchasePriceVersionId)
+	assert.Equal(t, "token", reserved.BillingMode)
 	assert.Equal(t, int64(2*int(common.QuotaPerUnit)), reserved.ReservedQuota)
 
 	require.NoError(t, SettleRequestPricingSnapshot(info, &dto.Usage{
@@ -505,6 +507,7 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	var settled model.RequestPricingSnapshot
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&settled).Error)
 	assert.Equal(t, PricingSnapshotStatusSettled, settled.Status)
+	assert.Equal(t, "token", settled.BillingMode)
 	assert.Equal(t, "0.5", settled.PurchaseCost)
 	assert.Equal(t, "1", settled.RetailAmount)
 	assert.Equal(t, int64(common.QuotaPerUnit), settled.SettledQuota)

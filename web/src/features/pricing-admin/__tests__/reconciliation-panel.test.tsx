@@ -11,6 +11,7 @@ import {
 import { afterEach, expect, test, vi } from 'vitest'
 
 import {
+  confirmPricingSnapshotRefunded,
   getPricingReconciliationSummary,
   getRequestPricingSnapshots,
 } from '../api'
@@ -32,6 +33,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('../api', () => ({
+  confirmPricingSnapshotRefunded: vi.fn(),
   getPricingReconciliationSummary: vi.fn(),
   getRequestPricingSnapshots: vi.fn(),
 }))
@@ -90,6 +92,9 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('seedance-2.0')).toBeInTheDocument()
   expect(screen.getByText('video-provider')).toBeInTheDocument()
   expect(screen.getByText('video_duration')).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Confirm Refunded' })
+  ).toBeInTheDocument()
   expect(screen.getByText('0.4 USD')).toBeInTheDocument()
   expect(screen.getByText('0.8 USD')).toBeInTheDocument()
   expect(
@@ -119,6 +124,74 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     page: 1,
     page_size: 20,
   })
+})
+
+test('confirms an audited refund after explicit confirmation', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 1,
+      stale_reserved: 0,
+      settled_last_24h: 0,
+      refunded_last_24h: 0,
+      oldest_anomaly_created_at: 1,
+    },
+  })
+  vi.mocked(getRequestPricingSnapshots).mockResolvedValue({
+    success: true,
+    data: {
+      items: [
+        {
+          id: 9,
+          request_id: 'pending-refund',
+          model_name: 'model',
+          channel_id: 1,
+          channel_name: 'channel',
+          billing_mode: 'token',
+          reserved_quota: 10,
+          settled_quota: 0,
+          purchase_cost: '0.01',
+          retail_amount: '0.02',
+          currency: 'USD',
+          status: 'pending',
+          updated_at: 1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    },
+  })
+  vi.mocked(confirmPricingSnapshotRefunded).mockResolvedValue({
+    success: true,
+    data: { id: 9, status: 'refunded' },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingReconciliationPanel />
+    </QueryClientProvider>
+  )
+
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Confirm Refunded' })
+  )
+  expect(
+    screen.getByText('Confirm this request as refunded?')
+  ).toBeInTheDocument()
+  const confirmationButton = screen
+    .getAllByRole('button', { name: 'Confirm Refunded' })
+    .at(-1)
+  expect(confirmationButton).toBeDefined()
+  if (confirmationButton) {
+    fireEvent.click(confirmationButton)
+  }
+
+  await waitFor(() =>
+    expect(vi.mocked(confirmPricingSnapshotRefunded).mock.calls[0]?.[0]).toBe(9)
+  )
 })
 
 test('shows an explicit empty state when reconciliation is clear', async () => {

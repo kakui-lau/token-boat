@@ -1,9 +1,15 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { ChevronLeft, ChevronRight, Download, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,12 +24,15 @@ import {
 } from '@/components/ui/table'
 
 import {
+  confirmPricingSnapshotRefunded,
   getPricingReconciliationSummary,
   getRequestPricingSnapshots,
 } from '../api'
 
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [confirmRefundId, setConfirmRefundId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [keyword, setKeyword] = useState('')
   const [appliedKeyword, setAppliedKeyword] = useState('')
@@ -48,6 +57,15 @@ export function PricingReconciliationPanel() {
   const summaryQuery = useQuery({
     queryKey: ['pricing-admin', 'request-pricing-snapshots', 'summary'],
     queryFn: getPricingReconciliationSummary,
+  })
+  const confirmRefundMutation = useMutation({
+    mutationFn: confirmPricingSnapshotRefunded,
+    onSuccess: async () => {
+      setConfirmRefundId(null)
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'request-pricing-snapshots'],
+      })
+    },
   })
   const rows = snapshotsQuery.data?.data.items ?? []
   const total = snapshotsQuery.data?.data.total ?? 0
@@ -177,6 +195,7 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Retail amount')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
               <TableHead>{t('Updated')}</TableHead>
+              <TableHead>{t('Actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -196,10 +215,10 @@ export function PricingReconciliationPanel() {
                 <TableCell className='font-mono tabular-nums'>
                   {row.settled_quota}
                 </TableCell>
-                <TableCell className='whitespace-nowrap font-mono tabular-nums'>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
                   {row.purchase_cost} {row.currency}
                 </TableCell>
-                <TableCell className='whitespace-nowrap font-mono tabular-nums'>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
                   {row.retail_amount} {row.currency}
                 </TableCell>
                 <TableCell>
@@ -212,12 +231,25 @@ export function PricingReconciliationPanel() {
                 <TableCell className='whitespace-nowrap'>
                   {dayjs.unix(row.updated_at).format('YYYY-MM-DD HH:mm')}
                 </TableCell>
+                <TableCell>
+                  {row.status === 'pending' ? (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      onClick={() => setConfirmRefundId(row.id)}
+                    >
+                      {t('Confirm Refunded')}
+                    </Button>
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
               </TableRow>
             ))}
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={10}
+                  colSpan={11}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}
@@ -257,6 +289,25 @@ export function PricingReconciliationPanel() {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={confirmRefundId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmRefundId(null)
+          }
+        }}
+        title={t('Confirm this request as refunded?')}
+        desc={t(
+          'Only continue after verifying the request log and quota ledger. This records an existing refund and does not issue another refund.'
+        )}
+        confirmText={t('Confirm Refunded')}
+        isLoading={confirmRefundMutation.isPending}
+        handleConfirm={() => {
+          if (confirmRefundId !== null) {
+            confirmRefundMutation.mutate(confirmRefundId)
+          }
+        }}
+      />
     </section>
   )
 }

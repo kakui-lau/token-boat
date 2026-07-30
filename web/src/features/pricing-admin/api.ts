@@ -124,6 +124,15 @@ export async function getPricingReconciliationSummary(): Promise<
   return requirePricingSuccess(response.data)
 }
 
+export async function confirmPricingSnapshotRefunded(
+  id: number
+): Promise<PriceVersionResponse<{ id: number; status: 'refunded' }>> {
+  const response = await api.post(
+    `/api/pricing-admin/request-pricing-snapshots/${id}/confirm-refunded`
+  )
+  return requirePricingSuccess(response.data)
+}
+
 export async function syncLegacyChannelModels(): Promise<ImportResponse> {
   const response = await api.post(
     '/api/pricing-admin/channel-models/sync-legacy'

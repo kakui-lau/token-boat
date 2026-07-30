@@ -91,7 +91,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   )
   expect(screen.getByText('seedance-2.0')).toBeInTheDocument()
   expect(screen.getByText('video-provider')).toBeInTheDocument()
-  expect(screen.getByText('video_duration')).toBeInTheDocument()
+  expect(screen.getAllByText('video_duration')).toHaveLength(2)
   expect(
     screen.getByRole('button', { name: 'Confirm Refunded' })
   ).toBeInTheDocument()
@@ -120,6 +120,8 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   )
   expect(getRequestPricingSnapshots).toHaveBeenCalledWith({
     reconciliation: true,
+    status: undefined,
+    billing_mode: undefined,
     keyword: undefined,
     page: 1,
     page_size: 20,
@@ -274,6 +276,8 @@ test('loads the next reconciliation page and exposes navigation state', async ()
   await waitFor(() =>
     expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
       reconciliation: true,
+      status: undefined,
+      billing_mode: undefined,
       keyword: undefined,
       page: 2,
       page_size: 20,
@@ -323,6 +327,8 @@ test('searches reconciliation records and applies the keyword to CSV export', as
   await waitFor(() =>
     expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
       reconciliation: true,
+      status: undefined,
+      billing_mode: undefined,
       keyword: 'request/seedance',
       page: 1,
       page_size: 20,
@@ -365,6 +371,8 @@ test('switches to all pricing records and exports the same view', async () => {
   await waitFor(() =>
     expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
       reconciliation: undefined,
+      status: undefined,
+      billing_mode: undefined,
       keyword: undefined,
       page: 1,
       page_size: 20,
@@ -374,5 +382,26 @@ test('switches to all pricing records and exports the same view', async () => {
   expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
     'href',
     '/api/pricing-admin/request-pricing-snapshots/export'
+  )
+
+  fireEvent.change(screen.getByLabelText('Status'), {
+    target: { value: 'settled' },
+  })
+  fireEvent.change(screen.getByLabelText('Billing mode'), {
+    target: { value: 'video_duration' },
+  })
+  await waitFor(() =>
+    expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
+      reconciliation: undefined,
+      status: 'settled',
+      billing_mode: 'video_duration',
+      keyword: undefined,
+      page: 1,
+      page_size: 20,
+    })
+  )
+  expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
+    'href',
+    '/api/pricing-admin/request-pricing-snapshots/export?status=settled&billing_mode=video_duration'
   )
 })

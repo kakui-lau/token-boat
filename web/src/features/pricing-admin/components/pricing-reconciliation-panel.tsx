@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   Table,
   TableBody,
@@ -35,6 +36,8 @@ export function PricingReconciliationPanel() {
   const [confirmRefundId, setConfirmRefundId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [showAllRecords, setShowAllRecords] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [billingModeFilter, setBillingModeFilter] = useState('')
   const [keyword, setKeyword] = useState('')
   const [appliedKeyword, setAppliedKeyword] = useState('')
   const pageSize = 20
@@ -44,12 +47,18 @@ export function PricingReconciliationPanel() {
       'request-pricing-snapshots',
       'pending',
       showAllRecords,
+      statusFilter,
+      billingModeFilter,
       appliedKeyword,
       page,
     ],
     queryFn: () =>
       getRequestPricingSnapshots({
         reconciliation: showAllRecords ? undefined : true,
+        status: statusFilter
+          ? (statusFilter as 'reserved' | 'pending' | 'settled' | 'refunded')
+          : undefined,
+        billing_mode: billingModeFilter || undefined,
         keyword: appliedKeyword || undefined,
         page,
         page_size: pageSize,
@@ -84,6 +93,12 @@ export function PricingReconciliationPanel() {
   }
   if (appliedKeyword) {
     exportParams.set('keyword', appliedKeyword)
+  }
+  if (statusFilter) {
+    exportParams.set('status', statusFilter)
+  }
+  if (billingModeFilter) {
+    exportParams.set('billing_mode', billingModeFilter)
   }
   const exportQuery = exportParams.toString()
   const exportUrl = `/api/pricing-admin/request-pricing-snapshots/export${exportQuery ? `?${exportQuery}` : ''}`
@@ -137,6 +152,7 @@ export function PricingReconciliationPanel() {
           variant={showAllRecords ? 'outline' : 'default'}
           onClick={() => {
             setShowAllRecords(false)
+            setStatusFilter('')
             setPage(1)
           }}
         >
@@ -152,6 +168,52 @@ export function PricingReconciliationPanel() {
         >
           {t('All pricing records')}
         </Button>
+      </div>
+      <div className='flex flex-wrap items-center gap-2'>
+        <NativeSelect
+          size='sm'
+          aria-label={t('Status')}
+          value={statusFilter}
+          onChange={(event) => {
+            setStatusFilter(event.target.value)
+            setPage(1)
+          }}
+        >
+          <NativeSelectOption value=''>{t('All statuses')}</NativeSelectOption>
+          {(['reserved', 'pending', 'settled', 'refunded'] as const).map(
+            (status) => (
+              <NativeSelectOption key={status} value={status}>
+                {statusLabels[status]}
+              </NativeSelectOption>
+            )
+          )}
+        </NativeSelect>
+        <NativeSelect
+          size='sm'
+          aria-label={t('Billing mode')}
+          value={billingModeFilter}
+          onChange={(event) => {
+            setBillingModeFilter(event.target.value)
+            setPage(1)
+          }}
+        >
+          <NativeSelectOption value=''>
+            {t('All billing modes')}
+          </NativeSelectOption>
+          {[
+            'token',
+            'request',
+            'image',
+            'audio_duration',
+            'video_duration',
+            'character',
+            'mixed',
+          ].map((mode) => (
+            <NativeSelectOption key={mode} value={mode}>
+              {mode}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </div>
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
         {[

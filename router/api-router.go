@@ -374,6 +374,7 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.GET("/channel-models", controller.AdminListChannelModels)
 			pricingAdminRoute.GET("/request-pricing-snapshots", controller.AdminListRequestPricingSnapshots)
 			pricingAdminRoute.GET("/request-pricing-snapshots/summary", controller.AdminGetPricingReconciliationSummary)
+			pricingAdminRoute.GET("/request-pricing-snapshots/export", controller.AdminExportRequestPricingSnapshots)
 			pricingAdminRoute.GET("/catalog-options", controller.AdminListPricingCatalogOptions)
 			pricingAdminRoute.GET("/runtime-status", controller.AdminGetPricingRuntimeStatus)
 			pricingAdminRoute.GET("/circuit-overview", controller.AdminGetPricingCircuitOverview)

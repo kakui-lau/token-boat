@@ -89,6 +89,10 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('Stale reservations')).toBeInTheDocument()
   expect(screen.getByText('Settled (24h)')).toBeInTheDocument()
   expect(screen.getByText('Refunded (24h)')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
+    'href',
+    '/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true'
+  )
   expect(getRequestPricingSnapshots).toHaveBeenCalledWith({
     reconciliation: true,
     page: 1,

@@ -1,16 +1,19 @@
 package controller
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type channelModelAdminRow struct {
@@ -286,54 +289,10 @@ func AdminListChannelModels(c *gin.Context) {
 
 func AdminListRequestPricingSnapshots(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	query := model.DB.Table("request_pricing_snapshots").
-		Select(
-			"request_pricing_snapshots.*, COALESCE(models.model_name, '') AS model_name, " +
-				"COALESCE(channel_models.channel_id, 0) AS channel_id, " +
-				"COALESCE(channels.name, '') AS channel_name",
-		).
-		Joins("LEFT JOIN models ON models.id = request_pricing_snapshots.model_id").
-		Joins("LEFT JOIN channel_models ON channel_models.id = request_pricing_snapshots.channel_model_id").
-		Joins("LEFT JOIN channels ON channels.id = channel_models.channel_id")
-	if rawReconciliation := strings.TrimSpace(c.Query("reconciliation")); rawReconciliation != "" {
-		reconciliation, err := strconv.ParseBool(rawReconciliation)
-		if err != nil {
-			common.ApiErrorMsg(c, "reconciliation 无效")
-			return
-		}
-		if reconciliation {
-			query = query.Where(
-				"request_pricing_snapshots.status = ? OR "+
-					"(request_pricing_snapshots.status = ? AND request_pricing_snapshots.created_at <= ?)",
-				pricingruntime.PricingSnapshotStatusPending,
-				pricingruntime.PricingSnapshotStatusReserved,
-				common.GetTimestamp()-pricingReconciliationReservedAgeSeconds,
-			)
-		}
-	}
-	if status := strings.TrimSpace(c.Query("status")); status != "" {
-		switch status {
-		case pricingruntime.PricingSnapshotStatusReserved,
-			pricingruntime.PricingSnapshotStatusPending,
-			pricingruntime.PricingSnapshotStatusSettled,
-			pricingruntime.PricingSnapshotStatusRefunded:
-			query = query.Where("request_pricing_snapshots.status = ?", status)
-		default:
-			common.ApiErrorMsg(c, "status 无效")
-			return
-		}
-	}
-	if billingMode := strings.TrimSpace(c.Query("billing_mode")); billingMode != "" {
-		query = query.Where("request_pricing_snapshots.billing_mode = ?", billingMode)
-	}
-	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
-		like := "%" + keyword + "%"
-		query = query.Where(
-			"request_pricing_snapshots.request_id LIKE ? OR models.model_name LIKE ? OR channels.name LIKE ?",
-			like,
-			like,
-			like,
-		)
+	query, err := requestPricingSnapshotAdminQuery(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
 
 	var total int64
@@ -355,6 +314,112 @@ func AdminListRequestPricingSnapshots(c *gin.Context) {
 		"page":      pageInfo.GetPage(),
 		"page_size": pageInfo.GetPageSize(),
 	})
+}
+
+func AdminExportRequestPricingSnapshots(c *gin.Context) {
+	query, err := requestPricingSnapshotAdminQuery(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	const exportLimit = 10000
+	var rows []requestPricingSnapshotAdminRow
+	if err := query.Order("request_pricing_snapshots.id DESC").
+		Limit(exportLimit).
+		Scan(&rows).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filename := "pricing-reconciliation-" + time.Now().UTC().Format("20060102-150405") + ".csv"
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Status(200)
+	writer := csv.NewWriter(c.Writer)
+	_ = writer.Write([]string{
+		"request_id", "model", "channel", "billing_mode", "currency",
+		"reserved_quota", "settled_quota", "purchase_cost", "retail_amount",
+		"status", "created_at", "updated_at",
+	})
+	for _, row := range rows {
+		_ = writer.Write([]string{
+			spreadsheetSafeCSVCell(row.RequestId),
+			spreadsheetSafeCSVCell(row.ModelName),
+			spreadsheetSafeCSVCell(row.ChannelName),
+			row.BillingMode,
+			row.Currency,
+			strconv.FormatInt(row.ReservedQuota, 10),
+			strconv.FormatInt(row.SettledQuota, 10),
+			row.PurchaseCost,
+			row.RetailAmount,
+			row.Status,
+			time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339),
+			time.Unix(row.UpdatedAt, 0).UTC().Format(time.RFC3339),
+		})
+	}
+	writer.Flush()
+}
+
+func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {
+	query := model.DB.Table("request_pricing_snapshots").
+		Select(
+			"request_pricing_snapshots.*, COALESCE(models.model_name, '') AS model_name, " +
+				"COALESCE(channel_models.channel_id, 0) AS channel_id, " +
+				"COALESCE(channels.name, '') AS channel_name",
+		).
+		Joins("LEFT JOIN models ON models.id = request_pricing_snapshots.model_id").
+		Joins("LEFT JOIN channel_models ON channel_models.id = request_pricing_snapshots.channel_model_id").
+		Joins("LEFT JOIN channels ON channels.id = channel_models.channel_id")
+	if rawReconciliation := strings.TrimSpace(c.Query("reconciliation")); rawReconciliation != "" {
+		reconciliation, err := strconv.ParseBool(rawReconciliation)
+		if err != nil {
+			return nil, errors.New("reconciliation 无效")
+		}
+		if reconciliation {
+			query = query.Where(
+				"request_pricing_snapshots.status = ? OR "+
+					"(request_pricing_snapshots.status = ? AND request_pricing_snapshots.created_at <= ?)",
+				pricingruntime.PricingSnapshotStatusPending,
+				pricingruntime.PricingSnapshotStatusReserved,
+				common.GetTimestamp()-pricingReconciliationReservedAgeSeconds,
+			)
+		}
+	}
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		switch status {
+		case pricingruntime.PricingSnapshotStatusReserved,
+			pricingruntime.PricingSnapshotStatusPending,
+			pricingruntime.PricingSnapshotStatusSettled,
+			pricingruntime.PricingSnapshotStatusRefunded:
+			query = query.Where("request_pricing_snapshots.status = ?", status)
+		default:
+			return nil, errors.New("status 无效")
+		}
+	}
+	if billingMode := strings.TrimSpace(c.Query("billing_mode")); billingMode != "" {
+		query = query.Where("request_pricing_snapshots.billing_mode = ?", billingMode)
+	}
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where(
+			"request_pricing_snapshots.request_id LIKE ? OR models.model_name LIKE ? OR channels.name LIKE ?",
+			like,
+			like,
+			like,
+		)
+	}
+	return query, nil
+}
+
+func spreadsheetSafeCSVCell(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	default:
+		return value
+	}
 }
 
 func AdminGetPricingReconciliationSummary(c *gin.Context) {

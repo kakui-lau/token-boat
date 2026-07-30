@@ -2,9 +2,11 @@ package controller
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -564,4 +566,48 @@ func TestAdminPricingReconciliationSummarySeparatesBacklogAndRecentOutcomes(t *t
 	assert.EqualValues(t, 1, response.Data.SettledLast24h)
 	assert.EqualValues(t, 1, response.Data.RefundedLast24h)
 	assert.Equal(t, now-pricingReconciliationReservedAgeSeconds-60, response.Data.OldestAnomalyCreatedAt)
+}
+
+func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 131, Name: "@provider"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 132, ModelName: "=model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 133, ChannelId: 131, ModelId: 132, UpstreamModelName: "=model",
+		Status: 1, RuntimeMode: "v2",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
+		RequestId: "+request", UserId: 1, ModelId: 132, ChannelModelId: 133,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 2,
+		BillingMode: "token", ReservedQuota: 100, SettledQuota: 0,
+		PurchaseCost: "0.04", RetailAmount: "0.08", Currency: "USD",
+		Status: pricingruntime.PricingSnapshotStatusPending,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
+		RequestId: "settled-not-exported", UserId: 1, ModelId: 132, ChannelModelId: 133,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 2,
+		BillingMode: "token", ReservedQuota: 100, SettledQuota: 100,
+		PurchaseCost: "0.04", RetailAmount: "0.08", Currency: "USD",
+		Status: pricingruntime.PricingSnapshotStatusSettled,
+	}).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true",
+		nil,
+	)
+
+	AdminExportRequestPricingSnapshots(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "text/csv; charset=utf-8", recorder.Header().Get("Content-Type"))
+	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "pricing-reconciliation-")
+	records, err := csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, "'+request", records[1][0])
+	assert.Equal(t, "'=model", records[1][1])
+	assert.Equal(t, "'@provider", records[1][2])
+	assert.Equal(t, "pending", records[1][9])
 }

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
-import { RefreshCw } from 'lucide-react'
+import { Download, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -54,17 +54,35 @@ export function PricingReconciliationPanel() {
             {t('{{total}} billing anomalies', { total })}
           </p>
         </div>
-        <Button
-          size='sm'
-          variant='outline'
-          disabled={snapshotsQuery.isFetching || summaryQuery.isFetching}
-          onClick={() => {
-            void Promise.all([snapshotsQuery.refetch(), summaryQuery.refetch()])
-          }}
-        >
-          <RefreshCw aria-hidden='true' />
-          {t('Refresh')}
-        </Button>
+        <div className='flex items-center gap-2'>
+          <Button
+            size='sm'
+            variant='outline'
+            render={
+              <a
+                href='/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true'
+                download
+              />
+            }
+          >
+            <Download aria-hidden='true' />
+            {t('Export CSV')}
+          </Button>
+          <Button
+            size='sm'
+            variant='outline'
+            disabled={snapshotsQuery.isFetching || summaryQuery.isFetching}
+            onClick={() => {
+              void Promise.all([
+                snapshotsQuery.refetch(),
+                summaryQuery.refetch(),
+              ])
+            }}
+          >
+            <RefreshCw aria-hidden='true' />
+            {t('Refresh')}
+          </Button>
+        </div>
       </div>
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
         {[

@@ -127,6 +127,22 @@ func TestValidateOnlyAppliesStrictEstimatorToTieredSeedance20(t *testing.T) {
 	assert.Contains(t, normalizedBody, "video_url")
 }
 
+func TestValidateRejectsSeedance20Mini480pBeforeBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, info := newDoubaoVideoTestContext(
+		`{"model":"byteplus/seedance-2.0-mini","prompt":"test","duration":3,"resolution":"480p"}`,
+	)
+	info.UpstreamModelName = "dreamina-seedance-2-0-mini-260615"
+
+	taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(context, info)
+
+	require.NotNil(t, taskErr)
+	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+	assert.Equal(t, "invalid_resolution", taskErr.Code)
+	assert.Contains(t, taskErr.Message, "minimum resolution is 720p")
+	assert.Nil(t, info.Billing)
+}
+
 func TestIsSeedance20ModelRecognizesPublicAndUpstreamNames(t *testing.T) {
 	tests := []struct {
 		name      string

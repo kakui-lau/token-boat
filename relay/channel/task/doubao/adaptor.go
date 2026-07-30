@@ -131,6 +131,18 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
+	resolution := req.Resolution
+	if metadataResolution, ok := req.Metadata["resolution"].(string); resolution == "" && ok {
+		resolution = metadataResolution
+	}
+	if isSeedance20MiniModel(req.Model, info.UpstreamModelName) &&
+		strings.EqualFold(strings.TrimSpace(resolution), "480p") {
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("Seedance 2.0 Mini does not support 480p; minimum resolution is 720p"),
+			"invalid_resolution",
+			http.StatusBadRequest,
+		)
+	}
 	if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
 		return nil
 	}
@@ -153,7 +165,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	for key, value := range req.Metadata {
 		normalizedRequest.Metadata[key] = value
 	}
-	resolution := normalizedRequest.Resolution
+	resolution = normalizedRequest.Resolution
 	if metadataResolution, ok := normalizedRequest.Metadata["resolution"].(string); resolution == "" && ok {
 		resolution = metadataResolution
 	}
@@ -196,6 +208,19 @@ func isSeedance20Model(modelName string) bool {
 	return strings.Contains(normalized, "seedance-2.0") ||
 		strings.Contains(normalized, "seedance-2-0") ||
 		strings.Contains(normalized, "seedance2")
+}
+
+func isSeedance20MiniModel(modelNames ...string) bool {
+	for _, modelName := range modelNames {
+		normalized := strings.ToLower(strings.TrimSpace(modelName))
+		if (strings.Contains(normalized, "seedance-2.0") ||
+			strings.Contains(normalized, "seedance-2-0") ||
+			strings.Contains(normalized, "seedance2")) &&
+			strings.Contains(normalized, "mini") {
+			return true
+		}
+	}
+	return false
 }
 
 func estimateMaxBillingTokens(req relaycommon.TaskSubmitReq) (int, error) {

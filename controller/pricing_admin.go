@@ -439,6 +439,20 @@ func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {
 	if billingMode := strings.TrimSpace(c.Query("billing_mode")); billingMode != "" {
 		query = query.Where("request_pricing_snapshots.billing_mode = ?", billingMode)
 	}
+	if rawCreatedFrom := strings.TrimSpace(c.Query("created_from")); rawCreatedFrom != "" {
+		createdFrom, err := strconv.ParseInt(rawCreatedFrom, 10, 64)
+		if err != nil || createdFrom <= 0 {
+			return nil, errors.New("created_from 无效")
+		}
+		query = query.Where("request_pricing_snapshots.created_at >= ?", createdFrom)
+	}
+	if rawCreatedTo := strings.TrimSpace(c.Query("created_to")); rawCreatedTo != "" {
+		createdTo, err := strconv.ParseInt(rawCreatedTo, 10, 64)
+		if err != nil || createdTo <= 0 {
+			return nil, errors.New("created_to 无效")
+		}
+		query = query.Where("request_pricing_snapshots.created_at <= ?", createdTo)
+	}
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where(

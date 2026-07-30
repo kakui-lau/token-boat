@@ -1309,6 +1309,8 @@
     "Created a vendor": "Created a vendor",
     "Created At": "Created At",
     "Created channel {{name}} (type {{type}}, count {{count}})": "Created channel {{name}} (type {{type}}, count {{count}})",
+    "Created from": "Created from",
+    "Created to": "Created to",
     "Created user {{username}} (role {{role}})": "Created user {{username}} (role {{role}})",
     "Creates a Pancake product in the saved store using this plan’s title and price. Requires Waffo Pancake to be fully configured in Payment settings first.": "Creates a Pancake product in the saved store using this plan’s title and price. Requires Waffo Pancake to be fully configured in Payment settings first.",
     "Creating...": "Creating...",

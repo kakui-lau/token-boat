@@ -1309,6 +1309,8 @@
     "Created a vendor": "建立了一個供應商",
     "Created At": "建立時間",
     "Created channel {{name}} (type {{type}}, count {{count}})": "建立渠道 {{name}}（類型 {{type}}，數量 {{count}}）",
+    "Created from": "建立時間起",
+    "Created to": "建立時間止",
     "Created user {{username}} (role {{role}})": "建立用戶 {{username}}（角色 {{role}}）",
     "Creates a Pancake product in the saved store using this plan’s title and price. Requires Waffo Pancake to be fully configured in Payment settings first.": "使用此套餐的標題和價格，在已儲存的店鋪中建立 Pancake 產品。需要先在支付設定中完整設定 Waffo Pancake。",
     "Creating...": "建立中...",

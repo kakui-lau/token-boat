@@ -1309,6 +1309,8 @@
     "Created a vendor": "Đã tạo một nhà cung cấp",
     "Created At": "Ngày tạo",
     "Created channel {{name}} (type {{type}}, count {{count}})": "Đã tạo kênh {{name}} (loại {{type}}, số lượng {{count}})",
+    "Created from": "Tạo từ",
+    "Created to": "Tạo đến",
     "Created user {{username}} (role {{role}})": "Đã tạo người dùng {{username}} (vai trò {{role}})",
     "Creates a Pancake product in the saved store using this plan’s title and price. Requires Waffo Pancake to be fully configured in Payment settings first.": "Tạo một sản phẩm Pancake trong cửa hàng đã lưu bằng tiêu đề và giá của gói này. Trước tiên cần cấu hình đầy đủ Waffo Pancake trong cài đặt Thanh toán.",
     "Creating...": "Đang tạo...",

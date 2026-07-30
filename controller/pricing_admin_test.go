@@ -370,6 +370,39 @@ func TestAdminListRequestPricingSnapshotsRejectsInvalidStatus(t *testing.T) {
 	assert.Contains(t, response.Message, "status")
 }
 
+func TestAdminListRequestPricingSnapshotsFiltersCreatedRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create([]model.RequestPricingSnapshot{
+		{RequestId: "before-range", UserId: 1, ModelId: 1, ChannelModelId: 1,
+			BillingMode: "token", Currency: "USD", Status: "settled", CreatedAt: 100},
+		{RequestId: "inside-range", UserId: 1, ModelId: 1, ChannelModelId: 1,
+			BillingMode: "token", Currency: "USD", Status: "settled", CreatedAt: 200},
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", "before-range").
+		Update("created_at", 100).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", "inside-range").
+		Update("created_at", 200).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots?created_from=150&created_to=250",
+		nil,
+	)
+
+	AdminListRequestPricingSnapshots(context)
+
+	var response struct {
+		Data struct {
+			Items []requestPricingSnapshotAdminRow `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Len(t, response.Data.Items, 1)
+	assert.Equal(t, "inside-range", response.Data.Items[0].RequestId)
+}
+
 func TestAdminListRequestPricingSnapshotsKeepsOrphanedAuditRowsVisible(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)

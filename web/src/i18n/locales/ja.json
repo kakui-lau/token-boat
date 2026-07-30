@@ -1309,6 +1309,8 @@
     "Created a vendor": "ベンダーを作成しました",
     "Created At": "作成日時",
     "Created channel {{name}} (type {{type}}, count {{count}})": "チャネル {{name}} を作成しました（タイプ {{type}}、数 {{count}}）",
+    "Created from": "作成日時（開始）",
+    "Created to": "作成日時（終了）",
     "Created user {{username}} (role {{role}})": "ユーザー {{username}} を作成しました（ロール {{role}}）",
     "Creates a Pancake product in the saved store using this plan’s title and price. Requires Waffo Pancake to be fully configured in Payment settings first.": "保存済みストアに、このプランのタイトルと価格を使って Pancake 商品を作成します。事前に支払い設定で Waffo Pancake を完全に設定する必要があります。",
     "Creating...": "作成中...",

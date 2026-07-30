@@ -104,6 +104,8 @@ export async function getRequestPricingSnapshots(params: {
   status?: 'reserved' | 'pending' | 'settled' | 'refunded'
   reconciliation?: boolean
   billing_mode?: string
+  created_from?: number
+  created_to?: number
   keyword?: string
   page?: number
   page_size?: number

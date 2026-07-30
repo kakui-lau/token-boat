@@ -47,6 +47,8 @@ export function PricingReconciliationPanel() {
   const [showAllRecords, setShowAllRecords] = useState(false)
   const [statusFilter, setStatusFilter] = useState('')
   const [billingModeFilter, setBillingModeFilter] = useState('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(
     null
   )
@@ -61,6 +63,8 @@ export function PricingReconciliationPanel() {
       showAllRecords,
       statusFilter,
       billingModeFilter,
+      createdFrom,
+      createdTo,
       appliedKeyword,
       page,
     ],
@@ -71,6 +75,8 @@ export function PricingReconciliationPanel() {
           ? (statusFilter as 'reserved' | 'pending' | 'settled' | 'refunded')
           : undefined,
         billing_mode: billingModeFilter || undefined,
+        created_from: createdFrom ? dayjs(createdFrom).unix() : undefined,
+        created_to: createdTo ? dayjs(createdTo).unix() : undefined,
         keyword: appliedKeyword || undefined,
         page,
         page_size: pageSize,
@@ -113,6 +119,12 @@ export function PricingReconciliationPanel() {
   }
   if (billingModeFilter) {
     exportParams.set('billing_mode', billingModeFilter)
+  }
+  if (createdFrom) {
+    exportParams.set('created_from', String(dayjs(createdFrom).unix()))
+  }
+  if (createdTo) {
+    exportParams.set('created_to', String(dayjs(createdTo).unix()))
   }
   const exportQuery = exportParams.toString()
   const exportUrl = `/api/pricing-admin/request-pricing-snapshots/export${exportQuery ? `?${exportQuery}` : ''}`
@@ -228,6 +240,26 @@ export function PricingReconciliationPanel() {
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        <Input
+          className='w-auto'
+          type='datetime-local'
+          aria-label={t('Created from')}
+          value={createdFrom}
+          onChange={(event) => {
+            setCreatedFrom(event.target.value)
+            setPage(1)
+          }}
+        />
+        <Input
+          className='w-auto'
+          type='datetime-local'
+          aria-label={t('Created to')}
+          value={createdTo}
+          onChange={(event) => {
+            setCreatedTo(event.target.value)
+            setPage(1)
+          }}
+        />
       </div>
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
         {[

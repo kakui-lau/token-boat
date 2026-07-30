@@ -37,6 +37,26 @@ func TestScaleBillingExpressionRejectsLegacySchema(t *testing.T) {
 	require.ErrorContains(t, err, "must use schema v2")
 }
 
+func TestScalePriceComponentsPreservesEmptyOptionalUnitPrices(t *testing.T) {
+	scaled, err := scalePriceComponents(
+		`{"input_unit_price":"2","cache_write_unit_price":"","tiers":[{"unit_price":"4"}]}`,
+		decimal.RequireFromString("0.5"),
+		false,
+	)
+	require.NoError(t, err)
+	assert.JSONEq(
+		t,
+		`{"input_unit_price":"1","cache_write_unit_price":"","tiers":[{"unit_price":"2"}]}`,
+		scaled,
+	)
+}
+
+func TestPriceComponentLimitsAllowEmptyOptionalUnitPrices(t *testing.T) {
+	require.NoError(t, validatePriceComponentLimits(
+		`{"input_unit_price":"1","cache_write_unit_price":""}`,
+	))
+}
+
 func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 21, ModelName: "structured-test"}).Error)

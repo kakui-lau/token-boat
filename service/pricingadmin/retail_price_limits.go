@@ -73,7 +73,11 @@ func validatePriceComponentLimits(raw string) error {
 			if key != "unit_price" && !strings.HasSuffix(key, "_unit_price") {
 				return nil
 			}
-			price, err := decimal.NewFromString(strings.TrimSpace(typed))
+			trimmed := strings.TrimSpace(typed)
+			if trimmed == "" {
+				return nil
+			}
+			price, err := decimal.NewFromString(trimmed)
 			if err != nil || price.IsNegative() {
 				return fmt.Errorf("%s must be a non-negative decimal", key)
 			}

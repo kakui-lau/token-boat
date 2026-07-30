@@ -257,6 +257,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if relayInfo.Billing != nil {
 				relayInfo.Billing.Refund(c)
 			}
+			if relayInfo.DynamicPricingSnapshot != nil &&
+				relayInfo.DynamicPricingSnapshot.AuditCreated {
+				pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+			}
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
 	}()
@@ -270,8 +274,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	retryLimit := relayRetryLimit(relayInfo)
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	for ; retryParam.GetRetry() <= retryLimit; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -320,7 +325,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			pricingruntime.RecordChannelFailure(channel.Id, newAPIError.StatusCode)
 		}
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		if !shouldRetry(c, newAPIError, retryLimit-retryParam.GetRetry()) {
 			break
 		}
 	}
@@ -335,6 +340,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
+}
+
+func relayRetryLimit(info *relaycommon.RelayInfo) int {
+	if info == nil || info.DynamicPricingSnapshot == nil {
+		return common.RetryTimes
+	}
+	candidateCount := len(info.DynamicPricingSnapshot.RouteChannelIds)
+	if candidateCount <= 1 {
+		return 0
+	}
+	return candidateCount - 1
 }
 
 var upgrader = websocket.Upgrader{

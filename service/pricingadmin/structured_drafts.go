@@ -938,7 +938,11 @@ func scalePriceComponents(
 			if key != "unit_price" && !strings.HasSuffix(key, "_unit_price") {
 				return typed, nil
 			}
-			number, err := decimal.NewFromString(strings.TrimSpace(typed))
+			trimmed := strings.TrimSpace(typed)
+			if trimmed == "" {
+				return "", nil
+			}
+			number, err := decimal.NewFromString(trimmed)
 			if err != nil {
 				return nil, fmt.Errorf("%s is invalid: %w", key, err)
 			}

@@ -879,6 +879,48 @@ func TestReconcileStaleRequestPricingSnapshotsMarksOnlyOldReservations(t *testin
 	assert.Equal(t, PricingSnapshotStatusReserved, fresh.Status)
 }
 
+func TestPurgeFinalizedRequestPricingSnapshotsKeepsActiveAndAnomalousRows(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	snapshots := []model.RequestPricingSnapshot{
+		{RequestId: "old-settled", Status: PricingSnapshotStatusSettled},
+		{RequestId: "old-refunded", Status: PricingSnapshotStatusRefunded},
+		{RequestId: "old-pending", Status: PricingSnapshotStatusPending},
+		{RequestId: "old-reserved", Status: PricingSnapshotStatusReserved},
+		{RequestId: "recent-settled", Status: PricingSnapshotStatusSettled},
+	}
+	for index := range snapshots {
+		snapshots[index].UserId = 1
+		snapshots[index].ModelId = 1
+		snapshots[index].ChannelModelId = 1
+		snapshots[index].BillingMode = "token"
+		snapshots[index].Currency = "USD"
+		require.NoError(t, model.DB.Create(&snapshots[index]).Error)
+	}
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id <> ?", "recent-settled").
+		UpdateColumn("created_at", 100).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", "recent-settled").
+		UpdateColumn("created_at", 200).Error)
+
+	deleted, err := PurgeFinalizedRequestPricingSnapshots(150, 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), deleted)
+	deleted, err = PurgeFinalizedRequestPricingSnapshots(150, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), deleted)
+
+	var remaining []string
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Order("request_id ASC").
+		Pluck("request_id", &remaining).Error)
+	assert.Equal(t, []string{
+		"old-pending",
+		"old-reserved",
+		"recent-settled",
+	}, remaining)
+}
+
 func TestPlanV2RouteOrdersByPurchaseCostBeforePriority(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 8, RuntimeModeV2)

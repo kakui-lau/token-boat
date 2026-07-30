@@ -180,6 +180,33 @@ func MarkRequestPricingPending(requestId string) {
 	markPricingSnapshotPending(requestId, "settlement_failed", "pricing settlement requires reconciliation")
 }
 
+// PurgeFinalizedRequestPricingSnapshots deletes one bounded batch of old,
+// completed audit rows. Active and anomalous rows are deliberately excluded.
+func PurgeFinalizedRequestPricingSnapshots(cutoff int64, batchSize int) (int64, error) {
+	if cutoff <= 0 || batchSize <= 0 {
+		return 0, errors.New("pricing snapshot retention boundary is invalid")
+	}
+	statuses := []string{
+		PricingSnapshotStatusSettled,
+		PricingSnapshotStatusRefunded,
+	}
+	var ids []int
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("created_at < ? AND status IN ?", cutoff, statuses).
+		Order("id ASC").
+		Limit(batchSize).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := model.DB.
+		Where("id IN ? AND created_at < ? AND status IN ?", ids, cutoff, statuses).
+		Delete(&model.RequestPricingSnapshot{})
+	return result.RowsAffected, result.Error
+}
+
 func MarkRequestPricingPendingWithReason(requestId string, failureCode string, failureReason string) {
 	markPricingSnapshotPending(requestId, failureCode, failureReason)
 }

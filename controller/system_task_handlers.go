@@ -24,12 +24,74 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 	service.RegisterSystemTaskHandler(pricingReconciliationHandler{})
+	service.RegisterSystemTaskHandler(pricingRetentionHandler{})
 }
 
 type pricingReconciliationHandler struct{}
 
 func (pricingReconciliationHandler) Type() string {
 	return model.SystemTaskTypePricingReconcile
+}
+
+const pricingRetentionBatchSize = 1000
+const pricingRetentionMaxBatchesPerRun = 10
+
+type pricingRetentionHandler struct{}
+
+func (pricingRetentionHandler) Type() string {
+	return model.SystemTaskTypePricingRetention
+}
+
+func (pricingRetentionHandler) Enabled() bool {
+	return common.GetEnvOrDefault("PRICING_SNAPSHOT_RETENTION_DAYS", 365) > 0
+}
+
+func (pricingRetentionHandler) Interval() time.Duration { return 24 * time.Hour }
+
+func (pricingRetentionHandler) NewPayload() any { return nil }
+
+func (pricingRetentionHandler) Run(
+	_ context.Context,
+	task *model.SystemTask,
+	runnerID string,
+) {
+	retentionDays := common.GetEnvOrDefault("PRICING_SNAPSHOT_RETENTION_DAYS", 365)
+	if retentionDays <= 0 {
+		finishSystemTaskHandler(
+			task,
+			runnerID,
+			model.SystemTaskStatusSucceeded,
+			map[string]int64{"deleted_count": 0},
+			nil,
+		)
+		return
+	}
+	cutoff := common.GetTimestamp() - int64(retentionDays)*24*60*60
+	var deleted int64
+	for range pricingRetentionMaxBatchesPerRun {
+		count, err := pricingruntime.PurgeFinalizedRequestPricingSnapshots(
+			cutoff,
+			pricingRetentionBatchSize,
+		)
+		if err != nil {
+			finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+			return
+		}
+		deleted += count
+		if count < pricingRetentionBatchSize {
+			break
+		}
+	}
+	finishSystemTaskHandler(
+		task,
+		runnerID,
+		model.SystemTaskStatusSucceeded,
+		map[string]int64{
+			"deleted_count": deleted,
+			"cutoff":        cutoff,
+		},
+		nil,
+	)
 }
 
 func (pricingReconciliationHandler) Enabled() bool { return true }

@@ -38,6 +38,10 @@ test('shows open channels and recent circuit transitions', async () => {
           consecutive_failures: 3,
           open_until: 1_800_000_030,
           probe_until: 0,
+          success_count: 97,
+          failure_count: 3,
+          success_rate: 0.97,
+          average_latency_ms: 245.4,
         },
       ],
       events: [
@@ -62,12 +66,13 @@ test('shows open channels and recent circuit transitions', async () => {
     </QueryClientProvider>
   )
 
-  await waitFor(() => expect(screen.getByText('Open')).toBeInTheDocument())
-  expect(screen.getByText('#12')).toBeInTheDocument()
-  expect(screen.getAllByText('video-provider')).toHaveLength(2)
-  expect(screen.getByText('Circuit opened')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByText('#12')).toBeInTheDocument())
+  expect(screen.getAllByText('video-provider')).toHaveLength(3)
+  expect(screen.getAllByText('Circuit opened')).toHaveLength(2)
   expect(screen.getByText('503')).toBeInTheDocument()
   expect(screen.getByText('3')).toBeInTheDocument()
+  expect(screen.getAllByText('97.00%')).toHaveLength(2)
+  expect(screen.getAllByText('245 ms')).toHaveLength(2)
 })
 
 test('requires confirmation before manually resetting a channel circuit', async () => {
@@ -82,6 +87,10 @@ test('requires confirmation before manually resetting a channel circuit', async 
           consecutive_failures: 3,
           open_until: 1_800_000_030,
           probe_until: 0,
+          success_count: 10,
+          failure_count: 3,
+          success_rate: 0.91,
+          average_latency_ms: 500,
         },
       ],
       events: [],

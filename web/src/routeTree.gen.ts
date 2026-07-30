@@ -44,6 +44,7 @@ import { Route as AuthenticatedChannelDailyUsageIndexRouteImport } from './route
 import { Route as AuthenticatedChannelMonthlyUsageIndexRouteImport } from './routes/_authenticated/channel-monthly-usage/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedCircuitAnalysisIndexRouteImport } from './routes/_authenticated/circuit-analysis/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
@@ -260,6 +261,12 @@ const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCircuitAnalysisIndexRoute =
+  AuthenticatedCircuitAnalysisIndexRouteImport.update({
+    id: '/circuit-analysis/',
+    path: '/circuit-analysis/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -512,6 +519,7 @@ export interface FileRoutesByFullPath {
   '/channel-daily-usage/': typeof AuthenticatedChannelDailyUsageIndexRoute
   '/channel-monthly-usage/': typeof AuthenticatedChannelMonthlyUsageIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/circuit-analysis/': typeof AuthenticatedCircuitAnalysisIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
@@ -582,6 +590,7 @@ export interface FileRoutesByTo {
   '/channel-daily-usage': typeof AuthenticatedChannelDailyUsageIndexRoute
   '/channel-monthly-usage': typeof AuthenticatedChannelMonthlyUsageIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
+  '/circuit-analysis': typeof AuthenticatedCircuitAnalysisIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
@@ -656,6 +665,7 @@ export interface FileRoutesById {
   '/_authenticated/channel-daily-usage/': typeof AuthenticatedChannelDailyUsageIndexRoute
   '/_authenticated/channel-monthly-usage/': typeof AuthenticatedChannelMonthlyUsageIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/_authenticated/circuit-analysis/': typeof AuthenticatedCircuitAnalysisIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
@@ -729,6 +739,7 @@ export interface FileRouteTypes {
     | '/channel-daily-usage/'
     | '/channel-monthly-usage/'
     | '/channels/'
+    | '/circuit-analysis/'
     | '/dashboard/'
     | '/keys/'
     | '/models/'
@@ -799,6 +810,7 @@ export interface FileRouteTypes {
     | '/channel-daily-usage'
     | '/channel-monthly-usage'
     | '/channels'
+    | '/circuit-analysis'
     | '/dashboard'
     | '/keys'
     | '/models'
@@ -872,6 +884,7 @@ export interface FileRouteTypes {
     | '/_authenticated/channel-daily-usage/'
     | '/_authenticated/channel-monthly-usage/'
     | '/_authenticated/channels/'
+    | '/_authenticated/circuit-analysis/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
@@ -1176,6 +1189,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/$chatId'
       fullPath: '/chat/$chatId'
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/circuit-analysis/': {
+      id: '/_authenticated/circuit-analysis/'
+      path: '/circuit-analysis'
+      fullPath: '/circuit-analysis/'
+      preLoaderRoute: typeof AuthenticatedCircuitAnalysisIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard/': {
@@ -1527,6 +1547,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChannelDailyUsageIndexRoute: typeof AuthenticatedChannelDailyUsageIndexRoute
   AuthenticatedChannelMonthlyUsageIndexRoute: typeof AuthenticatedChannelMonthlyUsageIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
+  AuthenticatedCircuitAnalysisIndexRoute: typeof AuthenticatedCircuitAnalysisIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
@@ -1559,6 +1580,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedChannelMonthlyUsageIndexRoute:
     AuthenticatedChannelMonthlyUsageIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
+  AuthenticatedCircuitAnalysisIndexRoute:
+    AuthenticatedCircuitAnalysisIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,

@@ -318,6 +318,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		attemptStartedAt := time.Now()
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -331,7 +332,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			if relayInfo.DynamicPricingSnapshot != nil {
-				pricingruntime.RecordChannelSuccess(channel.Id)
+				pricingruntime.RecordChannelSuccessWithLatency(
+					channel.Id,
+					time.Since(attemptStartedAt),
+				)
 			}
 			relayInfo.LastError = nil
 			return
@@ -796,10 +800,14 @@ func RelayTask(c *gin.Context) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		attemptStartedAt := time.Now()
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
 			if relayInfo.DynamicPricingSnapshot != nil {
-				pricingruntime.RecordChannelSuccess(channel.Id)
+				pricingruntime.RecordChannelSuccessWithLatency(
+					channel.Id,
+					time.Since(attemptStartedAt),
+				)
 			}
 			break
 		}

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -941,6 +942,47 @@ func TestPlanV2RouteOrdersByPurchaseCostBeforePriority(t *testing.T) {
 	require.Len(t, candidates, 2)
 	assert.Equal(t, 9, candidates[0].ChannelModelId)
 	assert.Equal(t, 8, candidates[1].ChannelModelId)
+}
+
+func TestRouteScoringBalancesCostReliabilityLatencyAndQuality(t *testing.T) {
+	channelCircuits.Lock()
+	originalStates := channelCircuits.byChannelId
+	channelCircuits.byChannelId = map[int]channelCircuitState{
+		101: {
+			SuccessCount:     20,
+			FailureCount:     30,
+			AverageLatencyMs: 2500,
+		},
+		102: {
+			SuccessCount:     500,
+			FailureCount:     2,
+			AverageLatencyMs: 200,
+		},
+	}
+	channelCircuits.Unlock()
+	t.Cleanup(func() {
+		channelCircuits.Lock()
+		channelCircuits.byChannelId = originalStates
+		channelCircuits.Unlock()
+	})
+	candidates := []RouteCandidate{
+		{
+			ChannelId: 101, PurchaseCost: decimal.RequireFromString("0.8"),
+			QualityScore: 20,
+		},
+		{
+			ChannelId: 102, PurchaseCost: decimal.RequireFromString("1"),
+			QualityScore: 100,
+		},
+	}
+
+	scoreRouteCandidates(candidates)
+	sortRouteCandidates(candidates)
+
+	assert.Equal(t, 102, candidates[0].ChannelId)
+	assert.Greater(t, candidates[0].RouteScore, candidates[1].RouteScore)
+	assert.Greater(t, candidates[0].SuccessRate, candidates[1].SuccessRate)
+	assert.Less(t, candidates[0].LatencyMs, candidates[1].LatencyMs)
 }
 
 func TestMixedLegacyAndV2CandidatesFallBackAsOneModel(t *testing.T) {

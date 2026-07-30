@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { RefreshCw } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -16,6 +17,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   Table,
   TableBody,
@@ -62,6 +65,8 @@ function circuitEventLabel(
 export function PricingCircuitPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [channelFilter, setChannelFilter] = useState('')
+  const [eventFilter, setEventFilter] = useState('')
   const circuitQuery = useQuery({
     queryKey: ['pricing-admin', 'circuit-overview'],
     queryFn: getPricingCircuitOverview,
@@ -75,7 +80,32 @@ export function PricingCircuitPanel() {
     },
   })
   const channels = circuitQuery.data?.data.channels ?? []
-  const events = (circuitQuery.data?.data.events ?? []).slice(-20).reverse()
+  const allEvents = circuitQuery.data?.data.events ?? []
+  const events = allEvents
+    .filter(
+      (event) =>
+        (!channelFilter || event.channel_id === Number(channelFilter)) &&
+        (!eventFilter || event.event === eventFilter)
+    )
+    .slice(-100)
+    .reverse()
+  const openCount = channels.filter((channel) => channel.state === 'open').length
+  const totalSuccess = channels.reduce(
+    (total, channel) => total + channel.success_count,
+    0
+  )
+  const totalFailure = channels.reduce(
+    (total, channel) => total + channel.failure_count,
+    0
+  )
+  const totalAttempts = totalSuccess + totalFailure
+  const averageLatency =
+    channels.length > 0
+      ? channels.reduce(
+          (total, channel) => total + channel.average_latency_ms,
+          0
+        ) / channels.length
+      : 0
 
   return (
     <section className='space-y-3' aria-labelledby='pricing-circuit-status'>
@@ -101,6 +131,27 @@ export function PricingCircuitPanel() {
         </Button>
       </div>
 
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+        {[
+          [t('Open'), openCount],
+          [
+            t('Success rate'),
+            totalAttempts > 0
+              ? `${((totalSuccess / totalAttempts) * 100).toFixed(2)}%`
+              : '—',
+          ],
+          [t('Average latency'), `${Math.round(averageLatency)} ms`],
+          [t('Event'), allEvents.length],
+        ].map(([label, value]) => (
+          <Card key={String(label)} size='sm'>
+            <CardContent>
+              <div className='text-muted-foreground text-xs'>{label}</div>
+              <div className='mt-1 font-mono text-xl'>{value}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <div className='grid gap-3 xl:grid-cols-2'>
         <div className='overflow-x-auto rounded-lg border'>
           <Table>
@@ -109,6 +160,8 @@ export function PricingCircuitPanel() {
                 <TableHead>{t('Channel')}</TableHead>
                 <TableHead>{t('State')}</TableHead>
                 <TableHead>{t('Consecutive failures')}</TableHead>
+                <TableHead>{t('Success rate')}</TableHead>
+                <TableHead>{t('Average latency')}</TableHead>
                 <TableHead>{t('Cooldown until')}</TableHead>
                 <TableHead className='text-right'>{t('Actions')}</TableHead>
               </TableRow>
@@ -130,6 +183,12 @@ export function PricingCircuitPanel() {
                     <CircuitStateBadge state={channel.state} />
                   </TableCell>
                   <TableCell>{channel.consecutive_failures}</TableCell>
+                  <TableCell>
+                    {(channel.success_rate * 100).toFixed(2)}%
+                  </TableCell>
+                  <TableCell>
+                    {Math.round(channel.average_latency_ms)} ms
+                  </TableCell>
                   <TableCell className='whitespace-nowrap'>
                     {channel.open_until > 0
                       ? dayjs.unix(channel.open_until).format('HH:mm:ss')
@@ -177,7 +236,7 @@ export function PricingCircuitPanel() {
               {!circuitQuery.isLoading && channels.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={7}
                     className='text-muted-foreground h-20 text-center'
                   >
                     {t('All channels are healthy')}
@@ -188,7 +247,49 @@ export function PricingCircuitPanel() {
           </Table>
         </div>
 
-        <div className='overflow-x-auto rounded-lg border'>
+        <div className='space-y-3'>
+          <div className='flex flex-wrap gap-2'>
+            <NativeSelect
+              aria-label={t('Channel')}
+              className='w-48'
+              value={channelFilter}
+              onChange={(event) => setChannelFilter(event.target.value)}
+            >
+              <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+              {channels.map((channel) => (
+                <NativeSelectOption
+                  key={channel.channel_id}
+                  value={String(channel.channel_id)}
+                >
+                  {channel.channel_name || `#${channel.channel_id}`}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <NativeSelect
+              aria-label={t('Event')}
+              className='w-48'
+              value={eventFilter}
+              onChange={(event) => setEventFilter(event.target.value)}
+            >
+              <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+              {[
+                'failure',
+                'opened',
+                'rate_limited',
+                'half_open_probe',
+                'recovered',
+                'manual_reset',
+              ].map((event) => (
+                <NativeSelectOption key={event} value={event}>
+                  {circuitEventLabel(
+                    event as ChannelCircuitEvent['event'],
+                    t
+                  )}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className='overflow-x-auto rounded-lg border'>
           <Table>
             <TableHeader>
               <TableRow>
@@ -225,6 +326,7 @@ export function PricingCircuitPanel() {
               ) : null}
             </TableBody>
           </Table>
+          </div>
         </div>
       </div>
     </section>

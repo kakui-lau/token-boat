@@ -58,6 +58,10 @@ export type ChannelCircuitStatus = {
   consecutive_failures: number
   open_until: number
   probe_until: number
+  success_count: number
+  failure_count: number
+  success_rate: number
+  average_latency_ms: number
 }
 
 export type ChannelCircuitEvent = {

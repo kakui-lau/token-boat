@@ -161,6 +161,12 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {
+            title: t('Circuit Analysis'),
+            url: '/circuit-analysis',
+            icon: Activity,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
             title: t('Channel Daily Usage'),
             url: '/channel-daily-usage',
             icon: ChartNoAxesCombined,

@@ -171,8 +171,10 @@ func PrepareRelayPricing(
 			Priority:       bundle.ChannelModel.Priority,
 			Weight:         bundle.ChannelModel.Weight,
 			PurchaseCost:   purchaseAmount,
+			QualityScore:   float64(bundle.ChannelModel.Weight),
 		})
 	}
+	scoreRouteCandidates(routeCandidates)
 	sortRouteCandidates(routeCandidates)
 	routeChannelIds := make([]int, 0, len(routeCandidates))
 	for _, candidate := range routeCandidates {

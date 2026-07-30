@@ -18,14 +18,21 @@ type channelCircuitState struct {
 	ConsecutiveFailures int
 	OpenUntil           time.Time
 	ProbeUntil          time.Time
+	SuccessCount        int64
+	FailureCount        int64
+	AverageLatencyMs    float64
 }
 
 type ChannelCircuitStatus struct {
-	ChannelId           int    `json:"channel_id"`
-	State               string `json:"state"`
-	ConsecutiveFailures int    `json:"consecutive_failures"`
-	OpenUntil           int64  `json:"open_until"`
-	ProbeUntil          int64  `json:"probe_until"`
+	ChannelId           int     `json:"channel_id"`
+	State               string  `json:"state"`
+	ConsecutiveFailures int     `json:"consecutive_failures"`
+	OpenUntil           int64   `json:"open_until"`
+	ProbeUntil          int64   `json:"probe_until"`
+	SuccessCount        int64   `json:"success_count"`
+	FailureCount        int64   `json:"failure_count"`
+	SuccessRate         float64 `json:"success_rate"`
+	AverageLatencyMs    float64 `json:"average_latency_ms"`
 }
 
 type ChannelCircuitEvent struct {
@@ -78,11 +85,28 @@ func tryAcquireChannelAt(channelId int, now time.Time) bool {
 }
 
 func RecordChannelSuccess(channelId int) {
+	RecordChannelSuccessWithLatency(channelId, 0)
+}
+
+func RecordChannelSuccessWithLatency(channelId int, latency time.Duration) {
 	channelCircuits.Lock()
-	if _, exists := channelCircuits.byChannelId[channelId]; exists {
+	state, exists := channelCircuits.byChannelId[channelId]
+	if exists && (!state.OpenUntil.IsZero() || !state.ProbeUntil.IsZero()) {
 		appendChannelCircuitEventLocked(channelId, "recovered", 0, time.Now())
 	}
-	delete(channelCircuits.byChannelId, channelId)
+	state.ConsecutiveFailures = 0
+	state.OpenUntil = time.Time{}
+	state.ProbeUntil = time.Time{}
+	state.SuccessCount++
+	if latency > 0 {
+		latencyMs := float64(latency.Milliseconds())
+		if state.AverageLatencyMs == 0 {
+			state.AverageLatencyMs = latencyMs
+		} else {
+			state.AverageLatencyMs = state.AverageLatencyMs*0.8 + latencyMs*0.2
+		}
+	}
+	channelCircuits.byChannelId[channelId] = state
 	channelCircuits.Unlock()
 }
 
@@ -110,6 +134,7 @@ func recordChannelFailureAt(channelId int, statusCode int, now time.Time) {
 
 	state, exists := channelCircuits.byChannelId[channelId]
 	state.ProbeUntil = time.Time{}
+	state.FailureCount++
 	switch {
 	case statusCode == 429:
 		state.ConsecutiveFailures = 0
@@ -161,6 +186,10 @@ func GetChannelCircuitOverview() ChannelCircuitOverview {
 			ConsecutiveFailures: state.ConsecutiveFailures,
 			OpenUntil:           openUntil,
 			ProbeUntil:          probeUntil,
+			SuccessCount:        state.SuccessCount,
+			FailureCount:        state.FailureCount,
+			SuccessRate:         channelSuccessRate(state),
+			AverageLatencyMs:    state.AverageLatencyMs,
 		})
 	}
 	sort.Slice(channels, func(i, j int) bool {
@@ -168,6 +197,32 @@ func GetChannelCircuitOverview() ChannelCircuitOverview {
 	})
 	events := append([]ChannelCircuitEvent(nil), channelCircuits.events...)
 	return ChannelCircuitOverview{Channels: channels, Events: events}
+}
+
+type ChannelRouteMetrics struct {
+	SuccessRate      float64
+	AverageLatencyMs float64
+}
+
+func GetChannelRouteMetrics(channelId int) ChannelRouteMetrics {
+	channelCircuits.Lock()
+	defer channelCircuits.Unlock()
+	state := channelCircuits.byChannelId[channelId]
+	latency := state.AverageLatencyMs
+	if latency <= 0 {
+		latency = 1000
+	}
+	return ChannelRouteMetrics{
+		SuccessRate:      channelSuccessRate(state),
+		AverageLatencyMs: latency,
+	}
+}
+
+func channelSuccessRate(state channelCircuitState) float64 {
+	// A small Bayesian prior keeps new channels competitive without allowing
+	// one early success or failure to dominate route selection.
+	return float64(state.SuccessCount+99) /
+		float64(state.SuccessCount+state.FailureCount+100)
 }
 
 func appendChannelCircuitEventLocked(

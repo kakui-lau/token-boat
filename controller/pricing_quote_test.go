@@ -67,7 +67,33 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "2", data["minimum_retail_amount"])
 	assert.Equal(t, "2", data["maximum_reservation_amount"])
+	assert.Equal(t, "default", data["group"])
 	assert.NotContains(t, data, "quotes")
 	assert.NotContains(t, data, "purchase_cost")
 	assert.NotContains(t, data, "channel_id")
+}
+
+func TestQuotePricingRejectsUnavailableRequestedGroup(t *testing.T) {
+	setupPricingAdminControllerTestDB(t)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing/quote",
+		PricingQuoteInput{
+			ModelName: "public-quote-model",
+			Group:     "private-unavailable-group",
+			Usage:     pricingengine.Usage{PromptTokens: 1_000_000},
+		},
+	)
+	common.SetContextKey(context, constant.ContextKeyUserGroup, "default")
+
+	QuotePricing(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Contains(t, response.Message, "无权")
 }

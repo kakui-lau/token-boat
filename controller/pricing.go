@@ -85,6 +85,7 @@ func GetPricing(c *gin.Context) {
 
 type PricingQuoteInput struct {
 	ModelName string `json:"model_name"`
+	Group     string `json:"group,omitempty"`
 	pricingengine.Usage
 }
 
@@ -99,19 +100,47 @@ func QuotePricing(c *gin.Context) {
 		common.ApiError(c, errors.New("model_name is required"))
 		return
 	}
-	group := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	quoteRange, err := pricingruntime.QuoteRetailRange(
-		group,
-		input.ModelName,
-		input.Usage,
-		service.GetUserGroupRatio(group, group),
-	)
-	if err != nil {
-		common.ApiError(c, err)
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	requestedGroup := strings.TrimSpace(input.Group)
+	if requestedGroup == "" {
+		requestedGroup = userGroup
+	}
+	if requestedGroup != userGroup &&
+		!service.GroupInUserUsableGroups(userGroup, requestedGroup) {
+		common.ApiErrorMsg(c, "无权使用指定分组报价")
+		return
+	}
+	quoteGroups := []string{requestedGroup}
+	if requestedGroup == "auto" {
+		quoteGroups = service.GetUserAutoGroup(userGroup)
+	}
+	var quoteRange pricingruntime.RetailQuoteRange
+	selectedGroup := ""
+	for _, quoteGroup := range quoteGroups {
+		if !pricingruntime.HasCompleteV2Pricing(quoteGroup, input.ModelName) {
+			continue
+		}
+		var err error
+		quoteRange, err = pricingruntime.QuoteRetailRange(
+			quoteGroup,
+			input.ModelName,
+			input.Usage,
+			service.GetUserGroupRatio(userGroup, quoteGroup),
+		)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		selectedGroup = quoteGroup
+		break
+	}
+	if selectedGroup == "" {
+		common.ApiError(c, errors.New("no complete v2 price is available for this model and group"))
 		return
 	}
 	common.ApiSuccess(c, gin.H{
 		"model_name":                 input.ModelName,
+		"group":                      selectedGroup,
 		"currency":                   quoteRange.Currency,
 		"minimum_retail_amount":      quoteRange.MinimumRetailAmount,
 		"maximum_reservation_amount": quoteRange.MaximumReservationAmount,

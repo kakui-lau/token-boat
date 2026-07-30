@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
-import { Download, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -22,14 +23,17 @@ import {
 
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
+  const [page, setPage] = useState(1)
+  const pageSize = 20
   const snapshotsQuery = useQuery({
-    queryKey: ['pricing-admin', 'request-pricing-snapshots', 'pending'],
+    queryKey: ['pricing-admin', 'request-pricing-snapshots', 'pending', page],
     queryFn: () =>
       getRequestPricingSnapshots({
         reconciliation: true,
-        page: 1,
-        page_size: 20,
+        page,
+        page_size: pageSize,
       }),
+    placeholderData: keepPreviousData,
   })
   const summaryQuery = useQuery({
     queryKey: ['pricing-admin', 'request-pricing-snapshots', 'summary'],
@@ -37,6 +41,7 @@ export function PricingReconciliationPanel() {
   })
   const rows = snapshotsQuery.data?.data.items ?? []
   const total = snapshotsQuery.data?.data.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <section className='space-y-3' aria-labelledby='pricing-reconciliation'>
@@ -180,6 +185,36 @@ export function PricingReconciliationPanel() {
           </TableBody>
         </Table>
       </div>
+      {total > pageSize ? (
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <p className='text-muted-foreground text-sm'>
+            {t('Page {{page}} of {{total}}', {
+              page,
+              total: totalPages,
+            })}
+          </p>
+          <div className='flex items-center gap-2'>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={page === 1 || snapshotsQuery.isFetching}
+              onClick={() => setPage((currentPage) => currentPage - 1)}
+            >
+              <ChevronLeft aria-hidden='true' />
+              {t('Previous')}
+            </Button>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={page >= totalPages || snapshotsQuery.isFetching}
+              onClick={() => setPage((currentPage) => currentPage + 1)}
+            >
+              {t('Next')}
+              <ChevronRight aria-hidden='true' />
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

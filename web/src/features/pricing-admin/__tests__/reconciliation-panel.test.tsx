@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import {
@@ -12,10 +18,16 @@ import { PricingReconciliationPanel } from '../components/pricing-reconciliation
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { total?: number }) =>
-      values?.total === undefined
-        ? key
-        : key.replace('{{total}}', String(values.total)),
+    t: (key: string, values?: { page?: number; total?: number }) => {
+      let translated = key
+      if (values?.page !== undefined) {
+        translated = translated.replace('{{page}}', String(values.page))
+      }
+      if (values?.total !== undefined) {
+        translated = translated.replace('{{total}}', String(values.total))
+      }
+      return translated
+    },
   }),
 }))
 
@@ -133,4 +145,58 @@ test('shows an explicit empty state when reconciliation is clear', async () => {
   await waitFor(() =>
     expect(screen.getByText('No billing anomalies')).toBeInTheDocument()
   )
+})
+
+test('loads the next reconciliation page and exposes navigation state', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 21,
+      stale_reserved: 0,
+      settled_last_24h: 0,
+      refunded_last_24h: 0,
+      oldest_anomaly_created_at: 1_800_000_000,
+    },
+  })
+  vi.mocked(getRequestPricingSnapshots).mockImplementation(
+    async (params = {}) => ({
+      success: true,
+      data: {
+        items: [],
+        total: 21,
+        page: params.page ?? 1,
+        page_size: 20,
+      },
+    })
+  )
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingReconciliationPanel />
+    </QueryClientProvider>
+  )
+
+  const previousButton = await screen.findByRole('button', {
+    name: 'Previous',
+  })
+  const nextButton = screen.getByRole('button', { name: 'Next' })
+  expect(previousButton).toBeDisabled()
+  expect(nextButton).toBeEnabled()
+  expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+
+  fireEvent.click(nextButton)
+
+  await waitFor(() =>
+    expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
+      reconciliation: true,
+      page: 2,
+      page_size: 20,
+    })
+  )
+  expect(await screen.findByText('Page 2 of 2')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
 })

@@ -380,8 +380,8 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 			`{"name":"short","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"2","upper_bound":"100000"},` +
 			`{"name":"default","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"4"}` +
 			`]}`,
-		BillingExpr:      `v1:len <= 100000 ? tier("short", p * 2) : tier("default", p * 4)`,
-		ExpressionSource: "custom", ExpressionSchemaVersion: "v1",
+		BillingExpr:      `v2:len <= 100000 ? tier("short", p * 2 / 1000000) : tier("default", p * 4 / 1000000)`,
+		ExpressionSource: "custom", ExpressionSchemaVersion: "v2",
 		Currency: "USD", Source: "manual",
 	}
 	require.NoError(t, CreateOfficialPriceVersion(&official, 1))

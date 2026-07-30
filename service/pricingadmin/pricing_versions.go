@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -65,10 +64,6 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
 		return err
 	}
-	upgradePricingExpressionToV2(
-		&input.ExpressionSchemaVersion,
-		&input.BillingExpr,
-	)
 	if err := validateCommonPrice(
 		input.ModelId,
 		input.BillingMode,
@@ -123,10 +118,6 @@ func UpdateOfficialPriceVersionDraft(
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.BillingExpr); err != nil {
 		return updated, err
 	}
-	upgradePricingExpressionToV2(
-		&input.ExpressionSchemaVersion,
-		&input.BillingExpr,
-	)
 	if err := validateCommonPrice(
 		input.ModelId,
 		input.BillingMode,
@@ -197,10 +188,6 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.PurchaseBillingExpr); err != nil {
 		return err
 	}
-	upgradePricingExpressionToV2(
-		&input.ExpressionSchemaVersion,
-		&input.PurchaseBillingExpr,
-	)
 	if err := validateCommonPrice(
 		input.ChannelModelId,
 		input.BillingMode,
@@ -282,10 +269,6 @@ func CreateRetailPriceVersion(input *model.ChannelModelRetailPriceVersion, userI
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.RetailBillingExpr); err != nil {
 		return err
 	}
-	upgradePricingExpressionToV2(
-		&input.ExpressionSchemaVersion,
-		&input.RetailBillingExpr,
-	)
 	if err := validateCommonPrice(
 		input.ChannelModelId,
 		input.BillingMode,
@@ -409,23 +392,6 @@ func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
 	if version.ExprHash != "" &&
 		version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
 		return errors.New("official price expression hash does not match")
-	}
-	if upgradePricingExpressionToV2(
-		&version.ExpressionSchemaVersion,
-		&version.BillingExpr,
-	) {
-		version.ExprHash = billingexpr.ExprHashString(version.BillingExpr)
-		version.ContentHash = officialPriceContentHash(version)
-		if err := tx.Model(&model.OfficialModelPriceVersion{}).
-			Where("id = ? AND status = ?", version.Id, model.PricingVersionStatusDraft).
-			UpdateColumns(map[string]any{
-				"billing_expr":              version.BillingExpr,
-				"expr_hash":                 version.ExprHash,
-				"expression_schema_version": version.ExpressionSchemaVersion,
-				"content_hash":              version.ContentHash,
-			}).Error; err != nil {
-			return err
-		}
 	}
 	if err := validateCommonPrice(
 		version.ModelId,
@@ -560,39 +526,6 @@ func sameBillingContract(
 		leftCurrency == rightCurrency
 }
 
-func upgradePurchasePriceDraftExpressionToV2(
-	tx *gorm.DB,
-	version *model.ChannelModelPurchasePriceVersion,
-) error {
-	if version.Status != model.PricingVersionStatusDraft {
-		return nil
-	}
-	if err := validateExpressionMetadata(
-		version.ExpressionSchemaVersion,
-		version.PurchaseBillingExpr,
-	); err != nil {
-		return err
-	}
-	if version.PurchaseExprHash != "" &&
-		version.PurchaseExprHash != billingexpr.ExprHashString(version.PurchaseBillingExpr) {
-		return errors.New("purchase price expression hash does not match")
-	}
-	if !upgradePricingExpressionToV2(
-		&version.ExpressionSchemaVersion,
-		&version.PurchaseBillingExpr,
-	) {
-		return nil
-	}
-	version.PurchaseExprHash = billingexpr.ExprHashString(version.PurchaseBillingExpr)
-	return tx.Model(&model.ChannelModelPurchasePriceVersion{}).
-		Where("id = ? AND status = ?", version.Id, model.PricingVersionStatusDraft).
-		UpdateColumns(map[string]any{
-			"purchase_billing_expr":     version.PurchaseBillingExpr,
-			"purchase_expr_hash":        version.PurchaseExprHash,
-			"expression_schema_version": version.ExpressionSchemaVersion,
-		}).Error
-}
-
 func PublishPurchasePriceVersion(id int) error {
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)
@@ -601,9 +534,6 @@ func PublishPurchasePriceVersion(id int) error {
 		}
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only draft purchase prices can be published")
-		}
-		if err := upgradePurchasePriceDraftExpressionToV2(tx, &version); err != nil {
-			return err
 		}
 		if err := validatePurchasePricePublication(tx, version); err != nil {
 			return err
@@ -648,26 +578,8 @@ func PublishRetailPriceVersion(id int) error {
 			version.RetailExprHash != billingexpr.ExprHashString(version.RetailBillingExpr) {
 			return errors.New("retail price expression hash does not match")
 		}
-		if upgradePricingExpressionToV2(
-			&version.ExpressionSchemaVersion,
-			&version.RetailBillingExpr,
-		) {
-			version.RetailExprHash = billingexpr.ExprHashString(version.RetailBillingExpr)
-			if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
-				Where("id = ? AND status = ?", version.Id, model.PricingVersionStatusDraft).
-				UpdateColumns(map[string]any{
-					"retail_billing_expr":       version.RetailBillingExpr,
-					"retail_expr_hash":          version.RetailExprHash,
-					"expression_schema_version": version.ExpressionSchemaVersion,
-				}).Error; err != nil {
-				return err
-			}
-		}
 		purchase, err := model.GetPurchasePriceVersionForUpdate(tx, version.PurchasePriceVersionId)
 		if err != nil {
-			return err
-		}
-		if err := upgradePurchasePriceDraftExpressionToV2(tx, &purchase); err != nil {
 			return err
 		}
 		if purchase.Status != model.PricingVersionStatusActive &&
@@ -850,41 +762,20 @@ func normalizeExpressionMetadata(source *string, schemaVersion *string, currency
 	}
 	*schemaVersion = strings.TrimSpace(*schemaVersion)
 	if *schemaVersion == "" {
-		switch {
-		case strings.HasPrefix(strings.TrimSpace(*expression), "v1:"):
-			*schemaVersion = "v1"
-		case strings.HasPrefix(strings.TrimSpace(*expression), "v2:"):
-			*schemaVersion = "v2"
-		default:
-			*schemaVersion = "v2"
-		}
+		*schemaVersion = "v2"
 	}
 	*currency = strings.ToUpper(strings.TrimSpace(*currency))
 	*expression = strings.TrimSpace(*expression)
 	if *expression == "" {
 		return
 	}
-	if strings.HasPrefix(*expression, "v1:") || strings.HasPrefix(*expression, "v2:") {
+	if strings.HasPrefix(*expression, "v2:") {
 		return
 	}
 	if hasExpressionVersionPrefix(*expression) {
 		return
 	}
 	*expression = *schemaVersion + ":" + *expression
-}
-
-// upgradePricingExpressionToV2 keeps the new pricing catalog on one
-// expression contract. V1 expressions return a per-million weighted value;
-// wrapping the body and dividing once preserves the exact currency amount
-// while moving storage and subsequent derivations to V2.
-func upgradePricingExpressionToV2(schemaVersion *string, expression *string) bool {
-	if *schemaVersion != "v1" || strings.TrimSpace(*expression) == "" {
-		return false
-	}
-	_, body := billingexpr.ParseExprVersion(*expression)
-	*expression = fmt.Sprintf("v2:(%s) / 1000000", body)
-	*schemaVersion = "v2"
-	return true
 }
 
 func validateOfficialPriceCurrency(currency string) error {
@@ -896,22 +787,19 @@ func validateOfficialPriceCurrency(currency string) error {
 
 func validateExpressionMetadata(schemaVersion string, expression string) error {
 	schemaVersion = strings.TrimSpace(schemaVersion)
-	if schemaVersion != "v1" && schemaVersion != "v2" {
+	if schemaVersion != "v2" {
 		return fmt.Errorf("unsupported expression schema version %q", schemaVersion)
 	}
 	expression = strings.TrimSpace(expression)
 	expectedVersion := ""
 	switch {
-	case strings.HasPrefix(expression, "v1:"):
-		expectedVersion = "v1"
 	case strings.HasPrefix(expression, "v2:"):
 		expectedVersion = "v2"
 	case hasExpressionVersionPrefix(expression):
 		prefix := expression[:strings.IndexByte(expression, ':')]
 		return fmt.Errorf("unsupported expression prefix %q", prefix)
 	default:
-		actualVersion := billingexpr.ExprVersion(expression)
-		expectedVersion = "v" + strconv.Itoa(actualVersion)
+		expectedVersion = "v2"
 	}
 	if schemaVersion != expectedVersion {
 		return fmt.Errorf(

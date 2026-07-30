@@ -65,7 +65,7 @@ func TestPublishOfficialPriceExpiresPreviousVersion(t *testing.T) {
 		ModelId:         11,
 		BillingMode:     "token",
 		PriceStructure:  "flat",
-		BillingExpr:     `v1:tier("base", p * 1 + c * 2)`,
+		BillingExpr:     `v2:tier("base", (p * 1 + c * 2) / 1000000)`,
 		Currency:        "usd",
 		Source:          "manual",
 		PriceComponents: "{}",
@@ -77,7 +77,7 @@ func TestPublishOfficialPriceExpiresPreviousVersion(t *testing.T) {
 		ModelId:         11,
 		BillingMode:     "token",
 		PriceStructure:  "flat",
-		BillingExpr:     `v1:tier("base", p * 2 + c * 3)`,
+		BillingExpr:     `v2:tier("base", (p * 2 + c * 3) / 1000000)`,
 		Currency:        "USD",
 		Source:          "manual",
 		PriceComponents: "{}",
@@ -98,7 +98,7 @@ func TestPublishOfficialPriceExpiresPreviousVersion(t *testing.T) {
 	assert.NotEmpty(t, storedSecond.ExprHash)
 }
 
-func TestCreateOfficialPriceUpgradesLegacyExpressionToV2(t *testing.T) {
+func TestCreateOfficialPriceStoresV2Expression(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 111, ModelName: "canonical-expression",
@@ -109,14 +109,14 @@ func TestCreateOfficialPriceUpgradesLegacyExpressionToV2(t *testing.T) {
 		BillingMode:             "token",
 		PriceStructure:          "flat",
 		PriceComponents:         `{"input_unit_price":"1"}`,
-		BillingExpr:             ` tier("base", p * 1) `,
-		ExpressionSchemaVersion: "v1",
+		BillingExpr:             ` tier("base", p / 1000000 * 1) `,
+		ExpressionSchemaVersion: "v2",
 		Currency:                "USD",
 		Source:                  "manual",
 	}
 	require.NoError(t, CreateOfficialPriceVersion(&version, 1))
 
-	assert.Equal(t, `v2:(tier("base", p * 1)) / 1000000`, version.BillingExpr)
+	assert.Equal(t, `v2:tier("base", p / 1000000 * 1)`, version.BillingExpr)
 	assert.Equal(t, "v2", version.ExpressionSchemaVersion)
 	result, trace, err := billingexpr.RunExpr(
 		version.BillingExpr,
@@ -131,7 +131,7 @@ func TestCreateOfficialPriceUpgradesLegacyExpressionToV2(t *testing.T) {
 	assert.Equal(t, billingexpr.ExprHashString(version.BillingExpr), stored.ExprHash)
 }
 
-func TestCreateOfficialPriceRejectsExpressionPrefixMismatch(t *testing.T) {
+func TestCreateOfficialPriceRejectsLegacyExpressionSchema(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 112, ModelName: "mismatched-expression",
@@ -142,14 +142,14 @@ func TestCreateOfficialPriceRejectsExpressionPrefixMismatch(t *testing.T) {
 		BillingMode:             "token",
 		PriceStructure:          "flat",
 		PriceComponents:         `{"input_unit_price":"1"}`,
-		BillingExpr:             `v2:tier("base", p / 1000000 * 1)`,
+		BillingExpr:             `v1:tier("base", p * 1)`,
 		ExpressionSchemaVersion: "v1",
 		Currency:                "USD",
 		Source:                  "manual",
 	}
 
 	err := CreateOfficialPriceVersion(&version, 1)
-	require.ErrorContains(t, err, "does not match expression prefix")
+	require.ErrorContains(t, err, `unsupported expression schema version "v1"`)
 }
 
 func TestPublishOfficialPricePreservesActivePurchaseChain(t *testing.T) {
@@ -247,7 +247,7 @@ func TestPublishLatestOfficialPriceDraftsPublishesNonTokenCatalogPrices(t *testi
 	video := model.OfficialModelPriceVersion{
 		ModelId: 64, BillingMode: "video_duration", PriceStructure: "flat",
 		PriceComponents: `{"video_second_unit_price":"0.2"}`,
-		BillingExpr:     "v1:0.2", Currency: "USD",
+		BillingExpr:     "v2:0.2", Currency: "USD",
 	}
 	require.NoError(t, CreateOfficialPriceVersion(&video, 1))
 
@@ -312,7 +312,7 @@ func TestSyncOfficialPricesIsIdempotentAndKeepsOnlyChangedRevisions(t *testing.T
 		Items: []OfficialPriceSynchronizationItem{{
 			ModelId: 81, BillingMode: "token", PriceStructure: "flat",
 			PriceComponents: `{"input_unit_price":"1"}`,
-			BillingExpr:     `v1:tier("base", p * 1)`, Currency: "USD",
+			BillingExpr:     `v2:tier("base", p * 1 / 1000000)`, Currency: "USD",
 			SourceVersion: "upstream-1",
 		}},
 	}
@@ -348,7 +348,7 @@ func TestSyncOfficialPricesRejectsNonUSDCurrency(t *testing.T) {
 		Items: []OfficialPriceSynchronizationItem{{
 			ModelId: 82, BillingMode: "token", PriceStructure: "flat",
 			PriceComponents: `{"input_unit_price":"1"}`,
-			BillingExpr:     `v1:tier("base", p * 1)`, Currency: "CNY",
+			BillingExpr:     `v2:tier("base", p * 1 / 1000000)`, Currency: "CNY",
 		}},
 	}, 9)
 	require.ErrorContains(t, err, "official price currency must be USD")
@@ -369,7 +369,7 @@ func TestSyncOfficialPricesAdvancesCatalogWithoutChangingPurchaseReference(t *te
 			Items: []OfficialPriceSynchronizationItem{{
 				ModelId: 91, BillingMode: "token", PriceStructure: "flat",
 				PriceComponents: fmt.Sprintf(`{"input_unit_price":"%s"}`, price),
-				BillingExpr:     fmt.Sprintf(`v1:tier("base", p * %s)`, price),
+				BillingExpr:     fmt.Sprintf(`v2:tier("base", p * %s / 1000000)`, price),
 				Currency:        "USD",
 			}},
 		}
@@ -416,7 +416,7 @@ func TestPublishPurchasePricePreservesActiveRetailChain(t *testing.T) {
 		BillingMode:         "token",
 		PricingMode:         "fixed_unit_price",
 		PriceStructure:      "flat",
-		PurchaseBillingExpr: `v1:tier("base", p * 1)`,
+		PurchaseBillingExpr: `v2:tier("base", p * 1 / 1000000)`,
 		Currency:            "USD",
 	}
 	require.NoError(t, CreatePurchasePriceVersion(&next, 1))
@@ -429,14 +429,14 @@ func TestPublishPurchasePricePreservesActiveRetailChain(t *testing.T) {
 	assert.Equal(t, model.PricingVersionStatusActive, storedCurrent.Status)
 }
 
-func TestPublishRetailPriceUpgradesLegacyDraftChainToV2(t *testing.T) {
+func TestPublishRetailPriceActivatesV2DraftChain(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
 		Id: 311, ChannelId: 312, ModelId: 313, UpstreamModelName: "legacy-draft-chain",
 		Status: 1, RuntimeMode: "legacy",
 	}).Error)
 
-	purchaseExpression := `v1:tier("base", p * 1)`
+	purchaseExpression := `v2:tier("base", p * 1 / 1000000)`
 	purchase := model.ChannelModelPurchasePriceVersion{
 		ChannelModelId:          311,
 		BillingMode:             "token",
@@ -444,14 +444,14 @@ func TestPublishRetailPriceUpgradesLegacyDraftChainToV2(t *testing.T) {
 		PriceStructure:          "flat",
 		PurchaseBillingExpr:     purchaseExpression,
 		PurchaseExprHash:        billingexpr.ExprHashString(purchaseExpression),
-		ExpressionSchemaVersion: "v1",
+		ExpressionSchemaVersion: "v2",
 		Currency:                "USD",
 		Version:                 1,
 		Status:                  model.PricingVersionStatusDraft,
 	}
 	require.NoError(t, model.DB.Create(&purchase).Error)
 
-	retailExpression := `v1:tier("base", p * 2)`
+	retailExpression := `v2:tier("base", p * 2 / 1000000)`
 	retail := model.ChannelModelRetailPriceVersion{
 		ChannelModelId:          311,
 		PurchasePriceVersionId:  purchase.Id,
@@ -459,7 +459,7 @@ func TestPublishRetailPriceUpgradesLegacyDraftChainToV2(t *testing.T) {
 		PriceStructure:          "flat",
 		RetailBillingExpr:       retailExpression,
 		RetailExprHash:          billingexpr.ExprHashString(retailExpression),
-		ExpressionSchemaVersion: "v1",
+		ExpressionSchemaVersion: "v2",
 		Currency:                "USD",
 		TotalVariableCostRate:   "0.1",
 		EffectiveTaxRate:        "0.165",
@@ -475,12 +475,12 @@ func TestPublishRetailPriceUpgradesLegacyDraftChainToV2(t *testing.T) {
 	require.NoError(t, model.DB.First(&purchase, purchase.Id).Error)
 	assert.Equal(t, model.PricingVersionStatusActive, purchase.Status)
 	assert.Equal(t, "v2", purchase.ExpressionSchemaVersion)
-	assert.Equal(t, `v2:(tier("base", p * 1)) / 1000000`, purchase.PurchaseBillingExpr)
+	assert.Equal(t, purchaseExpression, purchase.PurchaseBillingExpr)
 
 	require.NoError(t, model.DB.First(&retail, retail.Id).Error)
 	assert.Equal(t, model.PricingVersionStatusActive, retail.Status)
 	assert.Equal(t, "v2", retail.ExpressionSchemaVersion)
-	assert.Equal(t, `v2:(tier("base", p * 2)) / 1000000`, retail.RetailBillingExpr)
+	assert.Equal(t, retailExpression, retail.RetailBillingExpr)
 }
 
 func TestPurchasePriceRejectsOfficialPriceFromDifferentLogicalModel(t *testing.T) {
@@ -514,7 +514,7 @@ func TestCreateRetailPriceRejectsImpossibleMarginFormula(t *testing.T) {
 		PurchasePriceVersionId: 30,
 		BillingMode:            "token",
 		PriceStructure:         "flat",
-		RetailBillingExpr:      `v1:tier("base", p * 2 + c * 3)`,
+		RetailBillingExpr:      `v2:tier("base", (p * 2 + c * 3) / 1000000)`,
 		Currency:               "USD",
 		TotalVariableCostRate:  "0.50",
 		EffectiveTaxRate:       "0.20",
@@ -569,7 +569,7 @@ func TestPublishOfficialPriceRejectsExpressionHashMismatch(t *testing.T) {
 		ModelId:        12,
 		BillingMode:    "token",
 		PriceStructure: "flat",
-		BillingExpr:    `v1:tier("base", p * 1 + c * 2)`,
+		BillingExpr:    `v2:tier("base", (p * 1 + c * 2) / 1000000)`,
 		Currency:       "USD",
 		Source:         "manual",
 	}
@@ -617,7 +617,7 @@ func TestPublishNonTokenOfficialPriceDoesNotRequireRuntimeEvaluator(t *testing.T
 		ModelId:        14,
 		BillingMode:    "video_duration",
 		PriceStructure: "flat",
-		BillingExpr:    `v1:tier("base", 0.2)`,
+		BillingExpr:    `v2:tier("base", 0.2)`,
 		Currency:       "USD",
 		Source:         "manual",
 	}
@@ -673,7 +673,7 @@ func TestUpdateOfficialPriceDraftSupportsNonTokenConfiguration(t *testing.T) {
 		BillingMode:     "video_duration",
 		PriceStructure:  "expression",
 		PriceComponents: `{"video_second_unit_price":"0.2"}`,
-		BillingExpr:     `v1:tier("base", 0.2)`,
+		BillingExpr:     `v2:tier("base", 0.2)`,
 		Currency:        "USD",
 		Source:          "official_api",
 	}
@@ -684,9 +684,9 @@ func TestUpdateOfficialPriceDraftSupportsNonTokenConfiguration(t *testing.T) {
 		BillingMode:             "video_duration",
 		PriceStructure:          "expression",
 		PriceComponents:         `{"video_second_unit_price":"0.3"}`,
-		BillingExpr:             `v1:tier("base", 0.3)`,
+		BillingExpr:             `v2:tier("base", 0.3)`,
 		ExpressionSource:        "custom",
-		ExpressionSchemaVersion: "v1",
+		ExpressionSchemaVersion: "v2",
 		Currency:                "usd",
 		Remark:                  "updated video price",
 	})
@@ -694,7 +694,7 @@ func TestUpdateOfficialPriceDraftSupportsNonTokenConfiguration(t *testing.T) {
 	assert.Equal(t, "video_duration", updated.BillingMode)
 	assert.Equal(t, "expression", updated.PriceStructure)
 	assert.Equal(t, `{"video_second_unit_price":"0.3"}`, updated.PriceComponents)
-	assert.Equal(t, `v2:(tier("base", 0.3)) / 1000000`, updated.BillingExpr)
+	assert.Equal(t, `v2:tier("base", 0.3)`, updated.BillingExpr)
 	assert.Equal(t, "v2", updated.ExpressionSchemaVersion)
 	assert.Equal(t, "USD", updated.Currency)
 	assert.NotEmpty(t, updated.ExprHash)
@@ -711,7 +711,7 @@ func TestCreateOfficialPriceDraftRejectsInvalidPriceComponents(t *testing.T) {
 		BillingMode:     "token",
 		PriceStructure:  "expression",
 		PriceComponents: "{invalid",
-		BillingExpr:     `v1:tier("base", p * 1)`,
+		BillingExpr:     `v2:tier("base", p * 1 / 1000000)`,
 		Currency:        "USD",
 		Source:          "manual",
 	}

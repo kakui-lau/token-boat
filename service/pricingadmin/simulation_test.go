@@ -16,14 +16,14 @@ func TestSimulatePriceReturnsAuditableProfitBreakdown(t *testing.T) {
 	}).Error)
 	purchase := model.ChannelModelPurchasePriceVersion{
 		ChannelModelId: 71, BillingMode: "token", PricingMode: "fixed_unit_price",
-		PriceStructure: "flat", PurchaseBillingExpr: "p * 1 + c * 2",
-		ExpressionSource: "generated", ExpressionSchemaVersion: "v1", Currency: "USD",
+		PriceStructure: "flat", PurchaseBillingExpr: "v2:(p * 1 + c * 2) / 1000000",
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", Currency: "USD",
 	}
 	require.NoError(t, CreatePurchasePriceVersion(&purchase, 1))
 	retail := model.ChannelModelRetailPriceVersion{
 		ChannelModelId: 71, PurchasePriceVersionId: purchase.Id, BillingMode: "token",
-		PriceStructure: "flat", RetailBillingExpr: "p * 2 + c * 4",
-		ExpressionSource: "generated", ExpressionSchemaVersion: "v1", Currency: "USD",
+		PriceStructure: "flat", RetailBillingExpr: "v2:(p * 2 + c * 4) / 1000000",
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", Currency: "USD",
 		TotalVariableCostRate: "0.1", EffectiveTaxRate: "0.2",
 		TargetNetMargin: "0.2", MinimumMarginRate: "0.3",
 	}
@@ -95,14 +95,14 @@ func TestSimulatePriceDoesNotDoubleChargeSeparatelyPricedCacheTokens(t *testing.
 	}).Error)
 	purchase := model.ChannelModelPurchasePriceVersion{
 		ChannelModelId: 73, BillingMode: "token", PricingMode: "fixed_unit_price",
-		PriceStructure: "flat", PurchaseBillingExpr: `v1:tier("base", p * 1 + cr * 10)`,
-		ExpressionSource: "generated", ExpressionSchemaVersion: "v1", Currency: "USD",
+		PriceStructure: "flat", PurchaseBillingExpr: `v2:tier("base", (p * 1 + cr * 10) / 1000000)`,
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", Currency: "USD",
 	}
 	require.NoError(t, CreatePurchasePriceVersion(&purchase, 1))
 	retail := model.ChannelModelRetailPriceVersion{
 		ChannelModelId: 73, PurchasePriceVersionId: purchase.Id, BillingMode: "token",
-		PriceStructure: "flat", RetailBillingExpr: `v1:tier("base", p * 2 + cr * 20)`,
-		ExpressionSource: "generated", ExpressionSchemaVersion: "v1", Currency: "USD",
+		PriceStructure: "flat", RetailBillingExpr: `v2:tier("base", (p * 2 + cr * 20) / 1000000)`,
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", Currency: "USD",
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
 		TargetNetMargin: "0.1", MinimumMarginRate: "0",
 	}

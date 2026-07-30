@@ -13,6 +13,36 @@ import (
 
 const defaultEstimatedCompletionTokens = 8192
 
+func usedPricingVars(bundles []ActivePriceBundle) map[string]bool {
+	usedVars := make(map[string]bool)
+	for _, bundle := range bundles {
+		for _, expression := range []string{
+			bundle.Purchase.PurchaseBillingExpr,
+			bundle.Retail.RetailBillingExpr,
+		} {
+			for name, used := range billingexpr.UsedVars(expression) {
+				if used {
+					usedVars[name] = true
+				}
+			}
+		}
+	}
+	return usedVars
+}
+
+func pricingUsageRequirementsMet(
+	usedVars map[string]bool,
+	usage pricingengine.Usage,
+) bool {
+	if usedVars["audio_s"] && usage.AudioSeconds <= 0 {
+		return false
+	}
+	if usedVars["video_s"] && usage.VideoSeconds <= 0 {
+		return false
+	}
+	return true
+}
+
 // SupportsFixedVideoTaskPricing reports whether every active expression can be
 // evaluated from the business usage known before an asynchronous video task is
 // submitted. Token and output-derived quantities are deliberately excluded.
@@ -29,16 +59,9 @@ func SupportsFixedVideoTaskPricing(group string, modelName string) bool {
 		"header": true, "hour": true, "minute": true,
 		"weekday": true, "month": true, "day": true,
 	}
-	for _, bundle := range bundles {
-		for _, expression := range []string{
-			bundle.Purchase.PurchaseBillingExpr,
-			bundle.Retail.RetailBillingExpr,
-		} {
-			for name, used := range billingexpr.UsedVars(expression) {
-				if used && unsupported[name] {
-					return false
-				}
-			}
+	for name, used := range usedPricingVars(bundles) {
+		if used && unsupported[name] {
+			return false
 		}
 	}
 	return true
@@ -77,19 +100,7 @@ func PrepareRelayPricing(
 		return hosttypes.PriceData{}, false, nil
 	}
 	billingMode := bundles[0].Purchase.BillingMode
-	usedVars := make(map[string]bool)
-	for _, bundle := range bundles {
-		for name, used := range billingexpr.UsedVars(bundle.Purchase.PurchaseBillingExpr) {
-			if used {
-				usedVars[name] = true
-			}
-		}
-		for name, used := range billingexpr.UsedVars(bundle.Retail.RetailBillingExpr) {
-			if used {
-				usedVars[name] = true
-			}
-		}
-	}
+	usedVars := usedPricingVars(bundles)
 	if maxCompletionTokens <= 0 &&
 		groupRatioInfo.GroupRatio != 0 &&
 		usedVars["c"] {
@@ -105,10 +116,7 @@ func PrepareRelayPricing(
 	if billingMode == "video_duration" && usage.VideoSeconds <= 0 {
 		return hosttypes.PriceData{}, false, nil
 	}
-	if usedVars["audio_s"] && usage.AudioSeconds <= 0 {
-		return hosttypes.PriceData{}, false, nil
-	}
-	if usedVars["video_s"] && usage.VideoSeconds <= 0 {
+	if !pricingUsageRequirementsMet(usedVars, usage) {
 		return hosttypes.PriceData{}, false, nil
 	}
 	estimatedUsageJSON, err := common.Marshal(usage)

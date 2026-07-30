@@ -586,3 +586,42 @@ func TestShadowComparisonDoesNotMutateActiveBillingSnapshot(t *testing.T) {
 	assert.Nil(t, info.TieredBillingSnapshot)
 	assert.Nil(t, info.DynamicPricingSnapshot)
 }
+
+func TestShadowComparisonSkipsUnknownReferencedDuration(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 14, RuntimeModeV2)
+	purchaseExpr := `v2:tier("mixed", p * 1 / 1000000 + video_s * 0.04)`
+	retailExpr := `v2:tier("mixed", p * 2 / 1000000 + video_s * 0.08)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 14).
+		Updates(map[string]any{
+			"billing_mode":          "mixed",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 14).
+		Updates(map[string]any{
+			"billing_mode":        "mixed",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["PricingV2ShadowEnabled"] = "true"
+	common.OptionMapRWMutex.Unlock()
+
+	comparison, err := BuildShadowComparison(
+		&relaycommon.RelayInfo{OriginModelName: "runtime-model"},
+		"default",
+		1_000_000,
+		0,
+		int(common.QuotaPerUnit),
+		1,
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+
+	require.NoError(t, err)
+	assert.Nil(t, comparison)
+}

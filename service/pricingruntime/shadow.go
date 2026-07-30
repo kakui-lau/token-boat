@@ -24,13 +24,21 @@ func BuildShadowComparison(
 	if !CurrentRolloutPolicy().ShadowEnabled {
 		return nil, nil
 	}
-	if maxCompletionTokens <= 0 && groupRatio != 0 {
+	bundles := GetCandidateBundles(group, info.OriginModelName)
+	if len(bundles) == 0 {
+		return nil, nil
+	}
+	usedVars := usedPricingVars(bundles)
+	if maxCompletionTokens <= 0 && groupRatio != 0 && usedVars["c"] {
 		maxCompletionTokens = defaultEstimatedCompletionTokens
 	}
 	usage := businessUsage
 	usage.PromptTokens = float64(promptTokens)
 	usage.CompletionTokens = float64(maxCompletionTokens)
 	usage.RequestBody = string(requestInput.Body)
+	if !pricingUsageRequirementsMet(usedVars, usage) {
+		return nil, nil
+	}
 	quotes, err := QuoteCandidates(group, info.OriginModelName, usage)
 	if err != nil {
 		return nil, nil

@@ -57,27 +57,6 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 	assert.Equal(t, "revision", adminInfo["pricing_revision"])
 }
 
-func TestInjectGeneralBillingAuditRecordsShadowDifferenceAsAdminOnly(t *testing.T) {
-	relayInfo := &relaycommon.RelayInfo{
-		PricingShadowComparison: &types.PricingShadowComparison{
-			LegacyReservationQuota: 10,
-			V2ReservationQuota:     12,
-			DeltaQuota:             2,
-			DeltaRate:              0.2,
-		},
-	}
-	other := map[string]interface{}{}
-
-	InjectGeneralBillingAudit(other, relayInfo, 10, nil)
-
-	adminInfo, ok := other["admin_info"].(map[string]interface{})
-	require.True(t, ok)
-	shadow, ok := adminInfo["pricing_v2_shadow"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, 2, shadow["delta_quota"])
-	assert.Equal(t, 0.2, shadow["delta_rate"])
-}
-
 func TestInjectGeneralBillingAuditRecordsOpenRouterSupplierCost(t *testing.T) {
 	isByok := false
 	relayInfo := &relaycommon.RelayInfo{

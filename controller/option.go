@@ -178,11 +178,6 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "PricingV2ShadowEnabled":
-		if _, parseErr := strconv.ParseBool(option.Value.(string)); parseErr != nil {
-			common.ApiErrorMsg(c, "PricingV2ShadowEnabled 必须是布尔值")
-			return
-		}
 	case "LinuxDOOAuthEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

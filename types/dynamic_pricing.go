@@ -28,10 +28,3 @@ type DynamicPricingSnapshot struct {
 	Selected                  *DynamicPriceCandidate
 	AuditCreated              bool
 }
-
-type PricingShadowComparison struct {
-	LegacyReservationQuota int
-	V2ReservationQuota     int
-	DeltaQuota             int
-	DeltaRate              float64
-}

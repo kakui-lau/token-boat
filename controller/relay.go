@@ -173,32 +173,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	)
 	if err == nil && !usesV2Pricing {
 		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
-		if err == nil {
-			comparison, shadowErr := pricingruntime.BuildShadowComparison(
-				relayInfo,
-				relayInfo.UsingGroup,
-				tokens,
-				meta.MaxTokens,
-				priceData.QuotaToPreConsume,
-				priceData.GroupRatioInfo.GroupRatio,
-				requestInput,
-				estimatedPricingUsage(request, relayInfo, tokens),
-			)
-			if shadowErr != nil {
-				logger.LogWarn(c, "v2 pricing shadow comparison failed: "+shadowErr.Error())
-			} else if comparison != nil {
-				logger.LogInfo(
-					c,
-					fmt.Sprintf(
-						"v2 pricing shadow comparison: legacy=%d v2=%d delta=%d rate=%.4f",
-						comparison.LegacyReservationQuota,
-						comparison.V2ReservationQuota,
-						comparison.DeltaQuota,
-						comparison.DeltaRate,
-					),
-				)
-			}
-		}
 	}
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))

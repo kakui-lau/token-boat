@@ -333,3 +333,46 @@ test('searches reconciliation records and applies the keyword to CSV export', as
     '/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true&keyword=request%2Fseedance'
   )
 })
+
+test('switches to all pricing records and exports the same view', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 0,
+      stale_reserved: 0,
+      settled_last_24h: 1,
+      refunded_last_24h: 0,
+      oldest_anomaly_created_at: 0,
+    },
+  })
+  vi.mocked(getRequestPricingSnapshots).mockResolvedValue({
+    success: true,
+    data: { items: [], total: 1, page: 1, page_size: 20 },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingReconciliationPanel />
+    </QueryClientProvider>
+  )
+
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'All pricing records' })
+  )
+
+  await waitFor(() =>
+    expect(getRequestPricingSnapshots).toHaveBeenLastCalledWith({
+      reconciliation: undefined,
+      keyword: undefined,
+      page: 1,
+      page_size: 20,
+    })
+  )
+  expect(screen.getByText('1 pricing records')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
+    'href',
+    '/api/pricing-admin/request-pricing-snapshots/export'
+  )
+})

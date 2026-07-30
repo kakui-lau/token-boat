@@ -34,6 +34,7 @@ export function PricingReconciliationPanel() {
   const queryClient = useQueryClient()
   const [confirmRefundId, setConfirmRefundId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
+  const [showAllRecords, setShowAllRecords] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [appliedKeyword, setAppliedKeyword] = useState('')
   const pageSize = 20
@@ -42,12 +43,13 @@ export function PricingReconciliationPanel() {
       'pricing-admin',
       'request-pricing-snapshots',
       'pending',
+      showAllRecords,
       appliedKeyword,
       page,
     ],
     queryFn: () =>
       getRequestPricingSnapshots({
-        reconciliation: true,
+        reconciliation: showAllRecords ? undefined : true,
         keyword: appliedKeyword || undefined,
         page,
         page_size: pageSize,
@@ -70,10 +72,21 @@ export function PricingReconciliationPanel() {
   const rows = snapshotsQuery.data?.data.items ?? []
   const total = snapshotsQuery.data?.data.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const exportParams = new URLSearchParams({ reconciliation: 'true' })
+  const statusLabels = {
+    pending: t('Pending'),
+    reserved: t('Reserved'),
+    settled: t('Settled'),
+    refunded: t('Refunded'),
+  }
+  const exportParams = new URLSearchParams()
+  if (!showAllRecords) {
+    exportParams.set('reconciliation', 'true')
+  }
   if (appliedKeyword) {
     exportParams.set('keyword', appliedKeyword)
   }
+  const exportQuery = exportParams.toString()
+  const exportUrl = `/api/pricing-admin/request-pricing-snapshots/export${exportQuery ? `?${exportQuery}` : ''}`
 
   return (
     <section className='space-y-3' aria-labelledby='pricing-reconciliation'>
@@ -88,19 +101,16 @@ export function PricingReconciliationPanel() {
             )}
           </p>
           <p className='text-muted-foreground text-sm'>
-            {t('{{total}} billing anomalies', { total })}
+            {showAllRecords
+              ? t('{{total}} pricing records', { total })
+              : t('{{total}} billing anomalies', { total })}
           </p>
         </div>
         <div className='flex items-center gap-2'>
           <Button
             size='sm'
             variant='outline'
-            render={
-              <a
-                href={`/api/pricing-admin/request-pricing-snapshots/export?${exportParams.toString()}`}
-                download
-              />
-            }
+            render={<a href={exportUrl} download />}
           >
             <Download aria-hidden='true' />
             {t('Export CSV')}
@@ -120,6 +130,28 @@ export function PricingReconciliationPanel() {
             {t('Refresh')}
           </Button>
         </div>
+      </div>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Button
+          size='sm'
+          variant={showAllRecords ? 'outline' : 'default'}
+          onClick={() => {
+            setShowAllRecords(false)
+            setPage(1)
+          }}
+        >
+          {t('Anomalies only')}
+        </Button>
+        <Button
+          size='sm'
+          variant={showAllRecords ? 'default' : 'outline'}
+          onClick={() => {
+            setShowAllRecords(true)
+            setPage(1)
+          }}
+        >
+          {t('All pricing records')}
+        </Button>
       </div>
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
         {[
@@ -226,7 +258,7 @@ export function PricingReconciliationPanel() {
                   <Badge
                     variant={row.status === 'pending' ? 'default' : 'secondary'}
                   >
-                    {row.status === 'pending' ? t('Pending') : t('Reserved')}
+                    {statusLabels[row.status]}
                   </Badge>
                 </TableCell>
                 <TableCell

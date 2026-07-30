@@ -191,6 +191,9 @@ type RequestPricingSnapshot struct {
 	RetailAmount           string `json:"retail_amount" gorm:"type:decimal(36,18);not null"`
 	Currency               string `json:"currency" gorm:"type:varchar(8);not null"`
 	Status                 string `json:"status" gorm:"type:varchar(16);not null;index"`
+	Resolution             string `json:"resolution" gorm:"type:varchar(32);index"`
+	ResolvedAt             int64  `json:"resolved_at" gorm:"bigint;index"`
+	ResolvedBy             int    `json:"resolved_by"`
 	CreatedAt              int64  `json:"created_at" gorm:"bigint;index"`
 	UpdatedAt              int64  `json:"updated_at" gorm:"bigint"`
 }

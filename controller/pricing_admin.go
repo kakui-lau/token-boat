@@ -379,6 +379,9 @@ func AdminConfirmRequestPricingSnapshotRefunded(c *gin.Context) {
 		Updates(map[string]any{
 			"settled_quota": 0,
 			"status":        pricingruntime.PricingSnapshotStatusRefunded,
+			"resolution":    "admin_confirmed_refund",
+			"resolved_at":   common.GetTimestamp(),
+			"resolved_by":   c.GetInt("id"),
 			"updated_at":    common.GetTimestamp(),
 		})
 	if result.Error != nil {

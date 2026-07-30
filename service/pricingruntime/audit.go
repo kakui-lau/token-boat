@@ -186,6 +186,8 @@ func MarkRequestPricingRefunded(requestId string) error {
 		Updates(map[string]any{
 			"settled_quota": 0,
 			"status":        PricingSnapshotStatusRefunded,
+			"resolution":    "automatic_refund",
+			"resolved_at":   common.GetTimestamp(),
 			"updated_at":    common.GetTimestamp(),
 		})
 	if result.Error != nil {

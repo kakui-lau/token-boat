@@ -62,17 +62,23 @@ func SettleRequestPricingSnapshot(
 	if usage == nil {
 		return errors.New("v2 pricing settlement requires usage")
 	}
-	actualUsage := pricingengine.Usage{
-		PromptTokens:      float64(usage.PromptTokens),
-		CompletionTokens:  float64(usage.CompletionTokens),
-		CacheReadTokens:   float64(usage.PromptTokensDetails.CachedTokens),
-		CacheWriteTokens:  float64(usage.PromptTokensDetails.CacheCreationTokensTotal()),
-		ImageInputTokens:  float64(usage.PromptTokensDetails.ImageTokens),
-		ImageOutputTokens: float64(usage.CompletionTokenDetails.ImageTokens),
-		AudioInputTokens:  float64(usage.PromptTokensDetails.AudioTokens),
-		AudioOutputTokens: float64(usage.CompletionTokenDetails.AudioTokens),
-		UsageSemantic:     usage.UsageSemantic,
+	var actualUsage pricingengine.Usage
+	if err := common.UnmarshalJsonStr(
+		info.DynamicPricingSnapshot.EstimatedUsage,
+		&actualUsage,
+	); err != nil {
+		markPricingSnapshotPending(info.RequestId)
+		return fmt.Errorf("decode estimated business usage: %w", err)
 	}
+	actualUsage.PromptTokens = float64(usage.PromptTokens)
+	actualUsage.CompletionTokens = float64(usage.CompletionTokens)
+	actualUsage.CacheReadTokens = float64(usage.PromptTokensDetails.CachedTokens)
+	actualUsage.CacheWriteTokens = float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
+	actualUsage.ImageInputTokens = float64(usage.PromptTokensDetails.ImageTokens)
+	actualUsage.ImageOutputTokens = float64(usage.CompletionTokenDetails.ImageTokens)
+	actualUsage.AudioInputTokens = float64(usage.PromptTokensDetails.AudioTokens)
+	actualUsage.AudioOutputTokens = float64(usage.CompletionTokenDetails.AudioTokens)
+	actualUsage.UsageSemantic = usage.UsageSemantic
 	if info.BillingRequestInput != nil {
 		actualUsage.RequestBody = string(info.BillingRequestInput.Body)
 	}

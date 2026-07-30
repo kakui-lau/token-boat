@@ -15,6 +15,7 @@ import (
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -159,11 +160,14 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	usage *dto.RealtimeUsage, extraContent string) {
 
 	var tieredResult *billingexpr.TieredResult
-	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, billingexpr.TokenParams{
-		P:   float64(usage.InputTokens),
-		C:   float64(usage.OutputTokens),
-		Len: float64(usage.InputTokens),
-	})
+	tieredOk, tieredQuota, tieredRes := TryTieredSettle(
+		relayInfo,
+		ApplyDynamicBusinessUsage(relayInfo, billingexpr.TokenParams{
+			P:   float64(usage.InputTokens),
+			C:   float64(usage.OutputTokens),
+			Len: float64(usage.InputTokens),
+		}),
+	)
 	if tieredOk {
 		tieredResult = tieredRes
 	}
@@ -230,6 +234,25 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+		pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+	} else if err := pricingruntime.SettleRequestPricingSnapshot(
+		relayInfo,
+		&dto.Usage{
+			PromptTokens:     usage.InputTokens,
+			CompletionTokens: usage.OutputTokens,
+			TotalTokens:      usage.TotalTokens,
+			PromptTokensDetails: dto.InputTokenDetails{
+				TextTokens:  usage.InputTokenDetails.TextTokens,
+				AudioTokens: usage.InputTokenDetails.AudioTokens,
+			},
+			CompletionTokenDetails: dto.OutputTokenDetails{
+				TextTokens:  usage.OutputTokenDetails.TextTokens,
+				AudioTokens: usage.OutputTokenDetails.AudioTokens,
+			},
+		},
+		quota,
+	); err != nil {
+		logger.LogError(ctx, "error settling v2 pricing snapshot: "+err.Error())
 	}
 
 	logModel := modelName
@@ -287,7 +310,13 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
 	}
 	var tieredResult *billingexpr.TieredResult
-	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, false, tieredUsedVars))
+	tieredOk, tieredQuota, tieredRes := TryTieredSettle(
+		relayInfo,
+		ApplyDynamicBusinessUsage(
+			relayInfo,
+			BuildTieredTokenParams(usage, false, tieredUsedVars),
+		),
+	)
 	if tieredOk {
 		tieredResult = tieredRes
 	}
@@ -354,6 +383,13 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
+		pricingruntime.MarkRequestPricingPending(relayInfo.RequestId)
+	} else if err := pricingruntime.SettleRequestPricingSnapshot(
+		relayInfo,
+		usage,
+		quota,
+	); err != nil {
+		logger.LogError(ctx, "error settling v2 pricing snapshot: "+err.Error())
 	}
 
 	logModel := relayInfo.OriginModelName

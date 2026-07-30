@@ -21,6 +21,7 @@ func PrepareRelayPricing(
 	maxCompletionTokens int,
 	groupRatioInfo hosttypes.GroupRatioInfo,
 	requestInput billingexpr.RequestInput,
+	businessUsage pricingengine.Usage,
 ) (hosttypes.PriceData, bool, error) {
 	if !ShouldUseV2(
 		info.UserId,
@@ -47,12 +48,11 @@ func PrepareRelayPricing(
 	if maxCompletionTokens <= 0 && groupRatioInfo.GroupRatio != 0 {
 		maxCompletionTokens = defaultEstimatedCompletionTokens
 	}
-	usage := pricingengine.Usage{
-		PromptTokens:     float64(promptTokens),
-		CompletionTokens: float64(maxCompletionTokens),
-		RequestBody:      string(requestInput.Body),
-	}
-	estimatedUsage, err := common.Marshal(usage)
+	usage := businessUsage
+	usage.PromptTokens = float64(promptTokens)
+	usage.CompletionTokens = float64(maxCompletionTokens)
+	usage.RequestBody = string(requestInput.Body)
+	estimatedUsageJSON, err := common.Marshal(usage)
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}
@@ -131,7 +131,7 @@ func PrepareRelayPricing(
 		EstimatedPromptTokens:     promptTokens,
 		EstimatedCompletionTokens: maxCompletionTokens,
 		GroupRatio:                groupRatioInfo.GroupRatio,
-		EstimatedUsage:            string(estimatedUsage),
+		EstimatedUsage:            string(estimatedUsageJSON),
 	}
 	info.BillingRequestInput = &requestInput
 	if err := BindSelectedChannel(info, selectedChannelId); err != nil {

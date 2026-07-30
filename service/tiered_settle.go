@@ -1,10 +1,39 @@
 package service
 
 import (
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
+
+func ApplyDynamicBusinessUsage(
+	relayInfo *relaycommon.RelayInfo,
+	params billingexpr.TokenParams,
+) billingexpr.TokenParams {
+	if relayInfo == nil || relayInfo.DynamicPricingSnapshot == nil {
+		return params
+	}
+	var usage struct {
+		RequestCount   float64 `json:"request_count"`
+		ImageCount     float64 `json:"image_count"`
+		AudioSeconds   float64 `json:"audio_seconds"`
+		VideoSeconds   float64 `json:"video_seconds"`
+		CharacterCount float64 `json:"character_count"`
+	}
+	if err := common.UnmarshalJsonStr(
+		relayInfo.DynamicPricingSnapshot.EstimatedUsage,
+		&usage,
+	); err != nil {
+		return params
+	}
+	params.Req = usage.RequestCount
+	params.Imgs = usage.ImageCount
+	params.AudS = usage.AudioSeconds
+	params.VidS = usage.VideoSeconds
+	params.Chars = usage.CharacterCount
+	return params
+}
 
 // TieredResultWrapper wraps billingexpr.TieredResult for use at the service layer.
 type TieredResultWrapper = billingexpr.TieredResult

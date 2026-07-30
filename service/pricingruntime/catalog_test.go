@@ -112,7 +112,56 @@ func TestSetRuntimeModeRejectsMultimodalUntilUsageAdaptersAreIntegrated(t *testi
 		Update("billing_mode", "video_duration").Error)
 
 	err := SetRuntimeMode(9, RuntimeModeV2)
-	require.ErrorContains(t, err, "token billing only")
+	require.ErrorContains(t, err, "keep duration pricing on legacy")
+}
+
+func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 11, RuntimeModeLegacy)
+	purchaseExpr := `v2:tier("image", images * 0.02)`
+	retailExpr := `v2:tier("image", images * 0.04)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 11).
+		Updates(map[string]any{
+			"billing_mode":          "image",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 11).
+		Updates(map[string]any{
+			"billing_mode":        "image",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, SetRuntimeMode(11, RuntimeModeV2))
+
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-v2-image", UserId: 9, OriginModelName: "runtime-model",
+	}
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		11,
+		1,
+		1584,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1, ImageCount: 3},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, common.QuotaFromFloat(0.12*common.QuotaPerUnit), priceData.QuotaToPreConsume)
+
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+	require.NoError(t, SettleRequestPricingSnapshot(info, &dto.Usage{
+		PromptTokens: 1, TotalTokens: 1,
+	}, priceData.QuotaToPreConsume))
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.Equal(t, "0.06", snapshot.PurchaseCost)
+	assert.Equal(t, "0.12", snapshot.RetailAmount)
+	assert.Contains(t, snapshot.ActualUsage, `"image_count":3`)
 }
 
 func TestCatalogContainsOnlyValidatedV2Bundles(t *testing.T) {
@@ -196,6 +245,7 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 		0,
 		hosttypes.GroupRatioInfo{GroupRatio: 1},
 		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -227,6 +277,7 @@ func TestPrepareRelayPricingRejectsCandidatesBelowMinimumMargin(t *testing.T) {
 		0,
 		hosttypes.GroupRatioInfo{GroupRatio: 1},
 		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
 	)
 	assert.False(t, ok)
 	require.ErrorContains(t, err, "no v2 candidate meets the minimum margin")
@@ -247,6 +298,7 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 		0,
 		hosttypes.GroupRatioInfo{GroupRatio: 1},
 		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -336,6 +388,7 @@ func TestShadowComparisonDoesNotMutateActiveBillingSnapshot(t *testing.T) {
 		int(common.QuotaPerUnit),
 		1,
 		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, comparison)

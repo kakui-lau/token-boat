@@ -5,10 +5,14 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Claude Sonnet-style tiered expression: standard vs long-context
@@ -24,6 +28,31 @@ const cacheExpr = `tier("default", p * 2 + c * 10 + cr * 0.2 + cc * 2.5 + cc1h *
 const probeExpr = `param("service_tier") == "fast" ? tier("fast", p * 4 + c * 20) : tier("normal", p * 2 + c * 10)`
 
 const testQuotaPerUnit = 500_000.0
+
+func TestDynamicImageCountParticipatesInTieredSettlement(t *testing.T) {
+	expression := `v2:tier("image", images * 0.04)`
+	relayInfo := &relaycommon.RelayInfo{
+		DynamicPricingSnapshot: &hosttypes.DynamicPricingSnapshot{
+			EstimatedUsage: `{"request_count":1,"image_count":3}`,
+		},
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:              "tiered_expr",
+			ExprString:               expression,
+			ExprHash:                 billingexpr.ExprHashString(expression),
+			ExprVersion:              2,
+			GroupRatio:               1,
+			QuotaPerUnit:             common.QuotaPerUnit,
+			EstimatedQuotaAfterGroup: common.QuotaFromFloat(0.12 * common.QuotaPerUnit),
+		},
+	}
+
+	params := ApplyDynamicBusinessUsage(relayInfo, billingexpr.TokenParams{})
+	assert.Equal(t, float64(3), params.Imgs)
+	ok, quota, result := TryTieredSettle(relayInfo, params)
+	require.True(t, ok)
+	require.NotNil(t, result)
+	assert.Equal(t, common.QuotaFromFloat(0.12*common.QuotaPerUnit), quota)
+}
 
 func makeSnapshot(expr string, groupRatio float64, estPrompt, estCompletion int) *billingexpr.BillingSnapshot {
 	return &billingexpr.BillingSnapshot{

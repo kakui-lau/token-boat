@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -168,6 +169,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta.MaxTokens,
 		helper.HandleGroupRatio(c, relayInfo),
 		requestInput,
+		estimatedPricingUsage(request),
 	)
 	if err == nil && !usesV2Pricing {
 		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
@@ -180,6 +182,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				priceData.QuotaToPreConsume,
 				priceData.GroupRatioInfo.GroupRatio,
 				requestInput,
+				estimatedPricingUsage(request),
 			)
 			if shadowErr != nil {
 				logger.LogWarn(c, "v2 pricing shadow comparison failed: "+shadowErr.Error())
@@ -351,6 +354,24 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 		// Best-effort: leave CombineText empty to avoid large allocations.
 	}
 	return meta
+}
+
+func estimatedPricingUsage(request dto.Request) pricingengine.Usage {
+	usage := pricingengine.Usage{RequestCount: 1}
+	switch value := request.(type) {
+	case *dto.ImageRequest:
+		imageCount := uint(1)
+		if value.N != nil && *value.N > 0 {
+			imageCount = *value.N
+		}
+		if imageCount > dto.MaxImageN {
+			imageCount = dto.MaxImageN
+		}
+		usage.ImageCount = float64(imageCount)
+	case *dto.AudioRequest:
+		usage.CharacterCount = float64(len([]rune(value.Input)))
+	}
+	return usage
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {

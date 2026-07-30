@@ -19,6 +19,7 @@ func BuildShadowComparison(
 	legacyReservationQuota int,
 	groupRatio float64,
 	requestInput billingexpr.RequestInput,
+	businessUsage pricingengine.Usage,
 ) (*hosttypes.PricingShadowComparison, error) {
 	if !CurrentRolloutPolicy().ShadowEnabled {
 		return nil, nil
@@ -26,16 +27,21 @@ func BuildShadowComparison(
 	if maxCompletionTokens <= 0 && groupRatio != 0 {
 		maxCompletionTokens = defaultEstimatedCompletionTokens
 	}
-	quotes, err := QuoteCandidates(group, info.OriginModelName, pricingengine.Usage{
-		PromptTokens:     float64(promptTokens),
-		CompletionTokens: float64(maxCompletionTokens),
-		RequestBody:      string(requestInput.Body),
-	})
+	usage := businessUsage
+	usage.PromptTokens = float64(promptTokens)
+	usage.CompletionTokens = float64(maxCompletionTokens)
+	usage.RequestBody = string(requestInput.Body)
+	quotes, err := QuoteCandidates(group, info.OriginModelName, usage)
 	if err != nil {
 		return nil, nil
 	}
 	maximumRetail := 0.0
+	hasEligibleCandidate := false
 	for _, quote := range quotes {
+		if !quote.MeetsMinimumMargin {
+			continue
+		}
+		hasEligibleCandidate = true
 		amount, parseErr := strconv.ParseFloat(quote.RetailAmount, 64)
 		if parseErr != nil {
 			return nil, parseErr
@@ -43,6 +49,9 @@ func BuildShadowComparison(
 		if amount > maximumRetail {
 			maximumRetail = amount
 		}
+	}
+	if !hasEligibleCandidate {
+		return nil, nil
 	}
 	v2Quota, err := billingexpr.QuotaRoundStrict(
 		maximumRetail * common.QuotaPerUnit * groupRatio,

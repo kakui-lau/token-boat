@@ -52,6 +52,10 @@ func PrepareRelayPricing(
 	usage.PromptTokens = float64(promptTokens)
 	usage.CompletionTokens = float64(maxCompletionTokens)
 	usage.RequestBody = string(requestInput.Body)
+	if bundles[0].Purchase.BillingMode == "audio_duration" &&
+		usage.AudioSeconds <= 0 {
+		return hosttypes.PriceData{}, false, nil
+	}
 	estimatedUsageJSON, err := common.Marshal(usage)
 	if err != nil {
 		return hosttypes.PriceData{}, false, err

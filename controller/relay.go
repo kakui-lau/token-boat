@@ -169,7 +169,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta.MaxTokens,
 		helper.HandleGroupRatio(c, relayInfo),
 		requestInput,
-		estimatedPricingUsage(request),
+		estimatedPricingUsage(request, relayInfo, tokens),
 	)
 	if err == nil && !usesV2Pricing {
 		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
@@ -182,7 +182,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				priceData.QuotaToPreConsume,
 				priceData.GroupRatioInfo.GroupRatio,
 				requestInput,
-				estimatedPricingUsage(request),
+				estimatedPricingUsage(request, relayInfo, tokens),
 			)
 			if shadowErr != nil {
 				logger.LogWarn(c, "v2 pricing shadow comparison failed: "+shadowErr.Error())
@@ -356,7 +356,11 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
-func estimatedPricingUsage(request dto.Request) pricingengine.Usage {
+func estimatedPricingUsage(
+	request dto.Request,
+	relayInfo *relaycommon.RelayInfo,
+	estimatedPromptTokens int,
+) pricingengine.Usage {
 	usage := pricingengine.Usage{RequestCount: 1}
 	switch value := request.(type) {
 	case *dto.ImageRequest:
@@ -370,6 +374,12 @@ func estimatedPricingUsage(request dto.Request) pricingengine.Usage {
 		usage.ImageCount = float64(imageCount)
 	case *dto.AudioRequest:
 		usage.CharacterCount = float64(len([]rune(value.Input)))
+		if relayInfo != nil &&
+			(relayInfo.RelayMode == relayconstant.RelayModeAudioTranscription ||
+				relayInfo.RelayMode == relayconstant.RelayModeAudioTranslation) &&
+			estimatedPromptTokens > 0 {
+			usage.AudioSeconds = float64(estimatedPromptTokens) * 60 / 1000
+		}
 	}
 	return usage
 }

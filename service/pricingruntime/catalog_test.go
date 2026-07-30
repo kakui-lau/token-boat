@@ -112,7 +112,7 @@ func TestSetRuntimeModeRejectsMultimodalUntilUsageAdaptersAreIntegrated(t *testi
 		Update("billing_mode", "video_duration").Error)
 
 	err := SetRuntimeMode(9, RuntimeModeV2)
-	require.ErrorContains(t, err, "keep duration pricing on legacy")
+	require.ErrorContains(t, err, "keep video duration pricing on legacy")
 }
 
 func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) {
@@ -162,6 +162,58 @@ func TestImageBillingUsesBoundedImageCountForReserveAndSettlement(t *testing.T) 
 	assert.Equal(t, "0.06", snapshot.PurchaseCost)
 	assert.Equal(t, "0.12", snapshot.RetailAmount)
 	assert.Contains(t, snapshot.ActualUsage, `"image_count":3`)
+}
+
+func TestAudioDurationBillingRequiresKnownDuration(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 14, RuntimeModeLegacy)
+	purchaseExpr := `v2:tier("audio", audio_s * 0.006)`
+	retailExpr := `v2:tier("audio", audio_s * 0.01)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 14).
+		Updates(map[string]any{
+			"billing_mode":          "audio_duration",
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 14).
+		Updates(map[string]any{
+			"billing_mode":        "audio_duration",
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, SetRuntimeMode(14, RuntimeModeV2))
+
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-v2-audio", UserId: 9, OriginModelName: "runtime-model",
+	}
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		14,
+		1500,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1, AudioSeconds: 90},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, common.QuotaFromFloat(0.9*common.QuotaPerUnit), priceData.QuotaToPreConsume)
+
+	_, ok, err = PrepareRelayPricing(
+		&relaycommon.RelayInfo{OriginModelName: "runtime-model"},
+		"default",
+		14,
+		0,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	assert.False(t, ok)
 }
 
 func TestCatalogContainsOnlyValidatedV2Bundles(t *testing.T) {

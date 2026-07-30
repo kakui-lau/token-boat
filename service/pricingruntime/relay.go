@@ -77,6 +77,7 @@ func PrepareRelayPricing(
 	requestInput billingexpr.RequestInput,
 	businessUsage pricingengine.Usage,
 ) (hosttypes.PriceData, bool, error) {
+	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	bundles := GetCandidateBundles(group, info.OriginModelName)
 	if len(bundles) == 0 {
 		return hosttypes.PriceData{}, false, nil

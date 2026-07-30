@@ -3,10 +3,23 @@ package billingexpr_test
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTimeFunctionsUseFrozenRequestEvaluationTime(t *testing.T) {
+	frozenAt := time.Date(2026, time.July, 30, 5, 42, 0, 0, time.UTC).Unix()
+	cost, trace, err := billingexpr.RunExprWithRequest(
+		`v2:tier("time", hour("UTC") * 100 + minute("UTC"))`,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{EvaluatedAtUnix: frozenAt},
+	)
+	require.NoError(t, err)
+	require.Equal(t, float64(542), cost)
+	require.Equal(t, "time", trace.MatchedTier)
+}
 
 // ---------------------------------------------------------------------------
 // Claude-style: fixed tiers, input > 200K changes both input & output price

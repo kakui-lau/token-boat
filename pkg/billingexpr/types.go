@@ -3,13 +3,22 @@ package billingexpr
 import (
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 )
 
 type RequestInput struct {
-	Headers map[string]string
-	Body    []byte
+	Headers         map[string]string
+	Body            []byte
+	EvaluatedAtUnix int64
+}
+
+func FreezeRequestInput(input RequestInput) RequestInput {
+	if input.EvaluatedAtUnix <= 0 {
+		input.EvaluatedAtUnix = time.Now().Unix()
+	}
+	return input
 }
 
 // TokenParams holds all token dimensions passed into an Expr evaluation.

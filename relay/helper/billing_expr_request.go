@@ -18,7 +18,7 @@ func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.Re
 			merged[k] = v
 		}
 		input.Headers = merged
-		return input, nil
+		return billingexpr.FreezeRequestInput(input), nil
 	}
 
 	input := billingexpr.RequestInput{}
@@ -31,7 +31,7 @@ func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.Re
 		return billingexpr.RequestInput{}, err
 	}
 	input.Body = bodyBytes
-	return input, nil
+	return billingexpr.FreezeRequestInput(input), nil
 }
 
 func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[string]string) (billingexpr.RequestInput, error) {
@@ -39,7 +39,7 @@ func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[st
 		Headers: cloneStringMap(headers),
 	}
 	if request == nil {
-		return input, nil
+		return billingexpr.FreezeRequestInput(input), nil
 	}
 
 	bodyBytes, err := common.Marshal(request)
@@ -47,7 +47,7 @@ func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[st
 		return billingexpr.RequestInput{}, err
 	}
 	input.Body = bodyBytes
-	return input, nil
+	return billingexpr.FreezeRequestInput(input), nil
 }
 
 func readIncomingBillingExprBody(c *gin.Context) ([]byte, error) {
@@ -63,7 +63,8 @@ func readIncomingBillingExprBody(c *gin.Context) ([]byte, error) {
 
 func cloneRequestInput(src billingexpr.RequestInput) billingexpr.RequestInput {
 	input := billingexpr.RequestInput{
-		Headers: cloneStringMap(src.Headers),
+		Headers:         cloneStringMap(src.Headers),
+		EvaluatedAtUnix: src.EvaluatedAtUnix,
 	}
 	if len(src.Body) > 0 {
 		input.Body = append([]byte(nil), src.Body...)

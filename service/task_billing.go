@@ -194,8 +194,9 @@ func NewTaskBillingContext(info *relaycommon.RelayInfo) *model.TaskBillingContex
 	}
 
 	requestInput := &billingexpr.RequestInput{
-		Headers: make(map[string]string),
-		Body:    append([]byte(nil), info.BillingRequestInput.Body...),
+		Headers:         make(map[string]string),
+		Body:            append([]byte(nil), info.BillingRequestInput.Body...),
+		EvaluatedAtUnix: info.BillingRequestInput.EvaluatedAtUnix,
 	}
 	for key, value := range info.BillingRequestInput.Headers {
 		switch strings.ToLower(strings.TrimSpace(key)) {

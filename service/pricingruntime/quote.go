@@ -63,6 +63,7 @@ func QuoteCandidatesWithRequest(
 	usage pricingengine.Usage,
 	requestInput billingexpr.RequestInput,
 ) ([]Quote, error) {
+	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	if err := pricingengine.ValidateUsage(usage); err != nil {
 		return nil, err
 	}

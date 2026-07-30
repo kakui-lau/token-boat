@@ -35,6 +35,7 @@ func TestResolveIncomingBillingExprRequestInput(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, body, input.Body)
 	require.Equal(t, "application/json", input.Headers["Content-Type"])
+	require.Positive(t, input.EvaluatedAtUnix)
 }
 
 func TestBuildBillingExprRequestInputFromRequest(t *testing.T) {
@@ -60,4 +61,5 @@ func TestBuildBillingExprRequestInputFromRequest(t *testing.T) {
 	require.True(t, gjson.GetBytes(input.Body, "stream").Bool())
 	require.Equal(t, "user", gjson.GetBytes(input.Body, "messages.0.role").String())
 	require.Equal(t, float64(3000), gjson.GetBytes(input.Body, "max_tokens").Float())
+	require.Positive(t, input.EvaluatedAtUnix)
 }

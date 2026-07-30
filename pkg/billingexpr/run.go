@@ -51,6 +51,10 @@ func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request 
 func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (float64, TraceResult, error) {
 	trace := TraceResult{}
 	headers := normalizeHeaders(request.Headers)
+	evaluatedAt := time.Now()
+	if request.EvaluatedAtUnix > 0 {
+		evaluatedAt = time.Unix(request.EvaluatedAtUnix, 0)
+	}
 
 	env := map[string]interface{}{
 		"p":       params.P,
@@ -93,11 +97,11 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 			}
 			return strings.Contains(fmt.Sprint(source), substr)
 		},
-		"hour":    func(tz string) int { return timeInZone(tz).Hour() },
-		"minute":  func(tz string) int { return timeInZone(tz).Minute() },
-		"weekday": func(tz string) int { return int(timeInZone(tz).Weekday()) },
-		"month":   func(tz string) int { return int(timeInZone(tz).Month()) },
-		"day":     func(tz string) int { return timeInZone(tz).Day() },
+		"hour":    func(tz string) int { return timeInZone(evaluatedAt, tz).Hour() },
+		"minute":  func(tz string) int { return timeInZone(evaluatedAt, tz).Minute() },
+		"weekday": func(tz string) int { return int(timeInZone(evaluatedAt, tz).Weekday()) },
+		"month":   func(tz string) int { return int(timeInZone(evaluatedAt, tz).Month()) },
+		"day":     func(tz string) int { return timeInZone(evaluatedAt, tz).Day() },
 		"max":     math.Max,
 		"min":     math.Min,
 		"abs":     math.Abs,
@@ -119,16 +123,16 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 	return f, trace, nil
 }
 
-func timeInZone(tz string) time.Time {
+func timeInZone(evaluatedAt time.Time, tz string) time.Time {
 	tz = strings.TrimSpace(tz)
 	if tz == "" {
-		return time.Now().UTC()
+		return evaluatedAt.UTC()
 	}
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		return time.Now().UTC()
+		return evaluatedAt.UTC()
 	}
-	return time.Now().In(loc)
+	return evaluatedAt.In(loc)
 }
 
 func normalizeHeaders(headers map[string]string) map[string]string {

@@ -21,6 +21,7 @@ func BuildShadowComparison(
 	requestInput billingexpr.RequestInput,
 	businessUsage pricingengine.Usage,
 ) (*hosttypes.PricingShadowComparison, error) {
+	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	if !ShadowComparisonEnabled() {
 		return nil, nil
 	}

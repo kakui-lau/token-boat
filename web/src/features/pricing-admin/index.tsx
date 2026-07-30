@@ -20,7 +20,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
   BadgeDollarSign,
-  CircleAlert,
   GitCompareArrows,
   Plus,
   RefreshCw,
@@ -31,7 +30,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -154,15 +152,6 @@ export function PricingAdmin() {
       <PricingRolloutControl />
       <SectionPageLayout.Content>
         <div className='h-full space-y-4 overflow-auto'>
-          <Alert>
-            <CircleAlert />
-            <AlertTitle>{t('Legacy Billing Active')}</AlertTitle>
-            <AlertDescription>
-              {t(
-                'The pricing catalog is isolated from routing and billing until V2 is enabled per model.'
-              )}
-            </AlertDescription>
-          </Alert>
           <PricingReconciliationPanel />
 
           <FieldGroup className='flex-row flex-wrap items-end gap-3'>

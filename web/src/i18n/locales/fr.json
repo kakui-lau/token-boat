@@ -5800,5 +5800,14 @@
   "Billing Anomalies": "Anomalies de facturation",
   "Shows settlement failures and reservations still incomplete after 15 minutes.": "Affiche les échecs de règlement et les réservations non finalisées après 15 minutes.",
   "{{total}} billing anomalies": "{{total}} anomalies de facturation",
-  "No billing anomalies": "Aucune anomalie de facturation"
+  "No billing anomalies": "Aucune anomalie de facturation",
+  "Legacy billing active": "Facturation historique active",
+  "No requests use the new routing or billing until complete V2 price chains are enabled.": "Aucune requête n'utilise le nouveau routage ou la nouvelle facturation tant que des chaînes de prix V2 complètes ne sont pas activées.",
+  "V2 pricing is ready but has no live traffic": "La tarification V2 est prête, mais sans trafic réel",
+  "Increase the traffic percentage or add internal users to activate the new routing and billing.": "Augmentez le pourcentage de trafic ou ajoutez des utilisateurs internes pour activer le nouveau routage et la nouvelle facturation.",
+  "V2 routing and billing are active": "Le routage et la facturation V2 sont actifs",
+  "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Les requêtes éligibles utilisent un routage selon le coût d'achat et un règlement au prix de vente figé.",
+  "{{v2}} of {{total}} channel models use V2": "{{v2}} modèles de canal sur {{total}} utilisent V2",
+  "{{count}} model/group scopes are ready": "{{count}} périmètres modèle/groupe sont prêts",
+  "{{count}} scopes match the current rollout": "{{count}} périmètres correspondent au déploiement actuel"
 }

@@ -36,6 +36,11 @@ type pricingRolloutPolicyInput struct {
 	ShadowEnabled bool     `json:"shadow_enabled"`
 }
 
+type pricingRolloutPolicyResponse struct {
+	pricingRolloutPolicyInput
+	Runtime pricingruntime.RuntimeReadiness `json:"runtime"`
+}
+
 type requestPricingSnapshotAdminRow struct {
 	model.RequestPricingSnapshot
 	ModelName   string `json:"model_name"`
@@ -62,12 +67,20 @@ func AdminGetPricingRolloutPolicy(c *gin.Context) {
 	sort.Strings(models)
 	sort.Strings(groups)
 	sort.Ints(userIds)
-	common.ApiSuccess(c, pricingRolloutPolicyInput{
-		Percent:       policy.Percent,
-		Models:        models,
-		Groups:        groups,
-		UserIds:       userIds,
-		ShadowEnabled: policy.ShadowEnabled,
+	readiness, err := pricingruntime.GetRuntimeReadiness(policy)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, pricingRolloutPolicyResponse{
+		pricingRolloutPolicyInput: pricingRolloutPolicyInput{
+			Percent:       policy.Percent,
+			Models:        models,
+			Groups:        groups,
+			UserIds:       userIds,
+			ShadowEnabled: policy.ShadowEnabled,
+		},
+		Runtime: readiness,
 	})
 }
 

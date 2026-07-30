@@ -5800,5 +5800,14 @@
   "Billing Anomalies": "計費異常",
   "Shows settlement failures and reservations still incomplete after 15 minutes.": "顯示結算失敗或預扣超過 15 分鐘仍未完成的請求。",
   "{{total}} billing anomalies": "{{total}} 筆計費異常",
-  "No billing anomalies": "目前沒有計費異常"
+  "No billing anomalies": "目前沒有計費異常",
+  "Legacy billing active": "舊版計費生效中",
+  "No requests use the new routing or billing until complete V2 price chains are enabled.": "啟用完整的 V2 價格鏈之前，請求不會使用新路由和新收費。",
+  "V2 pricing is ready but has no live traffic": "V2 定價已就緒，但尚無實際流量",
+  "Increase the traffic percentage or add internal users to activate the new routing and billing.": "提高流量比例或加入內部使用者，即可啟用新路由和新收費。",
+  "V2 routing and billing are active": "V2 新路由和新收費已生效",
+  "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "符合條件的請求將按採購成本路由，並使用凍結的銷售價格結算。",
+  "{{v2}} of {{total}} channel models use V2": "{{total}} 個渠道模型中有 {{v2}} 個使用 V2",
+  "{{count}} model/group scopes are ready": "{{count}} 個模型/分組範圍已就緒",
+  "{{count}} scopes match the current rollout": "{{count}} 個範圍符合目前灰度設定"
 }

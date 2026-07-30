@@ -5800,5 +5800,14 @@
   "Billing Anomalies": "Billing Anomalies",
   "Shows settlement failures and reservations still incomplete after 15 minutes.": "Shows settlement failures and reservations still incomplete after 15 minutes.",
   "{{total}} billing anomalies": "{{total}} billing anomalies",
-  "No billing anomalies": "No billing anomalies"
+  "No billing anomalies": "No billing anomalies",
+  "Legacy billing active": "Legacy billing active",
+  "No requests use the new routing or billing until complete V2 price chains are enabled.": "No requests use the new routing or billing until complete V2 price chains are enabled.",
+  "V2 pricing is ready but has no live traffic": "V2 pricing is ready but has no live traffic",
+  "Increase the traffic percentage or add internal users to activate the new routing and billing.": "Increase the traffic percentage or add internal users to activate the new routing and billing.",
+  "V2 routing and billing are active": "V2 routing and billing are active",
+  "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Eligible requests use purchase-cost routing and frozen sales-price settlement.",
+  "{{v2}} of {{total}} channel models use V2": "{{v2}} of {{total}} channel models use V2",
+  "{{count}} model/group scopes are ready": "{{count}} model/group scopes are ready",
+  "{{count}} scopes match the current rollout": "{{count}} scopes match the current rollout"
 }

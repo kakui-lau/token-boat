@@ -5800,5 +5800,14 @@
   "Billing Anomalies": "課金異常",
   "Shows settlement failures and reservations still incomplete after 15 minutes.": "精算に失敗したリクエストと、15分経過後も完了していない予約を表示します。",
   "{{total}} billing anomalies": "課金異常：{{total}}件",
-  "No billing anomalies": "課金異常はありません"
+  "No billing anomalies": "課金異常はありません",
+  "Legacy billing active": "旧課金が有効です",
+  "No requests use the new routing or billing until complete V2 price chains are enabled.": "完全な V2 価格チェーンを有効にするまで、新しいルーティングと課金は使用されません。",
+  "V2 pricing is ready but has no live traffic": "V2 価格設定は準備済みですが、実トラフィックはありません",
+  "Increase the traffic percentage or add internal users to activate the new routing and billing.": "トラフィック比率を上げるか内部ユーザーを追加すると、新しいルーティングと課金が有効になります。",
+  "V2 routing and billing are active": "V2 ルーティングと課金が有効です",
+  "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "対象リクエストは仕入原価でルーティングされ、固定された販売価格で精算されます。",
+  "{{v2}} of {{total}} channel models use V2": "{{total}} 個のチャネルモデルのうち {{v2}} 個が V2 を使用",
+  "{{count}} model/group scopes are ready": "{{count}} 個のモデル/グループ範囲が準備済み",
+  "{{count}} scopes match the current rollout": "{{count}} 個の範囲が現在のロールアウトに一致"
 }

@@ -28,14 +28,17 @@ import {
 } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import {
-  getPricingRolloutPolicy,
-  updatePricingRolloutPolicy,
-} from '../api'
+import { getPricingRolloutPolicy, updatePricingRolloutPolicy } from '../api'
 import { PricingRolloutControl } from '../components/pricing-rollout-control'
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, number>) =>
+      Object.entries(values ?? {}).reduce(
+        (text, [name, value]) => text.replace(`{{${name}}}`, String(value)),
+        key
+      ),
+  }),
 }))
 
 vi.mock('../api', () => ({
@@ -54,6 +57,13 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
       groups: ['vip'],
       user_ids: [42],
       shadow_enabled: false,
+      runtime: {
+        total_channel_models: 31,
+        v2_channel_models: 2,
+        complete_group_model_scopes: 1,
+        eligible_group_model_scopes: 1,
+        live_traffic_enabled: true,
+      },
     },
   })
   vi.mocked(updatePricingRolloutPolicy).mockResolvedValue({
@@ -64,6 +74,13 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
       groups: ['vip', 'internal'],
       user_ids: [42],
       shadow_enabled: true,
+      runtime: {
+        total_channel_models: 31,
+        v2_channel_models: 2,
+        complete_group_model_scopes: 1,
+        eligible_group_model_scopes: 1,
+        live_traffic_enabled: true,
+      },
     },
   })
   const queryClient = new QueryClient({
@@ -78,6 +95,10 @@ test('loads and submits rollout percentage, groups, users, and shadow mode', asy
   await waitFor(() =>
     expect(screen.getByLabelText('Traffic Percentage')).toHaveValue(10)
   )
+  expect(
+    screen.getByText('V2 routing and billing are active')
+  ).toBeInTheDocument()
+  expect(screen.getByText('2 of 31 channel models use V2')).toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Traffic Percentage'), {
     target: { value: '50' },
   })
@@ -112,6 +133,13 @@ test('disables saving when traffic percentage is outside the supported range', a
       groups: [],
       user_ids: [],
       shadow_enabled: false,
+      runtime: {
+        total_channel_models: 31,
+        v2_channel_models: 0,
+        complete_group_model_scopes: 0,
+        eligible_group_model_scopes: 0,
+        live_traffic_enabled: false,
+      },
     },
   })
   const queryClient = new QueryClient({

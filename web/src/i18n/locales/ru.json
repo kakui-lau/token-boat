@@ -5800,5 +5800,14 @@
   "Billing Anomalies": "Ошибки тарификации",
   "Shows settlement failures and reservations still incomplete after 15 minutes.": "Показывает ошибки расчёта и резервирования, не завершённые более 15 минут.",
   "{{total}} billing anomalies": "Ошибок тарификации: {{total}}",
-  "No billing anomalies": "Ошибок тарификации нет"
+  "No billing anomalies": "Ошибок тарификации нет",
+  "Legacy billing active": "Используется прежняя тарификация",
+  "No requests use the new routing or billing until complete V2 price chains are enabled.": "Запросы не используют новую маршрутизацию и тарификацию, пока не включены полные цепочки цен V2.",
+  "V2 pricing is ready but has no live traffic": "Тарификация V2 готова, но реального трафика нет",
+  "Increase the traffic percentage or add internal users to activate the new routing and billing.": "Увеличьте процент трафика или добавьте внутренних пользователей, чтобы включить новую маршрутизацию и тарификацию.",
+  "V2 routing and billing are active": "Маршрутизация и тарификация V2 активны",
+  "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Подходящие запросы маршрутизируются по закупочной стоимости и рассчитываются по зафиксированной цене продажи.",
+  "{{v2}} of {{total}} channel models use V2": "{{v2}} из {{total}} моделей каналов используют V2",
+  "{{count}} model/group scopes are ready": "Готово областей модель/группа: {{count}}",
+  "{{count}} scopes match the current rollout": "Областей в текущем развёртывании: {{count}}"
 }

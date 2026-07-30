@@ -29,6 +29,7 @@ import type {
   OfficialPriceVersion,
   PriceSimulationResult,
   PricingRolloutPolicy,
+  PricingRolloutPolicySettings,
   PricingCatalogOptionsResponse,
   PriceVersionResponse,
   PublishLatestOfficialPriceDraftsResponse,
@@ -45,7 +46,7 @@ export async function getPricingRolloutPolicy(): Promise<
 }
 
 export async function updatePricingRolloutPolicy(
-  input: PricingRolloutPolicy
+  input: PricingRolloutPolicySettings
 ): Promise<PriceVersionResponse<PricingRolloutPolicy>> {
   const response = await api.put('/api/pricing-admin/rollout-policy', input)
   return requirePricingSuccess(response.data)

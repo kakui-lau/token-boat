@@ -44,12 +44,22 @@ export type ChannelModelListResponse = {
   }
 }
 
-export type PricingRolloutPolicy = {
+export type PricingRolloutPolicySettings = {
   percent: number
   models: string[]
   groups: string[]
   user_ids: number[]
   shadow_enabled: boolean
+}
+
+export type PricingRolloutPolicy = PricingRolloutPolicySettings & {
+  runtime: {
+    total_channel_models: number
+    v2_channel_models: number
+    complete_group_model_scopes: number
+    eligible_group_model_scopes: number
+    live_traffic_enabled: boolean
+  }
 }
 
 export type RequestPricingSnapshot = {

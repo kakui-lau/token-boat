@@ -5800,5 +5800,14 @@
   "Billing Anomalies": "Bất thường tính phí",
   "Shows settlement failures and reservations still incomplete after 15 minutes.": "Hiển thị các yêu cầu quyết toán thất bại hoặc vẫn chưa hoàn tất sau 15 phút giữ hạn mức.",
   "{{total}} billing anomalies": "{{total}} bất thường tính phí",
-  "No billing anomalies": "Không có bất thường tính phí"
+  "No billing anomalies": "Không có bất thường tính phí",
+  "Legacy billing active": "Đang áp dụng tính phí cũ",
+  "No requests use the new routing or billing until complete V2 price chains are enabled.": "Yêu cầu sẽ chưa dùng định tuyến và tính phí mới cho đến khi chuỗi giá V2 hoàn chỉnh được bật.",
+  "V2 pricing is ready but has no live traffic": "Định giá V2 đã sẵn sàng nhưng chưa có lưu lượng thực",
+  "Increase the traffic percentage or add internal users to activate the new routing and billing.": "Tăng tỷ lệ lưu lượng hoặc thêm người dùng nội bộ để bật định tuyến và tính phí mới.",
+  "V2 routing and billing are active": "Định tuyến và tính phí V2 đang hoạt động",
+  "Eligible requests use purchase-cost routing and frozen sales-price settlement.": "Yêu cầu đủ điều kiện được định tuyến theo chi phí mua và quyết toán theo giá bán đã cố định.",
+  "{{v2}} of {{total}} channel models use V2": "{{v2}}/{{total}} mô hình kênh sử dụng V2",
+  "{{count}} model/group scopes are ready": "{{count}} phạm vi mô hình/nhóm đã sẵn sàng",
+  "{{count}} scopes match the current rollout": "{{count}} phạm vi khớp với cấu hình triển khai hiện tại"
 }

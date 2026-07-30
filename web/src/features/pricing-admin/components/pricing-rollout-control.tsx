@@ -17,19 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CircleAlert, CircleCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 
-import {
-  getPricingRolloutPolicy,
-  updatePricingRolloutPolicy,
-} from '../api'
+import { getPricingRolloutPolicy, updatePricingRolloutPolicy } from '../api'
 
 export function PricingRolloutControl() {
   const { t } = useTranslation()
@@ -86,9 +86,53 @@ export function PricingRolloutControl() {
     Number.isInteger(numericPercent) &&
     numericPercent >= 0 &&
     numericPercent <= 100
+  const runtime = policyQuery.data?.data.runtime
+  let runtimeTitle = t('Legacy billing active')
+  let runtimeDescription = t(
+    'No requests use the new routing or billing until complete V2 price chains are enabled.'
+  )
+  if (runtime?.complete_group_model_scopes) {
+    runtimeTitle = t('V2 pricing is ready but has no live traffic')
+    runtimeDescription = t(
+      'Increase the traffic percentage or add internal users to activate the new routing and billing.'
+    )
+  }
+  if (runtime?.live_traffic_enabled) {
+    runtimeTitle = t('V2 routing and billing are active')
+    runtimeDescription = t(
+      'Eligible requests use purchase-cost routing and frozen sales-price settlement.'
+    )
+  }
 
   return (
     <section className='border-border bg-card rounded-lg border p-4'>
+      {runtime ? (
+        <Alert className='mb-4'>
+          {runtime.live_traffic_enabled ? <CircleCheck /> : <CircleAlert />}
+          <AlertTitle>{runtimeTitle}</AlertTitle>
+          <AlertDescription>
+            <p>{runtimeDescription}</p>
+            <div className='mt-2 flex flex-wrap gap-2'>
+              <Badge variant='outline'>
+                {t('{{v2}} of {{total}} channel models use V2', {
+                  v2: runtime.v2_channel_models,
+                  total: runtime.total_channel_models,
+                })}
+              </Badge>
+              <Badge variant='outline'>
+                {t('{{count}} model/group scopes are ready', {
+                  count: runtime.complete_group_model_scopes,
+                })}
+              </Badge>
+              <Badge variant='outline'>
+                {t('{{count}} scopes match the current rollout', {
+                  count: runtime.eligible_group_model_scopes,
+                })}
+              </Badge>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className='mb-4'>
         <h2 className='font-semibold'>{t('V2 Rollout Control')}</h2>
         <p className='text-muted-foreground text-sm'>

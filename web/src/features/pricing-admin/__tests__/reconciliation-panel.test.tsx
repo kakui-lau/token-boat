@@ -90,6 +90,14 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('seedance-2.0')).toBeInTheDocument()
   expect(screen.getByText('video-provider')).toBeInTheDocument()
   expect(screen.getByText('video_duration')).toBeInTheDocument()
+  expect(screen.getByText('0.4 USD')).toBeInTheDocument()
+  expect(screen.getByText('0.8 USD')).toBeInTheDocument()
+  expect(
+    screen.getByRole('columnheader', { name: 'Purchase cost' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('columnheader', { name: 'Retail amount' })
+  ).toBeInTheDocument()
   expect(screen.getByText('Billing Anomalies')).toBeInTheDocument()
   expect(
     screen.getByText(

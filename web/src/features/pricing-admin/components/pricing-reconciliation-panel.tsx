@@ -139,6 +139,8 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Billing mode')}</TableHead>
               <TableHead>{t('Reserved quota')}</TableHead>
               <TableHead>{t('Settled quota')}</TableHead>
+              <TableHead>{t('Purchase cost')}</TableHead>
+              <TableHead>{t('Retail amount')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
               <TableHead>{t('Updated')}</TableHead>
             </TableRow>
@@ -160,6 +162,12 @@ export function PricingReconciliationPanel() {
                 <TableCell className='font-mono tabular-nums'>
                   {row.settled_quota}
                 </TableCell>
+                <TableCell className='whitespace-nowrap font-mono tabular-nums'>
+                  {row.purchase_cost} {row.currency}
+                </TableCell>
+                <TableCell className='whitespace-nowrap font-mono tabular-nums'>
+                  {row.retail_amount} {row.currency}
+                </TableCell>
                 <TableCell>
                   <Badge
                     variant={row.status === 'pending' ? 'default' : 'secondary'}
@@ -175,7 +183,7 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={10}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}

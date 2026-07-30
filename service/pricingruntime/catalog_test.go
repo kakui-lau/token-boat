@@ -208,6 +208,31 @@ func TestSetModelRuntimeModeRejectsCorruptedExpressionHash(t *testing.T) {
 	require.ErrorContains(t, err, "retail price expression hash does not match")
 }
 
+func TestSetModelRuntimeModeRejectsLegacyOfficialPriceReference(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 20, RuntimeModeLegacy)
+	legacyExpression := `v1:tier("base", p * 2)`
+	official := model.OfficialModelPriceVersion{
+		ModelId:                 20,
+		BillingMode:             "token",
+		PriceStructure:          "flat",
+		BillingExpr:             legacyExpression,
+		ExprHash:                billingexpr.ExprHashString(legacyExpression),
+		ExpressionSchemaVersion: "v1",
+		Currency:                "USD",
+		Version:                 1,
+		Status:                  model.PricingVersionStatusActive,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 20).
+		Update("official_price_version_id", official.Id).Error)
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	assert.Zero(t, updated)
+	require.ErrorContains(t, err, "requires a published v2 official price")
+}
+
 func TestSetModelRuntimeModeRejectsExpressionThatFailsSmokeExecution(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 19, RuntimeModeLegacy)

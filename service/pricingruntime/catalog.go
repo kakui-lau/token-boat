@@ -124,6 +124,13 @@ func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, e
 	if bundle.Purchase.Currency != "USD" || bundle.Retail.Currency != "USD" {
 		return ActivePriceBundle{}, errors.New("v2 runtime requires USD purchase and retail prices")
 	}
+	if bundle.Official != nil {
+		if !officialPriceCanRunInV2(*bundle.Official) {
+			return ActivePriceBundle{}, errors.New(
+				"v2 runtime requires a published v2 official price with a valid expression hash",
+			)
+		}
+	}
 	supportedBillingModes := map[string]struct{}{
 		"token": {}, "request": {}, "image": {}, "character": {},
 		"audio_duration": {}, "video_duration": {}, "mixed": {},
@@ -177,6 +184,15 @@ func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, e
 		}
 	}
 	return bundle, nil
+}
+
+func officialPriceCanRunInV2(official model.OfficialModelPriceVersion) bool {
+	return (official.Status == model.PricingVersionStatusActive ||
+		official.Status == model.PricingVersionStatusExpired) &&
+		official.ExpressionSchemaVersion == "v2" &&
+		billingexpr.ExprVersion(official.BillingExpr) == 2 &&
+		official.ExprHash != "" &&
+		official.ExprHash == billingexpr.ExprHashString(official.BillingExpr)
 }
 
 func validateCandidateContracts(bundles []ActivePriceBundle) error {

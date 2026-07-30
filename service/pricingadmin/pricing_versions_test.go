@@ -506,6 +506,35 @@ func TestPurchasePriceRejectsOfficialPriceFromDifferentLogicalModel(t *testing.T
 	require.ErrorContains(t, err, "different logical models")
 }
 
+func TestPurchasePriceRejectsLegacyOfficialPriceReference(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 405, ModelName: "v2-official-reference",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 406, ChannelId: 407, ModelId: 405,
+		UpstreamModelName: "v2-official-reference", Status: 1,
+	}).Error)
+	legacyExpression := `v1:tier("base", p * 2)`
+	official := model.OfficialModelPriceVersion{
+		ModelId: 405, BillingMode: "token", PriceStructure: "flat",
+		BillingExpr: legacyExpression, ExprHash: billingexpr.ExprHashString(legacyExpression),
+		ExpressionSchemaVersion: "v1", Currency: "USD",
+		Version: 1, Status: model.PricingVersionStatusActive,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+
+	purchase := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 406, OfficialPriceVersionId: &official.Id,
+		BillingMode: "token", PricingMode: "official_ratio", PriceStructure: "flat",
+		PurchaseDiscount:        "0.5",
+		PurchaseBillingExpr:     `v2:tier("base", p / 1000000)`,
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}
+	err := CreatePurchasePriceVersion(&purchase, 1)
+	require.ErrorContains(t, err, "requires a v2 official price")
+}
+
 func TestCreateRetailPriceRejectsImpossibleMarginFormula(t *testing.T) {
 	setupPricingAdminTestDB(t)
 

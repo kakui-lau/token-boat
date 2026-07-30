@@ -496,6 +496,14 @@ func validatePurchaseOfficialBillingContract(
 	purchase model.ChannelModelPurchasePriceVersion,
 	official model.OfficialModelPriceVersion,
 ) error {
+	if official.ExpressionSchemaVersion != "v2" ||
+		billingexpr.ExprVersion(official.BillingExpr) != 2 {
+		return errors.New("purchase price requires a v2 official price")
+	}
+	if official.ExprHash == "" ||
+		official.ExprHash != billingexpr.ExprHashString(official.BillingExpr) {
+		return errors.New("official price expression hash does not match")
+	}
 	if !sameBillingContract(
 		purchase.BillingMode,
 		purchase.PriceStructure,

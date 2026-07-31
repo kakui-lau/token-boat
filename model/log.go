@@ -137,7 +137,6 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "admin_info")
 			// Remove operation-audit details (operator/route info), admin-only.
 			delete(otherMap, "audit_info")
-			delete(otherMap, "stream_status")
 			// Defense in depth for legacy or malformed records that wrote
 			// confidential billing fields outside admin_info.
 			for _, field := range adminOnlyFields {

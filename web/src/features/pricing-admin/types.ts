@@ -92,6 +92,17 @@ export type ChannelCircuitOverview = {
   distributed: boolean
 }
 
+export type ChannelCircuitEventListResponse = {
+  success: boolean
+  message?: string
+  data: {
+    items: ChannelCircuitEvent[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
 export type RequestPricingSnapshot = {
   id: number
   request_id: string
@@ -106,6 +117,11 @@ export type RequestPricingSnapshot = {
   reserved_quota: number
   settled_quota: number
   purchase_cost: string
+  provider_reported_cost?: string
+  provider_cost_known?: boolean
+  provider_cost_scope?: 'full_provider_cost' | 'platform_fee_only'
+  cost_variance?: string
+  gross_margin?: string
   retail_amount: string
   currency: string
   status: 'reserved' | 'pending' | 'settled' | 'refunded'
@@ -135,6 +151,18 @@ export type PricingReconciliationSummary = {
   settled_last_24h: number
   refunded_last_24h: number
   oldest_anomaly_created_at: number
+}
+
+export type PricingFinancialSummary = {
+  settled_count: number
+  revenue_usd: string
+  estimated_purchase_usd: string
+  provider_reported_cost_usd: string
+  cost_variance_usd: string
+  gross_margin_usd: string
+  provider_cost_known_count: number
+  provider_cost_missing_count: number
+  full_provider_cost_count: number
 }
 
 export type ImportResult = {

@@ -10,13 +10,13 @@ import {
 } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { PricingReconciliationPage } from '../../pricing-reconciliation'
 import {
   confirmPricingSnapshotRefunded,
   getPricingReconciliationSummary,
   getRequestPricingSnapshots,
 } from '../api'
 import { PricingReconciliationPanel } from '../components/pricing-reconciliation-panel'
-import { PricingReconciliationPage } from '../../pricing-reconciliation'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -35,6 +35,20 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('../api', () => ({
   confirmPricingSnapshotRefunded: vi.fn(),
+  getPricingFinancialSummary: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      settled_count: 0,
+      revenue_usd: '0',
+      estimated_purchase_usd: '0',
+      provider_reported_cost_usd: '0',
+      cost_variance_usd: '0',
+      gross_margin_usd: '0',
+      provider_cost_known_count: 0,
+      provider_cost_missing_count: 0,
+      full_provider_cost_count: 0,
+    },
+  }),
   getPricingReconciliationSummary: vi.fn(),
   getRequestPricingSnapshots: vi.fn(),
 }))

@@ -82,13 +82,43 @@ func (pricingRetentionHandler) Run(
 			break
 		}
 	}
+	circuitRetentionDays := common.GetEnvOrDefault(
+		"PRICING_CIRCUIT_EVENT_RETENTION_DAYS",
+		90,
+	)
+	var deletedCircuitEvents int64
+	if circuitRetentionDays > 0 {
+		circuitCutoff := common.GetTimestamp() -
+			int64(circuitRetentionDays)*24*60*60
+		for range pricingRetentionMaxBatchesPerRun {
+			count, err := pricingruntime.PurgePricingCircuitEvents(
+				circuitCutoff,
+				pricingRetentionBatchSize,
+			)
+			if err != nil {
+				finishSystemTaskHandler(
+					task,
+					runnerID,
+					model.SystemTaskStatusFailed,
+					nil,
+					err,
+				)
+				return
+			}
+			deletedCircuitEvents += count
+			if count < pricingRetentionBatchSize {
+				break
+			}
+		}
+	}
 	finishSystemTaskHandler(
 		task,
 		runnerID,
 		model.SystemTaskStatusSucceeded,
 		map[string]int64{
-			"deleted_count": deleted,
-			"cutoff":        cutoff,
+			"deleted_count":          deleted,
+			"deleted_circuit_events": deletedCircuitEvents,
+			"cutoff":                 cutoff,
 		},
 		nil,
 	)

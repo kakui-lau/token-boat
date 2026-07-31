@@ -301,8 +301,12 @@ func migrateDB() error {
 		&ChannelModelPurchasePriceVersion{},
 		&ChannelModelRetailPriceVersion{},
 		&RequestPricingSnapshot{},
+		&PricingCircuitEvent{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := backfillPricingFinancialColumns(); err != nil {
 		return err
 	}
 	if err := InitializeModelOfficialPrices(); err != nil {
@@ -374,6 +378,7 @@ func migrateDBFast() error {
 		{&ChannelModelPurchasePriceVersion{}, "ChannelModelPurchasePriceVersion"},
 		{&ChannelModelRetailPriceVersion{}, "ChannelModelRetailPriceVersion"},
 		{&RequestPricingSnapshot{}, "RequestPricingSnapshot"},
+		{&PricingCircuitEvent{}, "PricingCircuitEvent"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
@@ -398,6 +403,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := backfillPricingFinancialColumns(); err != nil {
+		return err
+	}
 	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
@@ -417,6 +425,23 @@ func migrateDBFast() error {
 		}
 	}
 	common.SysLog("database migrated")
+	return nil
+}
+
+func backfillPricingFinancialColumns() error {
+	columns := map[string]interface{}{
+		"provider_reported_cost": "0",
+		"provider_cost_known":    false,
+		"cost_variance":          "0",
+		"gross_margin":           "0",
+	}
+	for column, value := range columns {
+		if err := DB.Model(&RequestPricingSnapshot{}).
+			Where(column+" IS NULL").
+			UpdateColumn(column, value).Error; err != nil {
+			return fmt.Errorf("backfill request pricing snapshot %s: %w", column, err)
+		}
+	}
 	return nil
 }
 

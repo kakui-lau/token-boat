@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
@@ -154,4 +155,24 @@ func TestChannelCircuitRedisIgnoresClientErrors(t *testing.T) {
 	overview := GetChannelCircuitOverview()
 	assert.Empty(t, overview.Channels)
 	assert.Empty(t, overview.Events)
+}
+
+func TestPersistentCircuitEventsAreRetainedAndPurgedInBatches(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, storeCircuitEvent(ChannelCircuitEvent{
+		ChannelId: 81, Event: "opened", StatusCode: 500, OccurredAt: 100,
+	}))
+	require.NoError(t, storeCircuitEvent(ChannelCircuitEvent{
+		ChannelId: 82, Event: "recovered", OccurredAt: 200,
+	}))
+
+	deleted, err := PurgePricingCircuitEvents(150, 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), deleted)
+
+	var remaining []model.PricingCircuitEvent
+	require.NoError(t, model.DB.Order("id ASC").Find(&remaining).Error)
+	require.Len(t, remaining, 1)
+	assert.Equal(t, 82, remaining[0].ChannelId)
+	assert.Equal(t, "recovered", remaining[0].Event)
 }

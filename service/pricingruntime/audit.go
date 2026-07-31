@@ -3,12 +3,14 @@ package pricingruntime
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service/pricingengine"
+	"github.com/shopspring/decimal"
 )
 
 const (
@@ -156,6 +158,77 @@ func SettleRequestPricingSnapshot(
 		return errors.New("v2 pricing snapshot was not found or already settled")
 	}
 	return nil
+}
+
+func RecordProviderReportedCost(
+	requestId string,
+	providerCost decimal.Decimal,
+	scope string,
+) error {
+	requestId = strings.TrimSpace(requestId)
+	if requestId == "" {
+		return errors.New("request id is required")
+	}
+	if providerCost.IsNegative() {
+		return errors.New("provider reported cost cannot be negative")
+	}
+	switch scope {
+	case "full_provider_cost", "platform_fee_only":
+	default:
+		return errors.New("provider cost scope is invalid")
+	}
+	var snapshot model.RequestPricingSnapshot
+	if err := model.DB.Where("request_id = ?", requestId).First(&snapshot).Error; err != nil {
+		return err
+	}
+	if snapshot.Status != PricingSnapshotStatusSettled {
+		return errors.New("provider cost can only be recorded for a settled snapshot")
+	}
+	if snapshot.ProviderCostKnown {
+		existing, err := decimal.NewFromString(snapshot.ProviderReportedCost)
+		if err != nil {
+			return err
+		}
+		if existing.Equal(providerCost) && snapshot.ProviderCostScope == scope {
+			return nil
+		}
+		return errors.New("provider reported cost was already recorded")
+	}
+	estimated, err := decimal.NewFromString(snapshot.PurchaseCost)
+	if err != nil {
+		return fmt.Errorf("parse estimated purchase cost: %w", err)
+	}
+	retail, err := decimal.NewFromString(snapshot.RetailAmount)
+	if err != nil {
+		return fmt.Errorf("parse retail amount: %w", err)
+	}
+	variance := providerCost.Sub(estimated)
+	grossMargin := decimal.Zero
+	if scope == "full_provider_cost" {
+		grossMargin = retail.Sub(providerCost)
+	}
+	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where(
+			"request_id = ? AND status = ? AND provider_cost_known = ?",
+			requestId,
+			PricingSnapshotStatusSettled,
+			false,
+		).
+		Updates(map[string]any{
+			"provider_reported_cost": providerCost.String(),
+			"provider_cost_known":    true,
+			"provider_cost_scope":    scope,
+			"cost_variance":          variance.String(),
+			"gross_margin":           grossMargin.String(),
+			"updated_at":             common.GetTimestamp(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
+	return errors.New("provider reported cost changed concurrently")
 }
 
 func markPricingSnapshotPending(requestId string, failureCode string, failureReason string) {

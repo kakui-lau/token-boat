@@ -53,6 +53,24 @@ vi.mock('../api', () => ({
     success: true,
     data: { channels: [], events: [] },
   }),
+  getPricingCircuitEvents: vi.fn().mockResolvedValue({
+    success: true,
+    data: { items: [], total: 0, page: 1, page_size: 100 },
+  }),
+  getPricingFinancialSummary: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      settled_count: 0,
+      revenue_usd: '0',
+      estimated_purchase_usd: '0',
+      provider_reported_cost_usd: '0',
+      cost_variance_usd: '0',
+      gross_margin_usd: '0',
+      provider_cost_known_count: 0,
+      provider_cost_missing_count: 0,
+      full_provider_cost_count: 0,
+    },
+  }),
   getPricingReconciliationSummary: vi.fn().mockResolvedValue({
     success: true,
     data: {

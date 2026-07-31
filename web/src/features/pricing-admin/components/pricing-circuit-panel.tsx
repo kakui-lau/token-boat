@@ -28,7 +28,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-import { getPricingCircuitOverview, resetPricingCircuit } from '../api'
+import {
+  getPricingCircuitEvents,
+  getPricingCircuitOverview,
+  resetPricingCircuit,
+} from '../api'
 import type { ChannelCircuitEvent, ChannelCircuitStatus } from '../types'
 
 function CircuitStateBadge(props: { state: ChannelCircuitStatus['state'] }) {
@@ -71,25 +75,32 @@ export function PricingCircuitPanel() {
     queryKey: ['pricing-admin', 'circuit-overview'],
     queryFn: getPricingCircuitOverview,
   })
+  const circuitEventsQuery = useQuery({
+    queryKey: ['pricing-admin', 'circuit-events', channelFilter, eventFilter],
+    queryFn: () =>
+      getPricingCircuitEvents({
+        channel_id: channelFilter ? Number(channelFilter) : undefined,
+        event: eventFilter || undefined,
+        page: 1,
+        page_size: 100,
+      }),
+  })
   const resetMutation = useMutation({
     mutationFn: resetPricingCircuit,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'circuit-overview'],
       })
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'circuit-events'],
+      })
     },
   })
   const channels = circuitQuery.data?.data.channels ?? []
-  const allEvents = circuitQuery.data?.data.events ?? []
-  const events = allEvents
-    .filter(
-      (event) =>
-        (!channelFilter || event.channel_id === Number(channelFilter)) &&
-        (!eventFilter || event.event === eventFilter)
-    )
-    .slice(-100)
-    .reverse()
-  const openCount = channels.filter((channel) => channel.state === 'open').length
+  const events = circuitEventsQuery.data?.data.items ?? []
+  const openCount = channels.filter(
+    (channel) => channel.state === 'open'
+  ).length
   const totalSuccess = channels.reduce(
     (total, channel) => total + channel.success_count,
     0
@@ -127,8 +138,13 @@ export function PricingCircuitPanel() {
         <Button
           size='sm'
           variant='outline'
-          disabled={circuitQuery.isFetching}
-          onClick={() => circuitQuery.refetch()}
+          disabled={circuitQuery.isFetching || circuitEventsQuery.isFetching}
+          onClick={() => {
+            void Promise.all([
+              circuitQuery.refetch(),
+              circuitEventsQuery.refetch(),
+            ])
+          }}
         >
           <RefreshCw aria-hidden='true' />
           {t('Refresh')}
@@ -145,7 +161,7 @@ export function PricingCircuitPanel() {
               : '—',
           ],
           [t('Average latency'), `${Math.round(averageLatency)} ms`],
-          [t('Event'), allEvents.length],
+          [t('Event'), circuitEventsQuery.data?.data.total ?? 0],
         ].map(([label, value]) => (
           <Card key={String(label)} size='sm'>
             <CardContent>
@@ -285,51 +301,48 @@ export function PricingCircuitPanel() {
                 'manual_reset',
               ].map((event) => (
                 <NativeSelectOption key={event} value={event}>
-                  {circuitEventLabel(
-                    event as ChannelCircuitEvent['event'],
-                    t
-                  )}
+                  {circuitEventLabel(event as ChannelCircuitEvent['event'], t)}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
           </div>
           <div className='overflow-x-auto rounded-lg border'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('Time')}</TableHead>
-                <TableHead>{t('Channel')}</TableHead>
-                <TableHead>{t('Event')}</TableHead>
-                <TableHead>{t('Status code')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {events.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className='whitespace-nowrap'>
-                    {dayjs.unix(event.occurred_at).format('HH:mm:ss')}
-                  </TableCell>
-                  <TableCell>
-                    {event.channel_name || `#${event.channel_id}`}
-                  </TableCell>
-                  <TableCell>{circuitEventLabel(event.event, t)}</TableCell>
-                  <TableCell>
-                    {event.status_code > 0 ? event.status_code : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!circuitQuery.isLoading && events.length === 0 ? (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className='text-muted-foreground h-20 text-center'
-                  >
-                    {t('No circuit events')}
-                  </TableCell>
+                  <TableHead>{t('Time')}</TableHead>
+                  <TableHead>{t('Channel')}</TableHead>
+                  <TableHead>{t('Event')}</TableHead>
+                  <TableHead>{t('Status code')}</TableHead>
                 </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {events.map((event) => (
+                  <TableRow key={event.id}>
+                    <TableCell className='whitespace-nowrap'>
+                      {dayjs.unix(event.occurred_at).format('HH:mm:ss')}
+                    </TableCell>
+                    <TableCell>
+                      {event.channel_name || `#${event.channel_id}`}
+                    </TableCell>
+                    <TableCell>{circuitEventLabel(event.event, t)}</TableCell>
+                    <TableCell>
+                      {event.status_code > 0 ? event.status_code : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!circuitQuery.isLoading && events.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className='text-muted-foreground h-20 text-center'
+                    >
+                      {t('No circuit events')}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
           </div>
         </div>
       </div>

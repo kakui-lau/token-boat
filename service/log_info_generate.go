@@ -13,9 +13,11 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // attachQuotaSaturationToOther nests a quota saturation marker under
@@ -115,7 +117,9 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["provider_is_byok"] = *usage.IsByok
 	}
 	isByok := usage.IsByok != nil && *usage.IsByok
+	providerCostScope := "full_provider_cost"
 	if isByok {
+		providerCostScope = "platform_fee_only"
 		adminInfo["provider_cost_scope"] = "platform_fee_only"
 		adminInfo["gross_margin_known"] = false
 	} else if relayInfo.BillingSource == BillingSourceSubscription {
@@ -125,6 +129,19 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["gross_margin_basis"] = "customer_charge"
 		adminInfo["gross_margin_known"] = true
 		adminInfo["gross_margin_usd"] = float64(chargedQuota)/float64(common.QuotaPerUnit) - providerCost
+	}
+	if relayInfo.DynamicPricingSnapshot != nil {
+		if err := pricingruntime.RecordProviderReportedCost(
+			relayInfo.RequestId,
+			decimal.NewFromFloat(providerCost),
+			providerCostScope,
+		); err != nil {
+			common.SysError(fmt.Sprintf(
+				"record provider cost on pricing snapshot failed: request=%s error=%s",
+				relayInfo.RequestId,
+				err.Error(),
+			))
+		}
 	}
 }
 

@@ -35,6 +35,7 @@ func setupPricingAdminControllerTestDB(t *testing.T) {
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 		&model.RequestPricingSnapshot{},
+		&model.PricingCircuitEvent{},
 	))
 	t.Cleanup(func() {
 		model.DB = originalDB
@@ -708,4 +709,96 @@ func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testi
 	require.NoError(t, model.DB.First(&snapshot, snapshot.Id).Error)
 	assert.Equal(t, pricingruntime.PricingSnapshotStatusRefunded, snapshot.Status)
 	assert.Zero(t, snapshot.SettledQuota)
+}
+
+func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	snapshot := model.RequestPricingSnapshot{
+		RequestId: "provider-cost-summary", UserId: 7,
+		ModelId: 1, ChannelModelId: 1,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
+		BillingMode: "token", PurchaseCost: "0.40", RetailAmount: "1.00",
+		Currency: "USD", ReservedQuota: 100, SettledQuota: 100,
+		Status: pricingruntime.PricingSnapshotStatusSettled,
+	}
+	require.NoError(t, model.DB.Create(&snapshot).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		fmt.Sprintf(
+			"/api/pricing-admin/request-pricing-snapshots/%d/provider-cost",
+			snapshot.Id,
+		),
+		providerReportedCostInput{Cost: "0.45", Scope: "full_provider_cost"},
+	)
+	context.Params = gin.Params{{Key: "id", Value: strconv.Itoa(snapshot.Id)}}
+
+	AdminRecordProviderReportedCost(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	summaryContext, summaryRecorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/financial-summary",
+		nil,
+	)
+	AdminGetPricingFinancialSummary(summaryContext)
+	assert.Equal(t, http.StatusOK, summaryRecorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			SettledCount             int    `json:"settled_count"`
+			RevenueUSD               string `json:"revenue_usd"`
+			EstimatedPurchaseUSD     string `json:"estimated_purchase_usd"`
+			ProviderReportedCostUSD  string `json:"provider_reported_cost_usd"`
+			CostVarianceUSD          string `json:"cost_variance_usd"`
+			GrossMarginUSD           string `json:"gross_margin_usd"`
+			ProviderCostMissingCount int    `json:"provider_cost_missing_count"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(summaryRecorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.Equal(t, 1, response.Data.SettledCount)
+	assert.Equal(t, "1", response.Data.RevenueUSD)
+	assert.Equal(t, "0.4", response.Data.EstimatedPurchaseUSD)
+	assert.Equal(t, "0.45", response.Data.ProviderReportedCostUSD)
+	assert.Equal(t, "0.05", response.Data.CostVarianceUSD)
+	assert.Equal(t, "0.55", response.Data.GrossMarginUSD)
+	assert.Zero(t, response.Data.ProviderCostMissingCount)
+}
+
+func TestAdminListPersistentCircuitEventsFiltersEventType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 77, Name: "persistent-circuit-channel",
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.PricingCircuitEvent{
+		{ChannelId: 77, Event: "opened", StatusCode: 500, OccurredAt: 100},
+		{ChannelId: 77, Event: "recovered", OccurredAt: 200},
+	}).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/circuit-events?event=opened",
+		nil,
+	)
+
+	AdminListPricingCircuitEvents(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []persistentPricingCircuitEventAdminRow `json:"items"`
+			Total int64                                   `json:"total"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.Equal(t, int64(1), response.Data.Total)
+	require.Len(t, response.Data.Items, 1)
+	assert.Equal(t, "opened", response.Data.Items[0].Event)
+	assert.Equal(t, "persistent-circuit-channel", response.Data.Items[0].ChannelName)
 }

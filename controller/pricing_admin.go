@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -50,6 +51,16 @@ type pricingCircuitChannelAdminRow struct {
 type pricingCircuitEventAdminRow struct {
 	pricingruntime.ChannelCircuitEvent
 	ChannelName string `json:"channel_name"`
+}
+
+type persistentPricingCircuitEventAdminRow struct {
+	model.PricingCircuitEvent
+	ChannelName string `json:"channel_name"`
+}
+
+type providerReportedCostInput struct {
+	Cost  string `json:"cost"`
+	Scope string `json:"scope"`
 }
 
 const pricingReconciliationReservedAgeSeconds = 15 * 60
@@ -129,6 +140,60 @@ func AdminResetPricingCircuit(c *gin.Context) {
 		"reset":      reset,
 	})
 	common.ApiSuccess(c, gin.H{"channel_id": channelId, "reset": reset})
+}
+
+func AdminListPricingCircuitEvents(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	query := model.DB.Table("pricing_circuit_events").
+		Select(
+			"pricing_circuit_events.*, COALESCE(channels.name, '') AS channel_name",
+		).
+		Joins("LEFT JOIN channels ON channels.id = pricing_circuit_events.channel_id")
+	if rawChannelId := strings.TrimSpace(c.Query("channel_id")); rawChannelId != "" {
+		channelId, err := strconv.Atoi(rawChannelId)
+		if err != nil || channelId <= 0 {
+			common.ApiErrorMsg(c, "channel_id 无效")
+			return
+		}
+		query = query.Where("pricing_circuit_events.channel_id = ?", channelId)
+	}
+	if event := strings.TrimSpace(c.Query("event")); event != "" {
+		switch event {
+		case "failure", "opened", "rate_limited", "half_open_probe", "recovered", "manual_reset":
+			query = query.Where("pricing_circuit_events.event = ?", event)
+		default:
+			common.ApiErrorMsg(c, "event 无效")
+			return
+		}
+	}
+	createdFrom, createdTo, err := pricingSummaryTimeRange(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if createdFrom > 0 {
+		query = query.Where("pricing_circuit_events.occurred_at >= ?", createdFrom)
+	}
+	if createdTo > 0 {
+		query = query.Where("pricing_circuit_events.occurred_at <= ?", createdTo)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var rows []persistentPricingCircuitEventAdminRow
+	if err := query.Order("pricing_circuit_events.id DESC").
+		Offset(pageInfo.GetStartIdx()).
+		Limit(pageInfo.GetPageSize()).
+		Scan(&rows).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": rows, "total": total,
+		"page": pageInfo.GetPage(), "page_size": pageInfo.GetPageSize(),
+	})
 }
 
 func AdminSetPricingModelRuntime(c *gin.Context) {
@@ -400,6 +465,145 @@ func AdminConfirmRequestPricingSnapshotRefunded(c *gin.Context) {
 		"user_id":     snapshot.UserId,
 	})
 	common.ApiSuccess(c, gin.H{"id": id, "status": pricingruntime.PricingSnapshotStatusRefunded})
+}
+
+func AdminRecordProviderReportedCost(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "id 无效")
+		return
+	}
+	var input providerReportedCostInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	cost, err := decimal.NewFromString(strings.TrimSpace(input.Cost))
+	if err != nil || cost.IsNegative() {
+		common.ApiErrorMsg(c, "供应商成本必须是非负 USD 金额")
+		return
+	}
+	var snapshot model.RequestPricingSnapshot
+	if err := model.DB.First(&snapshot, id).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingruntime.RecordProviderReportedCost(
+		snapshot.RequestId,
+		cost,
+		strings.TrimSpace(input.Scope),
+	); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "pricing.reconciliation.provider_cost", map[string]interface{}{
+		"snapshot_id": id,
+		"request_id":  snapshot.RequestId,
+		"cost":        cost.String(),
+		"scope":       input.Scope,
+	})
+	common.ApiSuccess(c, gin.H{
+		"id": id, "provider_reported_cost": cost.String(), "scope": input.Scope,
+	})
+}
+
+func AdminGetPricingFinancialSummary(c *gin.Context) {
+	baseQuery := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ?", pricingruntime.PricingSnapshotStatusSettled)
+	createdFrom, createdTo, err := pricingSummaryTimeRange(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if createdFrom > 0 {
+		baseQuery = baseQuery.Where("created_at >= ?", createdFrom)
+	}
+	if createdTo > 0 {
+		baseQuery = baseQuery.Where("created_at <= ?", createdTo)
+	}
+	type financialTotals struct {
+		Count         int64  `gorm:"column:record_count"`
+		Revenue       string `gorm:"column:revenue"`
+		EstimatedCost string `gorm:"column:estimated_cost"`
+	}
+	var totals financialTotals
+	if err := baseQuery.Session(&gorm.Session{}).
+		Select(
+			"COUNT(*) AS record_count, " +
+				"COALESCE(SUM(retail_amount), 0) AS revenue, " +
+				"COALESCE(SUM(purchase_cost), 0) AS estimated_cost",
+		).
+		Scan(&totals).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	type providerCostTotals struct {
+		Count        int64  `gorm:"column:record_count"`
+		ProviderCost string `gorm:"column:provider_cost"`
+		CostVariance string `gorm:"column:cost_variance"`
+	}
+	var providerTotals providerCostTotals
+	if err := baseQuery.Session(&gorm.Session{}).
+		Where("provider_cost_known = ?", true).
+		Select(
+			"COUNT(*) AS record_count, " +
+				"COALESCE(SUM(provider_reported_cost), 0) AS provider_cost, " +
+				"COALESCE(SUM(cost_variance), 0) AS cost_variance",
+		).
+		Scan(&providerTotals).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	type grossMarginTotals struct {
+		Count       int64  `gorm:"column:record_count"`
+		GrossMargin string `gorm:"column:gross_margin"`
+	}
+	var marginTotals grossMarginTotals
+	if err := baseQuery.Session(&gorm.Session{}).
+		Where("provider_cost_known = ? AND provider_cost_scope = ?", true, "full_provider_cost").
+		Select(
+			"COUNT(*) AS record_count, " +
+				"COALESCE(SUM(gross_margin), 0) AS gross_margin",
+		).
+		Scan(&marginTotals).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"settled_count":              totals.Count,
+		"revenue_usd":                totals.Revenue,
+		"estimated_purchase_usd":     totals.EstimatedCost,
+		"provider_reported_cost_usd": providerTotals.ProviderCost,
+		"cost_variance_usd":          providerTotals.CostVariance,
+		"gross_margin_usd":           marginTotals.GrossMargin,
+		"provider_cost_known_count":  providerTotals.Count,
+		"provider_cost_missing_count": totals.Count -
+			providerTotals.Count,
+		"full_provider_cost_count": marginTotals.Count,
+	})
+}
+
+func pricingSummaryTimeRange(c *gin.Context) (int64, int64, error) {
+	var createdFrom int64
+	var createdTo int64
+	for queryName, target := range map[string]*int64{
+		"created_from": &createdFrom,
+		"created_to":   &createdTo,
+	} {
+		raw := strings.TrimSpace(c.Query(queryName))
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return 0, 0, fmt.Errorf("%s 无效", queryName)
+		}
+		*target = value
+	}
+	if createdFrom > 0 && createdTo > 0 && createdFrom > createdTo {
+		return 0, 0, errors.New("created_from 不能晚于 created_to")
+	}
+	return createdFrom, createdTo, nil
 }
 
 func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {

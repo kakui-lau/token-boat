@@ -287,13 +287,15 @@ func appendChannelCircuitEventLocked(
 	statusCode int,
 	occurredAt time.Time,
 ) {
-	channelCircuits.events = append(channelCircuits.events, ChannelCircuitEvent{
+	persistedEvent := ChannelCircuitEvent{
 		Id:         channelCircuits.nextEventId + 1,
 		ChannelId:  channelId,
 		Event:      event,
 		StatusCode: statusCode,
 		OccurredAt: occurredAt.Unix(),
-	})
+	}
+	channelCircuits.events = append(channelCircuits.events, persistedEvent)
+	enqueueCircuitEventPersistence(persistedEvent)
 	channelCircuits.nextEventId++
 	if len(channelCircuits.events) > channelCircuitEventLimit {
 		channelCircuits.events = append(

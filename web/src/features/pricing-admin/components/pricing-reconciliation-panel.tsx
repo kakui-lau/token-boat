@@ -26,8 +26,10 @@ import {
 
 import {
   confirmPricingSnapshotRefunded,
+  getPricingFinancialSummary,
   getPricingReconciliationSummary,
   getRequestPricingSnapshots,
+  recordPricingSnapshotProviderCost,
 } from '../api'
 
 function formatPricingUsage(value?: string): string {
@@ -54,6 +56,10 @@ export function PricingReconciliationPanel() {
   )
   const [keyword, setKeyword] = useState('')
   const [appliedKeyword, setAppliedKeyword] = useState('')
+  const [providerCost, setProviderCost] = useState('')
+  const [providerCostScope, setProviderCostScope] = useState<
+    'full_provider_cost' | 'platform_fee_only'
+  >('full_provider_cost')
   const pageSize = 20
   const snapshotsQuery = useQuery({
     queryKey: [
@@ -87,10 +93,35 @@ export function PricingReconciliationPanel() {
     queryKey: ['pricing-admin', 'request-pricing-snapshots', 'summary'],
     queryFn: getPricingReconciliationSummary,
   })
+  const financialSummaryQuery = useQuery({
+    queryKey: [
+      'pricing-admin',
+      'request-pricing-snapshots',
+      'financial-summary',
+    ],
+    queryFn: getPricingFinancialSummary,
+  })
   const confirmRefundMutation = useMutation({
     mutationFn: confirmPricingSnapshotRefunded,
     onSuccess: async () => {
       setConfirmRefundId(null)
+      await queryClient.invalidateQueries({
+        queryKey: ['pricing-admin', 'request-pricing-snapshots'],
+      })
+    },
+  })
+  const providerCostMutation = useMutation({
+    mutationFn: (input: {
+      id: number
+      cost: string
+      scope: 'full_provider_cost' | 'platform_fee_only'
+    }) =>
+      recordPricingSnapshotProviderCost(input.id, {
+        cost: input.cost,
+        scope: input.scope,
+      }),
+    onSuccess: async () => {
+      setProviderCost('')
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'request-pricing-snapshots'],
       })
@@ -159,11 +190,16 @@ export function PricingReconciliationPanel() {
           <Button
             size='sm'
             variant='outline'
-            disabled={snapshotsQuery.isFetching || summaryQuery.isFetching}
+            disabled={
+              snapshotsQuery.isFetching ||
+              summaryQuery.isFetching ||
+              financialSummaryQuery.isFetching
+            }
             onClick={() => {
               void Promise.all([
                 snapshotsQuery.refetch(),
                 summaryQuery.refetch(),
+                financialSummaryQuery.refetch(),
               ])
             }}
           >
@@ -301,6 +337,48 @@ export function PricingReconciliationPanel() {
           </Card>
         ))}
       </div>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-6'>
+        {[
+          {
+            label: t('Sales revenue'),
+            value: financialSummaryQuery.data?.data.revenue_usd ?? '0',
+          },
+          {
+            label: t('Estimated purchase cost'),
+            value:
+              financialSummaryQuery.data?.data.estimated_purchase_usd ?? '0',
+          },
+          {
+            label: t('Provider reported cost'),
+            value:
+              financialSummaryQuery.data?.data.provider_reported_cost_usd ??
+              '0',
+          },
+          {
+            label: t('Cost variance'),
+            value: financialSummaryQuery.data?.data.cost_variance_usd ?? '0',
+          },
+          {
+            label: t('Gross margin'),
+            value: financialSummaryQuery.data?.data.gross_margin_usd ?? '0',
+          },
+          {
+            label: t('Missing provider costs'),
+            value:
+              financialSummaryQuery.data?.data.provider_cost_missing_count ?? 0,
+          },
+        ].map((item) => (
+          <Card key={item.label} size='sm'>
+            <CardContent>
+              <div className='text-muted-foreground text-xs'>{item.label}</div>
+              <div className='mt-1 font-mono text-lg font-semibold tabular-nums'>
+                {item.value}
+                {typeof item.value === 'string' ? ' USD' : ''}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
       <form
         className='flex flex-wrap items-center gap-2'
         role='search'
@@ -332,6 +410,9 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Reserved quota')}</TableHead>
               <TableHead>{t('Settled quota')}</TableHead>
               <TableHead>{t('Purchase cost')}</TableHead>
+              <TableHead>{t('Provider reported cost')}</TableHead>
+              <TableHead>{t('Cost variance')}</TableHead>
+              <TableHead>{t('Gross margin')}</TableHead>
               <TableHead>{t('Retail amount')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
               <TableHead>{t('Failure reason')}</TableHead>
@@ -358,6 +439,22 @@ export function PricingReconciliationPanel() {
                 </TableCell>
                 <TableCell className='font-mono whitespace-nowrap tabular-nums'>
                   {row.purchase_cost} {row.currency}
+                </TableCell>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                  {row.provider_cost_known
+                    ? `${row.provider_reported_cost} ${row.currency}`
+                    : '—'}
+                </TableCell>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                  {row.provider_cost_known
+                    ? `${row.cost_variance} ${row.currency}`
+                    : '—'}
+                </TableCell>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                  {row.provider_cost_known &&
+                  row.provider_cost_scope === 'full_provider_cost'
+                    ? `${row.gross_margin} ${row.currency}`
+                    : '—'}
                 </TableCell>
                 <TableCell className='font-mono whitespace-nowrap tabular-nums'>
                   {row.retail_amount} {row.currency}
@@ -414,7 +511,7 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={12}
+                  colSpan={15}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}
@@ -509,6 +606,60 @@ export function PricingReconciliationPanel() {
                 </div>
               ))}
             </div>
+            {selectedSnapshot.status === 'settled' &&
+            !selectedSnapshot.provider_cost_known ? (
+              <form
+                className='flex flex-wrap items-end gap-2'
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  providerCostMutation.mutate({
+                    id: selectedSnapshot.id,
+                    cost: providerCost,
+                    scope: providerCostScope,
+                  })
+                }}
+              >
+                <label className='grid gap-1 text-xs'>
+                  <span>{t('Provider reported cost')}</span>
+                  <Input
+                    type='number'
+                    required
+                    min='0'
+                    step='0.00000001'
+                    inputMode='decimal'
+                    value={providerCost}
+                    onChange={(event) => setProviderCost(event.target.value)}
+                  />
+                </label>
+                <label className='grid gap-1 text-xs'>
+                  <span>{t('Provider cost scope')}</span>
+                  <NativeSelect
+                    value={providerCostScope}
+                    onChange={(event) =>
+                      setProviderCostScope(
+                        event.target.value as
+                          | 'full_provider_cost'
+                          | 'platform_fee_only'
+                      )
+                    }
+                  >
+                    <NativeSelectOption value='full_provider_cost'>
+                      {t('Full provider cost')}
+                    </NativeSelectOption>
+                    <NativeSelectOption value='platform_fee_only'>
+                      {t('Platform fee only')}
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </label>
+                <Button
+                  type='submit'
+                  size='sm'
+                  disabled={providerCostMutation.isPending}
+                >
+                  {t('Record provider cost')}
+                </Button>
+              </form>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}

@@ -36,6 +36,7 @@ func setupRuntimeCatalogTestDB(t *testing.T) {
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 		&model.RequestPricingSnapshot{},
+		&model.PricingCircuitEvent{},
 	))
 	InvalidateCatalog()
 	t.Cleanup(func() {
@@ -799,6 +800,63 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	assert.Equal(t, int64(common.QuotaPerUnit), settled.SettledQuota)
 	assert.NotContains(t, settled.ActualUsage, "private audit prompt")
 	assert.Contains(t, settled.ActualUsage, `"request_body":""`)
+}
+
+func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 27, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-provider-cost", UserId: 9,
+		OriginModelName: "runtime-model",
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		27,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+	require.NoError(t, SettleRequestPricingSnapshot(
+		info,
+		&dto.Usage{PromptTokens: 500_000},
+		int(common.QuotaPerUnit),
+	))
+
+	require.NoError(t, RecordProviderReportedCost(
+		info.RequestId,
+		decimal.RequireFromString("0.25"),
+		"full_provider_cost",
+	))
+	require.NoError(t, RecordProviderReportedCost(
+		info.RequestId,
+		decimal.RequireFromString("0.25"),
+		"full_provider_cost",
+	))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		info.RequestId,
+	).First(&snapshot).Error)
+	assert.True(t, snapshot.ProviderCostKnown)
+	assert.Equal(t, "0.25", snapshot.ProviderReportedCost)
+	assert.Equal(t, "-0.25", snapshot.CostVariance)
+	assert.Equal(t, "0.75", snapshot.GrossMargin)
+	assert.Equal(t, "full_provider_cost", snapshot.ProviderCostScope)
+
+	err = RecordProviderReportedCost(
+		info.RequestId,
+		decimal.RequireFromString("0.26"),
+		"full_provider_cost",
+	)
+	require.ErrorContains(t, err, "already recorded")
 }
 
 func TestRequestPricingSnapshotRecordsCompletedRefund(t *testing.T) {

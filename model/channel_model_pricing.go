@@ -188,6 +188,11 @@ type RequestPricingSnapshot struct {
 	ReservedQuota          int64  `json:"reserved_quota" gorm:"bigint;not null"`
 	SettledQuota           int64  `json:"settled_quota" gorm:"bigint;not null"`
 	PurchaseCost           string `json:"purchase_cost" gorm:"type:decimal(36,18);not null"`
+	ProviderReportedCost   string `json:"provider_reported_cost" gorm:"type:decimal(36,18)"`
+	ProviderCostKnown      bool   `json:"provider_cost_known"`
+	ProviderCostScope      string `json:"provider_cost_scope" gorm:"type:varchar(32)"`
+	CostVariance           string `json:"cost_variance" gorm:"type:decimal(36,18)"`
+	GrossMargin            string `json:"gross_margin" gorm:"type:decimal(36,18)"`
 	RetailAmount           string `json:"retail_amount" gorm:"type:decimal(36,18);not null"`
 	Currency               string `json:"currency" gorm:"type:varchar(8);not null"`
 	Status                 string `json:"status" gorm:"type:varchar(16);not null;index"`
@@ -263,6 +268,15 @@ func (s *RequestPricingSnapshot) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
 	s.UpdatedAt = now
+	if s.ProviderReportedCost == "" {
+		s.ProviderReportedCost = "0"
+	}
+	if s.CostVariance == "" {
+		s.CostVariance = "0"
+	}
+	if s.GrossMargin == "" {
+		s.GrossMargin = "0"
+	}
 	return nil
 }
 

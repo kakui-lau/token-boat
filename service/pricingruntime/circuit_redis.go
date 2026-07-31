@@ -148,10 +148,11 @@ func appendChannelCircuitEventRedis(channelId int, event string, statusCode int,
 	if err != nil {
 		return err
 	}
-	payload, err := common.Marshal(ChannelCircuitEvent{
+	persistedEvent := ChannelCircuitEvent{
 		Id: id, ChannelId: channelId, Event: event,
 		StatusCode: statusCode, OccurredAt: occurredAt.Unix(),
-	})
+	}
+	payload, err := common.Marshal(persistedEvent)
 	if err != nil {
 		return err
 	}
@@ -159,6 +160,9 @@ func appendChannelCircuitEventRedis(channelId int, event string, statusCode int,
 	pipe.RPush(context.Background(), circuitRedisEventsKey, payload)
 	pipe.LTrim(context.Background(), circuitRedisEventsKey, -channelCircuitEventLimit, -1)
 	_, err = pipe.Exec(context.Background())
+	if err == nil {
+		enqueueCircuitEventPersistence(persistedEvent)
+	}
 	return err
 }
 

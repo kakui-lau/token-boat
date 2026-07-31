@@ -21,6 +21,7 @@ import { api } from '@/lib/api'
 import type {
   ActivePriceBundle,
   ChannelCircuitOverview,
+  ChannelCircuitEventListResponse,
   ChannelModel,
   ChannelModelListResponse,
   FlatTokenPrices,
@@ -30,6 +31,7 @@ import type {
   OfficialPriceVersion,
   PriceSimulationResult,
   PricingRuntimeStatus,
+  PricingFinancialSummary,
   PricingReconciliationSummary,
   PricingCatalogOptionsResponse,
   PriceVersionResponse,
@@ -50,6 +52,18 @@ export async function getPricingCircuitOverview(): Promise<
   PriceVersionResponse<ChannelCircuitOverview>
 > {
   const response = await api.get('/api/pricing-admin/circuit-overview')
+  return requirePricingSuccess(response.data)
+}
+
+export async function getPricingCircuitEvents(params: {
+  channel_id?: number
+  event?: string
+  page?: number
+  page_size?: number
+}): Promise<ChannelCircuitEventListResponse> {
+  const response = await api.get('/api/pricing-admin/circuit-events', {
+    params,
+  })
   return requirePricingSuccess(response.data)
 }
 
@@ -126,11 +140,40 @@ export async function getPricingReconciliationSummary(): Promise<
   return requirePricingSuccess(response.data)
 }
 
+export async function getPricingFinancialSummary(): Promise<
+  PriceVersionResponse<PricingFinancialSummary>
+> {
+  const response = await api.get(
+    '/api/pricing-admin/request-pricing-snapshots/financial-summary'
+  )
+  return requirePricingSuccess(response.data)
+}
+
 export async function confirmPricingSnapshotRefunded(
   id: number
 ): Promise<PriceVersionResponse<{ id: number; status: 'refunded' }>> {
   const response = await api.post(
     `/api/pricing-admin/request-pricing-snapshots/${id}/confirm-refunded`
+  )
+  return requirePricingSuccess(response.data)
+}
+
+export async function recordPricingSnapshotProviderCost(
+  id: number,
+  input: {
+    cost: string
+    scope: 'full_provider_cost' | 'platform_fee_only'
+  }
+): Promise<
+  PriceVersionResponse<{
+    id: number
+    provider_reported_cost: string
+    scope: 'full_provider_cost' | 'platform_fee_only'
+  }>
+> {
+  const response = await api.post(
+    `/api/pricing-admin/request-pricing-snapshots/${id}/provider-cost`,
+    input
   )
   return requirePricingSuccess(response.data)
 }

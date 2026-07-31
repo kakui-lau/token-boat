@@ -10,7 +10,11 @@ import {
 } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { getPricingCircuitOverview, resetPricingCircuit } from '../api'
+import {
+  getPricingCircuitEvents,
+  getPricingCircuitOverview,
+  resetPricingCircuit,
+} from '../api'
 import { PricingCircuitPanel } from '../components/pricing-circuit-panel'
 
 vi.mock('react-i18next', () => ({
@@ -20,6 +24,10 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('../api', () => ({
+  getPricingCircuitEvents: vi.fn().mockResolvedValue({
+    success: true,
+    data: { items: [], total: 0, page: 1, page_size: 100 },
+  }),
   getPricingCircuitOverview: vi.fn(),
   resetPricingCircuit: vi.fn(),
 }))
@@ -27,6 +35,24 @@ vi.mock('../api', () => ({
 afterEach(cleanup)
 
 test('shows open channels and recent circuit transitions', async () => {
+  vi.mocked(getPricingCircuitEvents).mockResolvedValueOnce({
+    success: true,
+    data: {
+      items: [
+        {
+          id: 1,
+          channel_id: 12,
+          channel_name: 'video-provider',
+          event: 'opened',
+          status_code: 503,
+          occurred_at: 1_800_000_000,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    },
+  })
   vi.mocked(getPricingCircuitOverview).mockResolvedValue({
     success: true,
     data: {

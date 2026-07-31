@@ -564,7 +564,7 @@ export function ChannelDailyUsagePage() {
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('User Revenue')}</CardTitle>
+                  <CardTitle>{t('Billed Amount')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className='text-2xl font-semibold'>
@@ -623,7 +623,7 @@ export function ChannelDailyUsagePage() {
                         {t('Total Tokens')}
                       </TableHead>
                       <TableHead className='text-right'>
-                        {t('User Revenue')}
+                        {t('Billed Amount')}
                       </TableHead>
                       <TableHead className='text-right'>
                         {t('Exceptions')}

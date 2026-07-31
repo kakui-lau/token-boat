@@ -241,13 +241,20 @@ export function ChannelMonthlyUsagePage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>{t('User Revenue')}</CardTitle>
+                <CardTitle>{t('Billed Amount')}</CardTitle>
                 <CardAction>
                   <CircleDollarSign className='text-muted-foreground size-4' />
                 </CardAction>
               </CardHeader>
-              <CardContent className='text-2xl font-semibold'>
-                {formatUsd(summary?.customer_revenue_usd)}
+              <CardContent>
+                <div className='text-2xl font-semibold'>
+                  {formatUsd(summary?.customer_revenue_usd)}
+                </div>
+                <p className='text-muted-foreground mt-1 text-xs'>
+                  {t(
+                    'Billed quota converted to USD; this is not cash received or net profit.'
+                  )}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -297,7 +304,7 @@ export function ChannelMonthlyUsagePage() {
                       {t('Total Tokens')}
                     </TableHead>
                     <TableHead className='text-right'>
-                      {t('User Revenue')}
+                      {t('Billed Amount')}
                     </TableHead>
                     <TableHead className='text-right'>
                       {t('Reported Provider Cost')}

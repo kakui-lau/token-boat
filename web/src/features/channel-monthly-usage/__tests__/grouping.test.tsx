@@ -88,6 +88,8 @@ describe('Channel monthly usage grouping', () => {
   test('switches the grouped model column from upstream to platform', () => {
     render(<ChannelMonthlyUsagePage />)
 
+    expect(screen.getAllByText('Billed Amount')).toHaveLength(2)
+    expect(screen.queryByText('User Revenue')).not.toBeInTheDocument()
     expect(
       screen.getByText('Report filters').closest('[data-slot="card"]')
     ).toHaveClass('overflow-visible')

@@ -94,6 +94,8 @@ describe('Channel daily usage report filters', () => {
   test('offers channels and model names as report filter choices', () => {
     render(<ChannelDailyUsagePage />)
 
+    expect(screen.getAllByText('Billed Amount')).toHaveLength(2)
+    expect(screen.queryByText('User Revenue')).not.toBeInTheDocument()
     expect(
       screen.getByText('Report filters').closest('[data-slot="card"]')
     ).toHaveClass('overflow-visible')

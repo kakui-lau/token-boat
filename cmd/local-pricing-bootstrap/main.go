@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,19 +32,33 @@ func main() {
 		"load .env and use its local database connection",
 	)
 	apply := flag.Bool("apply", false, "write generated local-test prices")
+	verify := flag.Bool(
+		"verify",
+		false,
+		"read and validate every enabled V2 route and representative quote",
+	)
 	flag.Parse()
 
 	if *currentEnv == (strings.TrimSpace(*databasePath) != "") {
 		exitWithError(errors.New("choose exactly one of --database or --current-env"))
 	}
+	if *apply && *verify {
+		exitWithError(errors.New("choose exactly one of --apply or --verify"))
+	}
 	if *currentEnv {
-		if !*apply {
+		if !*apply && !*verify {
 			fmt.Println("dry run: would bootstrap V2 prices using the local .env database")
-			fmt.Println("re-run with --current-env --apply after confirming the target")
+			fmt.Println("re-run with --current-env --apply or --current-env --verify")
 			return
 		}
 		if err := openCurrentEnvironmentDatabase(); err != nil {
 			exitWithError(err)
+		}
+		if *verify {
+			if err := verifyAndReport(); err != nil {
+				exitWithError(err)
+			}
+			return
 		}
 		if err := bootstrapAndReport(""); err != nil {
 			exitWithError(err)
@@ -53,9 +69,20 @@ func main() {
 	if err != nil {
 		exitWithError(err)
 	}
-	if !*apply {
+	if !*apply && !*verify {
 		fmt.Printf("dry run: would bootstrap V2 prices in %s\n", absolutePath)
-		fmt.Println("re-run with --apply after confirming this is a local-test database")
+		fmt.Println("re-run with --apply or --verify")
+		return
+	}
+	if *verify {
+		db, err := gorm.Open(sqlite.Open(absolutePath), &gorm.Config{})
+		if err != nil {
+			exitWithError(err)
+		}
+		model.DB = db
+		if err := verifyAndReport(); err != nil {
+			exitWithError(err)
+		}
 		return
 	}
 	backupPath, err := backupDatabase(absolutePath)
@@ -94,6 +121,105 @@ func bootstrapAndReport(backupPath string) error {
 		readiness.TotalChannelModels,
 		readiness.CompleteGroupModelScopes,
 	)
+	return nil
+}
+
+func verifyAndReport() error {
+	if err := pricingruntime.RefreshCatalog(); err != nil {
+		return fmt.Errorf("refresh V2 price catalog: %w", err)
+	}
+	var abilities []model.Ability
+	if err := model.DB.
+		Where("enabled = ?", true).
+		Find(&abilities).Error; err != nil {
+		return err
+	}
+	type routeScope struct {
+		group string
+		model string
+	}
+	scopes := make([]routeScope, 0)
+	seen := make(map[routeScope]struct{})
+	for _, ability := range abilities {
+		scope := routeScope{group: ability.Group, model: ability.Model}
+		if _, exists := seen[scope]; exists {
+			continue
+		}
+		seen[scope] = struct{}{}
+		scopes = append(scopes, scope)
+	}
+	sort.Slice(scopes, func(left int, right int) bool {
+		if scopes[left].group != scopes[right].group {
+			return scopes[left].group < scopes[right].group
+		}
+		return scopes[left].model < scopes[right].model
+	})
+	verifiedCandidates := 0
+	for _, scope := range scopes {
+		candidates, err := pricingruntime.PlanV2Route(scope.group, scope.model)
+		if err != nil {
+			return fmt.Errorf("%s/%s: %w", scope.group, scope.model, err)
+		}
+		if err := validateRoutePlan(candidates); err != nil {
+			return fmt.Errorf("%s/%s: %w", scope.group, scope.model, err)
+		}
+		verifiedCandidates += len(candidates)
+	}
+	readiness, err := pricingruntime.GetRuntimeReadiness()
+	if err != nil {
+		return err
+	}
+	if len(scopes) != readiness.CompleteGroupModelScopes {
+		return fmt.Errorf(
+			"catalog has %d complete scopes, but %d enabled scopes were verified",
+			readiness.CompleteGroupModelScopes,
+			len(scopes),
+		)
+	}
+	fmt.Printf(
+		"verified: %d model/group scopes, %d eligible route candidates, %d/%d channel models use V2\n",
+		len(scopes),
+		verifiedCandidates,
+		readiness.V2ChannelModels,
+		readiness.TotalChannelModels,
+	)
+	return nil
+}
+
+func validateRoutePlan(candidates []pricingruntime.RouteCandidate) error {
+	if len(candidates) == 0 {
+		return errors.New("no eligible V2 route candidate")
+	}
+	seenChannelModels := make(map[int]struct{}, len(candidates))
+	for index, candidate := range candidates {
+		if candidate.ChannelId <= 0 || candidate.ChannelModelId <= 0 {
+			return errors.New("route candidate has an invalid channel identity")
+		}
+		if _, exists := seenChannelModels[candidate.ChannelModelId]; exists {
+			return fmt.Errorf(
+				"channel model %d appears more than once",
+				candidate.ChannelModelId,
+			)
+		}
+		seenChannelModels[candidate.ChannelModelId] = struct{}{}
+		if candidate.PurchaseCost.IsNegative() {
+			return fmt.Errorf(
+				"channel model %d has a negative purchase quote",
+				candidate.ChannelModelId,
+			)
+		}
+		if math.IsNaN(candidate.RouteScore) ||
+			math.IsInf(candidate.RouteScore, 0) ||
+			candidate.RouteScore < 0 {
+			return fmt.Errorf(
+				"channel model %d has an invalid route score",
+				candidate.ChannelModelId,
+			)
+		}
+		if index > 0 && candidate.RouteScore > candidates[index-1].RouteScore {
+			return errors.New("route candidates are not sorted by descending score")
+		}
+	}
 	return nil
 }
 

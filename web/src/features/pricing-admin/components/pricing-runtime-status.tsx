@@ -37,7 +37,7 @@ export function PricingRuntimeStatus() {
   }
   const runtimeTitle = runtime.live_traffic_enabled
     ? t('V2 routing and billing are active')
-    : t('Legacy billing active')
+    : t('V2 routing unavailable')
   const runtimeDescription = runtime.live_traffic_enabled
     ? t(
         'Eligible requests use purchase-cost routing and frozen sales-price settlement.'
@@ -64,6 +64,25 @@ export function PricingRuntimeStatus() {
               count: runtime.complete_group_model_scopes,
             })}
           </Badge>
+          <Badge
+            variant={runtime.distributed_circuit_state ? 'outline' : 'destructive'}
+          >
+            {runtime.distributed_circuit_state
+              ? t('Distributed circuit state is active')
+              : t(
+                  'Circuit state is local to this instance; configure Redis before running multiple replicas.'
+                )}
+          </Badge>
+          {Object.entries({
+            [t('Cost')]: runtime.route_score_weights.cost,
+            [t('Success rate')]: runtime.route_score_weights.success,
+            [t('Latency')]: runtime.route_score_weights.latency,
+            [t('Quality')]: runtime.route_score_weights.quality,
+          }).map(([label, weight]) => (
+            <Badge key={label} variant='secondary'>
+              {label}: {(weight * 100).toFixed(0)}%
+            </Badge>
+          ))}
         </div>
       </AlertDescription>
     </Alert>

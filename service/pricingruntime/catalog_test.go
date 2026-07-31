@@ -985,6 +985,31 @@ func TestRouteScoringBalancesCostReliabilityLatencyAndQuality(t *testing.T) {
 	assert.Less(t, candidates[0].LatencyMs, candidates[1].LatencyMs)
 }
 
+func TestRouteScoreWeightsAreConfigurableAndNormalized(t *testing.T) {
+	t.Setenv("PRICING_ROUTE_COST_WEIGHT", "2")
+	t.Setenv("PRICING_ROUTE_SUCCESS_WEIGHT", "1")
+	t.Setenv("PRICING_ROUTE_LATENCY_WEIGHT", "1")
+	t.Setenv("PRICING_ROUTE_QUALITY_WEIGHT", "0")
+
+	weights := GetRouteScoreWeights()
+
+	assert.Equal(t, 0.5, weights.Cost)
+	assert.Equal(t, 0.25, weights.Success)
+	assert.Equal(t, 0.25, weights.Latency)
+	assert.Equal(t, float64(0), weights.Quality)
+}
+
+func TestRouteScoreWeightsRejectAllZeroConfiguration(t *testing.T) {
+	t.Setenv("PRICING_ROUTE_COST_WEIGHT", "0")
+	t.Setenv("PRICING_ROUTE_SUCCESS_WEIGHT", "0")
+	t.Setenv("PRICING_ROUTE_LATENCY_WEIGHT", "0")
+	t.Setenv("PRICING_ROUTE_QUALITY_WEIGHT", "0")
+
+	assert.Equal(t, RouteScoreWeights{
+		Cost: 0.5, Success: 0.25, Latency: 0.15, Quality: 0.1,
+	}, GetRouteScoreWeights())
+}
+
 func TestMixedLegacyAndV2CandidatesFallBackAsOneModel(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 10, RuntimeModeV2)

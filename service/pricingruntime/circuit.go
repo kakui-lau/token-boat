@@ -4,6 +4,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 const (
@@ -44,8 +46,9 @@ type ChannelCircuitEvent struct {
 }
 
 type ChannelCircuitOverview struct {
-	Channels []ChannelCircuitStatus `json:"channels"`
-	Events   []ChannelCircuitEvent  `json:"events"`
+	Channels    []ChannelCircuitStatus `json:"channels"`
+	Events      []ChannelCircuitEvent  `json:"events"`
+	Distributed bool                   `json:"distributed"`
 }
 
 var channelCircuits = struct {
@@ -59,6 +62,13 @@ var channelCircuits = struct {
 }
 
 func TryAcquireChannel(channelId int) bool {
+	if circuitRedisEnabled() {
+		acquired, err := tryAcquireChannelRedis(channelId, time.Now())
+		if err == nil {
+			return acquired
+		}
+		common.SysError("pricing circuit Redis acquire failed: " + err.Error())
+	}
 	return tryAcquireChannelAt(channelId, time.Now())
 }
 
@@ -89,6 +99,13 @@ func RecordChannelSuccess(channelId int) {
 }
 
 func RecordChannelSuccessWithLatency(channelId int, latency time.Duration) {
+	if circuitRedisEnabled() {
+		if err := recordChannelSuccessRedis(channelId, latency, time.Now()); err == nil {
+			return
+		} else {
+			common.SysError("pricing circuit Redis success update failed: " + err.Error())
+		}
+	}
 	channelCircuits.Lock()
 	state, exists := channelCircuits.byChannelId[channelId]
 	if exists && (!state.OpenUntil.IsZero() || !state.ProbeUntil.IsZero()) {
@@ -114,17 +131,40 @@ func ResetChannelCircuit(channelId int) bool {
 	if channelId <= 0 {
 		return false
 	}
+	if circuitRedisEnabled() {
+		reset, err := resetChannelCircuitRedis(channelId, time.Now())
+		if err == nil {
+			return reset
+		}
+		common.SysError("pricing circuit Redis reset failed: " + err.Error())
+	}
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
-	if _, exists := channelCircuits.byChannelId[channelId]; !exists {
+	state, exists := channelCircuits.byChannelId[channelId]
+	if !exists {
 		return false
 	}
-	delete(channelCircuits.byChannelId, channelId)
+	if state.ConsecutiveFailures == 0 &&
+		state.OpenUntil.IsZero() &&
+		state.ProbeUntil.IsZero() {
+		return false
+	}
+	state.ConsecutiveFailures = 0
+	state.OpenUntil = time.Time{}
+	state.ProbeUntil = time.Time{}
+	channelCircuits.byChannelId[channelId] = state
 	appendChannelCircuitEventLocked(channelId, "manual_reset", 0, time.Now())
 	return true
 }
 
 func RecordChannelFailure(channelId int, statusCode int) {
+	if circuitRedisEnabled() {
+		if err := recordChannelFailureRedis(channelId, statusCode, time.Now()); err == nil {
+			return
+		} else {
+			common.SysError("pricing circuit Redis failure update failed: " + err.Error())
+		}
+	}
 	recordChannelFailureAt(channelId, statusCode, time.Now())
 }
 
@@ -133,14 +173,16 @@ func recordChannelFailureAt(channelId int, statusCode int, now time.Time) {
 	defer channelCircuits.Unlock()
 
 	state, exists := channelCircuits.byChannelId[channelId]
-	state.ProbeUntil = time.Time{}
-	state.FailureCount++
 	switch {
 	case statusCode == 429:
+		state.ProbeUntil = time.Time{}
+		state.FailureCount++
 		state.ConsecutiveFailures = 0
 		state.OpenUntil = now.Add(channelRateLimitCooldown)
 		appendChannelCircuitEventLocked(channelId, "rate_limited", statusCode, now)
 	case statusCode == 0 || statusCode == 408 || statusCode >= 500:
+		state.ProbeUntil = time.Time{}
+		state.FailureCount++
 		state.ConsecutiveFailures++
 		if state.ConsecutiveFailures >= channelFailureThreshold || !state.OpenUntil.IsZero() {
 			state.OpenUntil = now.Add(channelFailureCooldown)
@@ -159,6 +201,13 @@ func recordChannelFailureAt(channelId int, statusCode int, now time.Time) {
 }
 
 func GetChannelCircuitOverview() ChannelCircuitOverview {
+	if circuitRedisEnabled() {
+		overview, err := getChannelCircuitOverviewRedis(time.Now())
+		if err == nil {
+			return overview
+		}
+		common.SysError("pricing circuit Redis overview failed: " + err.Error())
+	}
 	now := time.Now()
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
@@ -205,6 +254,13 @@ type ChannelRouteMetrics struct {
 }
 
 func GetChannelRouteMetrics(channelId int) ChannelRouteMetrics {
+	if circuitRedisEnabled() {
+		metrics, err := getChannelRouteMetricsRedis(channelId)
+		if err == nil {
+			return metrics
+		}
+		common.SysError("pricing circuit Redis metrics failed: " + err.Error())
+	}
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
 	state := channelCircuits.byChannelId[channelId]

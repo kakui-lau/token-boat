@@ -115,9 +115,13 @@ export function PricingCircuitPanel() {
             {t('Channel Circuit Status')}
           </h2>
           <p className='text-muted-foreground text-sm'>
-            {t(
-              'Tracks channel failures, cooldowns, half-open probes, and recoveries in this process.'
-            )}
+            {circuitQuery.data?.data.distributed
+              ? t(
+                  'Tracks channel failures, cooldowns, half-open probes, and recoveries across all replicas.'
+                )
+              : t(
+                  'Tracks channel failures, cooldowns, half-open probes, and recoveries in this process.'
+                )}
           </p>
         </div>
         <Button

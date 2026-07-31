@@ -1,7 +1,10 @@
 package pricingruntime
 
 import (
+	"math"
+	"os"
 	"sort"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/shopspring/decimal"
@@ -17,6 +20,49 @@ type RouteCandidate struct {
 	LatencyMs      float64
 	QualityScore   float64
 	RouteScore     float64
+}
+
+type RouteScoreWeights struct {
+	Cost    float64 `json:"cost"`
+	Success float64 `json:"success"`
+	Latency float64 `json:"latency"`
+	Quality float64 `json:"quality"`
+}
+
+func GetRouteScoreWeights() RouteScoreWeights {
+	weights := RouteScoreWeights{
+		Cost: 0.5, Success: 0.25, Latency: 0.15, Quality: 0.1,
+	}
+	values := []*float64{
+		&weights.Cost, &weights.Success, &weights.Latency, &weights.Quality,
+	}
+	names := []string{
+		"PRICING_ROUTE_COST_WEIGHT",
+		"PRICING_ROUTE_SUCCESS_WEIGHT",
+		"PRICING_ROUTE_LATENCY_WEIGHT",
+		"PRICING_ROUTE_QUALITY_WEIGHT",
+	}
+	for index, name := range names {
+		raw := os.Getenv(name)
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.ParseFloat(raw, 64)
+		if err == nil && value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0) {
+			*values[index] = value
+		}
+	}
+	total := weights.Cost + weights.Success + weights.Latency + weights.Quality
+	if total <= 0 {
+		return RouteScoreWeights{
+			Cost: 0.5, Success: 0.25, Latency: 0.15, Quality: 0.1,
+		}
+	}
+	weights.Cost /= total
+	weights.Success /= total
+	weights.Latency /= total
+	weights.Quality /= total
+	return weights
 }
 
 func PlanV2Route(group string, modelName string) ([]RouteCandidate, error) {
@@ -83,6 +129,7 @@ func scoreRouteCandidates(candidates []RouteCandidate) {
 	}
 	minCost := candidates[0].PurchaseCost
 	maxQuality := 0.0
+	weights := GetRouteScoreWeights()
 	for index := range candidates {
 		if candidates[index].PurchaseCost.LessThan(minCost) {
 			minCost = candidates[index].PurchaseCost
@@ -105,9 +152,9 @@ func scoreRouteCandidates(candidates []RouteCandidate) {
 			qualityScore = candidates[index].QualityScore / maxQuality
 		}
 		candidates[index].RouteScore =
-			costScore*0.5 +
-				candidates[index].SuccessRate*0.25 +
-				latencyScore*0.15 +
-				qualityScore*0.1
+			costScore*weights.Cost +
+				candidates[index].SuccessRate*weights.Success +
+				latencyScore*weights.Latency +
+				qualityScore*weights.Quality
 	}
 }

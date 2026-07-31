@@ -111,7 +111,10 @@ func AdminGetPricingCircuitOverview(c *gin.Context) {
 			ChannelName:         nameByChannelId[event.ChannelId],
 		})
 	}
-	common.ApiSuccess(c, gin.H{"channels": channels, "events": events})
+	common.ApiSuccess(c, gin.H{
+		"channels": channels, "events": events,
+		"distributed": overview.Distributed,
+	})
 }
 
 func AdminResetPricingCircuit(c *gin.Context) {

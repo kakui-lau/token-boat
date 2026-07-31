@@ -31,6 +31,13 @@ test('shows that complete V2 scopes immediately use new routing and billing', as
       v2_channel_models: 2,
       complete_group_model_scopes: 1,
       live_traffic_enabled: true,
+      distributed_circuit_state: true,
+      route_score_weights: {
+        cost: 0.5,
+        success: 0.25,
+        latency: 0.15,
+        quality: 0.1,
+      },
     },
   })
   const queryClient = new QueryClient({
@@ -50,9 +57,12 @@ test('shows that complete V2 scopes immediately use new routing and billing', as
   )
   expect(screen.getByText('2 of 31 channel models use V2')).toBeInTheDocument()
   expect(screen.getByText('1 model/group scopes are ready')).toBeInTheDocument()
+  expect(
+    screen.getByText('Distributed circuit state is active')
+  ).toBeInTheDocument()
 })
 
-test('shows legacy billing when no complete V2 scope exists', async () => {
+test('shows V2 unavailable and warns about local circuit state', async () => {
   vi.mocked(getPricingRuntimeStatus).mockResolvedValue({
     success: true,
     data: {
@@ -60,6 +70,13 @@ test('shows legacy billing when no complete V2 scope exists', async () => {
       v2_channel_models: 0,
       complete_group_model_scopes: 0,
       live_traffic_enabled: false,
+      distributed_circuit_state: false,
+      route_score_weights: {
+        cost: 0.5,
+        success: 0.25,
+        latency: 0.15,
+        quality: 0.1,
+      },
     },
   })
   const queryClient = new QueryClient({
@@ -73,6 +90,11 @@ test('shows legacy billing when no complete V2 scope exists', async () => {
   )
 
   await waitFor(() =>
-    expect(screen.getByText('Legacy billing active')).toBeInTheDocument()
+    expect(screen.getByText('V2 routing unavailable')).toBeInTheDocument()
   )
+  expect(
+    screen.getByText(
+      'Circuit state is local to this instance; configure Redis before running multiple replicas.'
+    )
+  ).toBeInTheDocument()
 })

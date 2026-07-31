@@ -4,9 +4,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func useCircuitMiniRedis(t *testing.T) {
+	t.Helper()
+	server := miniredis.RunT(t)
+	originalEnabled, originalClient := common.RedisEnabled, common.RDB
+	common.RedisEnabled = true
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		_ = common.RDB.Close()
+		common.RedisEnabled, common.RDB = originalEnabled, originalClient
+	})
+}
 
 func resetChannelCircuits() {
 	channelCircuits.Lock()
@@ -97,7 +112,46 @@ func TestResetChannelCircuitClearsActiveStateAndRecordsAuditEvent(t *testing.T) 
 	assert.False(t, ResetChannelCircuit(41))
 
 	overview := GetChannelCircuitOverview()
-	assert.Empty(t, overview.Channels)
+	require.Len(t, overview.Channels, 1)
+	assert.Equal(t, "monitoring", overview.Channels[0].State)
+	assert.Equal(t, int64(1), overview.Channels[0].FailureCount)
 	require.Len(t, overview.Events, 2)
 	assert.Equal(t, "manual_reset", overview.Events[1].Event)
+}
+
+func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testing.T) {
+	useCircuitMiniRedis(t)
+
+	RecordChannelFailure(51, 500)
+	RecordChannelFailure(51, 502)
+	RecordChannelFailure(51, 503)
+	assert.False(t, TryAcquireChannel(51))
+
+	overview := GetChannelCircuitOverview()
+	require.Len(t, overview.Channels, 1)
+	assert.Equal(t, "open", overview.Channels[0].State)
+	assert.Equal(t, int64(3), overview.Channels[0].FailureCount)
+	require.Len(t, overview.Events, 3)
+
+	RecordChannelSuccessWithLatency(51, 240*time.Millisecond)
+	overview = GetChannelCircuitOverview()
+	require.Len(t, overview.Channels, 1)
+	assert.Equal(t, "monitoring", overview.Channels[0].State)
+	assert.Equal(t, int64(1), overview.Channels[0].SuccessCount)
+	assert.Equal(t, float64(240), overview.Channels[0].AverageLatencyMs)
+	assert.Equal(t, "recovered", overview.Events[len(overview.Events)-1].Event)
+
+	metrics := GetChannelRouteMetrics(51)
+	assert.Equal(t, float64(240), metrics.AverageLatencyMs)
+	assert.InDelta(t, float64(100)/104, metrics.SuccessRate, 0.0001)
+}
+
+func TestChannelCircuitRedisIgnoresClientErrors(t *testing.T) {
+	useCircuitMiniRedis(t)
+
+	RecordChannelFailure(52, 400)
+
+	overview := GetChannelCircuitOverview()
+	assert.Empty(t, overview.Channels)
+	assert.Empty(t, overview.Events)
 }

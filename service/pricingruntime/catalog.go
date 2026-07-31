@@ -38,10 +38,12 @@ type CatalogSnapshot struct {
 }
 
 type RuntimeReadiness struct {
-	TotalChannelModels       int64 `json:"total_channel_models"`
-	V2ChannelModels          int64 `json:"v2_channel_models"`
-	CompleteGroupModelScopes int   `json:"complete_group_model_scopes"`
-	LiveTrafficEnabled       bool  `json:"live_traffic_enabled"`
+	TotalChannelModels       int64             `json:"total_channel_models"`
+	V2ChannelModels          int64             `json:"v2_channel_models"`
+	CompleteGroupModelScopes int               `json:"complete_group_model_scopes"`
+	LiveTrafficEnabled       bool              `json:"live_traffic_enabled"`
+	DistributedCircuitState  bool              `json:"distributed_circuit_state"`
+	RouteScoreWeights        RouteScoreWeights `json:"route_score_weights"`
 }
 
 var (
@@ -440,7 +442,10 @@ func HasCompleteV2Pricing(group string, modelName string) bool {
 }
 
 func GetRuntimeReadiness() (RuntimeReadiness, error) {
-	var readiness RuntimeReadiness
+	readiness := RuntimeReadiness{
+		DistributedCircuitState: circuitRedisEnabled(),
+		RouteScoreWeights:       GetRouteScoreWeights(),
+	}
 	if err := model.DB.Model(&model.ChannelModel{}).
 		Count(&readiness.TotalChannelModels).Error; err != nil {
 		return RuntimeReadiness{}, err

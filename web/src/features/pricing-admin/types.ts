@@ -49,6 +49,13 @@ export type PricingRuntimeStatus = {
   v2_channel_models: number
   complete_group_model_scopes: number
   live_traffic_enabled: boolean
+  distributed_circuit_state: boolean
+  route_score_weights: {
+    cost: number
+    success: number
+    latency: number
+    quality: number
+  }
 }
 
 export type ChannelCircuitStatus = {
@@ -82,6 +89,7 @@ export type ChannelCircuitEvent = {
 export type ChannelCircuitOverview = {
   channels: ChannelCircuitStatus[]
   events: ChannelCircuitEvent[]
+  distributed: boolean
 }
 
 export type RequestPricingSnapshot = {

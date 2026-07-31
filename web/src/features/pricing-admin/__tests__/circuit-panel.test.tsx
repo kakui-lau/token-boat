@@ -30,6 +30,7 @@ test('shows open channels and recent circuit transitions', async () => {
   vi.mocked(getPricingCircuitOverview).mockResolvedValue({
     success: true,
     data: {
+      distributed: true,
       channels: [
         {
           channel_id: 12,
@@ -79,6 +80,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
   vi.mocked(getPricingCircuitOverview).mockResolvedValue({
     success: true,
     data: {
+      distributed: false,
       channels: [
         {
           channel_id: 15,
@@ -120,7 +122,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
 test('shows healthy and empty-history states when no circuit is active', async () => {
   vi.mocked(getPricingCircuitOverview).mockResolvedValue({
     success: true,
-    data: { channels: [], events: [] },
+    data: { channels: [], events: [], distributed: false },
   })
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

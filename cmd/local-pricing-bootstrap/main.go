@@ -14,11 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/glebarez/sqlite"
 	"github.com/joho/godotenv"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -37,6 +40,16 @@ func main() {
 		false,
 		"read and validate every enabled V2 route and representative quote",
 	)
+	production := flag.Bool(
+		"production",
+		false,
+		"require production price evidence and distributed Redis circuit state",
+	)
+	allowRemoteReadOnly := flag.Bool(
+		"allow-remote-read-only",
+		false,
+		"allow --verify to connect to a non-loopback database using a read-only session",
+	)
 	flag.Parse()
 
 	if *currentEnv == (strings.TrimSpace(*databasePath) != "") {
@@ -45,17 +58,28 @@ func main() {
 	if *apply && *verify {
 		exitWithError(errors.New("choose exactly one of --apply or --verify"))
 	}
+	if *production && !*verify {
+		exitWithError(errors.New("--production requires --verify"))
+	}
+	if *allowRemoteReadOnly && !*verify {
+		exitWithError(errors.New("--allow-remote-read-only requires --verify"))
+	}
 	if *currentEnv {
 		if !*apply && !*verify {
 			fmt.Println("dry run: would bootstrap V2 prices using the local .env database")
 			fmt.Println("re-run with --current-env --apply or --current-env --verify")
 			return
 		}
-		if err := openCurrentEnvironmentDatabase(); err != nil {
+		if err := openCurrentEnvironmentDatabase(*verify, *allowRemoteReadOnly); err != nil {
 			exitWithError(err)
 		}
 		if *verify {
-			if err := verifyAndReport(); err != nil {
+			if *production {
+				if err := common.InitRedisClient(); err != nil {
+					exitWithError(fmt.Errorf("initialize Redis: %w", err))
+				}
+			}
+			if err := verifyAndReport(*production); err != nil {
 				exitWithError(err)
 			}
 			return
@@ -80,7 +104,12 @@ func main() {
 			exitWithError(err)
 		}
 		model.DB = db
-		if err := verifyAndReport(); err != nil {
+		if *production {
+			exitWithError(errors.New(
+				"--production requires --current-env so Redis and database settings are explicit",
+			))
+		}
+		if err := verifyAndReport(false); err != nil {
 			exitWithError(err)
 		}
 		return
@@ -124,7 +153,7 @@ func bootstrapAndReport(backupPath string) error {
 	return nil
 }
 
-func verifyAndReport() error {
+func verifyAndReport(production bool) error {
 	if err := pricingruntime.RefreshCatalog(); err != nil {
 		return fmt.Errorf("refresh V2 price catalog: %w", err)
 	}
@@ -176,6 +205,23 @@ func verifyAndReport() error {
 			len(scopes),
 		)
 	}
+	if readiness.V2ChannelModels != readiness.TotalChannelModels {
+		return fmt.Errorf(
+			"%d of %d channel models still use a non-V2 runtime",
+			readiness.TotalChannelModels-readiness.V2ChannelModels,
+			readiness.TotalChannelModels,
+		)
+	}
+	if production {
+		if !readiness.DistributedCircuitState {
+			return errors.New(
+				"production requires a reachable REDIS_CONN_STRING for distributed circuit state",
+			)
+		}
+		if err := validateProductionPriceEvidence(); err != nil {
+			return err
+		}
+	}
 	fmt.Printf(
 		"verified: %d model/group scopes, %d eligible route candidates, %d/%d channel models use V2\n",
 		len(scopes),
@@ -183,6 +229,60 @@ func verifyAndReport() error {
 		readiness.V2ChannelModels,
 		readiness.TotalChannelModels,
 	)
+	return nil
+}
+
+func validateProductionPriceEvidence() error {
+	var channelModels []model.ChannelModel
+	if err := model.DB.
+		Where("runtime_mode = ?", pricingruntime.RuntimeModeV2).
+		Order("id ASC").
+		Find(&channelModels).Error; err != nil {
+		return err
+	}
+	for _, channelModel := range channelModels {
+		bundle, err := pricingruntime.LoadActivePriceBundle(channelModel.Id)
+		if err != nil {
+			return err
+		}
+		if bundle.Official == nil {
+			return fmt.Errorf(
+				"channel model %d has no frozen official price evidence",
+				channelModel.Id,
+			)
+		}
+		source := strings.ToLower(strings.TrimSpace(bundle.Official.Source))
+		if source == "" || source == "local_bootstrap" || source == "legacy_import" {
+			return fmt.Errorf(
+				"channel model %d uses non-production official source %q",
+				channelModel.Id,
+				bundle.Official.Source,
+			)
+		}
+		if strings.TrimSpace(bundle.Official.SourceVersion) == "" ||
+			bundle.Official.SourceUpdatedAt <= 0 {
+			return fmt.Errorf(
+				"channel model %d official price lacks source version or source timestamp",
+				channelModel.Id,
+			)
+		}
+		quoteReference := strings.ToLower(strings.TrimSpace(bundle.Purchase.QuoteReference))
+		contractReference := strings.TrimSpace(bundle.Purchase.ContractReference)
+		if quoteReference == "" && contractReference == "" {
+			return fmt.Errorf(
+				"channel model %d purchase price lacks quote or contract evidence",
+				channelModel.Id,
+			)
+		}
+		if strings.Contains(quoteReference, "local-test") ||
+			strings.Contains(strings.ToLower(bundle.Purchase.Remark), "local v2") ||
+			strings.Contains(strings.ToLower(bundle.Retail.Remark), "local v2") {
+			return fmt.Errorf(
+				"channel model %d still uses local-test purchase or retail evidence",
+				channelModel.Id,
+			)
+		}
+	}
 	return nil
 }
 
@@ -223,33 +323,74 @@ func validateRoutePlan(candidates []pricingruntime.RouteCandidate) error {
 	return nil
 }
 
-func openCurrentEnvironmentDatabase() error {
-	if err := godotenv.Load(".env"); err != nil {
+func openCurrentEnvironmentDatabase(readOnly bool, allowRemoteReadOnly bool) error {
+	if err := godotenv.Load(".env"); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("load .env: %w", err)
 	}
 	dsn := strings.TrimSpace(os.Getenv("SQL_DSN"))
 	if dsn == "" || strings.HasPrefix(dsn, "local") {
 		return errors.New(
-			"--current-env requires an explicit local PostgreSQL or MySQL SQL_DSN",
+			"--current-env requires an explicit PostgreSQL or MySQL SQL_DSN",
 		)
 	}
-	if strings.HasPrefix(dsn, "postgres://") ||
-		strings.HasPrefix(dsn, "postgresql://") {
+	isPostgreSQL := strings.HasPrefix(dsn, "postgres://") ||
+		strings.HasPrefix(dsn, "postgresql://")
+	if isPostgreSQL {
 		parsed, err := url.Parse(dsn)
 		if err != nil {
 			return fmt.Errorf("parse SQL_DSN: %w", err)
 		}
-		if !isLoopbackHost(parsed.Hostname()) {
+		if !isLoopbackHost(parsed.Hostname()) && !allowRemoteReadOnly {
 			return fmt.Errorf(
-				"refusing non-local PostgreSQL host %q",
+				"refusing non-local PostgreSQL host %q without --allow-remote-read-only",
 				parsed.Hostname(),
 			)
 		}
 	} else {
 		host := mysqlDSNHost(dsn)
-		if !isLoopbackHost(host) {
-			return fmt.Errorf("refusing non-local MySQL host %q", host)
+		if !isLoopbackHost(host) && !allowRemoteReadOnly {
+			return fmt.Errorf(
+				"refusing non-local MySQL host %q without --allow-remote-read-only",
+				host,
+			)
 		}
+	}
+	if readOnly {
+		var dialector gorm.Dialector
+		if isPostgreSQL {
+			parsed, err := url.Parse(dsn)
+			if err != nil {
+				return err
+			}
+			query := parsed.Query()
+			existingOptions := strings.TrimSpace(query.Get("options"))
+			if existingOptions != "" {
+				existingOptions += " "
+			}
+			query.Set("options", existingOptions+"-c default_transaction_read_only=on")
+			parsed.RawQuery = query.Encode()
+			dialector = postgres.Open(parsed.String())
+		} else {
+			if !strings.Contains(dsn, "parseTime") {
+				separator := "?"
+				if strings.Contains(dsn, "?") {
+					separator = "&"
+				}
+				dsn += separator + "parseTime=true"
+			}
+			dialector = mysql.Open(dsn)
+		}
+		db, err := gorm.Open(dialector, &gorm.Config{})
+		if err != nil {
+			return fmt.Errorf("open read-only database: %w", err)
+		}
+		if !isPostgreSQL {
+			if err := db.Exec("SET SESSION TRANSACTION READ ONLY").Error; err != nil {
+				return fmt.Errorf("enable MySQL read-only session: %w", err)
+			}
+		}
+		model.DB = db
+		return nil
 	}
 	if err := model.InitDB(); err != nil {
 		return fmt.Errorf("initialize current database: %w", err)

@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: token-boat-pricing-v2-readiness
+  labels:
+    app.kubernetes.io/name: token-boat
+    app.kubernetes.io/component: pricing-readiness
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: token-boat
+        app.kubernetes.io/component: pricing-readiness
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pricing-readiness
+          # Replace this value with the exact immutable ECR image digest that
+          # will be deployed. Never use a mutable tag for this check.
+          image: REPLACE_WITH_ECR_IMAGE_AT_DIGEST
+          imagePullPolicy: IfNotPresent
+          command:
+            - /pricing-readiness
+          args:
+            - --current-env
+            - --verify
+            - --production
+            - --allow-remote-read-only
+          env:
+            - name: SQL_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: token-boat-runtime
+                  key: sql-dsn-read-only
+            - name: REDIS_CONN_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: token-boat-runtime
+                  key: redis-conn-string
+            - name: PRICING_ROUTE_COST_WEIGHT
+              value: "0.50"
+            - name: PRICING_ROUTE_SUCCESS_WEIGHT
+              value: "0.25"
+            - name: PRICING_ROUTE_LATENCY_WEIGHT
+              value: "0.15"
+            - name: PRICING_ROUTE_QUALITY_WEIGHT
+              value: "0.10"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault

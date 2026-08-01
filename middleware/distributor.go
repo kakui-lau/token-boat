@@ -122,7 +122,7 @@ func Distribute() func(c *gin.Context) {
 				routeGroups := []string{usingGroup}
 				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 				if usingGroup == "auto" {
-					routeGroups = service.GetUserAutoGroup(userGroup)
+					routeGroups = service.GetRequestAutoGroups(c, userGroup)
 				}
 				for _, routeGroup := range routeGroups {
 					if !pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model) {
@@ -215,7 +215,7 @@ func Distribute() func(c *gin.Context) {
 							ChannelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
 							if usingGroup == "auto" {
 								userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-								autoGroups := service.GetUserAutoGroup(userGroup)
+								autoGroups := service.GetRequestAutoGroups(c, userGroup)
 								for _, g := range autoGroups {
 									if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 										selectGroup = g

@@ -375,12 +375,10 @@ func MarkRequestPricingRefunded(requestId string) error {
 				"full_provider_cost",
 			),
 			"gross_margin_known": gorm.Expr(
-				"CASE WHEN billing_source = ? AND provider_cost_known = ? AND provider_cost_scope = ? THEN ? ELSE ? END",
+				"billing_source = ? AND provider_cost_known = ? AND provider_cost_scope = ?",
 				"wallet",
 				true,
 				"full_provider_cost",
-				true,
-				false,
 			),
 			"status":      PricingSnapshotStatusRefunded,
 			"resolution":  "automatic_refund",

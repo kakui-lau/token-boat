@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { EXCLUDED_GROUPS, FILTER_ALL, QUOTA_TYPE_VALUES } from '../constants'
-import type { PricingModel } from '../types'
+import type { PricingModel, PublicPriceSummary } from '../types'
 
 // ----------------------------------------------------------------------------
 // Model Helper Utilities
@@ -28,11 +28,17 @@ import type { PricingModel } from '../types'
  */
 export function getAvailableGroups(
   model: PricingModel,
-  usableGroup: Record<string, { desc: string; ratio: number }>
+  usableGroup: Record<string, string>
 ): string[] {
   const modelEnableGroups = Array.isArray(model.enable_groups)
     ? model.enable_groups
     : []
+
+  if (modelEnableGroups.includes('all')) {
+    return Object.keys(usableGroup).filter(
+      (group) => !EXCLUDED_GROUPS.includes(group)
+    )
+  }
 
   return Object.keys(usableGroup)
     .filter((g) => !EXCLUDED_GROUPS.includes(g))
@@ -92,6 +98,33 @@ export function getDisplayGroupRatio(
   }
 
   return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+}
+
+/**
+ * Resolve the structured retail summary for the selected model-square group.
+ * The unfiltered view uses the cross-group component minimum returned by the
+ * backend; a concrete group must never silently fall back to another group.
+ */
+export function getDisplayedRetailPrice(
+  model: PricingModel,
+  selectedGroup?: string
+): PublicPriceSummary | undefined {
+  if (selectedGroup && selectedGroup !== FILTER_ALL) {
+    return model.retail_prices_by_group?.[selectedGroup]
+  }
+  return model.lowest_price
+}
+
+export function isModelAvailableForGroup(
+  model: PricingModel,
+  selectedGroup?: string
+): boolean {
+  if (!model.available) return false
+  if (!selectedGroup || selectedGroup === FILTER_ALL) return true
+  if (Array.isArray(model.pricing_groups)) {
+    return model.pricing_groups.includes(selectedGroup)
+  }
+  return Boolean(model.retail_prices_by_group?.[selectedGroup])
 }
 
 /**

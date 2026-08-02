@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -111,6 +112,35 @@ func TestValidateRoutePlanRejectsUnsafeOrAmbiguousPlans(t *testing.T) {
 	}
 }
 
+func TestReadinessRatioScenariosIncludeUserSpecificDiscount(t *testing.T) {
+	config := ratio_setting.GetGroupRatioSetting()
+	originalRatios := config.GroupRatio.ReadAll()
+	originalOverrides := config.GroupGroupRatio.ReadAll()
+	originalSpecialGroups := config.GroupSpecialUsableGroup.ReadAll()
+	t.Cleanup(func() {
+		config.GroupRatio.Clear()
+		config.GroupRatio.AddAll(originalRatios)
+		config.GroupGroupRatio.Clear()
+		config.GroupGroupRatio.AddAll(originalOverrides)
+		config.GroupSpecialUsableGroup.Clear()
+		config.GroupSpecialUsableGroup.AddAll(originalSpecialGroups)
+	})
+	config.GroupRatio.Clear()
+	config.GroupRatio.AddAll(map[string]float64{"vip": 1})
+	config.GroupGroupRatio.Clear()
+	config.GroupGroupRatio.AddAll(map[string]map[string]float64{
+		"vip": {"vip": 0.5},
+	})
+	config.GroupSpecialUsableGroup.Clear()
+
+	scenarios := readinessRatioScenarios("vip")
+
+	require.Len(t, scenarios, 2)
+	assert.Equal(t, float64(1), scenarios[0].Ratio)
+	assert.Equal(t, float64(0.5), scenarios[1].Ratio)
+	assert.Equal(t, "vip", scenarios[1].UserGroup)
+}
+
 func TestValidateProductionPriceEvidenceRejectsLocalPlaceholder(t *testing.T) {
 	setupProductionEvidenceTest(t, "local_bootstrap", "local-test-quote")
 
@@ -125,6 +155,18 @@ func TestValidateProductionPriceEvidenceAcceptsAuditedSources(t *testing.T) {
 	require.NoError(t, validateProductionPriceEvidence())
 }
 
+func TestValidateProductionPriceEvidenceAcceptsAuditedExplicitNetPrice(t *testing.T) {
+	setupProductionEvidenceTest(t, "provider_official", "supplier-net-price-2026-07")
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 1).
+		Updates(map[string]any{
+			"official_price_version_id": nil,
+			"pricing_mode":              "fixed_unit_price",
+		}).Error)
+
+	require.NoError(t, validateProductionPriceEvidence())
+}
+
 func setupProductionEvidenceTest(t *testing.T, source string, quoteReference string) {
 	t.Helper()
 	originalDB := model.DB
@@ -135,12 +177,24 @@ func setupProductionEvidenceTest(t *testing.T, source string, quoteReference str
 		model.DB = originalDB
 	})
 	require.NoError(t, db.AutoMigrate(
+		&model.Model{},
+		&model.Channel{},
+		&model.Ability{},
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 	))
 	officialId := 1
+	require.NoError(t, db.Create(&model.Model{
+		Id: 1, ModelName: "production-model",
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1, Name: "production-channel", Status: 1,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "production-model", ChannelId: 1, Enabled: true,
+	}).Error)
 	require.NoError(t, db.Create(&model.ChannelModel{
 		Id: 1, ChannelId: 1, ModelId: 1, Status: 1,
 		RuntimeMode: pricingruntime.RuntimeModeV2,

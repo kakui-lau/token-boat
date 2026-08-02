@@ -1077,30 +1077,60 @@ Seedance 2.0
 id
 request_id
 user_id
-token_id
-group
-origin_model_name
-reserved_quota
-actual_quota
-final_channel_model_id
-official_price_version_id
+model_id
+channel_model_id
 purchase_price_version_id
 retail_price_version_id
-route_plan_snapshot
-candidate_price_cap_usd
-retail_expr
-retail_expr_hash
-estimated_retail_usd
-actual_retail_usd
-total_provider_cost_usd
-gross_profit_usd
-gross_margin_rate
+billing_mode
+estimated_usage
+actual_usage
+reserved_quota
+settled_quota
+purchase_cost
+provider_reported_cost
+provider_cost_known
+provider_cost_scope
+cost_variance
+gross_margin
+gross_margin_known
+retail_amount
+base_retail_amount
+estimated_customer_charge
+customer_charge
+applied_group
+applied_group_ratio
+quota_per_unit
+total_variable_cost_rate
+effective_tax_rate
+minimum_margin_rate
+net_margin_rate
+margin_compliant
+billing_source
+subscription_id
 currency
-pricing_revision
 status
+failure_code
+failure_reason
+resolution
+resolved_at
+resolved_by
 created_at
-settled_at
+updated_at
 ```
+
+金额口径必须区分：
+
+- `retail_amount`：兼容字段，保存请求报价阶段选中销售表达式计算出的基础销售金额；
+- `base_retail_amount`：未应用用户有效分组倍率的销售金额；
+- `estimated_customer_charge`：应用请求冻结的 `applied_group_ratio` 后得到的预估用户扣费；
+- `customer_charge`：结算或退款后的实际计费金额（按冻结 `quota_per_unit` 折算为 USD 用量价值），不是支付系统确认的现金收入。请求尚未终结、历史记录无法可靠复算时必须为 `NULL`，不得用基础销售金额冒充实际计费；
+- `purchase_cost`：按冻结采购版本计算的预计采购成本；
+- `provider_reported_cost`：供应商明确上报的真实成本，只有 `provider_cost_known=true` 时才能进入真实毛利；
+- `billing_source`、`subscription_id`：冻结钱包或订阅资金来源。订阅额度消耗只能作为用量价值，不能直接认定为本次现金收入；
+- `gross_margin`：仅当 `gross_margin_known=true` 时表示 `customer_charge - provider_reported_cost`。钱包计费且供应商上报完整成本时可以计算；订阅计费和仅上报平台费的 BYOK 请求保持未知。退款后钱包计费金额为零，若供应商已产生成本，则毛利为负数；
+- `net_margin_rate` 和 `margin_compliant`：按实际用户分组倍率后的售价计算，用于识别“基础售价满足利润线，但用户倍率后跌破利润线”的配置风险。
+
+旧记录没有可靠结算证据时，`customer_charge` 保持 `NULL` 并进入缺失计费统计。上线迁移不得把 `retail_amount` 批量回填成历史实际计费，也不得把订阅额度价值计入现金收入或已知毛利。
 
 ### 6.8 `request_route_attempts`
 
@@ -2181,8 +2211,66 @@ pricing_runtime_mode:
 6. 采购成本和销售金额分别计算；
 7. 表达式发布前必须编译和执行测试；
 8. 运行时切换要求管理员权限并记录审计；
-9. 所有模型均可单独回退 legacy；
+9. 当前管理接口只允许模型级启用 V2，不允许在线回退 legacy；生产回滚必须使用上一稳定镜像，保留向后兼容的增量表结构；
 10. 三种数据库迁移和核心行为必须验证。
+
+### 18.7 生产发布准备与执行清单
+
+生产发布必须按“制品冻结 → 数据库和价格数据准备 → 部署 → 模型级启用 → 财务验收”执行，不能把建表、填价格、切运行模式和应用滚动更新混成一个不可观察步骤。
+
+#### 18.7.1 发布前冻结
+
+1. 冻结 Git commit、前端产物和 ECR 镜像 digest；就绪检查、应用 Deployment 和回滚记录必须引用同一 digest，禁止使用 `latest` 等可变标签。
+2. 保存上一稳定镜像 digest、Deployment 配置、Secret/ConfigMap 版本和副本数，提前准备只回滚应用镜像、不删除新列的回滚命令。
+3. 对生产数据库做可恢复快照，并单独导出 `models`、`channels`、`abilities`、`channel_models`、`official_model_price_versions`、`model_official_prices`、`channel_model_purchase_price_versions`、`channel_model_retail_price_versions`。导出文件必须加密并限制访问，不能提交到仓库。
+4. 在生产快照的隔离副本上完成一次全量启动迁移和查询回归，记录表行数、迁移耗时和锁等待。大表新增列应在维护窗口先执行增量 DDL，不能把不可预测的 `AutoMigrate` 锁等待留给滚动 Pod 启动。
+5. 仓库已提供一次性迁移命令 `cmd/db-migrate`。生产 Helm Pod 必须统一设置 `SKIP_DB_MIGRATION=true`，禁止在滚动启动时执行 `AutoMigrate` 或一次性数据迁移。发布操作人必须使用将要发布的同一 Git commit，在本地明确指定生产环境文件并单进程执行 `DB_MIGRATION_ENV_FILE=.env.prod DB_MIGRATION_CONFIRM=MIGRATE go run ./cmd/db-migrate`；只有迁移成功、结构核验通过后才能升级应用。该命令优先读取环境文件内的 `SQL_DSN`，也兼容其中的 `DATABASE_URL`，不会使用外壳中残留的主库 DSN。长期仍应把高风险大表变更沉淀为经过 PostgreSQL/MySQL 实测的增量 DDL，而不是完全依赖全量 `AutoMigrate`。
+
+本次 `request_pricing_snapshots` 需要新增或确认以下 nullable 字段：`base_retail_amount`、`estimated_customer_charge`、`customer_charge`、`applied_group`、`applied_group_ratio`、`quota_per_unit`、`total_variable_cost_rate`、`effective_tax_rate`、`minimum_margin_rate`、`net_margin_rate`、`margin_compliant`、`billing_source`、`subscription_id`、`gross_margin_known`。旧版本应用会忽略这些增量列，因此采用“结构先行、应用后发”兼容滚动。不得删除旧列，也不得把历史 `customer_charge` 从 `retail_amount` 猜测回填；历史 `billing_source` 和 `gross_margin_known` 保持未知。
+
+#### 18.7.2 价格数据准备
+
+1. 每个启用的 `ability(group, model, channel)` 都必须能唯一映射到启用的 `channel_model`，上游模型名与渠道 `model_mapping` 一致。
+2. 官方价统一为 USD、V2 表达式、哈希一致，并保存真实 `source`、`source_version`、`source_updated_at`。比例/分项/混合采购必须冻结官方修订；固定净价和已审计自定义表达式可以不依赖官方价。
+3. 每个启用渠道模型必须有完整且已发布的采购价和销售价；采购、销售的币种、计费模式、价格结构必须一致，报价单号或合同号至少一个非空，不能保留 `local-test`、`local_bootstrap` 或 `legacy_import` 证据。
+4. 对每个实际用户分组使用其最终有效倍率重新报价并执行利润门禁。基础销售价满足利润线、但分组倍率后跌破 `minimum_margin_rate` 的模型不得启用。生产就绪命令会同时遍历基础倍率和可达的用户分组覆盖倍率，不能只验证默认分组。
+5. 表达式模式必须用代表性 Token、缓存、图片数量、分辨率、音频/视频时长和请求参数执行报价向量；结构化组件缺失时模型广场显示“需按用量报价”，不能显示为未配置或零价。
+6. 就绪统计只覆盖真正可路由的渠道模型：渠道、渠道模型和 ability 都启用。禁用库存不应阻断发布，但重新启用渠道前必须重新发布完整价格链并再次执行就绪检查。
+
+#### 18.7.3 运行配置
+
+1. 生产至少两个应用副本，所有副本使用同一 `SESSION_SECRET`、同一主数据库和同一 Redis。Helm 拆分为固定一个 `NODE_TYPE=master` 的 master Deployment 和可扩缩的 `NODE_TYPE=slave` worker Deployment；master 只承担 master-only 定时任务，不再承担上线迁移。两类 Pod 都必须设置 `SKIP_DB_MIGRATION=true`。
+2. `REDIS_CONN_STRING` 必须指向关闭 Cluster Mode 的 ElastiCache 复制组主端点；发布前验证读写和 Lua 脚本权限。没有共享 Redis 时，多副本熔断状态不一致，不允许作为正式上线形态。
+3. 固定并复核 `QuotaPerUnit`、充值价格倍率、USD 汇率、基础分组倍率、分组覆盖倍率、自动分组顺序，以及四个 `PRICING_ROUTE_*_WEIGHT`。这些值会改变实际用户扣费、利润校验和路由顺序。
+4. 为就绪 Job 配置只读数据库账号；PostgreSQL 必须开启 `default_transaction_read_only`，MySQL 必须执行只读 Session。应用账号和只读核验账号不能混用。
+
+#### 18.7.4 发布顺序
+
+1. 在维护窗口先将旧单 Deployment 的 Pod 全部切成 `NODE_TYPE=slave`，避免拆分期间出现多个 master；再使用发布 commit 的 `cmd/db-migrate` 单进程执行并核验数据库迁移，确认旧版本 Pod 仍可正常读写。首次 Helm 拆分完成后，由固定 1 副本的 master Deployment 恢复 master-only 定时任务。
+2. 新请求链路是 V2-only：任一可路由模型仍为 legacy 或价格链不完整都会返回 503，不会回退旧计费。因此首次切换不能把未准备好的新镜像直接加入公开 Service。
+3. 启动一个不接收公网业务流量的 admin-only canary（或维护窗口内的独立管理 Pod），先检查登录、官方定价、渠道定价、模型广场和报价接口；它与最终 Deployment 必须使用同一镜像 digest。
+4. 在隔离 canary 上按模型执行“启用 V2”。按钮必须二次确认；服务端会在单一事务内验证该模型所有启用渠道并原子切换，不能逐渠道手工改 `runtime_mode`。`runtime_mode` 保存在共享生产库，切换前必须确认当前线上旧镜像是否会读取它；若会读取，则必须先进入维护/排空流量，不能假设 admin-only canary 能隔离数据面的影响。在公开流量切换前，所有可路由渠道模型都必须完成 V2 启用。
+5. 使用发布镜像 digest 运行 `deploy/eks/pricing-v2-readiness-job.yaml`。只有 Job 通过后才把新镜像加入公开 Service 或开始滚动 Deployment；已全量运行 V2 的常规升级应在滚动前和滚动后各运行一次。
+6. 先向 canary 发送受限预算的普通 Token 请求，再验证缓存、多模态及异步视频；确认预扣、结算、退款、分组倍率和请求价格快照后再逐步切流。
+7. 使用专用测试账号执行 `deploy/eks/PROVIDER_ACCEPTANCE.md`，验证真实上游成功、超时、429、5xx、熔断半开恢复和异步失败退款。就绪 Job 本身不会调用真实供应商。
+
+#### 18.7.5 上线验收与监控
+
+上线后至少持续观察一个完整业务高峰，并按五分钟、小时和日账期核对：
+
+- 新请求的 `customer_charge` 缺失数为零；历史缺失记录单独统计。该字段是实际计费金额/用量价值，不等于支付系统现金收入；
+- `reserved` 超过 15 分钟和 `pending` 快照没有持续增长；
+- `margin_breach_count` 为零；任何新增记录立即停止继续启用模型并核对分组倍率；
+- 钱包退款请求的实际计费金额为零；若供应商已经产生完整真实成本，`gross_margin_known=true` 且 `gross_margin` 正确体现负损失；订阅和 BYOK 平台费口径不得显示伪毛利；
+- `provider_cost_known_count` 覆盖率符合供应商回报能力，未知成本不能冒充零成本；
+- 渠道路由候选、熔断状态、429、5xx、P95 首 Token 延迟、异步任务待结算数和额度流水无异常突增；
+- 模型广场的官方价、用户分组最低结构化价、充值价格显示和“需按用量报价”语义与精确报价接口一致。
+
+当前请求快照记录最终选中渠道的采购成本和供应商回报成本，尚未拆分记录每一次失败、部分流式或重试尝试。如果某供应商会对失败尝试或部分输出收费，在 `request_route_attempts` 成本累计落地前，应为该渠道限制跨渠道重试，或把供应商日账单差额列为上线阻断项；不能把最终成功渠道成本当成整条请求的完整上游成本。
+
+#### 18.7.6 回滚原则
+
+当前后台不提供从 V2 回退 legacy 的操作，避免在新旧计费之间产生双重口径。发生阻断性事故时回滚到上一稳定应用镜像，保持新增表和 nullable 列不动；旧镜像会忽略增量字段。价格版本是不可变财务证据，禁止通过修改已发布采购/销售版本或删除请求快照“回滚数据”。回滚后继续保留并导出事故窗口内的 `request_pricing_snapshots`、任务结算状态、额度日志和供应商成本，完成财务对账后再发布修复版本。
 
 ## 19. 测试
 

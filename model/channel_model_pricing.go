@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -175,34 +176,48 @@ type ChannelModelRetailPriceVersion struct {
 }
 
 type RequestPricingSnapshot struct {
-	Id                     int    `json:"id"`
-	RequestId              string `json:"request_id" gorm:"type:varchar(64);not null;uniqueIndex"`
-	UserId                 int    `json:"user_id" gorm:"not null;index"`
-	ModelId                int    `json:"model_id" gorm:"not null;index"`
-	ChannelModelId         int    `json:"channel_model_id" gorm:"not null;index"`
-	PurchasePriceVersionId int    `json:"purchase_price_version_id" gorm:"not null"`
-	RetailPriceVersionId   int    `json:"retail_price_version_id" gorm:"not null"`
-	BillingMode            string `json:"billing_mode" gorm:"type:varchar(32);not null"`
-	EstimatedUsage         string `json:"estimated_usage" gorm:"type:text"`
-	ActualUsage            string `json:"actual_usage" gorm:"type:text"`
-	ReservedQuota          int64  `json:"reserved_quota" gorm:"bigint;not null"`
-	SettledQuota           int64  `json:"settled_quota" gorm:"bigint;not null"`
-	PurchaseCost           string `json:"purchase_cost" gorm:"type:decimal(36,18);not null"`
-	ProviderReportedCost   string `json:"provider_reported_cost" gorm:"type:decimal(36,18)"`
-	ProviderCostKnown      bool   `json:"provider_cost_known"`
-	ProviderCostScope      string `json:"provider_cost_scope" gorm:"type:varchar(32)"`
-	CostVariance           string `json:"cost_variance" gorm:"type:decimal(36,18)"`
-	GrossMargin            string `json:"gross_margin" gorm:"type:decimal(36,18)"`
-	RetailAmount           string `json:"retail_amount" gorm:"type:decimal(36,18);not null"`
-	Currency               string `json:"currency" gorm:"type:varchar(8);not null"`
-	Status                 string `json:"status" gorm:"type:varchar(16);not null;index"`
-	FailureCode            string `json:"failure_code" gorm:"type:varchar(64);index"`
-	FailureReason          string `json:"failure_reason" gorm:"type:text"`
-	Resolution             string `json:"resolution" gorm:"type:varchar(32);index"`
-	ResolvedAt             int64  `json:"resolved_at" gorm:"bigint;index"`
-	ResolvedBy             int    `json:"resolved_by"`
-	CreatedAt              int64  `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt              int64  `json:"updated_at" gorm:"bigint"`
+	Id                      int     `json:"id"`
+	RequestId               string  `json:"request_id" gorm:"type:varchar(64);not null;uniqueIndex"`
+	UserId                  int     `json:"user_id" gorm:"not null;index"`
+	ModelId                 int     `json:"model_id" gorm:"not null;index"`
+	ChannelModelId          int     `json:"channel_model_id" gorm:"not null;index"`
+	PurchasePriceVersionId  int     `json:"purchase_price_version_id" gorm:"not null"`
+	RetailPriceVersionId    int     `json:"retail_price_version_id" gorm:"not null"`
+	BillingMode             string  `json:"billing_mode" gorm:"type:varchar(32);not null"`
+	EstimatedUsage          string  `json:"estimated_usage" gorm:"type:text"`
+	ActualUsage             string  `json:"actual_usage" gorm:"type:text"`
+	ReservedQuota           int64   `json:"reserved_quota" gorm:"bigint;not null"`
+	SettledQuota            int64   `json:"settled_quota" gorm:"bigint;not null"`
+	PurchaseCost            string  `json:"purchase_cost" gorm:"type:decimal(36,18);not null"`
+	ProviderReportedCost    string  `json:"provider_reported_cost" gorm:"type:decimal(36,18)"`
+	ProviderCostKnown       bool    `json:"provider_cost_known"`
+	ProviderCostScope       string  `json:"provider_cost_scope" gorm:"type:varchar(32)"`
+	CostVariance            string  `json:"cost_variance" gorm:"type:decimal(36,18)"`
+	GrossMargin             string  `json:"gross_margin" gorm:"type:decimal(36,18)"`
+	RetailAmount            string  `json:"retail_amount" gorm:"type:decimal(36,18);not null"`
+	BaseRetailAmount        string  `json:"base_retail_amount" gorm:"type:decimal(36,18)"`
+	EstimatedCustomerCharge string  `json:"estimated_customer_charge" gorm:"type:decimal(36,18)"`
+	CustomerCharge          *string `json:"customer_charge" gorm:"type:decimal(36,18)"`
+	AppliedGroup            string  `json:"applied_group" gorm:"type:varchar(64)"`
+	AppliedGroupRatio       string  `json:"applied_group_ratio" gorm:"type:decimal(36,18)"`
+	QuotaPerUnit            string  `json:"quota_per_unit" gorm:"type:decimal(36,18)"`
+	TotalVariableCostRate   string  `json:"total_variable_cost_rate" gorm:"type:decimal(18,12)"`
+	EffectiveTaxRate        string  `json:"effective_tax_rate" gorm:"type:decimal(18,12)"`
+	MinimumMarginRate       string  `json:"minimum_margin_rate" gorm:"type:decimal(18,12)"`
+	NetMarginRate           string  `json:"net_margin_rate" gorm:"type:decimal(36,18)"`
+	MarginCompliant         bool    `json:"margin_compliant"`
+	BillingSource           string  `json:"billing_source" gorm:"type:varchar(16);index"`
+	SubscriptionId          int     `json:"subscription_id" gorm:"index"`
+	GrossMarginKnown        bool    `json:"gross_margin_known"`
+	Currency                string  `json:"currency" gorm:"type:varchar(8);not null"`
+	Status                  string  `json:"status" gorm:"type:varchar(16);not null;index"`
+	FailureCode             string  `json:"failure_code" gorm:"type:varchar(64);index"`
+	FailureReason           string  `json:"failure_reason" gorm:"type:text"`
+	Resolution              string  `json:"resolution" gorm:"type:varchar(32);index"`
+	ResolvedAt              int64   `json:"resolved_at" gorm:"bigint;index"`
+	ResolvedBy              int     `json:"resolved_by"`
+	CreatedAt               int64   `json:"created_at" gorm:"bigint;index"`
+	UpdatedAt               int64   `json:"updated_at" gorm:"bigint"`
 }
 
 func setPricingVersionCreateTimes(createdAt *int64, updatedAt *int64) {
@@ -276,6 +291,33 @@ func (s *RequestPricingSnapshot) BeforeCreate(tx *gorm.DB) error {
 	}
 	if s.GrossMargin == "" {
 		s.GrossMargin = "0"
+	}
+	if s.BaseRetailAmount == "" {
+		s.BaseRetailAmount = s.RetailAmount
+	}
+	if s.EstimatedCustomerCharge == "" {
+		s.EstimatedCustomerCharge = s.RetailAmount
+	}
+	if s.AppliedGroupRatio == "" {
+		s.AppliedGroupRatio = "1"
+	}
+	if s.QuotaPerUnit == "" {
+		s.QuotaPerUnit = decimal.NewFromFloat(common.QuotaPerUnit).String()
+	}
+	if s.TotalVariableCostRate == "" {
+		s.TotalVariableCostRate = "0"
+	}
+	if s.EffectiveTaxRate == "" {
+		s.EffectiveTaxRate = "0"
+	}
+	if s.MinimumMarginRate == "" {
+		s.MinimumMarginRate = "0"
+	}
+	if s.NetMarginRate == "" {
+		s.NetMarginRate = "0"
+	}
+	if s.BillingSource == "" {
+		s.BillingSource = "wallet"
 	}
 	return nil
 }

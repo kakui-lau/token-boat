@@ -85,6 +85,8 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				v2RouteActive := false
+				v2PriceChainFound := false
+				v2MarginEligible := false
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
@@ -104,14 +106,19 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 				routeGroups := []string{usingGroup}
+				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 				if usingGroup == "auto" {
-					userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 					routeGroups = service.GetUserAutoGroup(userGroup)
 				}
 				for _, routeGroup := range routeGroups {
-					routeCandidates, routeErr := pricingruntime.PlanV2Route(
+					if !pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model) {
+						continue
+					}
+					v2PriceChainFound = true
+					routeCandidates, routeErr := pricingruntime.PlanV2RouteWithGroupRatio(
 						routeGroup,
 						modelRequest.Model,
+						service.GetUserGroupRatio(userGroup, routeGroup),
 					)
 					if routeErr != nil {
 						common.SysError(fmt.Sprintf(
@@ -122,14 +129,11 @@ func Distribute() func(c *gin.Context) {
 						))
 						continue
 					}
-					if !pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model) {
+					if len(routeCandidates) == 0 {
 						continue
 					}
+					v2MarginEligible = true
 					v2RouteActive = true
-					selectGroup = routeGroup
-					if usingGroup == "auto" {
-						common.SetContextKey(c, constant.ContextKeyAutoGroup, routeGroup)
-					}
 					for _, candidate := range routeCandidates {
 						planned, getErr := model.CacheGetChannel(candidate.ChannelId)
 						if getErr != nil ||
@@ -145,18 +149,32 @@ func Distribute() func(c *gin.Context) {
 						channel = planned
 						break
 					}
-					break
+					if channel != nil {
+						selectGroup = routeGroup
+						if usingGroup == "auto" {
+							common.SetContextKey(c, constant.ContextKeyAutoGroup, routeGroup)
+						}
+						break
+					}
 				}
 
 				if !v2RouteActive {
+					message := fmt.Sprintf(
+						"分组 %s 下模型 %s 没有完整的 V2 价格链",
+						usingGroup,
+						modelRequest.Model,
+					)
+					if v2PriceChainFound && !v2MarginEligible {
+						message = fmt.Sprintf(
+							"分组 %s 下模型 %s 没有满足利润底线的 V2 价格链",
+							usingGroup,
+							modelRequest.Model,
+						)
+					}
 					abortWithOpenAiMessage(
 						c,
 						http.StatusServiceUnavailable,
-						fmt.Sprintf(
-							"分组 %s 下模型 %s 没有完整的 V2 价格链",
-							usingGroup,
-							modelRequest.Model,
-						),
+						message,
 						types.ErrorCodeModelPriceError,
 					)
 					return

@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import {
   keepPreviousData,
   useMutation,
@@ -337,11 +355,14 @@ export function PricingReconciliationPanel() {
           </Card>
         ))}
       </div>
-      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-6'>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-8'>
         {[
           {
-            label: t('Sales revenue'),
-            value: financialSummaryQuery.data?.data.revenue_usd ?? '0',
+            label: t('Billed Amount'),
+            value:
+              financialSummaryQuery.data?.data.billed_amount_usd ??
+              financialSummaryQuery.data?.data.revenue_usd ??
+              '0',
           },
           {
             label: t('Estimated purchase cost'),
@@ -366,6 +387,16 @@ export function PricingReconciliationPanel() {
             label: t('Missing provider costs'),
             value:
               financialSummaryQuery.data?.data.provider_cost_missing_count ?? 0,
+          },
+          {
+            label: t('Missing charge snapshots'),
+            value:
+              financialSummaryQuery.data?.data.customer_charge_missing_count ??
+              0,
+          },
+          {
+            label: t('Margin breaches'),
+            value: financialSummaryQuery.data?.data.margin_breach_count ?? 0,
           },
         ].map((item) => (
           <Card key={item.label} size='sm'>
@@ -413,7 +444,11 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Provider reported cost')}</TableHead>
               <TableHead>{t('Cost variance')}</TableHead>
               <TableHead>{t('Gross margin')}</TableHead>
-              <TableHead>{t('Retail amount')}</TableHead>
+              <TableHead>{t('Base retail amount')}</TableHead>
+              <TableHead>{t('Estimated charge')}</TableHead>
+              <TableHead>{t('Billed Amount')}</TableHead>
+              <TableHead>{t('Effective group')}</TableHead>
+              <TableHead>{t('Net Margin')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
               <TableHead>{t('Failure reason')}</TableHead>
               <TableHead>{t('Updated')}</TableHead>
@@ -451,13 +486,39 @@ export function PricingReconciliationPanel() {
                     : '—'}
                 </TableCell>
                 <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.provider_cost_known &&
-                  row.provider_cost_scope === 'full_provider_cost'
+                  {row.gross_margin_known
                     ? `${row.gross_margin} ${row.currency}`
                     : '—'}
                 </TableCell>
                 <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.retail_amount} {row.currency}
+                  {row.base_retail_amount || row.retail_amount} {row.currency}
+                </TableCell>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                  {row.estimated_customer_charge
+                    ? `${row.estimated_customer_charge} ${row.currency}`
+                    : '—'}
+                </TableCell>
+                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                  {row.customer_charge
+                    ? `${row.customer_charge} ${row.currency}`
+                    : '—'}
+                </TableCell>
+                <TableCell className='whitespace-nowrap'>
+                  {row.applied_group || '—'}
+                  {row.applied_group_ratio
+                    ? ` · ×${row.applied_group_ratio}`
+                    : ''}
+                </TableCell>
+                <TableCell
+                  className={
+                    row.net_margin_rate && row.margin_compliant === false
+                      ? 'text-destructive font-mono whitespace-nowrap tabular-nums'
+                      : 'font-mono whitespace-nowrap tabular-nums'
+                  }
+                >
+                  {row.net_margin_rate
+                    ? `${(Number(row.net_margin_rate) * 100).toFixed(2)}%`
+                    : '—'}
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -511,7 +572,7 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={15}
+                  colSpan={19}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}
@@ -582,6 +643,16 @@ export function PricingReconciliationPanel() {
                   {selectedSnapshot.resolved_by
                     ? `#${selectedSnapshot.resolved_by}`
                     : '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Billing')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.billing_source === 'subscription'
+                    ? `${t('Subscription')} #${selectedSnapshot.subscription_id || '—'}`
+                    : t('Wallet')}
                 </div>
               </div>
             </div>

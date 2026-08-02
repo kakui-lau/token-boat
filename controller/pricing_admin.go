@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +25,66 @@ type channelModelAdminRow struct {
 	ModelName                  string `json:"model_name"`
 	ActiveRetailPriceVersionId int    `json:"active_retail_price_version_id"`
 	ActiveRetailPriceVersion   int64  `json:"active_retail_price_version"`
+}
+
+type channelPricingExportRow struct {
+	ModelName                  string
+	ChannelName                string
+	UpstreamModelName          string
+	OfficialPriceComponents    string
+	OfficialBillingExpr        string
+	OfficialCurrency           string
+	RetailPriceComponents      string
+	RetailBillingExpr          string
+	RetailCurrency             string
+	TotalVariableCostRate      sql.NullString
+	EffectiveTaxRate           sql.NullString
+	TargetNetMargin            sql.NullString
+	ActiveRetailPriceVersionId int
+}
+
+var pricingCSVFlatComponents = []struct {
+	Key   string
+	Label string
+}{
+	{Key: "input_unit_price", Label: "输入 / 1M Token"},
+	{Key: "output_unit_price", Label: "输出 / 1M Token"},
+	{Key: "cache_read_unit_price", Label: "缓存读取 / 1M Token"},
+	{Key: "cache_write_unit_price", Label: "缓存写入 / 1M Token"},
+	{Key: "image_input_unit_price", Label: "图片输入 / 1M Token"},
+	{Key: "image_output_unit_price", Label: "图片输出 / 1M Token"},
+	{Key: "audio_input_unit_price", Label: "音频输入 / 1M Token"},
+	{Key: "audio_output_unit_price", Label: "音频输出 / 1M Token"},
+	{Key: "request_unit_price", Label: "每次请求"},
+	{Key: "video_second_unit_price", Label: "每视频秒"},
+}
+
+var pricingCSVComponentLabels = map[string]string{
+	"token_input":        "输入 Token",
+	"token_output":       "输出 Token",
+	"cache_read":         "缓存读取",
+	"cache_write":        "缓存写入",
+	"cache_write_1h":     "1 小时缓存写入",
+	"image_input":        "图片输入",
+	"image_output":       "图片输出",
+	"image_token_input":  "图片输入 Token",
+	"image_token_output": "图片输出 Token",
+	"audio_input":        "音频输入",
+	"audio_output":       "音频输出",
+	"audio_token_input":  "音频输入 Token",
+	"audio_token_output": "音频输出 Token",
+	"video_input":        "视频输入",
+	"video_output":       "视频输出",
+	"character_input":    "字符输入",
+	"character_output":   "字符输出",
+	"request":            "请求",
+	"tool_call":          "工具调用",
+	"generated_item":     "生成项",
+}
+
+var pricingCSVUnitLabels = map[string]string{
+	"token": "Token", "request": "请求", "image": "图片",
+	"second": "秒", "character": "字符",
 }
 
 type pricingAdminCatalogOption struct {
@@ -271,67 +333,16 @@ func AdminListOfficialPriceOverview(c *gin.Context) {
 
 func AdminListChannelModels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	keyword := strings.TrimSpace(c.Query("keyword"))
-	activeRetailPrices := model.DB.Table("channel_model_retail_price_versions").
-		Select(
-			"channel_model_id, MAX(id) AS active_retail_price_version_id, "+
-				"MAX(version) AS active_retail_price_version",
-		).
-		Where("status = ?", model.PricingVersionStatusActive).
-		Group("channel_model_id")
-	query := model.DB.Table("channel_models").
-		Select(
-			"channel_models.*, channels.name AS channel_name, models.model_name AS model_name, "+
-				"COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id, "+
-				"COALESCE(active_retail.active_retail_price_version, 0) AS active_retail_price_version",
-		).
-		Joins("JOIN channels ON channels.id = channel_models.channel_id").
-		Joins("JOIN models ON models.id = channel_models.model_id").
-		Joins(
-			"LEFT JOIN (?) AS active_retail ON active_retail.channel_model_id = channel_models.id",
-			activeRetailPrices,
-		)
-	if keyword != "" {
-		like := "%" + keyword + "%"
-		query = query.Where(
-			"channels.name LIKE ? OR models.model_name LIKE ? OR channel_models.upstream_model_name LIKE ?",
-			like,
-			like,
-			like,
-		)
+	query, err := channelModelAdminQuery(c)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
-	if channelId := strings.TrimSpace(c.Query("channel_id")); channelId != "" {
-		query = query.Where("channel_models.channel_id = ?", channelId)
-	}
-	if modelId := strings.TrimSpace(c.Query("model_id")); modelId != "" {
-		query = query.Where("channel_models.model_id = ?", modelId)
-	}
-	if status := strings.TrimSpace(c.Query("status")); status != "" {
-		statusValue, err := strconv.Atoi(status)
-		if err != nil || (statusValue != 0 && statusValue != 1) {
-			common.ApiErrorMsg(c, "status 无效")
-			return
-		}
-		query = query.Where("channel_models.status = ?", statusValue)
-	}
-	if runtimeMode := strings.TrimSpace(c.Query("runtime_mode")); runtimeMode != "" {
-		if runtimeMode != "legacy" && runtimeMode != "v2" {
-			common.ApiErrorMsg(c, "runtime_mode 无效")
-			return
-		}
-		query = query.Where("channel_models.runtime_mode = ?", runtimeMode)
-	}
-	if retailStatus := strings.TrimSpace(c.Query("retail_status")); retailStatus != "" {
-		switch retailStatus {
-		case "published":
-			query = query.Where("active_retail.active_retail_price_version_id IS NOT NULL")
-		case "unpublished":
-			query = query.Where("active_retail.active_retail_price_version_id IS NULL")
-		default:
-			common.ApiErrorMsg(c, "retail_status 无效")
-			return
-		}
-	}
+	query = query.Select(
+		"channel_models.*, channels.name AS channel_name, models.model_name AS model_name, " +
+			"COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id, " +
+			"COALESCE(active_retail.active_retail_price_version, 0) AS active_retail_price_version",
+	)
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -352,6 +363,138 @@ func AdminListChannelModels(c *gin.Context) {
 		"page":      pageInfo.GetPage(),
 		"page_size": pageInfo.GetPageSize(),
 	})
+}
+
+func AdminExportChannelPricing(c *gin.Context) {
+	query, err := channelModelAdminQuery(c)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	query = query.
+		Select(`models.model_name, channels.name AS channel_name,
+			channel_models.upstream_model_name,
+			COALESCE(linked_official.price_components, current_official.price_components, '') AS official_price_components,
+			COALESCE(linked_official.billing_expr, current_official.billing_expr, '') AS official_billing_expr,
+			COALESCE(linked_official.currency, current_official.currency, '') AS official_currency,
+			COALESCE(retail.price_components, '') AS retail_price_components,
+			COALESCE(retail.retail_billing_expr, '') AS retail_billing_expr,
+			COALESCE(retail.currency, '') AS retail_currency,
+			retail.total_variable_cost_rate,
+			retail.effective_tax_rate,
+			retail.target_net_margin,
+			COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id`).
+		Joins("LEFT JOIN channel_model_retail_price_versions AS retail ON retail.id = active_retail.active_retail_price_version_id").
+		Joins("LEFT JOIN channel_model_purchase_price_versions AS purchase ON purchase.id = retail.purchase_price_version_id").
+		Joins("LEFT JOIN official_model_price_versions AS linked_official ON linked_official.id = purchase.official_price_version_id").
+		Joins("LEFT JOIN model_official_prices ON model_official_prices.model_id = channel_models.model_id").
+		Joins("LEFT JOIN official_model_price_versions AS current_official ON current_official.id = model_official_prices.current_revision_id")
+
+	const exportLimit = 10000
+	var rows []channelPricingExportRow
+	if err := query.Order("models.model_name ASC, channels.name ASC, channel_models.id ASC").
+		Limit(exportLimit).
+		Scan(&rows).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filename := "channel-pricing-" + time.Now().UTC().Format("20060102-150405") + ".csv"
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Status(200)
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+	writer := csv.NewWriter(c.Writer)
+	_ = writer.Write([]string{
+		"模型名称", "上游渠道", "上游模型", "官方价格", "销售价格", "币种",
+		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
+	})
+	for _, row := range rows {
+		currency := row.RetailCurrency
+		if currency == "" {
+			currency = row.OfficialCurrency
+		}
+		retailSummary := ""
+		if row.ActiveRetailPriceVersionId > 0 {
+			retailSummary = formatPricingComponentsForCSV(
+				row.RetailPriceComponents,
+				row.RetailBillingExpr,
+				row.RetailCurrency,
+			)
+		}
+		_ = writer.Write([]string{
+			spreadsheetSafeCSVCell(row.ModelName),
+			spreadsheetSafeCSVCell(row.ChannelName),
+			spreadsheetSafeCSVCell(row.UpstreamModelName),
+			formatPricingComponentsForCSV(
+				row.OfficialPriceComponents,
+				row.OfficialBillingExpr,
+				row.OfficialCurrency,
+			),
+			retailSummary,
+			currency,
+			formatPricingRatePercentage(row.TotalVariableCostRate.String),
+			formatPricingRatePercentage(row.EffectiveTaxRate.String),
+			formatPricingRatePercentage(row.TargetNetMargin.String),
+		})
+	}
+	writer.Flush()
+}
+
+func channelModelAdminQuery(c *gin.Context) (*gorm.DB, error) {
+	activeRetailPrices := model.DB.Table("channel_model_retail_price_versions").
+		Select(
+			"channel_model_id, MAX(id) AS active_retail_price_version_id, "+
+				"MAX(version) AS active_retail_price_version",
+		).
+		Where("status = ?", model.PricingVersionStatusActive).
+		Group("channel_model_id")
+	query := model.DB.Table("channel_models").
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins(
+			"LEFT JOIN (?) AS active_retail ON active_retail.channel_model_id = channel_models.id",
+			activeRetailPrices,
+		)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where(
+			"channels.name LIKE ? OR models.model_name LIKE ? OR channel_models.upstream_model_name LIKE ?",
+			like,
+			like,
+			like,
+		)
+	}
+	if channelId := strings.TrimSpace(c.Query("channel_id")); channelId != "" {
+		query = query.Where("channel_models.channel_id = ?", channelId)
+	}
+	if modelId := strings.TrimSpace(c.Query("model_id")); modelId != "" {
+		query = query.Where("channel_models.model_id = ?", modelId)
+	}
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		statusValue, err := strconv.Atoi(status)
+		if err != nil || (statusValue != 0 && statusValue != 1) {
+			return nil, errors.New("status 无效")
+		}
+		query = query.Where("channel_models.status = ?", statusValue)
+	}
+	if runtimeMode := strings.TrimSpace(c.Query("runtime_mode")); runtimeMode != "" {
+		if runtimeMode != "legacy" && runtimeMode != "v2" {
+			return nil, errors.New("runtime_mode 无效")
+		}
+		query = query.Where("channel_models.runtime_mode = ?", runtimeMode)
+	}
+	if retailStatus := strings.TrimSpace(c.Query("retail_status")); retailStatus != "" {
+		switch retailStatus {
+		case "published":
+			query = query.Where("active_retail.active_retail_price_version_id IS NOT NULL")
+		case "unpublished":
+			query = query.Where("active_retail.active_retail_price_version_id IS NULL")
+		default:
+			return nil, errors.New("retail_status 无效")
+		}
+	}
+	return query, nil
 }
 
 func AdminListRequestPricingSnapshots(c *gin.Context) {
@@ -404,7 +547,9 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
 		"request_id", "model", "channel", "billing_mode", "currency",
-		"reserved_quota", "settled_quota", "purchase_cost", "retail_amount",
+		"reserved_quota", "settled_quota", "purchase_cost", "base_retail_amount",
+		"estimated_customer_charge", "customer_charge", "applied_group", "applied_group_ratio", "net_margin_rate",
+		"margin_compliant",
 		"status", "created_at", "updated_at",
 	})
 	for _, row := range rows {
@@ -417,13 +562,26 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 			strconv.FormatInt(row.ReservedQuota, 10),
 			strconv.FormatInt(row.SettledQuota, 10),
 			row.PurchaseCost,
-			row.RetailAmount,
+			row.BaseRetailAmount,
+			row.EstimatedCustomerCharge,
+			nullablePricingString(row.CustomerCharge),
+			spreadsheetSafeCSVCell(row.AppliedGroup),
+			row.AppliedGroupRatio,
+			row.NetMarginRate,
+			strconv.FormatBool(row.MarginCompliant),
 			row.Status,
 			time.Unix(row.CreatedAt, 0).UTC().Format(time.RFC3339),
 			time.Unix(row.UpdatedAt, 0).UTC().Format(time.RFC3339),
 		})
 	}
 	writer.Flush()
+}
+
+func nullablePricingString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func AdminConfirmRequestPricingSnapshotRefunded(c *gin.Context) {
@@ -444,12 +602,29 @@ func AdminConfirmRequestPricingSnapshotRefunded(c *gin.Context) {
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where("id = ? AND status = ?", id, pricingruntime.PricingSnapshotStatusPending).
 		Updates(map[string]any{
-			"settled_quota": 0,
-			"status":        pricingruntime.PricingSnapshotStatusRefunded,
-			"resolution":    "admin_confirmed_refund",
-			"resolved_at":   common.GetTimestamp(),
-			"resolved_by":   c.GetInt("id"),
-			"updated_at":    common.GetTimestamp(),
+			"settled_quota":    0,
+			"customer_charge":  "0",
+			"net_margin_rate":  nil,
+			"margin_compliant": false,
+			"gross_margin": gorm.Expr(
+				"CASE WHEN billing_source = ? AND provider_cost_known = ? AND provider_cost_scope = ? THEN -provider_reported_cost ELSE 0 END",
+				"wallet",
+				true,
+				"full_provider_cost",
+			),
+			"gross_margin_known": gorm.Expr(
+				"CASE WHEN billing_source = ? AND provider_cost_known = ? AND provider_cost_scope = ? THEN ? ELSE ? END",
+				"wallet",
+				true,
+				"full_provider_cost",
+				true,
+				false,
+			),
+			"status":      pricingruntime.PricingSnapshotStatusRefunded,
+			"resolution":  "admin_confirmed_refund",
+			"resolved_at": common.GetTimestamp(),
+			"resolved_by": c.GetInt("id"),
+			"updated_at":  common.GetTimestamp(),
 		})
 	if result.Error != nil {
 		common.ApiError(c, result.Error)
@@ -508,8 +683,7 @@ func AdminRecordProviderReportedCost(c *gin.Context) {
 }
 
 func AdminGetPricingFinancialSummary(c *gin.Context) {
-	baseQuery := model.DB.Model(&model.RequestPricingSnapshot{}).
-		Where("status = ?", pricingruntime.PricingSnapshotStatusSettled)
+	baseQuery := model.DB.Model(&model.RequestPricingSnapshot{})
 	createdFrom, createdTo, err := pricingSummaryTimeRange(c)
 	if err != nil {
 		common.ApiError(c, err)
@@ -521,16 +695,38 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 	if createdTo > 0 {
 		baseQuery = baseQuery.Where("created_at <= ?", createdTo)
 	}
+	finalizedStatuses := []string{
+		pricingruntime.PricingSnapshotStatusSettled,
+		pricingruntime.PricingSnapshotStatusRefunded,
+	}
+	finalizedQuery := baseQuery.Session(&gorm.Session{}).
+		Where("status IN ?", finalizedStatuses)
+	settledQuery := baseQuery.Session(&gorm.Session{}).
+		Where("status = ?", pricingruntime.PricingSnapshotStatusSettled)
+	var settledCount int64
+	if err := settledQuery.Session(&gorm.Session{}).Count(&settledCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var refundedCount int64
+	if err := baseQuery.Session(&gorm.Session{}).
+		Where("status = ?", pricingruntime.PricingSnapshotStatusRefunded).
+		Count(&refundedCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	type financialTotals struct {
-		Count         int64  `gorm:"column:record_count"`
-		Revenue       string `gorm:"column:revenue"`
-		EstimatedCost string `gorm:"column:estimated_cost"`
+		Count               int64  `gorm:"column:record_count"`
+		CustomerChargeCount int64  `gorm:"column:customer_charge_count"`
+		Revenue             string `gorm:"column:revenue"`
+		EstimatedCost       string `gorm:"column:estimated_cost"`
 	}
 	var totals financialTotals
-	if err := baseQuery.Session(&gorm.Session{}).
+	if err := finalizedQuery.Session(&gorm.Session{}).
 		Select(
 			"COUNT(*) AS record_count, " +
-				"COALESCE(SUM(retail_amount), 0) AS revenue, " +
+				"COUNT(customer_charge) AS customer_charge_count, " +
+				"COALESCE(SUM(customer_charge), 0) AS revenue, " +
 				"COALESCE(SUM(purchase_cost), 0) AS estimated_cost",
 		).
 		Scan(&totals).Error; err != nil {
@@ -543,7 +739,7 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 		CostVariance string `gorm:"column:cost_variance"`
 	}
 	var providerTotals providerCostTotals
-	if err := baseQuery.Session(&gorm.Session{}).
+	if err := finalizedQuery.Session(&gorm.Session{}).
 		Where("provider_cost_known = ?", true).
 		Select(
 			"COUNT(*) AS record_count, " +
@@ -559,8 +755,8 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 		GrossMargin string `gorm:"column:gross_margin"`
 	}
 	var marginTotals grossMarginTotals
-	if err := baseQuery.Session(&gorm.Session{}).
-		Where("provider_cost_known = ? AND provider_cost_scope = ?", true, "full_provider_cost").
+	if err := finalizedQuery.Session(&gorm.Session{}).
+		Where("gross_margin_known = ?", true).
 		Select(
 			"COUNT(*) AS record_count, " +
 				"COALESCE(SUM(gross_margin), 0) AS gross_margin",
@@ -569,18 +765,50 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	var fullProviderCostCount int64
+	if err := finalizedQuery.Session(&gorm.Session{}).
+		Where("provider_cost_known = ? AND provider_cost_scope = ?", true, "full_provider_cost").
+		Count(&fullProviderCostCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var marginBreachCount int64
+	if err := settledQuery.Session(&gorm.Session{}).
+		Where("net_margin_rate IS NOT NULL AND margin_compliant = ?", false).
+		Count(&marginBreachCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, gin.H{
-		"settled_count":              totals.Count,
-		"revenue_usd":                totals.Revenue,
-		"estimated_purchase_usd":     totals.EstimatedCost,
-		"provider_reported_cost_usd": providerTotals.ProviderCost,
-		"cost_variance_usd":          providerTotals.CostVariance,
-		"gross_margin_usd":           marginTotals.GrossMargin,
+		"settled_count":              settledCount,
+		"refunded_count":             refundedCount,
+		"finalized_count":            totals.Count,
+		"billed_amount_usd":          normalizePricingAmount(totals.Revenue),
+		"revenue_usd":                normalizePricingAmount(totals.Revenue),
+		"estimated_purchase_usd":     normalizePricingAmount(totals.EstimatedCost),
+		"provider_reported_cost_usd": normalizePricingAmount(providerTotals.ProviderCost),
+		"cost_variance_usd":          normalizePricingAmount(providerTotals.CostVariance),
+		"gross_margin_usd":           normalizePricingAmount(marginTotals.GrossMargin),
 		"provider_cost_known_count":  providerTotals.Count,
 		"provider_cost_missing_count": totals.Count -
 			providerTotals.Count,
-		"full_provider_cost_count": marginTotals.Count,
+		"customer_charge_known_count": totals.CustomerChargeCount,
+		"customer_charge_missing_count": totals.Count -
+			totals.CustomerChargeCount,
+		"full_provider_cost_count": fullProviderCostCount,
+		"gross_margin_known_count": marginTotals.Count,
+		"gross_margin_missing_count": fullProviderCostCount -
+			marginTotals.Count,
+		"margin_breach_count": marginBreachCount,
 	})
+}
+
+func normalizePricingAmount(value string) string {
+	amount, err := decimal.NewFromString(strings.TrimSpace(value))
+	if err != nil {
+		return value
+	}
+	return amount.Round(12).String()
 }
 
 func pricingSummaryTimeRange(c *gin.Context) (int64, int64, error) {
@@ -692,6 +920,169 @@ func spreadsheetSafeCSVCell(value string) string {
 	default:
 		return value
 	}
+}
+
+func formatPricingComponentsForCSV(raw string, billingExpr string, currency string) string {
+	var components map[string]any
+	if err := common.UnmarshalJsonStr(strings.TrimSpace(raw), &components); err == nil {
+		rules, _ := components["rules"].([]any)
+		if len(rules) == 0 {
+			rules, _ = components["tiers"].([]any)
+		}
+		if len(rules) > 0 {
+			formattedRules := make([]string, 0, len(rules))
+			for index, rawRule := range rules {
+				rule, ok := rawRule.(map[string]any)
+				if !ok {
+					continue
+				}
+				unitPrice := pricingComponentScalar(rule["unit_price"])
+				if unitPrice == "" {
+					continue
+				}
+				name := pricingComponentScalar(rule["name"])
+				component := pricingComponentScalar(rule["component"])
+				label := pricingCSVComponentLabel(component)
+				if name != "" && name != label {
+					label = name + " · " + label
+				}
+				if label == "" {
+					label = fmt.Sprintf("规则 %d", index+1)
+				}
+				conditions := make([]string, 0, 5)
+				if value := pricingComponentScalar(rule["operation"]); value != "" {
+					conditions = append(conditions, "操作="+value)
+				}
+				if value := pricingComponentScalar(rule["quality"]); value != "" {
+					conditions = append(conditions, "质量="+value)
+				}
+				if value := pricingComponentScalar(rule["resolution"]); value != "" {
+					conditions = append(conditions, "分辨率="+value)
+				}
+				if value := pricingComponentScalar(rule["with_audio"]); value != "" {
+					switch value {
+					case "true":
+						conditions = append(conditions, "含音频")
+					case "false":
+						conditions = append(conditions, "不含音频")
+					}
+				}
+				if value := pricingComponentScalar(rule["upper_bound"]); value != "" {
+					conditions = append(conditions, "用量≤"+value)
+				}
+				if len(conditions) > 0 {
+					label += "（" + strings.Join(conditions, "，") + "）"
+				}
+				price := unitPrice
+				if currency != "" {
+					price += " " + currency
+				}
+				unit := pricingCSVUnit(
+					pricingComponentScalar(rule["unit"]),
+					pricingComponentScalar(rule["unit_size"]),
+				)
+				if unit != "" {
+					price += " / " + unit
+				}
+				formattedRules = append(formattedRules, label+": "+price)
+			}
+			if len(formattedRules) > 0 {
+				return strings.Join(formattedRules, "；")
+			}
+		}
+
+		summaries := make([]string, 0, len(pricingCSVFlatComponents))
+		seen := make(map[string]struct{}, len(pricingCSVFlatComponents))
+		for _, component := range pricingCSVFlatComponents {
+			seen[component.Key] = struct{}{}
+			value := pricingComponentScalar(components[component.Key])
+			if value == "" {
+				continue
+			}
+			if currency != "" {
+				value += " " + currency
+			}
+			summaries = append(summaries, component.Label+": "+value)
+		}
+		unknownKeys := make([]string, 0)
+		for key := range components {
+			if _, exists := seen[key]; exists || !strings.HasSuffix(key, "_unit_price") {
+				continue
+			}
+			if pricingComponentScalar(components[key]) != "" {
+				unknownKeys = append(unknownKeys, key)
+			}
+		}
+		sort.Strings(unknownKeys)
+		for _, key := range unknownKeys {
+			value := pricingComponentScalar(components[key])
+			if currency != "" {
+				value += " " + currency
+			}
+			summaries = append(summaries, key+": "+value)
+		}
+		if len(summaries) > 0 {
+			return strings.Join(summaries, "；")
+		}
+	}
+	billingExpr = strings.TrimSpace(billingExpr)
+	if billingExpr == "" {
+		return ""
+	}
+	return "表达式: " + billingExpr
+}
+
+func pricingComponentScalar(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		return decimal.NewFromFloat(typed).String()
+	case float32:
+		return decimal.NewFromFloat32(typed).String()
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	default:
+		return ""
+	}
+}
+
+func pricingCSVComponentLabel(component string) string {
+	if label := pricingCSVComponentLabels[component]; label != "" {
+		return label
+	}
+	return component
+}
+
+func pricingCSVUnit(unit string, unitSize string) string {
+	if unit == "" {
+		return ""
+	}
+	if unitSize == "" {
+		unitSize = "1"
+	}
+	if unit == "token" && unitSize == "1000000" {
+		return "1M Token"
+	}
+	label := pricingCSVUnitLabels[unit]
+	if label == "" {
+		label = unit
+	}
+	return unitSize + " " + label
+}
+
+func formatPricingRatePercentage(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	rate, err := decimal.NewFromString(value)
+	if err != nil {
+		return value
+	}
+	return rate.Mul(decimal.NewFromInt(100)).String() + "%"
 }
 
 func AdminGetPricingReconciliationSummary(c *gin.Context) {

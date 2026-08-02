@@ -2,7 +2,7 @@
 
 本文档根据 `model/` 目录下的 GORM 模型和迁移入口整理，方便二次开发时快速理解数据库结构。
 
-迁移入口在 `model/main.go` 的 `migrateDB()` / `migrateDBFast()`，日志库迁移在 `migrateLOGDB()`。主业务库要求兼容 SQLite、MySQL、PostgreSQL；日志库可以是同类 SQL 数据库，也可以是 ClickHouse。
+底层迁移实现在 `model/main.go` 的 `migrateDB()` / `migrateDBFast()`，日志库迁移在 `migrateLOGDB()`。生产发布入口是一次性命令 `cmd/db-migrate`：应用 Pod 设置 `SKIP_DB_MIGRATION=true`，发布前由操作人在本地使用同一发布 commit 执行 `DB_MIGRATION_ENV_FILE=.env.prod DB_MIGRATION_CONFIRM=MIGRATE go run ./cmd/db-migrate`。主业务库要求兼容 SQLite、MySQL、PostgreSQL；日志库可以是同类 SQL 数据库，也可以是 ClickHouse。
 
 ## 总览
 
@@ -842,4 +842,3 @@ Casbin 权限规则表。
 5. JSON 字段在业务代码中 marshal/unmarshal 必须使用 `common/json.go` 中的封装函数。
 6. 数据库改动必须同时兼容 SQLite、MySQL、PostgreSQL。
 7. GORM `gorm:"-"`、`gorm:"-:all"`、`gorm:"->"` 字段不是普通持久化字段，不能按数据库字段使用。
-

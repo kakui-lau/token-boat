@@ -24,6 +24,10 @@ import {
   ENDPOINT_TYPES,
 } from '../constants'
 import type { PricingModel } from '../types'
+import {
+  getDisplayedRetailPrice,
+  isModelAvailableForGroup,
+} from './model-helpers'
 
 // ----------------------------------------------------------------------------
 // Filter Utilities
@@ -67,7 +71,9 @@ export function filterByGroup(
   group: string
 ): PricingModel[] {
   if (group === FILTER_ALL) return models
-  return models.filter((m) => m.enable_groups?.includes(group))
+  return models.filter(
+    (m) => m.enable_groups?.includes('all') || m.enable_groups?.includes(group)
+  )
 }
 
 /**
@@ -101,8 +107,14 @@ export function filterByEndpointType(
 /**
  * Get model price for sorting
  */
-function getModelPrice(model: PricingModel): number {
-  return model.quota_type === 0 ? model.model_ratio : model.model_price || 0
+function getModelPrice(model: PricingModel, group: string): number | null {
+  const lowestAmount = Number(
+    getDisplayedRetailPrice(model, group)?.items[0]?.amount
+  )
+  if (Number.isFinite(lowestAmount)) {
+    return lowestAmount
+  }
+  return null
 }
 
 /**
@@ -110,7 +122,8 @@ function getModelPrice(model: PricingModel): number {
  */
 export function sortModels(
   models: PricingModel[],
-  sortBy: string
+  sortBy: string,
+  group: string = FILTER_ALL
 ): PricingModel[] {
   const sorted = [...models]
 
@@ -121,10 +134,30 @@ export function sortModels(
       )
       break
     case SORT_OPTIONS.PRICE_LOW:
-      sorted.sort((a, b) => getModelPrice(a) - getModelPrice(b))
+      sorted.sort((a, b) => {
+        const aAvailable = isModelAvailableForGroup(a, group)
+        const bAvailable = isModelAvailableForGroup(b, group)
+        if (aAvailable !== bAvailable) return aAvailable ? -1 : 1
+        const aPrice = getModelPrice(a, group)
+        const bPrice = getModelPrice(b, group)
+        if ((aPrice === null) !== (bPrice === null)) {
+          return aPrice === null ? 1 : -1
+        }
+        return (aPrice ?? 0) - (bPrice ?? 0)
+      })
       break
     case SORT_OPTIONS.PRICE_HIGH:
-      sorted.sort((a, b) => getModelPrice(b) - getModelPrice(a))
+      sorted.sort((a, b) => {
+        const aAvailable = isModelAvailableForGroup(a, group)
+        const bAvailable = isModelAvailableForGroup(b, group)
+        if (aAvailable !== bAvailable) return aAvailable ? -1 : 1
+        const aPrice = getModelPrice(a, group)
+        const bPrice = getModelPrice(b, group)
+        if ((aPrice === null) !== (bPrice === null)) {
+          return aPrice === null ? 1 : -1
+        }
+        return (bPrice ?? 0) - (aPrice ?? 0)
+      })
       break
   }
 
@@ -152,7 +185,7 @@ export function filterAndSortModels(
   result = filterByQuotaType(result, filters.quotaType)
   result = filterByEndpointType(result, filters.endpointType)
   result = filterByTag(result, filters.tag)
-  result = sortModels(result, filters.sortBy)
+  result = sortModels(result, filters.sortBy, filters.group)
 
   return result
 }
@@ -183,7 +216,7 @@ export function extractAllTags(models: PricingModel[]): string[] {
     }
   })
 
-  return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  return [...tagSet].sort((a, b) => a.localeCompare(b))
 }
 
 /**

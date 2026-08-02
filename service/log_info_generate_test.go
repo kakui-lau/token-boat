@@ -29,6 +29,7 @@ func TestInjectGeneralBillingAuditRecordsReconciliation(t *testing.T) {
 	assert.Equal(t, 90, other["actual_pre_consumed_quota"])
 	assert.Equal(t, 75, other["customer_final_quota"])
 	assert.Equal(t, -15, other["adjustment_quota"])
+	assert.Equal(t, common.QuotaPerUnit, other["quota_per_unit"])
 	_, hasAdminInfo := other["admin_info"]
 	assert.False(t, hasAdminInfo)
 }
@@ -36,6 +37,7 @@ func TestInjectGeneralBillingAuditRecordsReconciliation(t *testing.T) {
 func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
+			QuotaPerUnit: 1_000_000,
 			Selected: &types.DynamicPriceCandidate{
 				ChannelModelId: 4, PurchasePriceVersion: 5, RetailPriceVersion: 6,
 				PricingRevision: "revision", EstimatedPurchaseUSD: "0.4",
@@ -48,6 +50,7 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 	InjectGeneralBillingAudit(other, relayInfo, 10, nil)
 
 	assert.Equal(t, "v2_dynamic", other["billing_mode"])
+	assert.Equal(t, float64(1_000_000), other["quota_per_unit"])
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, 4, adminInfo["channel_model_id"])
@@ -61,6 +64,9 @@ func TestInjectGeneralBillingAuditRecordsOpenRouterSupplierCost(t *testing.T) {
 	isByok := false
 	relayInfo := &relaycommon.RelayInfo{
 		PriceData: types.PriceData{QuotaToPreConsume: 200},
+		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
+			QuotaPerUnit: 2_000_000,
+		},
 		ChannelMeta: &relaycommon.ChannelMeta{
 			ChannelType: constant.ChannelTypeOpenRouter,
 		},
@@ -69,7 +75,7 @@ func TestInjectGeneralBillingAuditRecordsOpenRouterSupplierCost(t *testing.T) {
 		"admin_info": map[string]interface{}{"use_channel": []string{"3"}},
 	}
 	usage := &dto.Usage{Cost: 0.25, IsByok: &isByok}
-	finalQuota := int(common.QuotaPerUnit)
+	finalQuota := 2_000_000
 
 	InjectGeneralBillingAudit(other, relayInfo, finalQuota, usage)
 

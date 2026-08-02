@@ -84,6 +84,13 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		other["customer_final_quota"] = finalQuota
 		other["adjustment_quota"] = finalQuota - relayInfo.FinalPreConsumedQuota
 	}
+	quotaPerUnit := common.QuotaPerUnit
+	if snapshot := relayInfo.DynamicPricingSnapshot; snapshot != nil && snapshot.QuotaPerUnit > 0 {
+		quotaPerUnit = snapshot.QuotaPerUnit
+	}
+	if quotaPerUnit > 0 {
+		other["quota_per_unit"] = quotaPerUnit
+	}
 	if snapshot := relayInfo.DynamicPricingSnapshot; snapshot != nil && snapshot.Selected != nil {
 		other["billing_mode"] = "v2_dynamic"
 		adminInfo, _ := other["admin_info"].(map[string]interface{})
@@ -98,12 +105,21 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["pricing_revision"] = snapshot.Selected.PricingRevision
 		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
 		adminInfo["estimated_retail_usd"] = snapshot.Selected.EstimatedRetailUSD
+		adminInfo["estimated_customer_charge_usd"] = snapshot.Selected.EstimatedCustomerChargeUSD
+		adminInfo["applied_group"] = snapshot.Group
+		adminInfo["applied_group_ratio"] = snapshot.GroupRatio
+		adminInfo["minimum_margin_rate"] = snapshot.Selected.MinimumMarginRate
+		adminInfo["estimated_net_margin_rate"] = snapshot.Selected.EstimatedNetMarginRate
+		if snapshot.QuotaPerUnit > 0 {
+			adminInfo["customer_charge_usd"] = float64(chargedQuota) / snapshot.QuotaPerUnit
+			adminInfo["quota_per_unit"] = snapshot.QuotaPerUnit
+		}
 	}
 	if relayInfo.ChannelMeta == nil || relayInfo.ChannelType != constant.ChannelTypeOpenRouter || usage == nil {
 		return
 	}
 	providerCost, ok := usage.Cost.(float64)
-	if !ok || providerCost < 0 || math.IsNaN(providerCost) || math.IsInf(providerCost, 0) || common.QuotaPerUnit <= 0 {
+	if !ok || providerCost < 0 || math.IsNaN(providerCost) || math.IsInf(providerCost, 0) || quotaPerUnit <= 0 {
 		return
 	}
 	adminInfo, _ := other["admin_info"].(map[string]interface{})
@@ -128,7 +144,7 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 	} else {
 		adminInfo["gross_margin_basis"] = "customer_charge"
 		adminInfo["gross_margin_known"] = true
-		adminInfo["gross_margin_usd"] = float64(chargedQuota)/float64(common.QuotaPerUnit) - providerCost
+		adminInfo["gross_margin_usd"] = float64(chargedQuota)/quotaPerUnit - providerCost
 	}
 	if relayInfo.DynamicPricingSnapshot != nil {
 		if err := pricingruntime.RecordProviderReportedCost(

@@ -44,6 +44,27 @@ func jsonNumberAsInt64(value any) int64 {
 	return 0
 }
 
+func jsonNumberAsNonNegativeQuota(value any) (int64, bool) {
+	switch number := value.(type) {
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) || number < 0 || math.Trunc(number) != number {
+			return 0, false
+		}
+		quota, clamp := common.QuotaFromFloatChecked(number)
+		if clamp != nil {
+			return 0, false
+		}
+		return int64(quota), true
+	case string:
+		parsed, err := strconv.ParseInt(number, 10, 64)
+		if err != nil || parsed < 0 || parsed > int64(common.MaxQuota) {
+			return 0, false
+		}
+		return parsed, true
+	}
+	return 0, false
+}
+
 func jsonNumberAsDecimal(value any) (decimal.Decimal, bool) {
 	switch number := value.(type) {
 	case float64:
@@ -128,6 +149,14 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 			if logEntry.Other != "" {
 				_ = common.UnmarshalJsonStr(logEntry.Other, &other)
 			}
+			isTask, _ := other["is_task"].(bool)
+			_, isTaskAdjustment := other["pre_consumed_quota"]
+			if isTask && isTaskAdjustment {
+				// The original task consume log is updated with the final charge.
+				// A positive settlement delta also has consume type, but counting it
+				// again would duplicate both the request and its revenue.
+				continue
+			}
 			upstreamModel, _ := other["upstream_model_name"].(string)
 			if upstreamModel == "" {
 				upstreamModel = mappings[logEntry.ChannelId][logEntry.ModelName]
@@ -158,7 +187,11 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 			accumulator.row.PromptTokens += promptTokens
 			accumulator.row.CompletionTokens += completionTokens
 			accumulator.row.TotalTokens += promptTokens + completionTokens
-			accumulator.row.CustomerQuota += int64(logEntry.Quota)
+			customerQuota := int64(logEntry.Quota)
+			if settledQuota, valid := jsonNumberAsNonNegativeQuota(other["customer_final_quota"]); valid {
+				customerQuota = settledQuota
+			}
+			accumulator.row.CustomerQuota += customerQuota
 			quotaPerUnit, validQuotaPerUnit := jsonNumberAsDecimal(other["quota_per_unit"])
 			if !validQuotaPerUnit || quotaPerUnit.IsZero() {
 				if common.QuotaPerUnit <= 0 {
@@ -167,7 +200,7 @@ func RecalculateChannelDailyUsage(ctx context.Context, start time.Time) error {
 				quotaPerUnit = decimal.NewFromFloat(common.QuotaPerUnit)
 			}
 			accumulator.revenue = accumulator.revenue.Add(
-				decimal.NewFromInt(int64(logEntry.Quota)).Div(quotaPerUnit),
+				decimal.NewFromInt(customerQuota).Div(quotaPerUnit),
 			)
 			accumulator.row.CacheReadTokens += jsonNumberAsInt64(other["cache_tokens"])
 			cacheWriteTokens := jsonNumberAsInt64(other["cache_write_tokens"])

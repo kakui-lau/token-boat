@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
   BadgeDollarSign,
-  GitCompareArrows,
+  Download,
   Plus,
   RefreshCw,
   Search,
@@ -29,6 +29,7 @@ import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,8 +48,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { handleServerError } from '@/lib/handle-server-error'
 
 import {
+  exportChannelModelPrices,
   getChannelModels,
   getPricingCatalogOptions,
   setPricingModelRuntime,
@@ -73,6 +76,9 @@ export function PricingAdmin() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingChannelModel, setEditingChannelModel] =
     useState<ChannelModel | null>(null)
+  const [pendingV2ModelName, setPendingV2ModelName] = useState<string | null>(
+    null
+  )
   const deferredKeyword = useDeferredValue(keyword)
   const catalogQuery = useQuery({
     queryKey: ['pricing-admin', 'catalog-options'],
@@ -117,13 +123,13 @@ export function PricingAdmin() {
           count: response.data.created,
         })
       )
+      setPendingV2ModelName(null)
     },
+    onError: handleServerError,
   })
   const runtimeMutation = useMutation({
-    mutationFn: (input: {
-      model_name: string
-      runtime_mode: 'v2'
-    }) => setPricingModelRuntime(input),
+    mutationFn: (input: { model_name: string; runtime_mode: 'v2' }) =>
+      setPricingModelRuntime(input),
     onSuccess: async (response) => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -140,16 +146,49 @@ export function PricingAdmin() {
       )
     },
   })
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      exportChannelModelPrices({
+        keyword: deferredKeyword.trim() || undefined,
+        channel_id: channelId ? Number(channelId) : undefined,
+        status: status ? Number(status) : undefined,
+        runtime_mode:
+          runtimeMode === 'legacy' || runtimeMode === 'v2'
+            ? runtimeMode
+            : undefined,
+        retail_status:
+          retailStatus === 'published' || retailStatus === 'unpublished'
+            ? retailStatus
+            : undefined,
+      }),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `channel-pricing-${new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replaceAll('-', '')}.csv`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    },
+    onError: handleServerError,
+  })
   const rows = channelModelsQuery.data?.data.items ?? []
   const total = channelModelsQuery.data?.data.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / 50))
+
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <Button variant='outline' render={<Link to='/price-comparison' />}>
-          <GitCompareArrows data-icon='inline-start' />
-          {t('Price Comparison')}
+        <Button
+          variant='outline'
+          disabled={exportMutation.isPending}
+          onClick={() => exportMutation.mutate()}
+        >
+          <Download data-icon='inline-start' />
+          {t('Export filtered CSV')}
         </Button>
         <Button
           variant='outline'
@@ -344,10 +383,7 @@ export function PricingAdmin() {
                             size='sm'
                             disabled={runtimeMutation.isPending}
                             onClick={() =>
-                              runtimeMutation.mutate({
-                                model_name: row.model_name,
-                                runtime_mode: 'v2',
-                              })
+                              setPendingV2ModelName(row.model_name)
                             }
                           >
                             {t('Enable Model V2')}
@@ -435,6 +471,33 @@ export function PricingAdmin() {
             }}
             onCreated={async () => {
               await channelModelsQuery.refetch()
+            }}
+          />
+          <ConfirmDialog
+            open={pendingV2ModelName !== null}
+            onOpenChange={(open) => {
+              if (!open && !runtimeMutation.isPending) {
+                setPendingV2ModelName(null)
+              }
+            }}
+            title={t('Enable Model V2')}
+            desc={
+              <div className='space-y-2'>
+                <p className='text-foreground font-mono font-medium'>
+                  {pendingV2ModelName}
+                </p>
+                <p>{t('This action cannot be undone.')}</p>
+              </div>
+            }
+            confirmText={t('Enable Model V2')}
+            isLoading={runtimeMutation.isPending}
+            handleConfirm={() => {
+              if (pendingV2ModelName) {
+                runtimeMutation.mutate({
+                  model_name: pendingV2ModelName,
+                  runtime_mode: 'v2',
+                })
+              }
             }}
           />
         </div>

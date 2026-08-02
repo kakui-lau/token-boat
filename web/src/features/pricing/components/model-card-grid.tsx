@@ -84,7 +84,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
             showRechargePrice={props.showRechargePrice}
             selectedGroup={props.selectedGroup}
             perf={perfMap.get(model.model_name || '')}
-            onClick={() => props.onModelClick(model.model_name || '')}
+            onModelClick={props.onModelClick}
           />
         ))}
       </div>

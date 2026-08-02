@@ -32,6 +32,7 @@ func setupPricingAdminControllerTestDB(t *testing.T) {
 		&model.Model{},
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
+		&model.ModelOfficialPrice{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 		&model.RequestPricingSnapshot{},
@@ -317,6 +318,133 @@ func TestAdminListChannelModelsReturnsAndFiltersActiveRetailPriceStatus(t *testi
 	unpublishedRows := list("/api/pricing-admin/channel-models?retail_status=unpublished")
 	require.Len(t, unpublishedRows, 1)
 	assert.Equal(t, 95, unpublishedRows[0].Id)
+}
+
+func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.ModelOfficialPrice{}))
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 141, Name: "=provider"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 142, ModelName: "+gpt-enterprise"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 143, ChannelId: 141, ModelId: 142, UpstreamModelName: "@gpt-upstream",
+		Status: 1, RuntimeMode: "v2",
+	}).Error)
+	official := model.OfficialModelPriceVersion{
+		Id: 144, ModelId: 142, BillingMode: "token", PriceStructure: "flat",
+		PriceComponents: `{"input_unit_price":"2.5","output_unit_price":"15","cache_read_unit_price":"0.25"}`,
+		BillingExpr:     "v2:(p * 2.5 + c * 15 + cr * 0.25) / 1000000",
+		ExprHash:        "official-hash", ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD", Source: "vendor-official",
+		Version: 1, Status: model.PricingVersionStatusSuspended,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+	currentOfficial := official
+	currentOfficial.Id = 149
+	currentOfficial.Version = 2
+	currentOfficial.Status = model.PricingVersionStatusActive
+	currentOfficial.PriceComponents = `{"input_unit_price":"3","output_unit_price":"18","cache_read_unit_price":"0.3"}`
+	require.NoError(t, model.DB.Create(&currentOfficial).Error)
+	require.NoError(t, model.DB.Create(&model.ModelOfficialPrice{
+		ModelId: 142, CurrentRevisionId: currentOfficial.Id,
+	}).Error)
+	purchase := model.ChannelModelPurchasePriceVersion{
+		Id: 145, ChannelModelId: 143, OfficialPriceVersionId: &official.Id,
+		BillingMode: "token", PricingMode: "official_ratio", PriceStructure: "flat",
+		PriceComponents:     `{"input_unit_price":"1.5","output_unit_price":"9","cache_read_unit_price":"0.15"}`,
+		PurchaseBillingExpr: "v2:(p * 1.5 + c * 9 + cr * 0.15) / 1000000",
+		PurchaseExprHash:    "purchase-hash", ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}
+	require.NoError(t, model.DB.Create(&purchase).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
+		Id: 146, ChannelModelId: 143, PurchasePriceVersionId: purchase.Id,
+		BillingMode: "token", PriceStructure: "flat",
+		PriceComponents:   `{"input_unit_price":"2","output_unit_price":"12","cache_read_unit_price":"0.2"}`,
+		RetailBillingExpr: "v2:(p * 2 + c * 12 + cr * 0.2) / 1000000",
+		RetailExprHash:    "retail-hash", ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+		TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.165",
+		TargetNetMargin: "0.2", MinimumMarginRate: "0.05",
+		Version: 1, Status: model.PricingVersionStatusActive,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 147, Name: "other-provider"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 148, ChannelId: 147, ModelId: 142, UpstreamModelName: "unpublished-upstream",
+		Status: 1, RuntimeMode: "v2",
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/channel-models/export?channel_id=141&retail_status=published",
+		nil,
+	)
+	AdminExportChannelPricing(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "text/csv; charset=utf-8", recorder.Header().Get("Content-Type"))
+	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "channel-pricing-")
+	records, err := csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, []string{
+		"\ufeff模型名称", "上游渠道", "上游模型", "官方价格", "销售价格", "币种",
+		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
+	}, records[0])
+	assert.Equal(t, "'+gpt-enterprise", records[1][0])
+	assert.Equal(t, "'=provider", records[1][1])
+	assert.Equal(t, "'@gpt-upstream", records[1][2])
+	assert.Equal(t, "输入 / 1M Token: 2.5 USD；输出 / 1M Token: 15 USD；缓存读取 / 1M Token: 0.25 USD", records[1][3])
+	assert.Equal(t, "输入 / 1M Token: 2 USD；输出 / 1M Token: 12 USD；缓存读取 / 1M Token: 0.2 USD", records[1][4])
+	assert.Equal(t, "USD", records[1][5])
+	assert.Equal(t, "11%", records[1][6])
+	assert.Equal(t, "16.5%", records[1][7])
+	assert.Equal(t, "20%", records[1][8])
+
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/channel-models/export?retail_status=unpublished",
+		nil,
+	)
+	AdminExportChannelPricing(context)
+	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, "unpublished-upstream", records[1][2])
+	assert.Equal(t, "输入 / 1M Token: 3 USD；输出 / 1M Token: 18 USD；缓存读取 / 1M Token: 0.3 USD", records[1][3])
+	assert.Empty(t, records[1][4])
+	assert.Empty(t, records[1][6])
+	assert.Empty(t, records[1][7])
+	assert.Empty(t, records[1][8])
+}
+
+func TestFormatPricingComponentsForCSVSupportsStructuredPrices(t *testing.T) {
+	formatted := formatPricingComponentsForCSV(
+		`{"schema_version":"v2","rules":[`+
+			`{"name":"1080p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.3402","resolution":"1080p","with_audio":"true"},`+
+			`{"name":"默认","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.1512"}`+
+			`]}`,
+		"",
+		"USD",
+	)
+
+	assert.Equal(
+		t,
+		"1080p · 视频输出（分辨率=1080p，含音频）: 0.3402 USD / 1 秒；默认 · 视频输出: 0.1512 USD / 1 秒",
+		formatted,
+	)
+	assert.Equal(
+		t,
+		"表达式: v2:tier(\"custom\", param(\"size\"))",
+		formatPricingComponentsForCSV(
+			"{}",
+			`v2:tier("custom", param("size"))`,
+			"USD",
+		),
+	)
 }
 
 func TestAdminListRequestPricingSnapshotsFiltersPendingReconciliation(t *testing.T) {
@@ -682,7 +810,10 @@ func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T)
 	assert.Equal(t, "'+request", records[1][0])
 	assert.Equal(t, "'=model", records[1][1])
 	assert.Equal(t, "'@provider", records[1][2])
-	assert.Equal(t, "pending", records[1][9])
+	assert.Equal(t, "0.08", records[1][8])
+	assert.Equal(t, "0.08", records[1][9])
+	assert.Empty(t, records[1][10])
+	assert.Equal(t, "pending", records[1][15])
 }
 
 func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testing.T) {
@@ -692,7 +823,10 @@ func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testi
 		RequestId: "confirm-refunded", UserId: 7, ModelId: 1, ChannelModelId: 1,
 		PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
 		PurchaseCost: "0.01", RetailAmount: "0.02", Currency: "USD",
-		ReservedQuota: 10, Status: pricingruntime.PricingSnapshotStatusPending,
+		ProviderReportedCost: "0.01", ProviderCostKnown: true,
+		ProviderCostScope: "full_provider_cost", GrossMargin: "0.01",
+		GrossMarginKnown: true,
+		ReservedQuota:    10, Status: pricingruntime.PricingSnapshotStatusPending,
 	}
 	require.NoError(t, model.DB.Create(&snapshot).Error)
 	context, recorder := newPricingAdminJSONContext(
@@ -709,6 +843,10 @@ func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testi
 	require.NoError(t, model.DB.First(&snapshot, snapshot.Id).Error)
 	assert.Equal(t, pricingruntime.PricingSnapshotStatusRefunded, snapshot.Status)
 	assert.Zero(t, snapshot.SettledQuota)
+	require.NotNil(t, snapshot.CustomerCharge)
+	assert.Equal(t, "0", *snapshot.CustomerCharge)
+	assert.True(t, snapshot.GrossMarginKnown)
+	assert.Equal(t, "-0.01", snapshot.GrossMargin)
 }
 
 func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
@@ -719,6 +857,9 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 		ModelId: 1, ChannelModelId: 1,
 		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
 		BillingMode: "token", PurchaseCost: "0.40", RetailAmount: "1.00",
+		BaseRetailAmount: "1.00", EstimatedCustomerCharge: "0.80",
+		CustomerCharge: common.GetPointer("0.80"),
+		NetMarginRate:  "0.20", MarginCompliant: true,
 		Currency: "USD", ReservedQuota: 100, SettledQuota: 100,
 		Status: pricingruntime.PricingSnapshotStatusSettled,
 	}
@@ -748,24 +889,159 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 	var response struct {
 		Success bool `json:"success"`
 		Data    struct {
-			SettledCount             int    `json:"settled_count"`
-			RevenueUSD               string `json:"revenue_usd"`
-			EstimatedPurchaseUSD     string `json:"estimated_purchase_usd"`
-			ProviderReportedCostUSD  string `json:"provider_reported_cost_usd"`
-			CostVarianceUSD          string `json:"cost_variance_usd"`
-			GrossMarginUSD           string `json:"gross_margin_usd"`
-			ProviderCostMissingCount int    `json:"provider_cost_missing_count"`
+			SettledCount               int    `json:"settled_count"`
+			BilledAmountUSD            string `json:"billed_amount_usd"`
+			RevenueUSD                 string `json:"revenue_usd"`
+			EstimatedPurchaseUSD       string `json:"estimated_purchase_usd"`
+			ProviderReportedCostUSD    string `json:"provider_reported_cost_usd"`
+			CostVarianceUSD            string `json:"cost_variance_usd"`
+			GrossMarginUSD             string `json:"gross_margin_usd"`
+			ProviderCostMissingCount   int    `json:"provider_cost_missing_count"`
+			CustomerChargeKnownCount   int    `json:"customer_charge_known_count"`
+			CustomerChargeMissingCount int    `json:"customer_charge_missing_count"`
+			MarginBreachCount          int    `json:"margin_breach_count"`
+			GrossMarginKnownCount      int    `json:"gross_margin_known_count"`
+			GrossMarginMissingCount    int    `json:"gross_margin_missing_count"`
 		} `json:"data"`
 	}
 	require.NoError(t, common.Unmarshal(summaryRecorder.Body.Bytes(), &response))
 	assert.True(t, response.Success)
 	assert.Equal(t, 1, response.Data.SettledCount)
-	assert.Equal(t, "1", response.Data.RevenueUSD)
+	assert.Equal(t, "0.8", response.Data.BilledAmountUSD)
+	assert.Equal(t, "0.8", response.Data.RevenueUSD)
 	assert.Equal(t, "0.4", response.Data.EstimatedPurchaseUSD)
 	assert.Equal(t, "0.45", response.Data.ProviderReportedCostUSD)
 	assert.Equal(t, "0.05", response.Data.CostVarianceUSD)
-	assert.Equal(t, "0.55", response.Data.GrossMarginUSD)
+	assert.Equal(t, "0.35", response.Data.GrossMarginUSD)
 	assert.Zero(t, response.Data.ProviderCostMissingCount)
+	assert.Equal(t, 1, response.Data.CustomerChargeKnownCount)
+	assert.Zero(t, response.Data.CustomerChargeMissingCount)
+	assert.Zero(t, response.Data.MarginBreachCount)
+	assert.Equal(t, 1, response.Data.GrossMarginKnownCount)
+	assert.Zero(t, response.Data.GrossMarginMissingCount)
+}
+
+func TestAdminFinancialSummaryDoesNotTreatLegacyRetailEstimateAsActualCharge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	snapshot := model.RequestPricingSnapshot{
+		RequestId: "legacy-financial-summary", UserId: 7,
+		ModelId: 1, ChannelModelId: 1,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
+		BillingMode: "token", PurchaseCost: "0.40", RetailAmount: "9.00",
+		Currency: "USD", ReservedQuota: 100, SettledQuota: 100,
+		Status: pricingruntime.PricingSnapshotStatusSettled,
+	}
+	require.NoError(t, model.DB.Create(&snapshot).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("id = ?", snapshot.Id).
+		UpdateColumn("customer_charge", nil).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/financial-summary",
+		nil,
+	)
+
+	AdminGetPricingFinancialSummary(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			RevenueUSD                 string `json:"revenue_usd"`
+			CustomerChargeKnownCount   int    `json:"customer_charge_known_count"`
+			CustomerChargeMissingCount int    `json:"customer_charge_missing_count"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.Equal(t, "0", response.Data.RevenueUSD)
+	assert.Zero(t, response.Data.CustomerChargeKnownCount)
+	assert.Equal(t, 1, response.Data.CustomerChargeMissingCount)
+}
+
+func TestAdminFinancialSummaryIncludesRefundedProviderLoss(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	snapshot := model.RequestPricingSnapshot{
+		RequestId: "refunded-provider-loss", UserId: 7,
+		ModelId: 1, ChannelModelId: 1,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
+		BillingMode: "token", PurchaseCost: "0.40", RetailAmount: "1.00",
+		EstimatedCustomerCharge: "0.80", CustomerCharge: common.GetPointer("0"),
+		ProviderReportedCost: "0.30", ProviderCostKnown: true,
+		ProviderCostScope: "full_provider_cost", GrossMargin: "-0.30",
+		GrossMarginKnown: true,
+		Currency:         "USD", Status: pricingruntime.PricingSnapshotStatusRefunded,
+	}
+	require.NoError(t, model.DB.Create(&snapshot).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/financial-summary",
+		nil,
+	)
+
+	AdminGetPricingFinancialSummary(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			SettledCount            int    `json:"settled_count"`
+			RefundedCount           int    `json:"refunded_count"`
+			FinalizedCount          int    `json:"finalized_count"`
+			RevenueUSD              string `json:"revenue_usd"`
+			ProviderReportedCostUSD string `json:"provider_reported_cost_usd"`
+			GrossMarginUSD          string `json:"gross_margin_usd"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.Zero(t, response.Data.SettledCount)
+	assert.Equal(t, 1, response.Data.RefundedCount)
+	assert.Equal(t, 1, response.Data.FinalizedCount)
+	assert.Equal(t, "0", response.Data.RevenueUSD)
+	assert.Equal(t, "0.3", response.Data.ProviderReportedCostUSD)
+	assert.Equal(t, "-0.3", response.Data.GrossMarginUSD)
+}
+
+func TestAdminFinancialSummaryExcludesSubscriptionUsageFromGrossMargin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	snapshot := model.RequestPricingSnapshot{
+		RequestId: "subscription-provider-cost", UserId: 7,
+		ModelId: 1, ChannelModelId: 1,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
+		BillingMode: "token", PurchaseCost: "0.40", RetailAmount: "1.00",
+		CustomerCharge: common.GetPointer("0.80"), BillingSource: "subscription",
+		SubscriptionId: 9, ProviderReportedCost: "0.45", ProviderCostKnown: true,
+		ProviderCostScope: "full_provider_cost", GrossMargin: "0",
+		GrossMarginKnown: false, Currency: "USD",
+		Status: pricingruntime.PricingSnapshotStatusSettled,
+	}
+	require.NoError(t, model.DB.Create(&snapshot).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/financial-summary",
+		nil,
+	)
+
+	AdminGetPricingFinancialSummary(context)
+
+	var response struct {
+		Data struct {
+			GrossMarginUSD          string `json:"gross_margin_usd"`
+			FullProviderCostCount   int    `json:"full_provider_cost_count"`
+			GrossMarginKnownCount   int    `json:"gross_margin_known_count"`
+			GrossMarginMissingCount int    `json:"gross_margin_missing_count"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, "0", response.Data.GrossMarginUSD)
+	assert.Equal(t, 1, response.Data.FullProviderCostCount)
+	assert.Zero(t, response.Data.GrossMarginKnownCount)
+	assert.Equal(t, 1, response.Data.GrossMarginMissingCount)
 }
 
 func TestAdminListPersistentCircuitEventsFiltersEventType(t *testing.T) {

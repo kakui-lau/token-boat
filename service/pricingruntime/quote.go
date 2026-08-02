@@ -18,6 +18,8 @@ type Quote struct {
 	PricingRevision        string `json:"pricing_revision"`
 	PurchaseCost           string `json:"purchase_cost"`
 	RetailAmount           string `json:"retail_amount"`
+	CustomerCharge         string `json:"customer_charge"`
+	AppliedGroupRatio      string `json:"applied_group_ratio"`
 	Currency               string `json:"currency"`
 	PurchaseMatchedTier    string `json:"purchase_matched_tier"`
 	RetailMatchedTier      string `json:"retail_matched_tier"`
@@ -32,6 +34,10 @@ type RetailQuoteRange struct {
 	MaximumReservationAmount string `json:"maximum_reservation_amount"`
 	EligibleCandidateCount   int    `json:"eligible_candidate_count"`
 }
+
+var ErrNoEligiblePriceCandidate = errors.New(
+	"no v2 candidate meets the minimum margin for estimated usage",
+)
 
 func parseMargin(value string) (decimal.Decimal, error) {
 	return parseRate("minimum margin rate", value)
@@ -49,11 +55,12 @@ func parseRate(name string, value string) (decimal.Decimal, error) {
 }
 
 func QuoteCandidates(group string, modelName string, usage pricingengine.Usage) ([]Quote, error) {
-	return QuoteCandidatesWithRequest(
+	return QuoteCandidatesWithRequestAndGroupRatio(
 		group,
 		modelName,
 		usage,
 		billingexpr.RequestInput{Body: []byte(usage.RequestBody)},
+		1,
 	)
 }
 
@@ -63,6 +70,25 @@ func QuoteCandidatesWithRequest(
 	usage pricingengine.Usage,
 	requestInput billingexpr.RequestInput,
 ) ([]Quote, error) {
+	return QuoteCandidatesWithRequestAndGroupRatio(
+		group,
+		modelName,
+		usage,
+		requestInput,
+		1,
+	)
+}
+
+func QuoteCandidatesWithRequestAndGroupRatio(
+	group string,
+	modelName string,
+	usage pricingengine.Usage,
+	requestInput billingexpr.RequestInput,
+	groupRatio float64,
+) ([]Quote, error) {
+	if groupRatio < 0 || math.IsNaN(groupRatio) || math.IsInf(groupRatio, 0) {
+		return nil, errors.New("group ratio must be a finite non-negative number")
+	}
 	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	if err := pricingengine.ValidateUsage(usage); err != nil {
 		return nil, err
@@ -72,6 +98,7 @@ func QuoteCandidatesWithRequest(
 		return nil, errors.New("no complete v2 price is available for this model and group")
 	}
 	quotes := make([]Quote, 0, len(bundles))
+	ratio := decimal.NewFromFloat(groupRatio)
 	for _, bundle := range bundles {
 		purchase, err := pricingengine.EvaluateWithRequest(
 			bundle.Purchase.PurchaseBillingExpr,
@@ -110,20 +137,18 @@ func QuoteCandidatesWithRequest(
 		if err != nil {
 			return nil, fmt.Errorf("channel model %d: %w", bundle.ChannelModel.Id, err)
 		}
-		netProfit := retail.Amount.
-			Sub(retail.Amount.Mul(variableCostRate)).
-			Sub(purchase.Amount)
-		if netProfit.IsPositive() {
-			netProfit = netProfit.Sub(netProfit.Mul(taxRate))
-		}
-		netMargin := netProfit
-		if retail.Amount.IsPositive() {
-			netMargin = netMargin.Div(retail.Amount)
-		}
+		customerCharge := retail.Amount.Mul(ratio)
+		netMargin := calculateNetMargin(
+			purchase.Amount,
+			customerCharge,
+			variableCostRate,
+			taxRate,
+		)
 		minimumMargin, err := parseMargin(bundle.Retail.MinimumMarginRate)
 		if err != nil {
 			return nil, fmt.Errorf("channel model %d: %w", bundle.ChannelModel.Id, err)
 		}
+		marginCompliant := meetsMinimumMargin(netMargin, minimumMargin)
 		quotes = append(quotes, Quote{
 			ChannelModelId:         bundle.ChannelModel.Id,
 			ChannelId:              bundle.ChannelModel.ChannelId,
@@ -132,15 +157,44 @@ func QuoteCandidatesWithRequest(
 			PricingRevision:        bundle.Revision,
 			PurchaseCost:           purchase.Amount.String(),
 			RetailAmount:           retail.Amount.String(),
+			CustomerCharge:         customerCharge.String(),
+			AppliedGroupRatio:      ratio.String(),
 			Currency:               bundle.Retail.Currency,
 			PurchaseMatchedTier:    purchase.MatchedTier,
 			RetailMatchedTier:      retail.MatchedTier,
-			MeetsMinimumMargin:     netMargin.GreaterThanOrEqual(minimumMargin),
+			MeetsMinimumMargin:     marginCompliant,
 			MinimumMarginRate:      minimumMargin.String(),
 			EstimatedNetMarginRate: netMargin.String(),
 		})
 	}
 	return quotes, nil
+}
+
+func calculateNetMargin(
+	purchaseCost decimal.Decimal,
+	customerCharge decimal.Decimal,
+	variableCostRate decimal.Decimal,
+	taxRate decimal.Decimal,
+) decimal.Decimal {
+	netProfit := customerCharge.
+		Sub(customerCharge.Mul(variableCostRate)).
+		Sub(purchaseCost)
+	if netProfit.IsPositive() {
+		netProfit = netProfit.Sub(netProfit.Mul(taxRate))
+	}
+	if customerCharge.IsPositive() {
+		return netProfit.Div(customerCharge)
+	}
+	return netProfit
+}
+
+func meetsMinimumMargin(netMargin decimal.Decimal, minimumMargin decimal.Decimal) bool {
+	// Expression evaluation uses float64 before converting back to Decimal.
+	// Treat sub-trillionth differences as numerical noise so a generated
+	// selling price that is mathematically equal to the configured floor is
+	// not removed from routing. Material shortfalls still fail closed.
+	return netMargin.GreaterThanOrEqual(minimumMargin) ||
+		minimumMargin.Sub(netMargin).LessThanOrEqual(decimal.New(1, -12))
 }
 
 func QuoteRetailRange(
@@ -152,11 +206,16 @@ func QuoteRetailRange(
 	if groupRatio < 0 || math.IsNaN(groupRatio) || math.IsInf(groupRatio, 0) {
 		return RetailQuoteRange{}, errors.New("group ratio must be a finite non-negative number")
 	}
-	quotes, err := QuoteCandidates(group, modelName, usage)
+	quotes, err := QuoteCandidatesWithRequestAndGroupRatio(
+		group,
+		modelName,
+		usage,
+		billingexpr.RequestInput{Body: []byte(usage.RequestBody)},
+		groupRatio,
+	)
 	if err != nil {
 		return RetailQuoteRange{}, err
 	}
-	ratio := decimal.NewFromFloat(groupRatio)
 	minimum := decimal.Zero
 	maximum := decimal.Zero
 	eligibleCount := 0
@@ -164,11 +223,10 @@ func QuoteRetailRange(
 		if !quote.MeetsMinimumMargin {
 			continue
 		}
-		amount, err := decimal.NewFromString(quote.RetailAmount)
+		amount, err := decimal.NewFromString(quote.CustomerCharge)
 		if err != nil {
 			return RetailQuoteRange{}, err
 		}
-		amount = amount.Mul(ratio)
 		if eligibleCount == 0 || amount.LessThan(minimum) {
 			minimum = amount
 		}
@@ -178,9 +236,7 @@ func QuoteRetailRange(
 		eligibleCount++
 	}
 	if eligibleCount == 0 {
-		return RetailQuoteRange{}, errors.New(
-			"no v2 candidate meets the minimum margin for estimated usage",
-		)
+		return RetailQuoteRange{}, ErrNoEligiblePriceCandidate
 	}
 	return RetailQuoteRange{
 		Currency:                 "USD",

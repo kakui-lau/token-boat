@@ -34,7 +34,26 @@ export function ModelBillingModeBadge(props: ModelBillingModeBadgeProps) {
   let label = t('Per Request')
   let variant: StatusVariant = 'purple'
 
-  if (isDynamicPricingModel(props.model)) {
+  const structuredBillingMode =
+    props.model.lowest_price?.billing_mode ||
+    props.model.official_price?.billing_mode
+
+  if (structuredBillingMode) {
+    const labels: Record<string, string> = {
+      token: 'Token-based',
+      request: 'Per Request',
+      image: 'Image',
+      character: 'Character',
+      audio_duration: 'Audio duration',
+      video_duration: 'Video duration',
+      mixed: 'Mixed',
+    }
+    label = t(labels[structuredBillingMode] || structuredBillingMode)
+    variant = structuredBillingMode === 'token' ? 'info' : 'purple'
+  } else if (!props.model.available) {
+    label = t('Not configured')
+    variant = 'neutral'
+  } else if (isDynamicPricingModel(props.model)) {
     label = t('Dynamic Pricing')
     variant = 'warning'
   } else if (isTokenBasedModel(props.model)) {

@@ -18,9 +18,11 @@ func TestPricingOptionUpdateInvalidatesPricingCache(t *testing.T) {
 
 	updatePricingLock.Lock()
 	previousPricingMap := pricingMap
+	previousPublicPricingMap := publicPricingMap
 	previousVendorsList := vendorsList
 	previousLastGetPricingTime := lastGetPricingTime
 	pricingMap = []Pricing{{ModelName: "cached-model"}}
+	publicPricingMap = []Pricing{{ModelName: "cached-public-model"}}
 	vendorsList = []PricingVendor{{ID: 1, Name: "cached-vendor"}}
 	lastGetPricingTime = time.Now()
 	updatePricingLock.Unlock()
@@ -32,6 +34,7 @@ func TestPricingOptionUpdateInvalidatesPricingCache(t *testing.T) {
 
 		updatePricingLock.Lock()
 		pricingMap = previousPricingMap
+		publicPricingMap = previousPublicPricingMap
 		vendorsList = previousVendorsList
 		lastGetPricingTime = previousLastGetPricingTime
 		updatePricingLock.Unlock()
@@ -42,6 +45,7 @@ func TestPricingOptionUpdateInvalidatesPricingCache(t *testing.T) {
 	updatePricingLock.Lock()
 	defer updatePricingLock.Unlock()
 	assert.Nil(t, pricingMap)
+	assert.Nil(t, publicPricingMap)
 	assert.Nil(t, vendorsList)
 	assert.True(t, lastGetPricingTime.IsZero())
 }

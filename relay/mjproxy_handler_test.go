@@ -26,8 +26,10 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 	model.DB = db
 	require.NoError(t, db.AutoMigrate(
 		&model.Model{},
+		&model.Channel{},
 		&model.Ability{},
 		&model.ChannelModel{},
+		&model.ModelOfficialPrice{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 		&model.RequestPricingSnapshot{},
@@ -41,6 +43,9 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 	const retailExpression = `v2:tier("base", req * 2)`
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 1, ModelName: "mj_imagine",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 2, Name: "midjourney", Status: common.ChannelStatusEnabled,
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.Ability{
 		Group: "default", Model: "mj_imagine", ChannelId: 2, Enabled: true,

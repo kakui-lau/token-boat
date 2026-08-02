@@ -20,6 +20,9 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 81, ModelName: "public-quote-model",
 	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 83, Name: "public-quote-channel", Status: common.ChannelStatusEnabled,
+	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
 		Id: 82, ChannelId: 83, ModelId: 81, UpstreamModelName: "public-quote-model",
 		Status: 1, RuntimeMode: pricingruntime.RuntimeModeV2,

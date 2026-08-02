@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/shopspring/decimal"
 )
@@ -66,6 +67,14 @@ func GetRouteScoreWeights() RouteScoreWeights {
 }
 
 func PlanV2Route(group string, modelName string) ([]RouteCandidate, error) {
+	return PlanV2RouteWithGroupRatio(group, modelName, 1)
+}
+
+func PlanV2RouteWithGroupRatio(
+	group string,
+	modelName string,
+	groupRatio float64,
+) ([]RouteCandidate, error) {
 	usage := pricingengine.Usage{
 		PromptTokens:     1_000_000,
 		CompletionTokens: 1_000_000,
@@ -79,7 +88,13 @@ func PlanV2Route(group string, modelName string) ([]RouteCandidate, error) {
 	if len(bundles) == 0 {
 		return nil, nil
 	}
-	quotes, err := QuoteCandidates(group, modelName, usage)
+	quotes, err := QuoteCandidatesWithRequestAndGroupRatio(
+		group,
+		modelName,
+		usage,
+		billingexpr.RequestInput{},
+		groupRatio,
+	)
 	if err != nil {
 		return nil, err
 	}

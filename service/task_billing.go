@@ -11,9 +11,11 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -60,6 +62,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuot
 	for key, ratio := range info.PriceData.OtherRatios() {
 		other[key] = ratio
 	}
+	InjectGeneralBillingAudit(other, info, chargedQuota, nil)
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
@@ -99,6 +102,9 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		if bc.QuotaPerUnit > 0 {
+			other["quota_per_unit"] = bc.QuotaPerUnit
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				other[k] = v
@@ -117,6 +123,28 @@ func updateTaskBillingAudit(task *model.Task, status string, finalQuota, refunde
 	if task == nil {
 		return
 	}
+	pricingSnapshotAuditError := ""
+	if task.PrivateData.ProviderCostKnown &&
+		task.PrivateData.BillingContext != nil &&
+		task.PrivateData.BillingContext.RequestId != "" {
+		scope := "full_provider_cost"
+		if task.PrivateData.ProviderIsByok {
+			scope = "platform_fee_only"
+		}
+		if err := pricingruntime.RecordProviderReportedCost(
+			task.PrivateData.BillingContext.RequestId,
+			decimal.NewFromFloat(task.PrivateData.ProviderCost),
+			scope,
+		); err != nil {
+			pricingSnapshotAuditError = err.Error()
+			common.SysLog(fmt.Sprintf(
+				"failed to persist task provider cost task=%s request=%s: %s",
+				task.TaskID,
+				task.PrivateData.BillingContext.RequestId,
+				err.Error(),
+			))
+		}
+	}
 	fields := map[string]interface{}{
 		"billing_stage":        "completed",
 		"task_status":          status,
@@ -128,8 +156,26 @@ func updateTaskBillingAudit(task *model.Task, status string, finalQuota, refunde
 	adminFields := taskBillingAdminInfo(task, finalQuota)
 	if err := model.UpdateTaskConsumeLogDetails(task.TaskID, fields, adminFields); err != nil {
 		common.SysLog(fmt.Sprintf("failed to enrich task billing log task=%s: %s", task.TaskID, err.Error()))
-		if statusErr := model.UpdateTaskBillingAuditStatus(task.ID, model.TaskSettlementStatusPending, err.Error()); statusErr != nil {
+		auditError := err.Error()
+		if pricingSnapshotAuditError != "" {
+			auditError = fmt.Sprintf(
+				"pricing snapshot audit: %s; consume log audit: %s",
+				pricingSnapshotAuditError,
+				err.Error(),
+			)
+		}
+		if statusErr := model.UpdateTaskBillingAuditStatus(task.ID, model.TaskSettlementStatusPending, auditError); statusErr != nil {
 			common.SysLog(fmt.Sprintf("failed to mark task billing audit pending task=%s: %s", task.TaskID, statusErr.Error()))
+		}
+		return
+	}
+	if pricingSnapshotAuditError != "" {
+		if err := model.UpdateTaskBillingAuditStatus(
+			task.ID,
+			model.TaskSettlementStatusPending,
+			"pricing snapshot audit: "+pricingSnapshotAuditError,
+		); err != nil {
+			common.SysLog(fmt.Sprintf("failed to mark task billing audit pending task=%s: %s", task.TaskID, err.Error()))
 		}
 		return
 	}
@@ -151,9 +197,17 @@ func taskBillingAdminInfo(task *model.Task, finalQuota int) map[string]interface
 			adminInfo["gross_margin_basis"] = "subscription_quota_value"
 			adminInfo["gross_margin_known"] = false
 		} else {
+			quotaPerUnit := common.QuotaPerUnit
+			if task.PrivateData.BillingContext != nil && task.PrivateData.BillingContext.QuotaPerUnit > 0 {
+				quotaPerUnit = task.PrivateData.BillingContext.QuotaPerUnit
+			}
 			adminInfo["gross_margin_basis"] = "customer_charge"
+			if quotaPerUnit <= 0 {
+				adminInfo["gross_margin_known"] = false
+				return adminInfo
+			}
 			adminInfo["gross_margin_known"] = true
-			adminInfo["gross_margin_usd"] = float64(finalQuota)/float64(common.QuotaPerUnit) - task.PrivateData.ProviderCost
+			adminInfo["gross_margin_usd"] = float64(finalQuota)/quotaPerUnit - task.PrivateData.ProviderCost
 		}
 	}
 	return adminInfo
@@ -175,10 +229,16 @@ func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData 
 // request headers.
 func NewTaskBillingContext(info *relaycommon.RelayInfo) *model.TaskBillingContext {
 	usesV2Pricing := info.DynamicPricingSnapshot != nil
+	quotaPerUnit := common.QuotaPerUnit
+	if usesV2Pricing && info.DynamicPricingSnapshot.QuotaPerUnit > 0 {
+		quotaPerUnit = info.DynamicPricingSnapshot.QuotaPerUnit
+	}
 	bc := &model.TaskBillingContext{
+		RequestId:       info.RequestId,
 		ModelPrice:      info.PriceData.ModelPrice,
 		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
 		ModelRatio:      info.PriceData.ModelRatio,
+		QuotaPerUnit:    quotaPerUnit,
 		OtherRatios:     info.PriceData.OtherRatios(),
 		OriginModelName: info.OriginModelName,
 		PerCallBilling:  usesV2Pricing || common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
@@ -224,6 +284,7 @@ func taskModelName(task *model.Task) string {
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool {
 	quota := task.Quota
 	if quota == 0 {
+		completeTaskRefundPricingAudit(task, task.RefundQuota)
 		return true
 	}
 	applied, persistedTask, _, err := model.ApplyTaskRefund(task.ID, quota)
@@ -235,6 +296,11 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 已完成退款，跳过重复处理", task.TaskID))
 		task.Quota = 0
 		task.RefundStatus = model.TaskRefundStatusCompleted
+		if persistedTask != nil {
+			task.RefundQuota = persistedTask.RefundQuota
+			task.RefundedAt = persistedTask.RefundedAt
+		}
+		completeTaskRefundPricingAudit(task, task.RefundQuota)
 		return true
 	}
 	task.Quota = 0
@@ -269,9 +335,45 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		TaskId:    task.TaskID,
 		Other:     other,
 	})
-	updateTaskBillingAudit(task, string(model.TaskStatusFailure), 0, quota)
+	completeTaskRefundPricingAudit(task, quota)
 
 	return true
+}
+
+func completeTaskRefundPricingAudit(task *model.Task, refundedQuota int) {
+	snapshotErr := markTaskPricingSnapshotRefunded(task)
+	updateTaskBillingAudit(task, string(model.TaskStatusFailure), 0, refundedQuota)
+	if snapshotErr != nil && task != nil && task.ID > 0 {
+		if err := model.UpdateTaskBillingAuditStatus(
+			task.ID,
+			model.TaskSettlementStatusPending,
+			snapshotErr.Error(),
+		); err != nil {
+			common.SysLog(fmt.Sprintf(
+				"failed to mark task billing audit pending task=%s: %s",
+				task.TaskID,
+				err.Error(),
+			))
+		}
+	}
+}
+
+func markTaskPricingSnapshotRefunded(task *model.Task) error {
+	if task == nil || task.PrivateData.BillingContext == nil ||
+		task.PrivateData.BillingContext.RequestId == "" {
+		return nil
+	}
+	requestId := task.PrivateData.BillingContext.RequestId
+	if err := pricingruntime.MarkRequestPricingRefunded(requestId); err != nil {
+		common.SysLog(fmt.Sprintf(
+			"failed to mark task pricing snapshot refunded task=%s request=%s: %s",
+			task.TaskID,
+			requestId,
+			err.Error(),
+		))
+		return err
+	}
+	return nil
 }
 
 // RecalculateTaskQuota 通用的异步差额结算。

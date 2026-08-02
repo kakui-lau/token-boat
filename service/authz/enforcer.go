@@ -31,7 +31,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act && p.eft == "allow"
 `
 
 func Init(db *gorm.DB) error {
-	if common.IsMasterNode {
+	runStartupMigrations := common.ShouldRunStartupMigrations()
+	if runStartupMigrations {
 		if err := seedBuiltInRoles(db); err != nil {
 			return err
 		}
@@ -54,7 +55,7 @@ func Init(db *gorm.DB) error {
 	enforcer = e
 	enforcerMu.Unlock()
 
-	if !common.IsMasterNode {
+	if !runStartupMigrations {
 		return nil
 	}
 	return seedDefaultPolicies()

@@ -20,6 +20,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { HtmlContent } from '@/components/html-content'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { cn } from '@/lib/utils'
 
@@ -234,7 +235,10 @@ export function Footer(props: FooterProps) {
             </nav>
           </div>
           <div className='border-border/35 mt-6 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between'>
-            <p className='text-muted-foreground/55 text-xs'></p>
+            <HtmlContent
+              content={footerHtml}
+              className='text-muted-foreground/55 text-xs'
+            />
             <ProjectAttribution currentYear={currentYear} />
           </div>
         </div>

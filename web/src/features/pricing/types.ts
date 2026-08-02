@@ -28,7 +28,7 @@ export type PricingVendor = {
 }
 
 export type PricingModel = {
-  id: number
+  id?: number
   model_name: string
   description?: string
   icon?: string
@@ -56,6 +56,20 @@ export type PricingModel = {
   billing_expr?: string
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
+  /** Runtime price source selected by the backend. */
+  pricing_source?: string
+  /** Current vendor list price normalized by the backend. */
+  official_price?: PublicPriceSummary
+  /** Lowest active retail price per comparable item across usable channels. */
+  lowest_price?: PublicPriceSummary
+  /** Lowest active retail price per comparable item within each usable group. */
+  retail_prices_by_group?: Record<string, PublicPriceSummary>
+  /** Usable groups with at least one complete V2 price chain. */
+  pricing_groups?: string[]
+  /** Whether this model has both a usable route and complete active pricing. */
+  available: boolean
+  /** Machine-readable reason when the model cannot currently serve traffic. */
+  availability_status: 'available' | 'price_unavailable' | 'route_unavailable'
   /**
    * Optional model metadata fields reserved for backend-provided catalog data.
    * Keep them data-driven; do not synthesize display values on the client.
@@ -68,6 +82,33 @@ export type PricingModel = {
   input_modalities?: Modality[]
   output_modalities?: Modality[]
   capabilities?: ModelCapability[]
+}
+
+export type PublicPriceSummary = {
+  currency: string
+  billing_mode: string
+  price_structure: string
+  comparison_scope?: 'component_minimum'
+  candidate_count?: number
+  items: PublicPriceItem[]
+}
+
+export type PublicPriceItem = {
+  key: string
+  component: string
+  amount: string
+  base_amount?: string
+  unit: string
+  unit_size: string
+  tier?: string
+  upper_bound?: string
+  operation?: string
+  quality?: string
+  resolution?: string
+  with_audio?: string
+  applied_group?: string
+  applied_group_label?: string
+  applied_group_ratio?: string
 }
 
 /** Input/output modalities supported by a model. */
@@ -94,7 +135,7 @@ export type PricingData = {
   data: PricingModel[]
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
-  usable_group: Record<string, { desc: string; ratio: number }>
+  usable_group: Record<string, string>
   supported_endpoint: Record<string, string>
   auto_groups: string[]
 }

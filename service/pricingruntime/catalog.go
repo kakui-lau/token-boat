@@ -35,6 +35,7 @@ type CatalogSnapshot struct {
 	BundleByChannelModel   map[int]ActivePriceBundle
 	CandidatesByGroupModel map[string][]int
 	CompleteV2ByGroupModel map[string]bool
+	OfficialByModelName    map[string]model.OfficialModelPriceVersion
 }
 
 type RuntimeReadiness struct {
@@ -66,34 +67,51 @@ func loadActivePriceBundle(db *gorm.DB, channelModelId int) (ActivePriceBundle, 
 		}
 		return bundle, err
 	}
+	var activePurchases []model.ChannelModelPurchasePriceVersion
 	if err := db.Where(
 		"channel_model_id = ? AND status = ?",
 		channelModelId,
 		model.PricingVersionStatusActive,
-	).First(&bundle.Purchase).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return bundle, fmt.Errorf(
-				"channel model %d has no active purchase price; publish a purchase price first",
-				channelModelId,
-			)
-		}
+	).Order("id ASC").Limit(2).Find(&activePurchases).Error; err != nil {
 		return bundle, err
 	}
+	if len(activePurchases) == 0 {
+		return bundle, fmt.Errorf(
+			"channel model %d has no active purchase price; publish a purchase price first",
+			channelModelId,
+		)
+	}
+	if len(activePurchases) > 1 {
+		return bundle, fmt.Errorf(
+			"channel model %d has multiple active purchase prices",
+			channelModelId,
+		)
+	}
+	bundle.Purchase = activePurchases[0]
+	var activeRetails []model.ChannelModelRetailPriceVersion
 	if err := db.Where(
 		"channel_model_id = ? AND purchase_price_version_id = ? AND status = ?",
 		channelModelId,
 		bundle.Purchase.Id,
 		model.PricingVersionStatusActive,
-	).First(&bundle.Retail).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return bundle, fmt.Errorf(
-				"channel model %d has no active retail price for active purchase version %d; publish a linked retail price",
-				channelModelId,
-				bundle.Purchase.Version,
-			)
-		}
+	).Order("id ASC").Limit(2).Find(&activeRetails).Error; err != nil {
 		return bundle, err
 	}
+	if len(activeRetails) == 0 {
+		return bundle, fmt.Errorf(
+			"channel model %d has no active retail price for active purchase version %d; publish a linked retail price",
+			channelModelId,
+			bundle.Purchase.Version,
+		)
+	}
+	if len(activeRetails) > 1 {
+		return bundle, fmt.Errorf(
+			"channel model %d has multiple active retail prices for purchase version %d",
+			channelModelId,
+			bundle.Purchase.Version,
+		)
+	}
+	bundle.Retail = activeRetails[0]
 	if bundle.Purchase.OfficialPriceVersionId != nil {
 		var official model.OfficialModelPriceVersion
 		if err := db.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
@@ -266,7 +284,15 @@ func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 		query := tx.Model(&model.ChannelModel{}).Where("model_id = ?", logicalModel.Id)
 		if runtimeMode == RuntimeModeV2 {
 			var abilities []model.Ability
-			if err := tx.Where("model = ? AND enabled = ?", modelName, true).
+			if err := tx.Model(&model.Ability{}).
+				Select("abilities.*").
+				Joins("JOIN channels ON channels.id = abilities.channel_id").
+				Where(
+					"abilities.model = ? AND abilities.enabled = ? AND channels.status = ?",
+					modelName,
+					true,
+					common.ChannelStatusEnabled,
+				).
 				Find(&abilities).Error; err != nil {
 				return err
 			}
@@ -343,7 +369,16 @@ func RefreshCatalog() error {
 	defer refreshLock.Unlock()
 
 	var channelModels []model.ChannelModel
-	if err := model.DB.Where("runtime_mode = ?", RuntimeModeV2).Find(&channelModels).Error; err != nil {
+	if err := model.DB.Model(&model.ChannelModel{}).
+		Select("channel_models.*").
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Where(
+			"channel_models.runtime_mode = ? AND channel_models.status <> ? AND channels.status = ?",
+			RuntimeModeV2,
+			0,
+			common.ChannelStatusEnabled,
+		).
+		Find(&channelModels).Error; err != nil {
 		return err
 	}
 	next := &CatalogSnapshot{
@@ -352,6 +387,7 @@ func RefreshCatalog() error {
 		BundleByChannelModel:   make(map[int]ActivePriceBundle, len(channelModels)),
 		CandidatesByGroupModel: make(map[string][]int),
 		CompleteV2ByGroupModel: make(map[string]bool),
+		OfficialByModelName:    make(map[string]model.OfficialModelPriceVersion),
 	}
 	for _, channelModel := range channelModels {
 		bundle, err := ValidateV2Activation(channelModel.Id)
@@ -374,25 +410,61 @@ func RefreshCatalog() error {
 	for _, logicalModel := range models {
 		modelNameById[logicalModel.Id] = logicalModel.ModelName
 	}
-	var abilities []model.Ability
-	if err := model.DB.Where("enabled = ?", true).Find(&abilities).Error; err != nil {
+	var officialPointers []model.ModelOfficialPrice
+	if err := model.DB.Find(&officialPointers).Error; err != nil {
 		return err
+	}
+	if len(officialPointers) > 0 {
+		revisionIDs := make([]int, 0, len(officialPointers))
+		modelIDByRevisionID := make(map[int]int, len(officialPointers))
+		for _, pointer := range officialPointers {
+			revisionIDs = append(revisionIDs, pointer.CurrentRevisionId)
+			modelIDByRevisionID[pointer.CurrentRevisionId] = pointer.ModelId
+		}
+		var officialVersions []model.OfficialModelPriceVersion
+		if err := model.DB.Where("id IN ?", revisionIDs).
+			Find(&officialVersions).Error; err != nil {
+			return err
+		}
+		for _, version := range officialVersions {
+			modelName := modelNameById[modelIDByRevisionID[version.Id]]
+			if modelName != "" {
+				next.OfficialByModelName[modelName] = version
+			}
+		}
+	}
+	var abilities []model.Ability
+	if err := model.DB.Model(&model.Ability{}).
+		Select("abilities.*").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Find(&abilities).Error; err != nil {
+		return err
+	}
+	channelModelsByRoute := make(map[string][]int, len(channelModels))
+	for _, channelModel := range channelModels {
+		modelName := modelNameById[channelModel.ModelId]
+		if modelName == "" {
+			continue
+		}
+		key := fmt.Sprintf("%d\x00%s", channelModel.ChannelId, modelName)
+		channelModelsByRoute[key] = append(
+			channelModelsByRoute[key],
+			channelModel.Id,
+		)
 	}
 	enabledCount := make(map[string]int)
 	for _, ability := range abilities {
 		key := ability.Group + "\x00" + ability.Model
 		enabledCount[key]++
-		for _, channelModel := range channelModels {
-			if channelModel.ChannelId != ability.ChannelId ||
-				modelNameById[channelModel.ModelId] != ability.Model {
-				continue
-			}
-			if _, valid := next.BundleByChannelModel[channelModel.Id]; !valid {
+		routeKey := fmt.Sprintf("%d\x00%s", ability.ChannelId, ability.Model)
+		for _, channelModelID := range channelModelsByRoute[routeKey] {
+			if _, valid := next.BundleByChannelModel[channelModelID]; !valid {
 				continue
 			}
 			next.CandidatesByGroupModel[key] = append(
 				next.CandidatesByGroupModel[key],
-				channelModel.Id,
+				channelModelID,
 			)
 		}
 	}
@@ -446,12 +518,25 @@ func GetRuntimeReadiness() (RuntimeReadiness, error) {
 		DistributedCircuitState: circuitRedisEnabled(),
 		RouteScoreWeights:       GetRouteScoreWeights(),
 	}
-	if err := model.DB.Model(&model.ChannelModel{}).
+	activeChannelModels := model.DB.Model(&model.ChannelModel{}).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins(
+			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
+		).
+		Where(
+			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ?",
+			0,
+			common.ChannelStatusEnabled,
+			true,
+		).
+		Distinct("channel_models.id")
+	if err := activeChannelModels.
 		Count(&readiness.TotalChannelModels).Error; err != nil {
 		return RuntimeReadiness{}, err
 	}
-	if err := model.DB.Model(&model.ChannelModel{}).
-		Where("runtime_mode = ?", RuntimeModeV2).
+	if err := activeChannelModels.Session(&gorm.Session{}).
+		Where("channel_models.runtime_mode = ?", RuntimeModeV2).
 		Count(&readiness.V2ChannelModels).Error; err != nil {
 		return RuntimeReadiness{}, err
 	}

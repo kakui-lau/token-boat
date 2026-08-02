@@ -15,61 +15,68 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
+func scopePricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
 	if len(pricing) == 0 {
 		return pricing
 	}
-	if len(usableGroup) == 0 {
-		return []model.Pricing{}
-	}
 
-	filtered := make([]model.Pricing, 0, len(pricing))
+	scoped := make([]model.Pricing, 0, len(pricing))
 	for _, item := range pricing {
 		if common.StringsContains(item.EnableGroup, "all") {
-			filtered = append(filtered, item)
+			scoped = append(scoped, item)
 			continue
 		}
+		groups := make([]string, 0, len(item.EnableGroup))
 		for _, group := range item.EnableGroup {
 			if _, ok := usableGroup[group]; ok {
-				filtered = append(filtered, item)
-				break
+				groups = append(groups, group)
 			}
 		}
+		item.EnableGroup = groups
+		scoped = append(scoped, item)
 	}
-	return filtered
+	return scoped
+}
+
+func markPricingAvailability(pricing []model.Pricing) []model.Pricing {
+	for index := range pricing {
+		hasUsableRoute := len(pricing[index].EnableGroup) > 0
+		hasActiveV2Price := pricing[index].PricingSource == "v2_dynamic"
+		if hasActiveV2Price && hasUsableRoute {
+			pricing[index].Available = true
+			pricing[index].AvailabilityStatus = model.PricingAvailabilityAvailable
+			continue
+		}
+		pricing[index].Available = false
+		if !hasUsableRoute {
+			pricing[index].AvailabilityStatus = model.PricingAvailabilityRouteUnavailable
+			continue
+		}
+		pricing[index].AvailabilityStatus = model.PricingAvailabilityPriceUnavailable
+	}
+	return pricing
 }
 
 func GetPricing(c *gin.Context) {
-	pricing := model.GetPricing()
+	pricing := model.GetPublicPricing()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
-	for s, f := range ratio_setting.GetGroupRatioCopy() {
-		groupRatio[s] = f
-	}
 	var group string
 	if exists {
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
 			group = user.Group
-			for g := range groupRatio {
-				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
-				if ok {
-					groupRatio[g] = ratio
-				}
-			}
 		}
 	}
 
 	usableGroup = service.GetUserUsableGroups(group)
-	pricing = filterPricingByUsableGroups(pricing, usableGroup)
-	pricing = pricingruntime.ApplyV2RetailPricing(pricing, usableGroup)
-	// check groupRatio contains usableGroup
-	for group := range ratio_setting.GetGroupRatioCopy() {
-		if _, ok := usableGroup[group]; !ok {
-			delete(groupRatio, group)
-		}
+	for usableGroupName := range usableGroup {
+		groupRatio[usableGroupName] = service.GetUserGroupRatio(group, usableGroupName)
 	}
+	pricing = scopePricingByUsableGroups(pricing, usableGroup)
+	pricing = pricingruntime.ApplyV2RetailPricing(pricing, usableGroup, groupRatio)
+	pricing = markPricingAvailability(pricing)
 
 	c.JSON(200, gin.H{
 		"success":            true,
@@ -128,6 +135,12 @@ func QuotePricing(c *gin.Context) {
 			service.GetUserGroupRatio(userGroup, quoteGroup),
 		)
 		if err != nil {
+			if requestedGroup == "auto" && errors.Is(
+				err,
+				pricingruntime.ErrNoEligiblePriceCandidate,
+			) {
+				continue
+			}
 			common.ApiError(c, err)
 			return
 		}

@@ -194,7 +194,7 @@ func InitDB() (err error) {
 		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
 		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
 
-		if !common.IsMasterNode {
+		if !common.ShouldRunStartupMigrations() {
 			return nil
 		}
 		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
@@ -238,7 +238,7 @@ func InitLogDB() (err error) {
 		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
 		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
 
-		if !common.IsMasterNode {
+		if !common.ShouldRunStartupMigrations() {
 			return nil
 		}
 		common.SysLog("database migration started")
@@ -304,9 +304,6 @@ func migrateDB() error {
 		&PricingCircuitEvent{},
 	)
 	if err != nil {
-		return err
-	}
-	if err := backfillPricingFinancialColumns(); err != nil {
 		return err
 	}
 	if err := InitializeModelOfficialPrices(); err != nil {
@@ -403,9 +400,6 @@ func migrateDBFast() error {
 			return err
 		}
 	}
-	if err := backfillPricingFinancialColumns(); err != nil {
-		return err
-	}
 	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
@@ -428,28 +422,37 @@ func migrateDBFast() error {
 	return nil
 }
 
-func backfillPricingFinancialColumns() error {
-	columns := map[string]interface{}{
-		"provider_reported_cost": "0",
-		"provider_cost_known":    false,
-		"cost_variance":          "0",
-		"gross_margin":           "0",
-	}
-	for column, value := range columns {
-		if err := DB.Model(&RequestPricingSnapshot{}).
-			Where(column+" IS NULL").
-			UpdateColumn(column, value).Error; err != nil {
-			return fmt.Errorf("backfill request pricing snapshot %s: %w", column, err)
-		}
-	}
-	return nil
-}
-
 func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
 	return LOG_DB.AutoMigrate(&Log{})
+}
+
+// RunDatabaseMigrations applies the primary and optional standalone log
+// database schemas after InitDB and InitLogDB have opened their connections.
+// It is intended for the explicit one-shot migration command used by
+// production deployments where application pods set SKIP_DB_MIGRATION=true.
+func RunDatabaseMigrations() error {
+	if DB == nil {
+		return fmt.Errorf("primary database is not initialized")
+	}
+	if LOG_DB == nil {
+		return fmt.Errorf("log database is not initialized")
+	}
+
+	common.SysLog("primary database migration started")
+	if err := migrateDB(); err != nil {
+		return fmt.Errorf("migrate primary database: %w", err)
+	}
+	if LOG_DB != DB {
+		common.SysLog("log database migration started")
+		if err := migrateLOGDB(); err != nil {
+			return fmt.Errorf("migrate log database: %w", err)
+		}
+	}
+	common.SysLog("database migration completed")
+	return nil
 }
 
 func migrateClickHouseLogDB() error {

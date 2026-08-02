@@ -77,6 +77,30 @@ func TestInitOnSlaveOnlyLoadsPolicies(t *testing.T) {
 	assert.False(t, Can(2, common.RoleAdminUser, ChannelRead))
 }
 
+func TestInitOnMasterWithStartupMigrationsDisabledOnlyLoadsPolicies(t *testing.T) {
+	t.Setenv("SKIP_DB_MIGRATION", "true")
+	wasMaster := common.IsMasterNode
+	common.IsMasterNode = true
+	t.Cleanup(func() {
+		common.IsMasterNode = wasMaster
+	})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.CasbinRule{}, &model.AuthzRole{}))
+
+	require.NoError(t, Init(db))
+
+	var roleCount int64
+	require.NoError(t, db.Model(&model.AuthzRole{}).Count(&roleCount).Error)
+	assert.Zero(t, roleCount)
+	var policyCount int64
+	require.NoError(t, db.Model(&model.CasbinRule{}).Count(&policyCount).Error)
+	assert.Zero(t, policyCount)
+}
+
 func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 	db := newAuthzTestDB(t)
 	require.NoError(t, Init(db))

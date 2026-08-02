@@ -1,6 +1,7 @@
 package pricingruntime
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -30,9 +31,11 @@ func setupRuntimeCatalogTestDB(t *testing.T) {
 	model.DB = db
 	require.NoError(t, db.AutoMigrate(
 		&model.Model{},
+		&model.Channel{},
 		&model.Ability{},
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
+		&model.ModelOfficialPrice{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.ChannelModelRetailPriceVersion{},
 		&model.RequestPricingSnapshot{},
@@ -53,6 +56,9 @@ func createRuntimeBundle(t *testing.T, channelModelId int, runtimeMode string) {
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id:        channelModelId,
 		ModelName: "runtime-model",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: channelModelId, Name: "runtime-channel", Status: common.ChannelStatusEnabled,
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
 		Id: channelModelId, ChannelId: channelModelId, ModelId: channelModelId,
@@ -555,6 +561,25 @@ func TestCatalogContainsOnlyValidatedV2Bundles(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestActiveBundleRejectsAmbiguousPublishedPurchaseChain(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 30, RuntimeModeV2)
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		Id: 130, ChannelModelId: 30, BillingMode: "token",
+		PricingMode: "fixed_unit_price", PriceStructure: "flat",
+		PurchaseBillingExpr: `v2:tier("base", p / 1000000)`,
+		PurchaseExprHash: billingexpr.ExprHashString(
+			`v2:tier("base", p / 1000000)`,
+		),
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 2,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
+
+	_, err := LoadActivePriceBundle(30)
+
+	require.ErrorContains(t, err, "multiple active purchase prices")
+}
+
 func TestRuntimeReadinessRequiresEveryEnabledChannelForScope(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 2, RuntimeModeV2)
@@ -572,6 +597,52 @@ func TestRuntimeReadinessRequiresEveryEnabledChannelForScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, readiness.CompleteGroupModelScopes)
 	assert.True(t, readiness.LiveTrafficEnabled)
+}
+
+func TestRuntimeReadinessIgnoresDisabledChannelModels(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 31, RuntimeModeV2)
+	createRuntimeBundle(t, 32, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 32).
+		Update("status", 0).Error)
+	require.NoError(t, RefreshCatalog())
+
+	readiness, err := GetRuntimeReadiness()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), readiness.TotalChannelModels)
+	assert.Equal(t, int64(1), readiness.V2ChannelModels)
+}
+
+func TestRuntimeReadinessIgnoresChannelModelsOnDisabledChannels(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 34, RuntimeModeV2)
+	createRuntimeBundle(t, 35, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Model(&model.Channel{}).
+		Where("id = ?", 35).
+		Update("status", common.ChannelStatusManuallyDisabled).Error)
+	require.NoError(t, RefreshCatalog())
+
+	readiness, err := GetRuntimeReadiness()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), readiness.TotalChannelModels)
+	assert.Equal(t, int64(1), readiness.V2ChannelModels)
+	assert.Equal(t, 1, readiness.CompleteGroupModelScopes)
+	assert.True(t, readiness.LiveTrafficEnabled)
+}
+
+func TestRoutePlanUsesEffectiveGroupRatioForMarginEligibility(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 33, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+
+	candidates, err := PlanV2RouteWithGroupRatio("default", "runtime-model", 0.5)
+	require.NoError(t, err)
+	assert.Empty(t, candidates)
+
+	candidates, err = PlanV2RouteWithGroupRatio("default", "runtime-model", 1)
+	require.NoError(t, err)
+	assert.NotEmpty(t, candidates)
 }
 
 func TestCatalogSnapshotStaysFrozenUntilInvalidated(t *testing.T) {
@@ -615,7 +686,39 @@ func TestQuoteCandidatesUsesFrozenPurchaseAndRetailExpressions(t *testing.T) {
 	assert.Equal(t, "0.5", quotes[0].EstimatedNetMarginRate)
 }
 
-func TestQuoteRetailRangeAppliesGroupRatioAndExcludesBelowMargin(t *testing.T) {
+func TestQuoteCandidatesAllowsFloatNoiseAtMinimumMarginBoundary(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 31, RuntimeModeV2)
+	purchaseExpr := `v2:tier("base", p * 0.6474 / 1000000)`
+	retailExpr := `v2:tier("base", p * 0.7580158451938581 / 1000000)`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 31).
+		Updates(map[string]any{
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 31).
+		Updates(map[string]any{
+			"retail_billing_expr":      retailExpr,
+			"retail_expr_hash":         billingexpr.ExprHashString(retailExpr),
+			"total_variable_cost_rate": "0.11",
+			"effective_tax_rate":       "0.165",
+			"minimum_margin_rate":      "0.03",
+			"target_net_margin":        "0.03",
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	quotes, err := QuoteCandidates("default", "runtime-model", pricingengine.Usage{
+		PromptTokens: 1_000_000,
+	})
+	require.NoError(t, err)
+	require.Len(t, quotes, 1)
+	assert.Equal(t, "0.0299999999999999", quotes[0].EstimatedNetMarginRate)
+	assert.True(t, quotes[0].MeetsMinimumMargin)
+}
+
+func TestQuoteRetailRangeValidatesMarginAfterApplyingGroupRatio(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 15, RuntimeModeV2)
 	createRuntimeBundle(t, 16, RuntimeModeV2)
@@ -639,9 +742,17 @@ func TestQuoteRetailRangeAppliesGroupRatioAndExcludesBelowMargin(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "USD", quoteRange.Currency)
-	assert.Equal(t, "3", quoteRange.MinimumRetailAmount)
+	assert.Equal(t, "1.575", quoteRange.MinimumRetailAmount)
 	assert.Equal(t, "3", quoteRange.MaximumReservationAmount)
-	assert.Equal(t, 1, quoteRange.EligibleCandidateCount)
+	assert.Equal(t, 2, quoteRange.EligibleCandidateCount)
+
+	_, err = QuoteRetailRange(
+		"default",
+		"runtime-model",
+		pricingengine.Usage{PromptTokens: 1_000_000},
+		0.5,
+	)
+	require.ErrorContains(t, err, "no v2 candidate meets the minimum margin")
 
 	_, err = QuoteRetailRange(
 		"default",
@@ -650,6 +761,26 @@ func TestQuoteRetailRangeAppliesGroupRatioAndExcludesBelowMargin(t *testing.T) {
 		-1,
 	)
 	require.ErrorContains(t, err, "finite non-negative")
+}
+
+func TestPrepareRelayPricingRejectsGroupDiscountBelowMarginFloor(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 19, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+
+	_, ok, err := PrepareRelayPricing(
+		&relaycommon.RelayInfo{OriginModelName: "runtime-model"},
+		"default",
+		19,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 0.5},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+
+	assert.False(t, ok)
+	require.ErrorContains(t, err, "no v2 candidate meets the minimum margin")
 }
 
 func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *testing.T) {
@@ -689,10 +820,32 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	assert.Equal(t, 5, info.DynamicPricingSnapshot.Selected.ChannelModelId)
 	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 2")
 
+	frozenQuotaPerUnit := info.DynamicPricingSnapshot.QuotaPerUnit
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = originalQuotaPerUnit * 2
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
 	require.NoError(t, BindSelectedChannel(info, 6))
 	assert.Equal(t, 6, info.DynamicPricingSnapshot.Selected.ChannelModelId)
 	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 4")
+	assert.Equal(t, frozenQuotaPerUnit, info.TieredBillingSnapshot.QuotaPerUnit)
 	assert.Equal(t, priceData.QuotaToPreConsume, info.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+
+	unboundInfo := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
+	_, ok, err = PrepareRelayPricing(
+		unboundInfo,
+		"default",
+		0,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Nil(t, unboundInfo.DynamicPricingSnapshot.Selected)
+	require.NoError(t, BindSelectedChannel(unboundInfo, 6))
+	assert.Equal(t, 6, unboundInfo.DynamicPricingSnapshot.Selected.ChannelModelId)
 }
 
 func TestPrepareRelayPricingUsesRequestHeadersForConditionalPrices(t *testing.T) {
@@ -732,6 +885,21 @@ func TestPrepareRelayPricingUsesRequestHeadersForConditionalPrices(t *testing.T)
 	assert.Equal(t, 4*int(common.QuotaPerUnit), priceData.QuotaToPreConsume)
 	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
 	assert.Equal(t, "4", info.DynamicPricingSnapshot.Selected.EstimatedRetailUSD)
+	info.RequestId = "request-v2-header-settlement"
+	info.UserId = 9
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+	require.NoError(t, SettleRequestPricingSnapshot(
+		info,
+		&dto.Usage{},
+		priceData.QuotaToPreConsume,
+	))
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		info.RequestId,
+	).First(&snapshot).Error)
+	assert.Equal(t, "2", snapshot.PurchaseCost)
+	assert.Equal(t, "4", snapshot.RetailAmount)
 }
 
 func TestPrepareRelayPricingRejectsCandidatesBelowMinimumMargin(t *testing.T) {
@@ -785,6 +953,8 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	assert.Equal(t, 7, reserved.PurchasePriceVersionId)
 	assert.Equal(t, "token", reserved.BillingMode)
 	assert.Equal(t, int64(2*int(common.QuotaPerUnit)), reserved.ReservedQuota)
+	assert.Equal(t, "2", reserved.EstimatedCustomerCharge)
+	assert.Nil(t, reserved.CustomerCharge)
 	assert.NotContains(t, reserved.EstimatedUsage, "private audit prompt")
 	assert.Contains(t, reserved.EstimatedUsage, `"request_body":""`)
 
@@ -797,9 +967,60 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	assert.Equal(t, "token", settled.BillingMode)
 	assert.Equal(t, "0.5", settled.PurchaseCost)
 	assert.Equal(t, "1", settled.RetailAmount)
+	assert.Equal(t, "1", settled.BaseRetailAmount)
+	require.NotNil(t, settled.CustomerCharge)
+	assert.Equal(t, "1", *settled.CustomerCharge)
+	assert.Equal(t, "default", settled.AppliedGroup)
+	assert.Equal(t, "1", settled.AppliedGroupRatio)
+	assert.Equal(t, decimal.NewFromFloat(common.QuotaPerUnit).String(), settled.QuotaPerUnit)
+	assert.Equal(t, "0.5", settled.NetMarginRate)
+	assert.True(t, settled.MarginCompliant)
 	assert.Equal(t, int64(common.QuotaPerUnit), settled.SettledQuota)
 	assert.NotContains(t, settled.ActualUsage, "private audit prompt")
 	assert.Contains(t, settled.ActualUsage, `"request_body":""`)
+}
+
+func TestRequestPricingSnapshotRecordsActualChargeAfterGroupRatio(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 23, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-v2-group-charge", UserId: 9,
+		OriginModelName: "runtime-model",
+	}
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		23,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 0.8},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, common.QuotaFromFloat(1.6*common.QuotaPerUnit), priceData.QuotaToPreConsume)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+
+	settledQuota := common.QuotaFromFloat(0.8 * common.QuotaPerUnit)
+	require.NoError(t, SettleRequestPricingSnapshot(
+		info,
+		&dto.Usage{PromptTokens: 500_000},
+		settledQuota,
+	))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		info.RequestId,
+	).First(&snapshot).Error)
+	assert.Equal(t, "1", snapshot.BaseRetailAmount)
+	require.NotNil(t, snapshot.CustomerCharge)
+	assert.Equal(t, "0.8", *snapshot.CustomerCharge)
+	assert.Equal(t, "0.8", snapshot.AppliedGroupRatio)
+	assert.Equal(t, "0.375", snapshot.NetMarginRate)
+	assert.True(t, snapshot.MarginCompliant)
 }
 
 func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
@@ -828,6 +1049,9 @@ func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
 		&dto.Usage{PromptTokens: 500_000},
 		int(common.QuotaPerUnit),
 	))
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", info.RequestId).
+		UpdateColumn("provider_cost_known", nil).Error)
 
 	require.NoError(t, RecordProviderReportedCost(
 		info.RequestId,
@@ -850,6 +1074,8 @@ func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
 	assert.Equal(t, "-0.25", snapshot.CostVariance)
 	assert.Equal(t, "0.75", snapshot.GrossMargin)
 	assert.Equal(t, "full_provider_cost", snapshot.ProviderCostScope)
+	assert.Equal(t, "wallet", snapshot.BillingSource)
+	assert.True(t, snapshot.GrossMarginKnown)
 
 	err = RecordProviderReportedCost(
 		info.RequestId,
@@ -857,6 +1083,97 @@ func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
 		"full_provider_cost",
 	)
 	require.ErrorContains(t, err, "already recorded")
+}
+
+func TestProviderCostDoesNotTreatSubscriptionUsageValueAsGrossMargin(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 29, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-subscription-cost", UserId: 9,
+		OriginModelName: "runtime-model", BillingSource: "subscription",
+		SubscriptionId: 77,
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		29,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+	require.NoError(t, SettleRequestPricingSnapshot(
+		info,
+		&dto.Usage{PromptTokens: 500_000},
+		int(common.QuotaPerUnit),
+	))
+	require.NoError(t, RecordProviderReportedCost(
+		info.RequestId,
+		decimal.RequireFromString("0.25"),
+		"full_provider_cost",
+	))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		info.RequestId,
+	).First(&snapshot).Error)
+	assert.Equal(t, "subscription", snapshot.BillingSource)
+	assert.Equal(t, 77, snapshot.SubscriptionId)
+	assert.False(t, snapshot.GrossMarginKnown)
+	assert.Equal(t, "0", snapshot.GrossMargin)
+}
+
+func TestSettledPricingSnapshotRefundPreservesProviderLoss(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 28, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-settled-refund", UserId: 9,
+		OriginModelName: "runtime-model",
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		28,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+	require.NoError(t, SettleRequestPricingSnapshot(
+		info,
+		&dto.Usage{PromptTokens: 500_000},
+		int(common.QuotaPerUnit),
+	))
+	require.NoError(t, RecordProviderReportedCost(
+		info.RequestId,
+		decimal.RequireFromString("0.25"),
+		"full_provider_cost",
+	))
+
+	require.NoError(t, MarkRequestPricingRefunded(info.RequestId))
+	require.NoError(t, MarkRequestPricingRefunded(info.RequestId))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		info.RequestId,
+	).First(&snapshot).Error)
+	assert.Equal(t, PricingSnapshotStatusRefunded, snapshot.Status)
+	require.NotNil(t, snapshot.CustomerCharge)
+	assert.Equal(t, "0", *snapshot.CustomerCharge)
+	assert.Equal(t, "-0.25", snapshot.GrossMargin)
+	assert.True(t, snapshot.GrossMarginKnown)
 }
 
 func TestRequestPricingSnapshotRecordsCompletedRefund(t *testing.T) {
@@ -877,6 +1194,8 @@ func TestRequestPricingSnapshotRecordsCompletedRefund(t *testing.T) {
 	require.NoError(t, model.DB.Where("request_id = ?", "request-refunded").First(&snapshot).Error)
 	assert.Equal(t, PricingSnapshotStatusRefunded, snapshot.Status)
 	assert.Zero(t, snapshot.SettledQuota)
+	require.NotNil(t, snapshot.CustomerCharge)
+	assert.Equal(t, "0", *snapshot.CustomerCharge)
 	assert.Equal(t, "automatic_refund", snapshot.Resolution)
 	assert.Positive(t, snapshot.ResolvedAt)
 }
@@ -1087,11 +1406,152 @@ func TestApplyV2RetailPricingPublishesActiveRetailExpression(t *testing.T) {
 
 	result := ApplyV2RetailPricing([]model.Pricing{{
 		ModelName: "runtime-model", BillingMode: "ratio", PricingVersion: "legacy",
-	}}, map[string]string{"default": "Default"})
+	}}, map[string]string{"default": "Default"}, map[string]float64{"default": 1})
 
 	require.Len(t, result, 1)
 	assert.Equal(t, "tiered_expr", result[0].BillingMode)
 	assert.Contains(t, result[0].BillingExpr, "p * 2")
 	assert.Equal(t, "v2_dynamic", result[0].PricingSource)
+	assert.Equal(t, []string{"default"}, result[0].PricingGroups)
+	assert.Nil(t, result[0].LowestPrice)
 	assert.Len(t, result[0].PricingVersion, 64)
+}
+
+func TestApplyV2RetailPricingPublishesOfficialAndLowestPriceSummaries(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 13, RuntimeModeV2)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "vip", Model: "runtime-model", ChannelId: 13, Enabled: true,
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 13).
+		Update("price_components", `{"input_unit_price":"2","output_unit_price":"8","price_unit":"per_1m_tokens"}`).Error)
+	official := model.OfficialModelPriceVersion{
+		Id: 130, ModelId: 13, BillingMode: "token", PriceStructure: "flat",
+		PriceComponents: `{"input_unit_price":"2.5","output_unit_price":"10","price_unit":"per_1m_tokens"}`,
+		BillingExpr:     `v2:tier("base", (p * 2.5 + c * 10) / 1000000)`,
+		ExprHash: billingexpr.ExprHashString(
+			`v2:tier("base", (p * 2.5 + c * 10) / 1000000)`,
+		),
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+	require.NoError(t, model.DB.Create(&model.ModelOfficialPrice{
+		ModelId: 13, CurrentRevisionId: official.Id,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	result := ApplyV2RetailPricing([]model.Pricing{{
+		ModelName: "runtime-model",
+	}}, map[string]string{
+		"default": "Default",
+		"vip":     "VIP",
+	}, map[string]float64{
+		"default": 0.8,
+		"vip":     1.2,
+	})
+
+	require.Len(t, result, 1)
+	require.NotNil(t, result[0].OfficialPrice)
+	require.NotNil(t, result[0].LowestPrice)
+	assert.Equal(t, "2.5", result[0].OfficialPrice.Items[0].Amount)
+	assert.Equal(t, "10", result[0].OfficialPrice.Items[1].Amount)
+	assert.Equal(t, "1.6", result[0].LowestPrice.Items[0].Amount)
+	assert.Equal(t, "6.4", result[0].LowestPrice.Items[1].Amount)
+	assert.Equal(t, "1000000", result[0].LowestPrice.Items[0].UnitSize)
+	assert.Equal(t, "2", result[0].LowestPrice.Items[0].BaseAmount)
+	assert.Equal(t, "default", result[0].LowestPrice.Items[0].AppliedGroup)
+	assert.Equal(t, "Default", result[0].LowestPrice.Items[0].AppliedGroupLabel)
+	assert.Equal(t, "0.8", result[0].LowestPrice.Items[0].AppliedGroupRatio)
+	assert.Equal(t, "component_minimum", result[0].LowestPrice.ComparisonScope)
+	assert.Equal(t, 2, result[0].LowestPrice.CandidateCount)
+	require.Contains(t, result[0].RetailPricesByGroup, "default")
+	require.Contains(t, result[0].RetailPricesByGroup, "vip")
+	assert.Equal(t, "1.6", result[0].RetailPricesByGroup["default"].Items[0].Amount)
+	assert.Equal(t, "2.4", result[0].RetailPricesByGroup["vip"].Items[0].Amount)
+}
+
+func TestApplyV2RetailPricingPreservesGroupsWithEqualEffectiveRatio(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 14, RuntimeModeV2)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "vip", Model: "runtime-model", ChannelId: 14, Enabled: true,
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 14).
+		Update("price_components", `{"input_unit_price":"2"}`).Error)
+	require.NoError(t, RefreshCatalog())
+
+	result := ApplyV2RetailPricing(
+		[]model.Pricing{{ModelName: "runtime-model"}},
+		map[string]string{"default": "Default", "vip": "VIP"},
+		map[string]float64{"default": 1, "vip": 1},
+	)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, []string{"default", "vip"}, result[0].PricingGroups)
+	require.Contains(t, result[0].RetailPricesByGroup, "default")
+	require.Contains(t, result[0].RetailPricesByGroup, "vip")
+	require.NotNil(t, result[0].LowestPrice)
+	assert.Equal(t, 1, result[0].LowestPrice.CandidateCount)
+}
+
+func TestBuildPublicPriceSummaryKeepsVideoConditionsAndUnits(t *testing.T) {
+	summary := buildPublicPriceSummary(
+		"video_duration",
+		"expression",
+		"USD",
+		`{"rules":[`+
+			`{"name":"720p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.15","resolution":"720p"},`+
+			`{"name":"480p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.07","resolution":"480p"}`+
+			`]}`,
+		decimal.RequireFromString("0.8"),
+	)
+
+	require.NotNil(t, summary)
+	require.Len(t, summary.Items, 2)
+	assert.Equal(t, "480p", summary.Items[0].Resolution)
+	assert.Equal(t, "second", summary.Items[0].Unit)
+	assert.Equal(t, "0.056", summary.Items[0].Amount)
+	assert.Equal(t, "0.12", summary.Items[1].Amount)
+}
+
+func TestApplyV2RetailPricingHidesStructuredGroupPriceBelowMarginFloor(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 21, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 21).
+		Update("price_components", `{"input_unit_price":"1"}`).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 21).
+		Update("price_components", `{"input_unit_price":"2"}`).Error)
+	require.NoError(t, RefreshCatalog())
+
+	result := ApplyV2RetailPricing(
+		[]model.Pricing{{ModelName: "runtime-model"}},
+		map[string]string{"default": "Default"},
+		map[string]float64{"default": 0.5},
+	)
+
+	require.Len(t, result, 1)
+	assert.Nil(t, result[0].LowestPrice)
+	assert.Empty(t, result[0].RetailPricesByGroup)
+	assert.False(t, HasSafeStructuredCatalogPricing("default", "runtime-model", 0.5))
+	assert.True(t, HasSafeStructuredCatalogPricing("default", "runtime-model", 1))
+}
+
+func TestStructuredCatalogMarginCheckFailsClosedForMismatchedComponentsAndInvalidRatio(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 22, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 22).
+		Update("price_components", `{"output_unit_price":"1"}`).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 22).
+		Update("price_components", `{"input_unit_price":"2"}`).Error)
+	require.NoError(t, RefreshCatalog())
+
+	assert.False(t, HasSafeStructuredCatalogPricing("default", "runtime-model", 1))
+	assert.False(t, HasSafeStructuredCatalogPricing("default", "runtime-model", math.Inf(1)))
 }

@@ -26,13 +26,17 @@ RUN go mod download
 COPY . .
 COPY --from=builder /build/web/dist ./web/dist
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api \
-    && mkdir -p /runtime-root/data /runtime-root/tmp
+    && mkdir -p /runtime-root/data /runtime-root/tmp \
+	&& go build -ldflags "-s -w" -o /runtime-root/pricing-readiness ./cmd/local-pricing-bootstrap \
+	&& go build -ldflags "-s -w" -o /runtime-root/db-migrate ./cmd/db-migrate
 
 FROM gcr.m.daocloud.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 
 COPY --from=builder2 --chown=65532:65532 /runtime-root/data /data
 COPY --from=builder2 --chown=65532:65532 /runtime-root/tmp /tmp
 COPY --from=builder2 --chown=65532:65532 /build/new-api /
+COPY --from=builder2 --chown=65532:65532 /runtime-root/pricing-readiness /
+COPY --from=builder2 --chown=65532:65532 /runtime-root/db-migrate /
 COPY --chown=65532:65532 LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
 EXPOSE 3000
 WORKDIR /data

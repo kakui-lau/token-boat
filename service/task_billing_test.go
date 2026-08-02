@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -50,6 +51,7 @@ func TestMain(m *testing.M) {
 		&model.UserSubscription{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
+		&model.RequestPricingSnapshot{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -73,6 +75,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM user_subscriptions")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
+		model.DB.Exec("DELETE FROM request_pricing_snapshots")
 	})
 }
 
@@ -213,6 +216,7 @@ func TestNewTaskBillingContextFreezesExpressionAndRedactsSecrets(t *testing.T) {
 
 	bc := NewTaskBillingContext(info)
 	require.Same(t, snapshot, bc.TieredSnapshot)
+	assert.Equal(t, common.QuotaPerUnit, bc.QuotaPerUnit)
 	require.NotNil(t, bc.TieredRequest)
 	assert.NotContains(t, bc.TieredRequest.Headers, "Authorization")
 	assert.NotContains(t, bc.TieredRequest.Headers, "Cookie")
@@ -222,6 +226,7 @@ func TestNewTaskBillingContextFreezesExpressionAndRedactsSecrets(t *testing.T) {
 
 func TestNewTaskBillingContextTreatsV2VideoUsageAsFixedAtSubmission(t *testing.T) {
 	info := &relaycommon.RelayInfo{
+		RequestId:       "request-task-v2",
 		OriginModelName: "video-model",
 		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
 			BillingMode: "tiered_expr",
@@ -229,6 +234,7 @@ func TestNewTaskBillingContextTreatsV2VideoUsageAsFixedAtSubmission(t *testing.T
 		},
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
 			EstimatedUsage: `{"request_count":1,"video_seconds":10}`,
+			QuotaPerUnit:   2_000_000,
 		},
 		BillingRequestInput: &billingexpr.RequestInput{
 			Body: []byte(`{"prompt":"private video prompt"}`),
@@ -238,6 +244,8 @@ func TestNewTaskBillingContextTreatsV2VideoUsageAsFixedAtSubmission(t *testing.T
 	bc := NewTaskBillingContext(info)
 
 	assert.True(t, bc.PerCallBilling)
+	assert.Equal(t, "request-task-v2", bc.RequestId)
+	assert.Equal(t, 2_000_000.0, bc.QuotaPerUnit)
 	assert.Nil(t, bc.TieredSnapshot)
 	assert.Nil(t, bc.TieredRequest)
 }
@@ -488,6 +496,64 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, model.TaskRefundStatusCompleted, refundedTask.RefundStatus)
 	assert.Equal(t, preConsumed, refundedTask.RefundQuota)
 	assert.Positive(t, refundedTask.RefundedAt)
+}
+
+func TestRefundTaskQuotaFinalizesV2PricingSnapshot(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	const userID, channelID, preConsumed = 21, 21, 1000
+	seedUser(t, userID, 10000)
+	seedChannel(t, channelID)
+	require.NoError(t, model.DB.Model(&model.User{}).
+		Where("id = ?", userID).
+		Updates(map[string]any{"used_quota": preConsumed, "request_count": 1}).Error)
+	require.NoError(t, model.DB.Model(&model.Channel{}).
+		Where("id = ?", channelID).
+		Update("used_quota", preConsumed).Error)
+	snapshot := model.RequestPricingSnapshot{
+		RequestId: "request-task-refund", UserId: userID,
+		ModelId: 1, ChannelModelId: 1,
+		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
+		BillingMode: "video_duration", PurchaseCost: "0.2", RetailAmount: "1",
+		EstimatedCustomerCharge: "1",
+		Currency:                "USD", ReservedQuota: preConsumed,
+		Status: pricingruntime.PricingSnapshotStatusReserved,
+	}
+	require.NoError(t, model.DB.Create(&snapshot).Error)
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.RequestId = snapshot.RequestId
+	task.PrivateData.ProviderCostKnown = true
+	task.PrivateData.ProviderCost = 0.25
+	require.NoError(t, model.DB.Create(task).Error)
+
+	require.True(t, RefundTaskQuota(ctx, task, "provider task failed"))
+
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		snapshot.RequestId,
+	).First(&snapshot).Error)
+	assert.Equal(t, pricingruntime.PricingSnapshotStatusRefunded, snapshot.Status)
+	require.NotNil(t, snapshot.CustomerCharge)
+	assert.Equal(t, "0", *snapshot.CustomerCharge)
+	assert.True(t, snapshot.ProviderCostKnown)
+	assert.Equal(t, "0.25", snapshot.ProviderReportedCost)
+	assert.Equal(t, "-0.25", snapshot.GrossMargin)
+}
+
+func TestTaskBillingAuditRemainsPendingWhenProviderCostSnapshotIsMissing(t *testing.T) {
+	truncate(t)
+	task := makeTask(1, 1, 1000, 0, BillingSourceWallet, 0)
+	task.PrivateData.ProviderCostKnown = true
+	task.PrivateData.ProviderCost = 0.25
+	task.PrivateData.BillingContext.RequestId = "missing-pricing-snapshot"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	updateTaskBillingAudit(task, string(model.TaskStatusSuccess), 1000, 0)
+
+	var stored model.Task
+	require.NoError(t, model.DB.First(&stored, task.ID).Error)
+	assert.Equal(t, model.TaskSettlementStatusPending, stored.BillingAuditStatus)
+	assert.Contains(t, stored.BillingAuditError, "pricing snapshot audit")
 }
 
 func TestRefundTaskQuota_Subscription(t *testing.T) {

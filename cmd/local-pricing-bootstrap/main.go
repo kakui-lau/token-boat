@@ -11,13 +11,16 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
@@ -26,6 +29,11 @@ import (
 )
 
 const localBootstrapUserId = 1
+
+type readinessRatioScenario struct {
+	UserGroup string
+	Ratio     float64
+}
 
 func main() {
 	databasePath := flag.String("database", "", "local SQLite database file")
@@ -104,6 +112,7 @@ func main() {
 			exitWithError(err)
 		}
 		model.DB = db
+		model.InitOptionMap()
 		if *production {
 			exitWithError(errors.New(
 				"--production requires --current-env so Redis and database settings are explicit",
@@ -125,6 +134,7 @@ func main() {
 		exitWithError(err)
 	}
 	model.DB = db
+	model.InitOptionMap()
 	if err := migratePricingTables(db); err != nil {
 		exitWithError(fmt.Errorf("migrate pricing tables: %w", err))
 	}
@@ -158,8 +168,14 @@ func verifyAndReport(production bool) error {
 		return fmt.Errorf("refresh V2 price catalog: %w", err)
 	}
 	var abilities []model.Ability
-	if err := model.DB.
-		Where("enabled = ?", true).
+	if err := model.DB.Model(&model.Ability{}).
+		Select("abilities.*").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where(
+			"abilities.enabled = ? AND channels.status = ?",
+			true,
+			common.ChannelStatusEnabled,
+		).
 		Find(&abilities).Error; err != nil {
 		return err
 	}
@@ -184,15 +200,37 @@ func verifyAndReport(production bool) error {
 		return scopes[left].model < scopes[right].model
 	})
 	verifiedCandidates := 0
+	verifiedPricingScenarios := 0
 	for _, scope := range scopes {
-		candidates, err := pricingruntime.PlanV2Route(scope.group, scope.model)
-		if err != nil {
-			return fmt.Errorf("%s/%s: %w", scope.group, scope.model, err)
+		for _, scenario := range readinessRatioScenarios(scope.group) {
+			candidates, err := pricingruntime.PlanV2RouteWithGroupRatio(
+				scope.group,
+				scope.model,
+				scenario.Ratio,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"%s/%s user_group=%q ratio=%g: %w",
+					scope.group,
+					scope.model,
+					scenario.UserGroup,
+					scenario.Ratio,
+					err,
+				)
+			}
+			if err := validateRoutePlan(candidates); err != nil {
+				return fmt.Errorf(
+					"%s/%s user_group=%q ratio=%g: %w",
+					scope.group,
+					scope.model,
+					scenario.UserGroup,
+					scenario.Ratio,
+					err,
+				)
+			}
+			verifiedCandidates += len(candidates)
+			verifiedPricingScenarios++
 		}
-		if err := validateRoutePlan(candidates); err != nil {
-			return fmt.Errorf("%s/%s: %w", scope.group, scope.model, err)
-		}
-		verifiedCandidates += len(candidates)
 	}
 	readiness, err := pricingruntime.GetRuntimeReadiness()
 	if err != nil {
@@ -223,8 +261,9 @@ func verifyAndReport(production bool) error {
 		}
 	}
 	fmt.Printf(
-		"verified: %d model/group scopes, %d eligible route candidates, %d/%d channel models use V2\n",
+		"verified: %d model/group scopes, %d effective multiplier scenarios, %d eligible route candidate evaluations, %d/%d channel models use V2\n",
 		len(scopes),
+		verifiedPricingScenarios,
 		verifiedCandidates,
 		readiness.V2ChannelModels,
 		readiness.TotalChannelModels,
@@ -232,11 +271,68 @@ func verifyAndReport(production bool) error {
 	return nil
 }
 
+func readinessRatioScenarios(routeGroup string) []readinessRatioScenario {
+	userGroups := make(map[string]struct{})
+	for userGroup := range ratio_setting.GetGroupRatioCopy() {
+		userGroups[userGroup] = struct{}{}
+	}
+	ratioConfig := ratio_setting.GetGroupRatioSetting()
+	for userGroup := range ratioConfig.GroupGroupRatio.ReadAll() {
+		userGroups[userGroup] = struct{}{}
+	}
+	for userGroup := range ratioConfig.GroupSpecialUsableGroup.ReadAll() {
+		userGroups[userGroup] = struct{}{}
+	}
+
+	names := make([]string, 0, len(userGroups))
+	for userGroup := range userGroups {
+		names = append(names, userGroup)
+	}
+	sort.Strings(names)
+
+	scenarios := make([]readinessRatioScenario, 0, len(names)+1)
+	seenRatios := make(map[string]struct{})
+	addScenario := func(userGroup string, ratio float64) {
+		key := strconv.FormatFloat(ratio, 'g', -1, 64)
+		if _, exists := seenRatios[key]; exists {
+			return
+		}
+		seenRatios[key] = struct{}{}
+		scenarios = append(scenarios, readinessRatioScenario{
+			UserGroup: userGroup,
+			Ratio:     ratio,
+		})
+	}
+	addScenario("", service.GetUserGroupRatio("", routeGroup))
+	for _, userGroup := range names {
+		if !service.GroupInUserUsableGroups(userGroup, routeGroup) {
+			continue
+		}
+		addScenario(
+			userGroup,
+			service.GetUserGroupRatio(userGroup, routeGroup),
+		)
+	}
+	return scenarios
+}
+
 func validateProductionPriceEvidence() error {
 	var channelModels []model.ChannelModel
-	if err := model.DB.
-		Where("runtime_mode = ?", pricingruntime.RuntimeModeV2).
-		Order("id ASC").
+	if err := model.DB.Model(&model.ChannelModel{}).
+		Select("DISTINCT channel_models.*").
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins(
+			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
+		).
+		Where(
+			"channel_models.status <> ? AND channel_models.runtime_mode = ? AND channels.status = ? AND abilities.enabled = ?",
+			0,
+			pricingruntime.RuntimeModeV2,
+			common.ChannelStatusEnabled,
+			true,
+		).
+		Order("channel_models.id ASC").
 		Find(&channelModels).Error; err != nil {
 		return err
 	}
@@ -245,26 +341,31 @@ func validateProductionPriceEvidence() error {
 		if err != nil {
 			return err
 		}
-		if bundle.Official == nil {
+		requiresOfficial := bundle.Purchase.PricingMode == "official_ratio" ||
+			bundle.Purchase.PricingMode == "component_ratio" ||
+			bundle.Purchase.PricingMode == "hybrid"
+		if requiresOfficial && bundle.Official == nil {
 			return fmt.Errorf(
 				"channel model %d has no frozen official price evidence",
 				channelModel.Id,
 			)
 		}
-		source := strings.ToLower(strings.TrimSpace(bundle.Official.Source))
-		if source == "" || source == "local_bootstrap" || source == "legacy_import" {
-			return fmt.Errorf(
-				"channel model %d uses non-production official source %q",
-				channelModel.Id,
-				bundle.Official.Source,
-			)
-		}
-		if strings.TrimSpace(bundle.Official.SourceVersion) == "" ||
-			bundle.Official.SourceUpdatedAt <= 0 {
-			return fmt.Errorf(
-				"channel model %d official price lacks source version or source timestamp",
-				channelModel.Id,
-			)
+		if bundle.Official != nil {
+			source := strings.ToLower(strings.TrimSpace(bundle.Official.Source))
+			if source == "" || source == "local_bootstrap" || source == "legacy_import" {
+				return fmt.Errorf(
+					"channel model %d uses non-production official source %q",
+					channelModel.Id,
+					bundle.Official.Source,
+				)
+			}
+			if strings.TrimSpace(bundle.Official.SourceVersion) == "" ||
+				bundle.Official.SourceUpdatedAt <= 0 {
+				return fmt.Errorf(
+					"channel model %d official price lacks source version or source timestamp",
+					channelModel.Id,
+				)
+			}
 		}
 		quoteReference := strings.ToLower(strings.TrimSpace(bundle.Purchase.QuoteReference))
 		contractReference := strings.TrimSpace(bundle.Purchase.ContractReference)
@@ -390,11 +491,13 @@ func openCurrentEnvironmentDatabase(readOnly bool, allowRemoteReadOnly bool) err
 			}
 		}
 		model.DB = db
+		model.InitOptionMap()
 		return nil
 	}
 	if err := model.InitDB(); err != nil {
 		return fmt.Errorf("initialize current database: %w", err)
 	}
+	model.InitOptionMap()
 	return nil
 }
 

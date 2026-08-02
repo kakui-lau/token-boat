@@ -29,7 +29,11 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getChannelModels, setPricingModelRuntime } from '../api'
+import {
+  exportChannelModelPrices,
+  getChannelModels,
+  setPricingModelRuntime,
+} from '../api'
 import { PricingAdmin } from '../index'
 
 vi.mock('react-i18next', () => ({
@@ -45,9 +49,13 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('../api', () => ({
+  exportChannelModelPrices: vi.fn(),
   getChannelModels: vi.fn(),
   getPricingCatalogOptions: vi.fn().mockResolvedValue({
-    data: { channels: [], models: [] },
+    data: {
+      channels: [{ id: 1, name: 'Published Channel' }],
+      models: [],
+    },
   }),
   getPricingCircuitOverview: vi.fn().mockResolvedValue({
     success: true,
@@ -112,6 +120,12 @@ function renderPricingAdmin() {
 
 describe('channel model retail publication status', () => {
   beforeEach(() => {
+    vi.mocked(exportChannelModelPrices).mockResolvedValue(
+      new Blob(['channel pricing'])
+    )
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:channel-pricing')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     vi.mocked(getChannelModels).mockResolvedValue({
       success: true,
       data: {
@@ -158,6 +172,7 @@ describe('channel model retail publication status', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
     vi.clearAllMocks()
   })
 
@@ -207,6 +222,11 @@ describe('channel model retail publication status', () => {
     fireEvent.click(
       within(publishedRow).getByRole('button', { name: 'Enable Model V2' })
     )
+    expect(setPricingModelRuntime).not.toHaveBeenCalled()
+    const confirmDialog = await screen.findByRole('alertdialog')
+    fireEvent.click(
+      within(confirmDialog).getByRole('button', { name: 'Enable Model V2' })
+    )
 
     await waitFor(() =>
       expect(setPricingModelRuntime).toHaveBeenCalledWith({
@@ -214,5 +234,49 @@ describe('channel model retail publication status', () => {
         runtime_mode: 'v2',
       })
     )
+  })
+
+  test('exports the currently filtered channel pricing rows', async () => {
+    renderPricingAdmin()
+
+    expect(
+      screen.queryByRole('button', { name: 'Price Comparison' })
+    ).not.toBeInTheDocument()
+    const exportButton = await screen.findByRole('button', {
+      name: 'Export filtered CSV',
+    })
+
+    await screen.findByRole('option', { name: 'Published Channel' })
+    fireEvent.change(screen.getByLabelText('Channel'), {
+      target: { value: '1' },
+    })
+    await waitFor(() =>
+      expect(getChannelModels).toHaveBeenLastCalledWith(
+        expect.objectContaining({ channel_id: 1 })
+      )
+    )
+    fireEvent.change(screen.getByLabelText('Status'), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByLabelText('Runtime'), {
+      target: { value: 'v2' },
+    })
+    fireEvent.change(screen.getByLabelText('Retail Status'), {
+      target: { value: 'published' },
+    })
+
+    fireEvent.click(exportButton)
+
+    await waitFor(() =>
+      expect(exportChannelModelPrices).toHaveBeenCalledWith({
+        keyword: undefined,
+        channel_id: 1,
+        status: 1,
+        runtime_mode: 'v2',
+        retail_status: 'published',
+      })
+    )
+    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:channel-pricing')
   })
 })

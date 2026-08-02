@@ -114,6 +114,20 @@ export async function getChannelModels(params: {
   return response.data
 }
 
+export async function exportChannelModelPrices(params: {
+  keyword?: string
+  channel_id?: number
+  status?: number
+  runtime_mode?: 'legacy' | 'v2'
+  retail_status?: 'published' | 'unpublished'
+}): Promise<Blob> {
+  const response = await api.get('/api/pricing-admin/channel-models/export', {
+    params,
+    responseType: 'blob',
+  })
+  return response.data
+}
+
 export async function getRequestPricingSnapshots(params: {
   status?: 'reserved' | 'pending' | 'settled' | 'refunded'
   reconciliation?: boolean

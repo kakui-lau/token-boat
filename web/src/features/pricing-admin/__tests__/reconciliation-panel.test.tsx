@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -127,7 +145,13 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     screen.getByRole('columnheader', { name: 'Purchase cost' })
   ).toBeInTheDocument()
   expect(
-    screen.getByRole('columnheader', { name: 'Retail amount' })
+    screen.getByRole('columnheader', { name: 'Base retail amount' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('columnheader', { name: 'Estimated charge' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('columnheader', { name: 'Billed Amount' })
   ).toBeInTheDocument()
   expect(screen.getByText('Billing Anomalies')).toBeInTheDocument()
   expect(

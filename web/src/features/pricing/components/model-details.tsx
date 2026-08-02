@@ -67,7 +67,13 @@ import {
   isDynamicPricingModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getAvailableGroups,
+  getConfiguredGroupRatio,
+  getDisplayedRetailPrice,
+  isModelAvailableForGroup,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import type {
   ModelCapability,
@@ -76,9 +82,11 @@ import type {
   TokenUnit,
 } from '../types'
 import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
+import { ModelAvailabilityBadge } from './model-availability-badge'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelDetailsApi } from './model-details-api'
 import { ModelDetailsPerformance } from './model-details-performance'
+import { PublicPriceSummaryDetails } from './public-price-summary'
 
 // ----------------------------------------------------------------------------
 // Local UI helpers
@@ -523,7 +531,7 @@ function ModelBackendDetailsSection(props: { model: PricingModel }) {
 // Model header (always visible above the detail sections)
 // ----------------------------------------------------------------------------
 
-function ModelHeader(props: { model: PricingModel }) {
+function ModelHeader(props: { model: PricingModel; selectedGroup?: string }) {
   const { t } = useTranslation()
   const model = props.model
   const modelIconKey = model.icon || model.vendor_icon
@@ -547,6 +555,10 @@ function ModelHeader(props: { model: PricingModel }) {
         />
       </div>
       <div className='mt-1 flex flex-wrap items-center gap-1.5 text-xs'>
+        <ModelAvailabilityBadge
+          model={model}
+          selectedGroup={props.selectedGroup}
+        />
         {model.vendor_name && (
           <span className='text-muted-foreground'>{model.vendor_name}</span>
         )}
@@ -572,8 +584,94 @@ function PriceSection(props: {
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice: boolean
+  selectedGroup?: string
 }) {
   const { t } = useTranslation()
+  const displayedRetailPrice = getDisplayedRetailPrice(
+    props.model,
+    props.selectedGroup
+  )
+  const availableForGroup = isModelAvailableForGroup(
+    props.model,
+    props.selectedGroup
+  )
+
+  if (displayedRetailPrice) {
+    return (
+      <div className='grid gap-4 @md/details:grid-cols-2'>
+        <section>
+          <SectionTitle>{t('Official Price')}</SectionTitle>
+          <PublicPriceSummaryDetails
+            summary={props.model.official_price}
+            tokenUnit={props.tokenUnit}
+          />
+        </section>
+        <section>
+          <SectionTitle>{t('Lowest item price')}</SectionTitle>
+          <PublicPriceSummaryDetails
+            summary={displayedRetailPrice}
+            tokenUnit={props.tokenUnit}
+            showRechargePrice={props.showRechargePrice}
+            priceRate={props.priceRate}
+            usdExchangeRate={props.usdExchangeRate}
+          />
+          <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
+            {t(
+              'Lowest active retail price for each component across available channels.'
+            )}
+          </p>
+        </section>
+      </div>
+    )
+  }
+
+  if (!availableForGroup) {
+    if (props.model.official_price) {
+      return (
+        <div className='grid gap-4 @md/details:grid-cols-2'>
+          <section>
+            <SectionTitle>{t('Official Price')}</SectionTitle>
+            <PublicPriceSummaryDetails
+              summary={props.model.official_price}
+              tokenUnit={props.tokenUnit}
+            />
+          </section>
+          <section>
+            <SectionTitle>{t('Lowest item price')}</SectionTitle>
+            <PublicPriceSummaryDetails tokenUnit={props.tokenUnit} />
+          </section>
+        </div>
+      )
+    }
+    return (
+      <p className='text-muted-foreground text-sm'>{t('Not configured')}</p>
+    )
+  }
+
+  if (props.model.pricing_source === 'v2_dynamic') {
+    return (
+      <div className='grid gap-4 @md/details:grid-cols-2'>
+        <section>
+          <SectionTitle>{t('Official Price')}</SectionTitle>
+          <PublicPriceSummaryDetails
+            summary={props.model.official_price}
+            tokenUnit={props.tokenUnit}
+          />
+        </section>
+        <section>
+          <SectionTitle>{t('Lowest item price')}</SectionTitle>
+          <PublicPriceSummaryDetails
+            tokenUnit={props.tokenUnit}
+            emptyLabel={t('Quote required')}
+          />
+          <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
+            {t('Dynamic Pricing')}
+          </p>
+        </section>
+      </div>
+    )
+  }
+
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
   const baseGroupKey = '_base'
@@ -852,7 +950,7 @@ function getDynamicFormattedPricesByTier(
 function GroupPricingSection(props: {
   model: PricingModel
   groupRatio: Record<string, number>
-  usableGroup: Record<string, { desc: string; ratio: number }>
+  usableGroup: Record<string, string>
   autoGroups: string[]
   priceRate: number
   usdExchangeRate: number
@@ -949,7 +1047,7 @@ function GroupPricingSection(props: {
     })
     const formattedPricesByGroup = new Map(
       availableGroups.map((group) => {
-        const ratio = props.groupRatio[group] || 1
+        const ratio = getConfiguredGroupRatio(props.groupRatio, group)
         return [
           group,
           getDynamicFormattedPricesByTier(dynamicTiers, {
@@ -969,7 +1067,7 @@ function GroupPricingSection(props: {
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
         <div className='space-y-3'>
           {availableGroups.map((group) => {
-            const ratio = props.groupRatio[group] || 1
+            const ratio = getConfiguredGroupRatio(props.groupRatio, group)
             const formattedPricesByTier =
               formattedPricesByGroup.get(group) ??
               new Map<DynamicPricingTier, Map<string, string>>()
@@ -1065,7 +1163,8 @@ function GroupPricingSection(props: {
             header: t('Ratio'),
             className: thClass,
             cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
+            cell: (group) =>
+              `${getConfiguredGroupRatio(props.groupRatio, group)}x`,
           },
           ...(isTokenBased
             ? [
@@ -1128,13 +1227,14 @@ const TAB_META: Record<
 export interface ModelDetailsContentProps {
   model: PricingModel
   groupRatio: Record<string, number>
-  usableGroup: Record<string, { desc: string; ratio: number }>
+  usableGroup: Record<string, string>
   endpointMap: Record<string, { path?: string; method?: string }>
   autoGroups: string[]
   priceRate: number
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
+  selectedGroup?: string
 }
 
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
@@ -1144,10 +1244,17 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const isDynamic =
     props.model.billing_mode === 'tiered_expr' &&
     Boolean(props.model.billing_expr)
+  const displayedRetailPrice = getDisplayedRetailPrice(
+    props.model,
+    props.selectedGroup
+  )
+  const hasStructuredPublicPrice = Boolean(
+    props.model.official_price || displayedRetailPrice
+  )
 
   return (
     <div className='@container/details space-y-4'>
-      <ModelHeader model={props.model} />
+      <ModelHeader model={props.model} selectedGroup={props.selectedGroup} />
 
       <Tabs defaultValue='overview' className='gap-4'>
         <TabsList className='bg-muted/60 grid w-full grid-cols-3 gap-1 rounded-lg p-1 group-data-horizontal/tabs:h-auto'>
@@ -1177,20 +1284,27 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
               usdExchangeRate={props.usdExchangeRate}
               tokenUnit={props.tokenUnit}
               showRechargePrice={showRechargePrice}
+              selectedGroup={props.selectedGroup}
             />
-            {isDynamic && (
-              <DynamicPricingBreakdown billingExpr={props.model.billing_expr} />
+            {props.model.available &&
+              isDynamic &&
+              !hasStructuredPublicPrice && (
+                <DynamicPricingBreakdown
+                  billingExpr={props.model.billing_expr}
+                />
+              )}
+            {props.model.available && !hasStructuredPublicPrice && (
+              <GroupPricingSection
+                model={props.model}
+                groupRatio={props.groupRatio}
+                usableGroup={props.usableGroup}
+                autoGroups={props.autoGroups}
+                priceRate={props.priceRate}
+                usdExchangeRate={props.usdExchangeRate}
+                tokenUnit={props.tokenUnit}
+                showRechargePrice={showRechargePrice}
+              />
             )}
-            <GroupPricingSection
-              model={props.model}
-              groupRatio={props.groupRatio}
-              usableGroup={props.usableGroup}
-              autoGroups={props.autoGroups}
-              priceRate={props.priceRate}
-              usdExchangeRate={props.usdExchangeRate}
-              tokenUnit={props.tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
           </section>
 
           <ModelBackendDetailsSection model={props.model} />
@@ -1338,6 +1452,7 @@ export function ModelDetails() {
           usdExchangeRate={usdExchangeRate ?? 1}
           tokenUnit={tokenUnit}
           showRechargePrice={search.rechargePrice ?? false}
+          selectedGroup={search.group}
           endpointMap={
             (endpointMap as Record<
               string,

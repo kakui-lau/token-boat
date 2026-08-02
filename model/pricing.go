@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"sync"
@@ -16,27 +17,71 @@ import (
 )
 
 type Pricing struct {
-	ModelName              string                  `json:"model_name"`
-	Description            string                  `json:"description,omitempty"`
-	Icon                   string                  `json:"icon,omitempty"`
-	Tags                   string                  `json:"tags,omitempty"`
-	VendorID               int                     `json:"vendor_id,omitempty"`
-	QuotaType              int                     `json:"quota_type"`
-	ModelRatio             float64                 `json:"model_ratio"`
-	ModelPrice             float64                 `json:"model_price"`
-	OwnerBy                string                  `json:"owner_by"`
-	CompletionRatio        float64                 `json:"completion_ratio"`
-	CacheRatio             *float64                `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                `json:"image_ratio,omitempty"`
-	AudioRatio             *float64                `json:"audio_ratio,omitempty"`
-	AudioCompletionRatio   *float64                `json:"audio_completion_ratio,omitempty"`
-	EnableGroup            []string                `json:"enable_groups"`
-	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
-	BillingMode            string                  `json:"billing_mode,omitempty"`
-	BillingExpr            string                  `json:"billing_expr,omitempty"`
-	PricingVersion         string                  `json:"pricing_version,omitempty"`
-	PricingSource          string                  `json:"pricing_source,omitempty"`
+	ID                     int                            `json:"id,omitempty"`
+	ModelName              string                         `json:"model_name"`
+	Description            string                         `json:"description,omitempty"`
+	Icon                   string                         `json:"icon,omitempty"`
+	Tags                   string                         `json:"tags,omitempty"`
+	VendorID               int                            `json:"vendor_id,omitempty"`
+	QuotaType              int                            `json:"quota_type"`
+	ModelRatio             float64                        `json:"model_ratio"`
+	ModelPrice             float64                        `json:"model_price"`
+	OwnerBy                string                         `json:"owner_by"`
+	CompletionRatio        float64                        `json:"completion_ratio"`
+	CacheRatio             *float64                       `json:"cache_ratio,omitempty"`
+	CreateCacheRatio       *float64                       `json:"create_cache_ratio,omitempty"`
+	ImageRatio             *float64                       `json:"image_ratio,omitempty"`
+	AudioRatio             *float64                       `json:"audio_ratio,omitempty"`
+	AudioCompletionRatio   *float64                       `json:"audio_completion_ratio,omitempty"`
+	EnableGroup            []string                       `json:"enable_groups"`
+	SupportedEndpointTypes []constant.EndpointType        `json:"supported_endpoint_types"`
+	BillingMode            string                         `json:"billing_mode,omitempty"`
+	BillingExpr            string                         `json:"billing_expr,omitempty"`
+	PricingVersion         string                         `json:"pricing_version,omitempty"`
+	PricingSource          string                         `json:"pricing_source,omitempty"`
+	OfficialPrice          *PublicPriceSummary            `json:"official_price,omitempty"`
+	LowestPrice            *PublicPriceSummary            `json:"lowest_price,omitempty"`
+	RetailPricesByGroup    map[string]*PublicPriceSummary `json:"retail_prices_by_group,omitempty"`
+	PricingGroups          []string                       `json:"pricing_groups,omitempty"`
+	Available              bool                           `json:"available"`
+	AvailabilityStatus     string                         `json:"availability_status"`
+}
+
+const (
+	PricingAvailabilityAvailable        = "available"
+	PricingAvailabilityPriceUnavailable = "price_unavailable"
+	PricingAvailabilityRouteUnavailable = "route_unavailable"
+)
+
+// PublicPriceSummary is a normalized, display-safe view of one model price.
+// It keeps the public catalog independent from the billing expression grammar:
+// expressions remain the runtime source of truth while clients render these
+// structured items without attempting to interpret executable formulas.
+type PublicPriceSummary struct {
+	Currency        string            `json:"currency"`
+	BillingMode     string            `json:"billing_mode"`
+	PriceStructure  string            `json:"price_structure"`
+	ComparisonScope string            `json:"comparison_scope,omitempty"`
+	CandidateCount  int               `json:"candidate_count,omitempty"`
+	Items           []PublicPriceItem `json:"items"`
+}
+
+type PublicPriceItem struct {
+	Key               string `json:"key"`
+	Component         string `json:"component"`
+	Amount            string `json:"amount"`
+	BaseAmount        string `json:"base_amount,omitempty"`
+	Unit              string `json:"unit"`
+	UnitSize          string `json:"unit_size"`
+	Tier              string `json:"tier,omitempty"`
+	UpperBound        string `json:"upper_bound,omitempty"`
+	Operation         string `json:"operation,omitempty"`
+	Quality           string `json:"quality,omitempty"`
+	Resolution        string `json:"resolution,omitempty"`
+	WithAudio         string `json:"with_audio,omitempty"`
+	AppliedGroup      string `json:"applied_group,omitempty"`
+	AppliedGroupLabel string `json:"applied_group_label,omitempty"`
+	AppliedGroupRatio string `json:"applied_group_ratio,omitempty"`
 }
 
 type PricingVendor struct {
@@ -48,6 +93,7 @@ type PricingVendor struct {
 
 var (
 	pricingMap           []Pricing
+	publicPricingMap     []Pricing
 	vendorsList          []PricingVendor
 	supportedEndpointMap map[string]common.EndpointInfo
 	lastGetPricingTime   time.Time
@@ -78,11 +124,20 @@ func GetPricing() []Pricing {
 	return pricingMap
 }
 
+// GetPublicPricing returns the model catalog used by the public model square.
+// It includes active exact-name model records even when they do not currently
+// have an enabled route or a complete price configuration.
+func GetPublicPricing() []Pricing {
+	GetPricing()
+	return publicPricingMap
+}
+
 func InvalidatePricingCache() {
 	updatePricingLock.Lock()
 	defer updatePricingLock.Unlock()
 
 	pricingMap = nil
+	publicPricingMap = nil
 	vendorsList = nil
 	lastGetPricingTime = time.Time{}
 }
@@ -176,6 +231,42 @@ func appendPricingEndpoint(endpoints []string, endpoint string) []string {
 		return endpoints
 	}
 	return append(endpoints, endpoint)
+}
+
+func applyLegacyPricingFields(pricing *Pricing) {
+	modelPrice, findPrice := ratio_setting.GetModelPrice(pricing.ModelName, false)
+	if findPrice {
+		pricing.ModelPrice = modelPrice
+		pricing.QuotaType = 1
+	} else {
+		modelRatio, _, _ := ratio_setting.GetModelRatio(pricing.ModelName)
+		pricing.ModelRatio = modelRatio
+		pricing.CompletionRatio = ratio_setting.GetCompletionRatio(pricing.ModelName)
+		pricing.QuotaType = 0
+	}
+	if cacheRatio, ok := ratio_setting.GetCacheRatio(pricing.ModelName); ok {
+		pricing.CacheRatio = &cacheRatio
+	}
+	if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(pricing.ModelName); ok {
+		pricing.CreateCacheRatio = &createCacheRatio
+	}
+	if imageRatio, ok := ratio_setting.GetImageRatio(pricing.ModelName); ok {
+		pricing.ImageRatio = &imageRatio
+	}
+	if ratio_setting.ContainsAudioRatio(pricing.ModelName) {
+		audioRatio := ratio_setting.GetAudioRatio(pricing.ModelName)
+		pricing.AudioRatio = &audioRatio
+	}
+	if ratio_setting.ContainsAudioCompletionRatio(pricing.ModelName) {
+		audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(pricing.ModelName)
+		pricing.AudioCompletionRatio = &audioCompletionRatio
+	}
+	if billingMode := billing_setting.GetBillingMode(pricing.ModelName); billingMode == "tiered_expr" {
+		if expr, ok := billing_setting.GetBillingExpr(pricing.ModelName); ok && strings.TrimSpace(expr) != "" {
+			pricing.BillingMode = billingMode
+			pricing.BillingExpr = expr
+		}
+	}
 }
 
 func updatePricing() {
@@ -373,40 +464,11 @@ func updatePricing() {
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
-		}
-		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
-		if findPrice {
-			pricing.ModelPrice = modelPrice
-			pricing.QuotaType = 1
-		} else {
-			modelRatio, _, _ := ratio_setting.GetModelRatio(model)
-			pricing.ModelRatio = modelRatio
-			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(model)
-			pricing.QuotaType = 0
-		}
-		if cacheRatio, ok := ratio_setting.GetCacheRatio(model); ok {
-			pricing.CacheRatio = &cacheRatio
-		}
-		if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(model); ok {
-			pricing.CreateCacheRatio = &createCacheRatio
-		}
-		if imageRatio, ok := ratio_setting.GetImageRatio(model); ok {
-			pricing.ImageRatio = &imageRatio
-		}
-		if ratio_setting.ContainsAudioRatio(model) {
-			audioRatio := ratio_setting.GetAudioRatio(model)
-			pricing.AudioRatio = &audioRatio
-		}
-		if ratio_setting.ContainsAudioCompletionRatio(model) {
-			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
-			pricing.AudioCompletionRatio = &audioCompletionRatio
-		}
-		if billingMode := billing_setting.GetBillingMode(model); billingMode == "tiered_expr" {
-			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
-				pricing.BillingMode = billingMode
-				pricing.BillingExpr = expr
+			if meta.NameRule == NameRuleExact && meta.ModelName == model {
+				pricing.ID = meta.Id
 			}
 		}
+		applyLegacyPricingFields(&pricing)
 		pricingMap = append(pricingMap, pricing)
 	}
 
@@ -414,6 +476,36 @@ func updatePricing() {
 	if len(pricingMap) > 0 {
 		pricingMap[0].PricingVersion = "5a90f2b86c08bd983a9a2e6d66c255f4eaef9c4bc934386d2b6ae84ef0ff1f1f"
 	}
+
+	publicPricingMap = make([]Pricing, 0, len(pricingMap)+len(allMeta))
+	publicPricingMap = append(publicPricingMap, pricingMap...)
+	publicModels := make(map[string]struct{}, len(publicPricingMap))
+	for _, pricing := range publicPricingMap {
+		publicModels[pricing.ModelName] = struct{}{}
+	}
+	for _, meta := range allMeta {
+		if meta.Status != 1 || meta.NameRule != NameRuleExact || strings.TrimSpace(meta.ModelName) == "" {
+			continue
+		}
+		if _, exists := publicModels[meta.ModelName]; exists {
+			continue
+		}
+		pricing := Pricing{
+			ID:                     meta.Id,
+			ModelName:              meta.ModelName,
+			Description:            meta.Description,
+			Icon:                   meta.Icon,
+			Tags:                   meta.Tags,
+			VendorID:               meta.VendorID,
+			EnableGroup:            make([]string, 0),
+			SupportedEndpointTypes: modelSupportEndpointTypes[meta.ModelName],
+		}
+		applyLegacyPricingFields(&pricing)
+		publicPricingMap = append(publicPricingMap, pricing)
+	}
+	sort.Slice(publicPricingMap, func(left int, right int) bool {
+		return publicPricingMap[left].ModelName < publicPricingMap[right].ModelName
+	})
 
 	// 刷新缓存映射，供高并发快速查询
 	modelEnableGroupsLock.Lock()

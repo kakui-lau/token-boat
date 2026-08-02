@@ -161,6 +161,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
+	pricingUsage := estimatedPricingUsage(request, relayInfo, tokens)
 	priceData, usesV2Pricing, err := pricingruntime.PrepareRelayPricing(
 		relayInfo,
 		relayInfo.UsingGroup,
@@ -169,8 +170,37 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta.MaxTokens,
 		helper.HandleGroupRatio(c, relayInfo),
 		requestInput,
-		estimatedPricingUsage(request, relayInfo, tokens),
+		pricingUsage,
 	)
+	_, hasSpecificChannel := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
+	if relayInfo.TokenGroup == "auto" && !hasSpecificChannel &&
+		(!usesV2Pricing || errors.Is(err, pricingruntime.ErrNoEligiblePriceCandidate)) {
+		initialGroup := relayInfo.UsingGroup
+		for _, fallbackGroup := range service.GetUserAutoGroup(relayInfo.UserGroup) {
+			if fallbackGroup == initialGroup ||
+				!pricingruntime.HasCompleteV2Pricing(fallbackGroup, relayInfo.OriginModelName) {
+				continue
+			}
+			common.SetContextKey(c, constant.ContextKeyAutoGroup, fallbackGroup)
+			relayInfo.UsingGroup = fallbackGroup
+			priceData, usesV2Pricing, err = pricingruntime.PrepareRelayPricing(
+				relayInfo,
+				fallbackGroup,
+				0,
+				tokens,
+				meta.MaxTokens,
+				helper.HandleGroupRatio(c, relayInfo),
+				requestInput,
+				pricingUsage,
+			)
+			if err == nil && usesV2Pricing {
+				break
+			}
+			if err != nil && !errors.Is(err, pricingruntime.ErrNoEligiblePriceCandidate) {
+				break
+			}
+		}
+	}
 	if err == nil && !usesV2Pricing {
 		err = fmt.Errorf(
 			"模型 %s 的请求用量无法由 V2 价格链安全预估",

@@ -91,6 +91,8 @@ export function PricingTable(props: PricingTableProps) {
     <div className='space-y-4'>
       <DataTableView
         table={table}
+        tableContainerClassName='overflow-x-auto overscroll-x-contain'
+        tableClassName='min-w-[1120px]'
         isLoading={isLoading}
         emptyTitle={t('No Models Found')}
         emptyDescription={t('No models match your current filters.')}
@@ -105,6 +107,15 @@ export function PricingTable(props: PricingTableProps) {
             row={row}
             className='hover:bg-muted/30 cursor-pointer transition-colors'
             onClick={() => handleRowClick(row.original)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleRowClick(row.original)
+              }
+            }}
+            role='button'
+            tabIndex={0}
+            aria-label={`${t('Details')}: ${row.original.model_name}`}
           />
         )}
       />

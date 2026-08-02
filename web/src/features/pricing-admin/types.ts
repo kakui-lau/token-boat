@@ -122,7 +122,21 @@ export type RequestPricingSnapshot = {
   provider_cost_scope?: 'full_provider_cost' | 'platform_fee_only'
   cost_variance?: string
   gross_margin?: string
+  gross_margin_known?: boolean
   retail_amount: string
+  base_retail_amount?: string
+  estimated_customer_charge?: string
+  customer_charge?: string | null
+  applied_group?: string
+  applied_group_ratio?: string
+  quota_per_unit?: string
+  total_variable_cost_rate?: string
+  effective_tax_rate?: string
+  minimum_margin_rate?: string
+  net_margin_rate?: string
+  margin_compliant?: boolean
+  billing_source?: 'wallet' | 'subscription'
+  subscription_id?: number
   currency: string
   status: 'reserved' | 'pending' | 'settled' | 'refunded'
   failure_code?: string
@@ -155,14 +169,22 @@ export type PricingReconciliationSummary = {
 
 export type PricingFinancialSummary = {
   settled_count: number
+  refunded_count?: number
+  finalized_count?: number
   revenue_usd: string
+  billed_amount_usd?: string
   estimated_purchase_usd: string
   provider_reported_cost_usd: string
   cost_variance_usd: string
   gross_margin_usd: string
   provider_cost_known_count: number
   provider_cost_missing_count: number
+  customer_charge_known_count?: number
+  customer_charge_missing_count?: number
   full_provider_cost_count: number
+  gross_margin_known_count?: number
+  gross_margin_missing_count?: number
+  margin_breach_count?: number
 }
 
 export type ImportResult = {

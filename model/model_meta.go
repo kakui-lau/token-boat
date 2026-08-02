@@ -59,10 +59,14 @@ func (mi *Model) Insert() error {
 	}
 
 	// 使用保存的原始值进行更新，确保零值能正确保存
-	return DB.Model(&Model{}).Where("id = ?", mi.Id).Updates(map[string]interface{}{
+	err := DB.Model(&Model{}).Where("id = ?", mi.Id).Updates(map[string]interface{}{
 		"status":        originalStatus,
 		"sync_official": originalSyncOfficial,
 	}).Error
+	if err == nil {
+		InvalidatePricingCache()
+	}
+	return err
 }
 
 func IsModelNameDuplicated(id int, name string) (bool, error) {
@@ -77,13 +81,21 @@ func IsModelNameDuplicated(id int, name string) (bool, error) {
 func (mi *Model) Update() error {
 	mi.UpdatedTime = common.GetTimestamp()
 	// 使用 Select 强制更新所有字段，包括零值
-	return DB.Model(&Model{}).Where("id = ?", mi.Id).
+	err := DB.Model(&Model{}).Where("id = ?", mi.Id).
 		Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
 		Updates(mi).Error
+	if err == nil {
+		InvalidatePricingCache()
+	}
+	return err
 }
 
 func (mi *Model) Delete() error {
-	return DB.Delete(mi).Error
+	err := DB.Delete(mi).Error
+	if err == nil {
+		InvalidatePricingCache()
+	}
+	return err
 }
 
 func GetVendorModelCounts() (map[int64]int64, error) {

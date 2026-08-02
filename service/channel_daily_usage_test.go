@@ -199,6 +199,75 @@ func TestRecalculateChannelDailyUsageUsesHistoricalQuotaPerUnit(t *testing.T) {
 	assert.True(t, revenue.Equal(decimal.RequireFromString("1.5")))
 }
 
+func TestRecalculateChannelDailyUsageUsesSettledCustomerQuota(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{
+		CreatedAt: start.Unix(), Type: model.LogTypeConsume, ChannelId: 15,
+		ModelName: "settled-model", Quota: 120,
+		Other: common.MapToJsonStr(map[string]any{
+			"customer_final_quota": 80,
+			"quota_per_unit":       100,
+		}),
+		RequestId: "settled-quota",
+	}).Error)
+
+	require.NoError(t, RecalculateChannelDailyUsage(context.Background(), start))
+	rows, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-25", EndDate: "2026-07-25",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	assert.Equal(t, int64(80), rows[0].CustomerQuota)
+	revenue, err := decimal.NewFromString(rows[0].CustomerRevenueUSD)
+	require.NoError(t, err)
+	assert.True(t, revenue.Equal(decimal.RequireFromString("0.8")))
+}
+
+func TestRecalculateChannelDailyUsageDoesNotDoubleCountTaskAdjustment(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	logs := []model.Log{
+		{
+			CreatedAt: start.Unix(), Type: model.LogTypeConsume, ChannelId: 15,
+			ModelName: "task-model", Quota: 100, TaskId: "task-adjusted",
+			Other: common.MapToJsonStr(map[string]any{
+				"is_task":              true,
+				"customer_final_quota": 150,
+				"quota_per_unit":       100,
+			}),
+			RequestId: "task-submit",
+		},
+		{
+			CreatedAt: start.Unix() + 1, Type: model.LogTypeConsume, ChannelId: 15,
+			ModelName: "task-model", Quota: 50, TaskId: "task-adjusted",
+			Other: common.MapToJsonStr(map[string]any{
+				"is_task":              true,
+				"pre_consumed_quota":   100,
+				"adjustment_quota":     50,
+				"customer_final_quota": 150,
+				"quota_per_unit":       100,
+			}),
+			RequestId: "task-adjustment",
+		},
+	}
+	require.NoError(t, model.LOG_DB.Create(&logs).Error)
+
+	require.NoError(t, RecalculateChannelDailyUsage(context.Background(), start))
+	rows, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-25", EndDate: "2026-07-25",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	assert.Equal(t, int64(1), rows[0].BilledRequestCount)
+	assert.Equal(t, int64(150), rows[0].CustomerQuota)
+	revenue, err := decimal.NewFromString(rows[0].CustomerRevenueUSD)
+	require.NoError(t, err)
+	assert.True(t, revenue.Equal(decimal.RequireFromString("1.5")))
+}
+
 func TestChannelDailyUsageFilterOptionsUseDistinctValuesWithinDateRange(t *testing.T) {
 	setupChannelDailyUsageTestDB(t)
 	rows := []model.ChannelDailyUsage{

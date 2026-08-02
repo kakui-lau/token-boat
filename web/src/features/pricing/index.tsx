@@ -182,7 +182,7 @@ export function Pricing() {
               {t('Model Square')}
             </h1>
             <p className='text-muted-foreground/80 mt-3 text-sm sm:mt-4 sm:text-base'>
-              {t('This site currently has {{count}} models enabled', {
+              {t('This catalog contains {{count}} models', {
                 count: models?.length || 0,
               })}
             </p>
@@ -280,6 +280,7 @@ export function Pricing() {
               usdExchangeRate={usdExchangeRate ?? 1}
               tokenUnit={tokenUnit}
               showRechargePrice={showRechargePrice}
+              selectedGroup={groupFilter}
             />
           )}
         </PageTransition>

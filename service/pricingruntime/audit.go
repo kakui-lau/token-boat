@@ -7,10 +7,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 const (
@@ -51,20 +53,32 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		return fmt.Errorf("sanitize estimated pricing usage: %w", err)
 	}
 	snapshot := model.RequestPricingSnapshot{
-		RequestId:              info.RequestId,
-		UserId:                 info.UserId,
-		ModelId:                selected.ModelId,
-		ChannelModelId:         selected.ChannelModelId,
-		PurchasePriceVersionId: selected.PurchasePriceVersion,
-		RetailPriceVersionId:   selected.RetailPriceVersion,
-		BillingMode:            selected.BillingMode,
-		EstimatedUsage:         estimatedUsage,
-		ReservedQuota:          int64(info.DynamicPricingSnapshot.ReservationQuota),
-		SettledQuota:           0,
-		PurchaseCost:           selected.EstimatedPurchaseUSD,
-		RetailAmount:           selected.EstimatedRetailUSD,
-		Currency:               selected.Currency,
-		Status:                 PricingSnapshotStatusReserved,
+		RequestId:               info.RequestId,
+		UserId:                  info.UserId,
+		ModelId:                 selected.ModelId,
+		ChannelModelId:          selected.ChannelModelId,
+		PurchasePriceVersionId:  selected.PurchasePriceVersion,
+		RetailPriceVersionId:    selected.RetailPriceVersion,
+		BillingMode:             selected.BillingMode,
+		EstimatedUsage:          estimatedUsage,
+		ReservedQuota:           int64(info.DynamicPricingSnapshot.ReservationQuota),
+		SettledQuota:            0,
+		PurchaseCost:            selected.EstimatedPurchaseUSD,
+		RetailAmount:            selected.EstimatedRetailUSD,
+		BaseRetailAmount:        selected.EstimatedRetailUSD,
+		EstimatedCustomerCharge: selected.EstimatedCustomerChargeUSD,
+		AppliedGroup:            info.DynamicPricingSnapshot.Group,
+		AppliedGroupRatio:       decimal.NewFromFloat(info.DynamicPricingSnapshot.GroupRatio).String(),
+		QuotaPerUnit:            decimal.NewFromFloat(info.DynamicPricingSnapshot.QuotaPerUnit).String(),
+		TotalVariableCostRate:   selected.TotalVariableCostRate,
+		EffectiveTaxRate:        selected.EffectiveTaxRate,
+		MinimumMarginRate:       selected.MinimumMarginRate,
+		NetMarginRate:           selected.EstimatedNetMarginRate,
+		MarginCompliant:         selected.MarginCompliant,
+		BillingSource:           info.BillingSource,
+		SubscriptionId:          info.SubscriptionId,
+		Currency:                selected.Currency,
+		Status:                  PricingSnapshotStatusReserved,
 	}
 	if err := model.DB.Create(&snapshot).Error; err != nil {
 		return err
@@ -108,24 +122,64 @@ func SettleRequestPricingSnapshot(
 	if info.BillingRequestInput != nil {
 		actualUsage.RequestBody = string(info.BillingRequestInput.Body)
 	}
-	purchase, err := pricingengine.Evaluate(
+	requestInput := billingexpr.RequestInput{}
+	if info.BillingRequestInput != nil {
+		requestInput = billingexpr.FreezeRequestInput(*info.BillingRequestInput)
+	}
+	purchase, err := pricingengine.EvaluateWithRequest(
 		selected.PurchaseExpression,
 		selected.PurchaseExpressionHash,
 		actualUsage,
+		requestInput,
 	)
 	if err != nil {
 		markPricingSnapshotPending(info.RequestId, "purchase_evaluation_failed", err.Error())
 		return fmt.Errorf("evaluate settled purchase price: %w", err)
 	}
-	retail, err := pricingengine.Evaluate(
+	retail, err := pricingengine.EvaluateWithRequest(
 		selected.RetailExpression,
 		selected.RetailExpressionHash,
 		actualUsage,
+		requestInput,
 	)
 	if err != nil {
 		markPricingSnapshotPending(info.RequestId, "retail_evaluation_failed", err.Error())
 		return fmt.Errorf("evaluate settled retail price: %w", err)
 	}
+	if settledQuota < 0 {
+		err = errors.New("settled quota cannot be negative")
+		markPricingSnapshotPending(info.RequestId, "negative_settled_quota", err.Error())
+		return err
+	}
+	quotaPerUnit := decimal.NewFromFloat(info.DynamicPricingSnapshot.QuotaPerUnit)
+	if !quotaPerUnit.IsPositive() {
+		err = errors.New("frozen quota per unit must be positive")
+		markPricingSnapshotPending(info.RequestId, "invalid_quota_per_unit", err.Error())
+		return err
+	}
+	customerCharge := decimal.NewFromInt(int64(settledQuota)).Div(quotaPerUnit)
+	variableCostRate, err := parseRate("total variable cost rate", selected.TotalVariableCostRate)
+	if err != nil {
+		markPricingSnapshotPending(info.RequestId, "variable_cost_rate_invalid", err.Error())
+		return err
+	}
+	taxRate, err := parseRate("effective tax rate", selected.EffectiveTaxRate)
+	if err != nil {
+		markPricingSnapshotPending(info.RequestId, "effective_tax_rate_invalid", err.Error())
+		return err
+	}
+	minimumMargin, err := parseMargin(selected.MinimumMarginRate)
+	if err != nil {
+		markPricingSnapshotPending(info.RequestId, "minimum_margin_rate_invalid", err.Error())
+		return err
+	}
+	netMargin := calculateNetMargin(
+		purchase.Amount,
+		customerCharge,
+		variableCostRate,
+		taxRate,
+	)
+	marginCompliant := meetsMinimumMargin(netMargin, minimumMargin)
 	actualUsage.RequestBody = ""
 	usageJSON, err := common.Marshal(actualUsage)
 	if err != nil {
@@ -146,6 +200,16 @@ func SettleRequestPricingSnapshot(
 			"settled_quota":             int64(settledQuota),
 			"purchase_cost":             purchase.Amount.String(),
 			"retail_amount":             retail.Amount.String(),
+			"base_retail_amount":        retail.Amount.String(),
+			"customer_charge":           customerCharge.String(),
+			"applied_group":             info.DynamicPricingSnapshot.Group,
+			"applied_group_ratio":       decimal.NewFromFloat(info.DynamicPricingSnapshot.GroupRatio).String(),
+			"quota_per_unit":            quotaPerUnit.String(),
+			"total_variable_cost_rate":  variableCostRate.String(),
+			"effective_tax_rate":        taxRate.String(),
+			"minimum_margin_rate":       minimumMargin.String(),
+			"net_margin_rate":           netMargin.String(),
+			"margin_compliant":          marginCompliant,
 			"currency":                  selected.Currency,
 			"status":                    PricingSnapshotStatusSettled,
 			"updated_at":                common.GetTimestamp(),
@@ -181,8 +245,9 @@ func RecordProviderReportedCost(
 	if err := model.DB.Where("request_id = ?", requestId).First(&snapshot).Error; err != nil {
 		return err
 	}
-	if snapshot.Status != PricingSnapshotStatusSettled {
-		return errors.New("provider cost can only be recorded for a settled snapshot")
+	if snapshot.Status != PricingSnapshotStatusSettled &&
+		snapshot.Status != PricingSnapshotStatusRefunded {
+		return errors.New("provider cost can only be recorded for a finalized snapshot")
 	}
 	if snapshot.ProviderCostKnown {
 		existing, err := decimal.NewFromString(snapshot.ProviderReportedCost)
@@ -198,20 +263,23 @@ func RecordProviderReportedCost(
 	if err != nil {
 		return fmt.Errorf("parse estimated purchase cost: %w", err)
 	}
-	retail, err := decimal.NewFromString(snapshot.RetailAmount)
-	if err != nil {
-		return fmt.Errorf("parse retail amount: %w", err)
-	}
 	variance := providerCost.Sub(estimated)
-	grossMargin := decimal.Zero
-	if scope == "full_provider_cost" {
-		grossMargin = retail.Sub(providerCost)
+	var grossMargin any = "0"
+	grossMarginKnown := false
+	if scope == "full_provider_cost" && snapshot.BillingSource == "wallet" {
+		grossMargin = gorm.Expr(
+			"CASE WHEN status = ? THEN -? ELSE COALESCE(customer_charge, retail_amount) - ? END",
+			PricingSnapshotStatusRefunded,
+			providerCost.String(),
+			providerCost.String(),
+		)
+		grossMarginKnown = true
 	}
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where(
-			"request_id = ? AND status = ? AND provider_cost_known = ?",
+			"request_id = ? AND status IN ? AND (provider_cost_known = ? OR provider_cost_known IS NULL)",
 			requestId,
-			PricingSnapshotStatusSettled,
+			[]string{PricingSnapshotStatusSettled, PricingSnapshotStatusRefunded},
 			false,
 		).
 		Updates(map[string]any{
@@ -219,7 +287,8 @@ func RecordProviderReportedCost(
 			"provider_cost_known":    true,
 			"provider_cost_scope":    scope,
 			"cost_variance":          variance.String(),
-			"gross_margin":           grossMargin.String(),
+			"gross_margin":           grossMargin,
+			"gross_margin_known":     grossMarginKnown,
 			"updated_at":             common.GetTimestamp(),
 		})
 	if result.Error != nil {
@@ -292,21 +361,48 @@ func MarkRequestPricingRefunded(requestId string) error {
 		Where("request_id = ? AND status IN ?", requestId, []string{
 			PricingSnapshotStatusReserved,
 			PricingSnapshotStatusPending,
+			PricingSnapshotStatusSettled,
 		}).
 		Updates(map[string]any{
-			"settled_quota": 0,
-			"status":        PricingSnapshotStatusRefunded,
-			"resolution":    "automatic_refund",
-			"resolved_at":   common.GetTimestamp(),
-			"updated_at":    common.GetTimestamp(),
+			"settled_quota":    0,
+			"customer_charge":  "0",
+			"net_margin_rate":  nil,
+			"margin_compliant": false,
+			"gross_margin": gorm.Expr(
+				"CASE WHEN billing_source = ? AND provider_cost_known = ? AND provider_cost_scope = ? THEN -provider_reported_cost ELSE 0 END",
+				"wallet",
+				true,
+				"full_provider_cost",
+			),
+			"gross_margin_known": gorm.Expr(
+				"CASE WHEN billing_source = ? AND provider_cost_known = ? AND provider_cost_scope = ? THEN ? ELSE ? END",
+				"wallet",
+				true,
+				"full_provider_cost",
+				true,
+				false,
+			),
+			"status":      PricingSnapshotStatusRefunded,
+			"resolution":  "automatic_refund",
+			"resolved_at": common.GetTimestamp(),
+			"updated_at":  common.GetTimestamp(),
 		})
 	if result.Error != nil {
 		return result.Error
 	}
-	if result.RowsAffected != 1 {
-		return errors.New("v2 pricing snapshot was not found or already finalized")
+	if result.RowsAffected == 1 {
+		return nil
 	}
-	return nil
+	var status string
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", requestId).
+		Pluck("status", &status).Error; err != nil {
+		return err
+	}
+	if status == PricingSnapshotStatusRefunded {
+		return nil
+	}
+	return errors.New("v2 pricing snapshot was not found or cannot be refunded")
 }
 
 func ReconcileStaleRequestPricingSnapshots(staleBefore int64) (int64, error) {

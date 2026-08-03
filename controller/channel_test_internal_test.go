@@ -85,6 +85,18 @@ func TestValidateChannelRequiresNewAPIBaseURL(t *testing.T) {
 	}
 }
 
+func TestValidateChannelProviderCostMode(t *testing.T) {
+	channel := &model.Channel{
+		Type:             constant.ChannelTypeOpenAI,
+		ProviderCostMode: model.ProviderCostModeInvoice,
+	}
+	require.NoError(t, validateChannel(channel, false))
+	assert.Equal(t, model.ProviderCostModeInvoice, channel.ProviderCostMode)
+
+	channel.ProviderCostMode = "request_cost"
+	require.ErrorContains(t, validateChannel(channel, false), "provider cost mode is invalid")
+}
+
 func TestNewAPIChannelRegistration(t *testing.T) {
 	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeNewAPI)
 

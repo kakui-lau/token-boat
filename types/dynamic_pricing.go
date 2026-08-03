@@ -13,6 +13,7 @@ type DynamicPriceCandidate struct {
 	RetailExpressionHash       string
 	PricingRevision            string
 	Currency                   string
+	ProviderCostMode           string
 	EstimatedPurchaseUSD       string
 	EstimatedRetailUSD         string
 	EstimatedCustomerChargeUSD string

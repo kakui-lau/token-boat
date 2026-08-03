@@ -192,6 +192,10 @@ type RequestPricingSnapshot struct {
 	ProviderReportedCost    string  `json:"provider_reported_cost" gorm:"type:decimal(36,18)"`
 	ProviderCostKnown       bool    `json:"provider_cost_known"`
 	ProviderCostScope       string  `json:"provider_cost_scope" gorm:"type:varchar(32)"`
+	ProviderCostMode        string  `json:"provider_cost_mode" gorm:"type:varchar(32);index"`
+	ProviderCostStatus      string  `json:"provider_cost_status" gorm:"type:varchar(32);index"`
+	ProviderCostSource      string  `json:"provider_cost_source" gorm:"type:varchar(32);index"`
+	ProviderCostConfirmedAt int64   `json:"provider_cost_confirmed_at" gorm:"bigint;index"`
 	CostVariance            string  `json:"cost_variance" gorm:"type:decimal(36,18)"`
 	GrossMargin             string  `json:"gross_margin" gorm:"type:decimal(36,18)"`
 	RetailAmount            string  `json:"retail_amount" gorm:"type:decimal(36,18);not null"`
@@ -283,6 +287,9 @@ func (s *RequestPricingSnapshot) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
 	s.UpdatedAt = now
+	if err := normalizeProviderCostSnapshot(s); err != nil {
+		return err
+	}
 	if s.ProviderReportedCost == "" {
 		s.ProviderReportedCost = "0"
 	}

@@ -131,10 +131,11 @@ func updateTaskBillingAudit(task *model.Task, status string, finalQuota, refunde
 		if task.PrivateData.ProviderIsByok {
 			scope = "platform_fee_only"
 		}
-		if err := pricingruntime.RecordProviderReportedCost(
+		if err := pricingruntime.RecordProviderReportedCostWithSource(
 			task.PrivateData.BillingContext.RequestId,
 			decimal.NewFromFloat(task.PrivateData.ProviderCost),
 			scope,
+			model.ProviderCostSourceTaskResponse,
 		); err != nil {
 			pricingSnapshotAuditError = err.Error()
 			common.SysLog(fmt.Sprintf(
@@ -189,6 +190,8 @@ func taskBillingAdminInfo(task *model.Task, finalQuota int) map[string]interface
 	if task != nil && task.PrivateData.ProviderCostKnown {
 		adminInfo["provider_cost_usd"] = task.PrivateData.ProviderCost
 		adminInfo["provider_cost_known"] = true
+		adminInfo["provider_cost_status"] = model.ProviderCostStatusConfirmed
+		adminInfo["provider_cost_source"] = model.ProviderCostSourceTaskResponse
 		adminInfo["provider_is_byok"] = task.PrivateData.ProviderIsByok
 		if task.PrivateData.ProviderIsByok {
 			adminInfo["provider_cost_scope"] = "platform_fee_only"

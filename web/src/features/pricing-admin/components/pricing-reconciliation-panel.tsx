@@ -59,6 +59,31 @@ function formatPricingUsage(value?: string): string {
   }
 }
 
+const providerCostStatusLabel = {
+  estimated: 'Estimate only',
+  pending: 'Pending reconciliation',
+  confirmed: 'Confirmed',
+  reconciled: 'Reconciled',
+  failed: 'Sync failed',
+} as const
+
+const providerCostModeLabel = {
+  estimated: 'Estimated from purchase price',
+  response_reported: 'Reported in upstream response',
+  provider_api: 'Provider billing API',
+  invoice: 'Invoice reconciliation',
+  manual: 'Manual reconciliation',
+} as const
+
+const providerCostSourceLabel = {
+  response: 'Upstream response',
+  task_response: 'Task response',
+  provider_api: 'Provider billing API',
+  invoice: 'Supplier invoice',
+  manual: 'Manual entry',
+  legacy: 'Legacy record',
+} as const
+
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -355,7 +380,7 @@ export function PricingReconciliationPanel() {
           </Card>
         ))}
       </div>
-      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-8'>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6'>
         {[
           {
             label: t('Billed Amount'),
@@ -381,7 +406,7 @@ export function PricingReconciliationPanel() {
               (financialSummaryQuery.data?.data.finalized_count ?? 0) > 0,
           },
           {
-            label: t('Provider reported cost'),
+            label: t('Confirmed provider cost'),
             value:
               (financialSummaryQuery.data?.data.provider_cost_known_count ?? 0)
                 ? (financialSummaryQuery.data?.data
@@ -412,9 +437,32 @@ export function PricingReconciliationPanel() {
               0,
           },
           {
-            label: t('Missing provider costs'),
+            label: t('Estimate-only records'),
             value:
-              financialSummaryQuery.data?.data.provider_cost_missing_count ?? 0,
+              financialSummaryQuery.data?.data.provider_cost_estimated_count ??
+              0,
+            isCurrency: false,
+          },
+          {
+            label: t('Pending cost reconciliation'),
+            value:
+              financialSummaryQuery.data?.data.provider_cost_pending_count ??
+              financialSummaryQuery.data?.data.provider_cost_missing_count ??
+              0,
+            isCurrency: false,
+          },
+          {
+            label: t('Confirmed cost records'),
+            value:
+              financialSummaryQuery.data?.data.provider_cost_confirmed_count ??
+              financialSummaryQuery.data?.data.provider_cost_known_count ??
+              0,
+            isCurrency: false,
+          },
+          {
+            label: t('Cost sync failures'),
+            value:
+              financialSummaryQuery.data?.data.provider_cost_failed_count ?? 0,
             isCurrency: false,
           },
           {
@@ -487,119 +535,129 @@ export function PricingReconciliationPanel() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className='max-w-56 truncate font-mono text-xs'>
-                  {row.request_id}
-                </TableCell>
-                <TableCell>{row.model_name}</TableCell>
-                <TableCell>{row.channel_name}</TableCell>
-                <TableCell>
-                  <Badge variant='outline'>{row.billing_mode}</Badge>
-                </TableCell>
-                <TableCell className='font-mono tabular-nums'>
-                  {row.reserved_quota}
-                </TableCell>
-                <TableCell className='font-mono tabular-nums'>
-                  {row.settled_quota}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.purchase_cost} {row.currency}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.provider_cost_known
-                    ? `${row.provider_reported_cost} ${row.currency}`
-                    : '—'}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.provider_cost_known
-                    ? `${row.cost_variance} ${row.currency}`
-                    : '—'}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.gross_margin_known
-                    ? `${row.gross_margin} ${row.currency}`
-                    : '—'}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.base_retail_amount || row.retail_amount} {row.currency}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.estimated_customer_charge
-                    ? `${row.estimated_customer_charge} ${row.currency}`
-                    : '—'}
-                </TableCell>
-                <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                  {row.customer_charge
-                    ? `${row.customer_charge} ${row.currency}`
-                    : '—'}
-                </TableCell>
-                <TableCell className='whitespace-nowrap'>
-                  {row.applied_group || '—'}
-                  {row.applied_group_ratio
-                    ? ` · ×${row.applied_group_ratio}`
-                    : ''}
-                </TableCell>
-                <TableCell
-                  className={
-                    row.net_margin_rate && row.margin_compliant === false
-                      ? 'text-destructive font-mono whitespace-nowrap tabular-nums'
-                      : 'font-mono whitespace-nowrap tabular-nums'
-                  }
-                >
-                  {row.net_margin_rate
-                    ? `${(Number(row.net_margin_rate) * 100).toFixed(2)}%`
-                    : '—'}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={row.status === 'pending' ? 'default' : 'secondary'}
+            {rows.map((row) => {
+              let providerCostDisplay = '—'
+              if (row.provider_cost_known) {
+                providerCostDisplay = `${row.provider_reported_cost} ${row.currency}`
+              } else if (row.provider_cost_status) {
+                providerCostDisplay = t(
+                  providerCostStatusLabel[row.provider_cost_status]
+                )
+              }
+              return (
+                <TableRow key={row.id}>
+                  <TableCell className='max-w-56 truncate font-mono text-xs'>
+                    {row.request_id}
+                  </TableCell>
+                  <TableCell>{row.model_name}</TableCell>
+                  <TableCell>{row.channel_name}</TableCell>
+                  <TableCell>
+                    <Badge variant='outline'>{row.billing_mode}</Badge>
+                  </TableCell>
+                  <TableCell className='font-mono tabular-nums'>
+                    {row.reserved_quota}
+                  </TableCell>
+                  <TableCell className='font-mono tabular-nums'>
+                    {row.settled_quota}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {row.purchase_cost} {row.currency}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {providerCostDisplay}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {row.provider_cost_known
+                      ? `${row.cost_variance} ${row.currency}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {row.gross_margin_known
+                      ? `${row.gross_margin} ${row.currency}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {row.base_retail_amount || row.retail_amount} {row.currency}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {row.estimated_customer_charge
+                      ? `${row.estimated_customer_charge} ${row.currency}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {row.customer_charge
+                      ? `${row.customer_charge} ${row.currency}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell className='whitespace-nowrap'>
+                    {row.applied_group || '—'}
+                    {row.applied_group_ratio
+                      ? ` · ×${row.applied_group_ratio}`
+                      : ''}
+                  </TableCell>
+                  <TableCell
+                    className={
+                      row.net_margin_rate && row.margin_compliant === false
+                        ? 'text-destructive font-mono whitespace-nowrap tabular-nums'
+                        : 'font-mono whitespace-nowrap tabular-nums'
+                    }
                   >
-                    {statusLabels[row.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell
-                  className='max-w-72'
-                  title={row.failure_reason || undefined}
-                >
-                  <div className='truncate'>
-                    {row.failure_reason || row.failure_code || '—'}
-                  </div>
-                  {row.failure_code ? (
-                    <div className='text-muted-foreground font-mono text-xs'>
-                      {row.failure_code}
-                    </div>
-                  ) : null}
-                </TableCell>
-                <TableCell className='whitespace-nowrap'>
-                  {dayjs.unix(row.updated_at).format('YYYY-MM-DD HH:mm')}
-                </TableCell>
-                <TableCell>
-                  <div className='flex items-center gap-2'>
-                    <Button
-                      size='sm'
-                      variant='ghost'
-                      onClick={() =>
-                        setSelectedSnapshotId(
-                          selectedSnapshotId === row.id ? null : row.id
-                        )
+                    {row.net_margin_rate
+                      ? `${(Number(row.net_margin_rate) * 100).toFixed(2)}%`
+                      : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        row.status === 'pending' ? 'default' : 'secondary'
                       }
                     >
-                      {t('View details')}
-                    </Button>
-                    {row.status === 'pending' ? (
+                      {statusLabels[row.status]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell
+                    className='max-w-72'
+                    title={row.failure_reason || undefined}
+                  >
+                    <div className='truncate'>
+                      {row.failure_reason || row.failure_code || '—'}
+                    </div>
+                    {row.failure_code ? (
+                      <div className='text-muted-foreground font-mono text-xs'>
+                        {row.failure_code}
+                      </div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className='whitespace-nowrap'>
+                    {dayjs.unix(row.updated_at).format('YYYY-MM-DD HH:mm')}
+                  </TableCell>
+                  <TableCell>
+                    <div className='flex items-center gap-2'>
                       <Button
                         size='sm'
-                        variant='outline'
-                        onClick={() => setConfirmRefundId(row.id)}
+                        variant='ghost'
+                        onClick={() =>
+                          setSelectedSnapshotId(
+                            selectedSnapshotId === row.id ? null : row.id
+                          )
+                        }
                       >
-                        {t('Confirm Refunded')}
+                        {t('View details')}
                       </Button>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {row.status === 'pending' ? (
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() => setConfirmRefundId(row.id)}
+                        >
+                          {t('Confirm Refunded')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
@@ -684,6 +742,60 @@ export function PricingReconciliationPanel() {
                   {selectedSnapshot.billing_source === 'subscription'
                     ? `${t('Subscription')} #${selectedSnapshot.subscription_id || '—'}`
                     : t('Wallet')}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Supplier cost source')}
+                </div>
+                <div className='text-xs'>
+                  {selectedSnapshot.provider_cost_mode
+                    ? t(
+                        providerCostModeLabel[
+                          selectedSnapshot.provider_cost_mode
+                        ]
+                      )
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Supplier cost status')}
+                </div>
+                <div className='text-xs'>
+                  {selectedSnapshot.provider_cost_status
+                    ? t(
+                        providerCostStatusLabel[
+                          selectedSnapshot.provider_cost_status
+                        ]
+                      )
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Cost evidence')}
+                </div>
+                <div className='text-xs'>
+                  {selectedSnapshot.provider_cost_source
+                    ? t(
+                        providerCostSourceLabel[
+                          selectedSnapshot.provider_cost_source
+                        ]
+                      )
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Cost confirmed at')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.provider_cost_confirmed_at
+                    ? dayjs
+                        .unix(selectedSnapshot.provider_cost_confirmed_at)
+                        .format('YYYY-MM-DD HH:mm:ss')
+                    : '—'}
                 </div>
               </div>
             </div>

@@ -1011,6 +1011,8 @@ func TestRequestPricingSnapshotFreezesAndSettlesSelectedVersions(t *testing.T) {
 	var reserved model.RequestPricingSnapshot
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&reserved).Error)
 	assert.Equal(t, PricingSnapshotStatusReserved, reserved.Status)
+	assert.Equal(t, model.ProviderCostModeEstimated, reserved.ProviderCostMode)
+	assert.Equal(t, model.ProviderCostStatusEstimated, reserved.ProviderCostStatus)
 	assert.Equal(t, 7, reserved.PurchasePriceVersionId)
 	assert.Equal(t, "token", reserved.BillingMode)
 	assert.Equal(t, int64(2*int(common.QuotaPerUnit)), reserved.ReservedQuota)
@@ -1084,6 +1086,40 @@ func TestRequestPricingSnapshotRecordsActualChargeAfterGroupRatio(t *testing.T) 
 	assert.True(t, snapshot.MarginCompliant)
 }
 
+func TestRequestPricingSnapshotFreezesPendingProviderCostExpectation(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 26, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.Channel{}).
+		Where("id = ?", 26).
+		Update("provider_cost_mode", model.ProviderCostModeInvoice).Error)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{
+		RequestId: "request-provider-invoice", UserId: 9,
+		OriginModelName: "runtime-model",
+	}
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		26,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where(
+		"request_id = ?",
+		info.RequestId,
+	).First(&snapshot).Error)
+	assert.Equal(t, model.ProviderCostModeInvoice, snapshot.ProviderCostMode)
+	assert.Equal(t, model.ProviderCostStatusPending, snapshot.ProviderCostStatus)
+}
+
 func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 27, RuntimeModeV2)
@@ -1114,15 +1150,17 @@ func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
 		Where("request_id = ?", info.RequestId).
 		UpdateColumn("provider_cost_known", nil).Error)
 
-	require.NoError(t, RecordProviderReportedCost(
+	require.NoError(t, RecordProviderReportedCostWithSource(
 		info.RequestId,
 		decimal.RequireFromString("0.25"),
 		"full_provider_cost",
+		model.ProviderCostSourceResponse,
 	))
-	require.NoError(t, RecordProviderReportedCost(
+	require.NoError(t, RecordProviderReportedCostWithSource(
 		info.RequestId,
 		decimal.RequireFromString("0.25"),
 		"full_provider_cost",
+		model.ProviderCostSourceResponse,
 	))
 
 	var snapshot model.RequestPricingSnapshot
@@ -1135,13 +1173,17 @@ func TestProviderReportedCostReconcilesAgainstFrozenEstimate(t *testing.T) {
 	assert.Equal(t, "-0.25", snapshot.CostVariance)
 	assert.Equal(t, "0.75", snapshot.GrossMargin)
 	assert.Equal(t, "full_provider_cost", snapshot.ProviderCostScope)
+	assert.Equal(t, model.ProviderCostStatusConfirmed, snapshot.ProviderCostStatus)
+	assert.Equal(t, model.ProviderCostSourceResponse, snapshot.ProviderCostSource)
+	assert.Positive(t, snapshot.ProviderCostConfirmedAt)
 	assert.Equal(t, "wallet", snapshot.BillingSource)
 	assert.True(t, snapshot.GrossMarginKnown)
 
-	err = RecordProviderReportedCost(
+	err = RecordProviderReportedCostWithSource(
 		info.RequestId,
 		decimal.RequireFromString("0.26"),
 		"full_provider_cost",
+		model.ProviderCostSourceResponse,
 	)
 	require.ErrorContains(t, err, "already recorded")
 }

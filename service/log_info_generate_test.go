@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/types"
@@ -42,6 +43,7 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 				ChannelModelId: 4, PurchasePriceVersion: 5, RetailPriceVersion: 6,
 				PricingRevision: "revision", EstimatedPurchaseUSD: "0.4",
 				EstimatedRetailUSD: "0.8", BillingMode: "video_duration",
+				ProviderCostMode: model.ProviderCostModeInvoice,
 			},
 		},
 	}
@@ -58,6 +60,8 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 	assert.Equal(t, 5, adminInfo["purchase_price_version_id"])
 	assert.Equal(t, 6, adminInfo["retail_price_version_id"])
 	assert.Equal(t, "revision", adminInfo["pricing_revision"])
+	assert.Equal(t, model.ProviderCostModeInvoice, adminInfo["provider_cost_mode"])
+	assert.Equal(t, model.ProviderCostStatusPending, adminInfo["provider_cost_status"])
 }
 
 func TestInjectGeneralBillingAuditRecordsOpenRouterSupplierCost(t *testing.T) {
@@ -84,6 +88,8 @@ func TestInjectGeneralBillingAuditRecordsOpenRouterSupplierCost(t *testing.T) {
 	assert.Equal(t, []string{"3"}, adminInfo["use_channel"])
 	assert.Equal(t, 0.25, adminInfo["provider_cost_usd"])
 	assert.Equal(t, true, adminInfo["provider_cost_known"])
+	assert.Equal(t, model.ProviderCostStatusConfirmed, adminInfo["provider_cost_status"])
+	assert.Equal(t, model.ProviderCostSourceResponse, adminInfo["provider_cost_source"])
 	assert.Equal(t, false, adminInfo["provider_is_byok"])
 	assert.InDelta(t, 0.75, adminInfo["gross_margin_usd"], 1e-9)
 }

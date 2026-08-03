@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -475,6 +476,16 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
 	}
+	if strings.TrimSpace(channel.ProviderCostMode) != "" {
+		providerCostMode, err := model.NormalizeProviderCostMode(
+			channel.Type,
+			channel.ProviderCostMode,
+		)
+		if err != nil {
+			return err
+		}
+		channel.ProviderCostMode = providerCostMode
+	}
 
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
@@ -625,6 +636,15 @@ func AddChannel(c *gin.Context) {
 		})
 		return
 	}
+	providerCostMode, err := model.NormalizeProviderCostMode(
+		addChannelRequest.Channel.Type,
+		addChannelRequest.Channel.ProviderCostMode,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	addChannelRequest.Channel.ProviderCostMode = providerCostMode
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
@@ -982,6 +1002,19 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	originProxy := originChannel.GetSetting().Proxy
+	if _, provided := requestData["provider_cost_mode"]; !provided {
+		channel.ProviderCostMode = originChannel.ProviderCostMode
+	} else {
+		providerCostMode, normalizeErr := model.NormalizeProviderCostMode(
+			channel.Type,
+			channel.ProviderCostMode,
+		)
+		if normalizeErr != nil {
+			common.ApiError(c, normalizeErr)
+			return
+		}
+		channel.ProviderCostMode = providerCostMode
+	}
 	proxyChanged := false
 	if _, settingProvided := requestData["setting"]; settingProvided {
 		newProxy, _ := service.NormalizeProxyURL(channel.GetSetting().Proxy)
@@ -1089,6 +1122,9 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	model.InitChannelCache()
+	if channel.ProviderCostMode != originChannel.ProviderCostMode {
+		pricingruntime.InvalidateCatalog()
+	}
 	if proxyChanged {
 		service.InvalidateProxyClient(originProxy)
 	}
@@ -1102,6 +1138,9 @@ func UpdateChannel(c *gin.Context) {
 	}
 	if channel.Type != originChannel.Type {
 		changedFields = append(changedFields, "type")
+	}
+	if channel.ProviderCostMode != originChannel.ProviderCostMode {
+		changedFields = append(changedFields, "provider_cost_mode")
 	}
 	if !equalStringPtr(channel.BaseURL, originChannel.BaseURL) {
 		changedFields = append(changedFields, "base_url")

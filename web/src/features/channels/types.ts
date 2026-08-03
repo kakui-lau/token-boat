@@ -63,6 +63,15 @@ export const channelSchema = z.object({
   param_override: z.string().nullish(),
   header_override: z.string().nullish(),
   remark: z.string().default(''),
+  provider_cost_mode: z
+    .enum([
+      'estimated',
+      'response_reported',
+      'provider_api',
+      'invoice',
+      'manual',
+    ])
+    .default('estimated'),
   max_input_tokens: z.number().default(0),
   channel_info: channelInfoSchema.default({
     is_multi_key: false,

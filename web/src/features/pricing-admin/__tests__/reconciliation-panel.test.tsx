@@ -65,6 +65,10 @@ vi.mock('../api', () => ({
       gross_margin_usd: '0',
       provider_cost_known_count: 0,
       provider_cost_missing_count: 0,
+      provider_cost_estimated_count: 3,
+      provider_cost_pending_count: 2,
+      provider_cost_confirmed_count: 4,
+      provider_cost_failed_count: 1,
       full_provider_cost_count: 0,
     },
   }),
@@ -107,6 +111,8 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           reserved_quota: 80000,
           settled_quota: 0,
           purchase_cost: '0.4',
+          provider_cost_mode: 'invoice',
+          provider_cost_status: 'pending',
           retail_amount: '0.8',
           currency: 'USD',
           status: 'pending',
@@ -171,14 +177,28 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('Refunded (24h)')).toBeInTheDocument()
   expect(
     screen
-      .getAllByText('Provider reported cost')
+      .getAllByText('Confirmed provider cost')
       .find((element) => element.tagName === 'DIV')?.parentElement
-  ).toHaveTextContent('Provider reported cost—')
+  ).toHaveTextContent('Confirmed provider cost—')
   expect(
     screen
       .getAllByText('Gross margin')
       .find((element) => element.tagName === 'DIV')?.parentElement
   ).toHaveTextContent('Gross margin—')
+  expect(
+    screen
+      .getAllByText('Estimate-only records')
+      .find((element) => element.tagName === 'DIV')?.parentElement
+  ).toHaveTextContent('Estimate-only records3')
+  expect(
+    screen
+      .getAllByText('Pending cost reconciliation')
+      .find((element) => element.tagName === 'DIV')?.parentElement
+  ).toHaveTextContent('Pending cost reconciliation2')
+  expect(screen.getByText('Invoice reconciliation')).toBeInTheDocument()
+  expect(screen.getAllByText('Pending reconciliation').length).toBeGreaterThan(
+    0
+  )
   expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
     'href',
     '/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true'

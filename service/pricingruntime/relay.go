@@ -170,6 +170,7 @@ func PrepareRelayPricing(
 			RetailExpressionHash:       bundle.Retail.RetailExprHash,
 			PricingRevision:            bundle.Revision,
 			Currency:                   bundle.Retail.Currency,
+			ProviderCostMode:           bundle.ProviderCostMode,
 			EstimatedPurchaseUSD:       purchaseAmount.String(),
 			EstimatedRetailUSD:         retailAmount.String(),
 			EstimatedCustomerChargeUSD: customerCharge.String(),

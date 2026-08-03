@@ -3,9 +3,73 @@ package model
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBackfillProviderCostTrackingClassifiesLegacySnapshots(t *testing.T) {
+	resetChannelModelPricingTestTables(t)
+	require.NoError(t, DB.Create([]Channel{
+		{Id: 301, Name: "openai-compatible", Type: constant.ChannelTypeOpenAI},
+		{Id: 302, Name: "openrouter", Type: constant.ChannelTypeOpenRouter},
+	}).Error)
+	require.NoError(t, DB.Create([]Model{
+		{Id: 301, ModelName: "estimated-model"},
+		{Id: 302, ModelName: "reported-model"},
+	}).Error)
+	require.NoError(t, DB.Create([]ChannelModel{
+		{Id: 301, ChannelId: 301, ModelId: 301, UpstreamModelName: "estimated-model"},
+		{Id: 302, ChannelId: 302, ModelId: 302, UpstreamModelName: "reported-model"},
+	}).Error)
+	require.NoError(t, DB.Create([]RequestPricingSnapshot{
+		{
+			RequestId: "legacy-estimated", UserId: 1, ModelId: 301, ChannelModelId: 301,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD", Status: "settled",
+		},
+		{
+			RequestId: "legacy-pending", UserId: 1, ModelId: 302, ChannelModelId: 302,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD", Status: "settled",
+		},
+		{
+			RequestId: "legacy-confirmed", UserId: 1, ModelId: 302, ChannelModelId: 302,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", ProviderReportedCost: "0.11", ProviderCostKnown: true,
+			RetailAmount: "0.2", Currency: "USD", Status: "settled",
+		},
+	}).Error)
+	require.NoError(t, DB.Model(&Channel{}).Where("id IN ?", []int{301, 302}).
+		Update("provider_cost_mode", "").Error)
+	require.NoError(t, DB.Model(&RequestPricingSnapshot{}).
+		Where("request_id IN ?", []string{"legacy-estimated", "legacy-pending", "legacy-confirmed"}).
+		Updates(map[string]any{
+			"provider_cost_mode":         "",
+			"provider_cost_status":       "",
+			"provider_cost_source":       "",
+			"provider_cost_confirmed_at": 0,
+		}).Error)
+
+	require.NoError(t, BackfillProviderCostTracking())
+
+	var channels []Channel
+	require.NoError(t, DB.Where("id IN ?", []int{301, 302}).Order("id").Find(&channels).Error)
+	require.Len(t, channels, 2)
+	assert.Equal(t, ProviderCostModeEstimated, channels[0].ProviderCostMode)
+	assert.Equal(t, ProviderCostModeResponseReported, channels[1].ProviderCostMode)
+	var snapshots []RequestPricingSnapshot
+	require.NoError(t, DB.Where(
+		"request_id IN ?",
+		[]string{"legacy-estimated", "legacy-pending", "legacy-confirmed"},
+	).Order("request_id").Find(&snapshots).Error)
+	require.Len(t, snapshots, 3)
+	assert.Equal(t, ProviderCostStatusConfirmed, snapshots[0].ProviderCostStatus)
+	assert.Equal(t, ProviderCostSourceLegacy, snapshots[0].ProviderCostSource)
+	assert.Positive(t, snapshots[0].ProviderCostConfirmedAt)
+	assert.Equal(t, ProviderCostStatusEstimated, snapshots[1].ProviderCostStatus)
+	assert.Equal(t, ProviderCostStatusPending, snapshots[2].ProviderCostStatus)
+}
 
 func resetChannelModelPricingTestTables(t *testing.T) {
 	t.Helper()

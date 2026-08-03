@@ -24,7 +24,12 @@ import {
   CHANNEL_TYPE_OPTIONS,
   MODEL_FETCHABLE_TYPES,
 } from '../../constants'
-import { CHANNEL_FORM_DEFAULT_VALUES, channelFormSchema } from '../channel-form'
+import {
+  CHANNEL_FORM_DEFAULT_VALUES,
+  channelFormSchema,
+  transformFormDataToCreatePayload,
+  transformFormDataToUpdatePayload,
+} from '../channel-form'
 import { getChannelTypeConfig } from '../channel-type-config'
 import { getChannelTypeIcon, getKeyPromptForType } from '../channel-utils'
 
@@ -93,5 +98,21 @@ describe('New API channel', () => {
     })
 
     assert.equal(result.success, true)
+  })
+
+  test('persists the selected supplier cost source', () => {
+    const form = {
+      ...newAPIForm('https://new-api.example'),
+      provider_cost_mode: 'invoice' as const,
+    }
+
+    assert.equal(
+      transformFormDataToCreatePayload(form).channel.provider_cost_mode,
+      'invoice'
+    )
+    assert.equal(
+      transformFormDataToUpdatePayload(form, 9).provider_cost_mode,
+      'invoice'
+    )
   })
 })

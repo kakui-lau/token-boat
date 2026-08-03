@@ -226,6 +226,13 @@ export const channelFormSchema = z
       .string()
       .max(255, 'Remark must be less than 255 characters')
       .optional(),
+    provider_cost_mode: z.enum([
+      'estimated',
+      'response_reported',
+      'provider_api',
+      'invoice',
+      'manual',
+    ]),
     setting: z
       .string()
       .optional()
@@ -415,6 +422,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   status_code_mapping: '',
   tag: '',
   remark: '',
+  provider_cost_mode: 'estimated',
   setting: '',
   param_override: '',
   header_override: '',
@@ -487,8 +495,7 @@ export function transformChannelToFormDefaults(
         thinking_to_content: parsed.thinking_to_content || false,
         proxy: parsed.proxy || '',
         http_protocol: protocol,
-        http2_connection_shards:
-          protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
+        http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
@@ -567,6 +574,7 @@ export function transformChannelToFormDefaults(
     status_code_mapping: channel.status_code_mapping || '',
     tag: channel.tag || '',
     remark: channel.remark || '',
+    provider_cost_mode: channel.provider_cost_mode || 'estimated',
     setting: channel.setting || '',
     param_override: channel.param_override || '',
     header_override: channel.header_override || '',
@@ -793,6 +801,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
     remark: formData.remark || '',
+    provider_cost_mode: formData.provider_cost_mode,
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
     header_override: formData.header_override || null,
@@ -840,6 +849,7 @@ export function transformFormDataToUpdatePayload(
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
     remark: formData.remark || '',
+    provider_cost_mode: formData.provider_cost_mode,
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
     header_override: formData.header_override || null,

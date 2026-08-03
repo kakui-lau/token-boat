@@ -271,6 +271,7 @@ const SENSITIVE_FORM_FIELDS = [
   'key',
   'openai_organization',
   'other',
+  'provider_cost_mode',
   'key_mode',
   'param_override',
   'header_override',
@@ -1997,6 +1998,19 @@ export function ChannelMutateDrawer({
                                             nextType > 0
                                           ) {
                                             field.onChange(nextType)
+                                            if (
+                                              !isEditing &&
+                                              !form.getFieldState(
+                                                'provider_cost_mode'
+                                              ).isDirty
+                                            ) {
+                                              form.setValue(
+                                                'provider_cost_mode',
+                                                nextType === 20
+                                                  ? 'response_reported'
+                                                  : 'estimated'
+                                              )
+                                            }
                                           }
                                         }}
                                         placeholder={t('Select channel type')}
@@ -2067,6 +2081,73 @@ export function ChannelMutateDrawer({
                             )}
                           />
                         )}
+
+                        <fieldset
+                          disabled={sensitiveLocked}
+                          className='min-w-0 disabled:opacity-60'
+                        >
+                          <FormField
+                            control={form.control}
+                            name='provider_cost_mode'
+                            render={({ field }) => {
+                              const descriptions = {
+                                estimated: t(
+                                  'Use the configured purchase price as the supplier cost estimate. No request-level actual cost is expected.'
+                                ),
+                                response_reported: t(
+                                  'Read the actual supplier cost from the upstream response, such as OpenRouter usage cost.'
+                                ),
+                                provider_api: t(
+                                  'Wait for a provider billing API to return the request-level actual cost.'
+                                ),
+                                invoice: t(
+                                  'Keep requests pending until the supplier invoice is reconciled.'
+                                ),
+                                manual: t(
+                                  'Keep requests pending until an administrator records the supplier cost.'
+                                ),
+                              }
+                              return (
+                                <FormItem>
+                                  <FormLabel>
+                                    {t('Supplier cost source')}
+                                  </FormLabel>
+                                  <Select
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value='estimated'>
+                                        {t('Estimated from purchase price')}
+                                      </SelectItem>
+                                      <SelectItem value='response_reported'>
+                                        {t('Reported in upstream response')}
+                                      </SelectItem>
+                                      <SelectItem value='provider_api'>
+                                        {t('Provider billing API')}
+                                      </SelectItem>
+                                      <SelectItem value='invoice'>
+                                        {t('Invoice reconciliation')}
+                                      </SelectItem>
+                                      <SelectItem value='manual'>
+                                        {t('Manual reconciliation')}
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormDescription>
+                                    {descriptions[field.value]}
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )
+                            }}
+                          />
+                        </fieldset>
 
                         {currentType === 1 && (
                           <fieldset
@@ -4233,9 +4314,7 @@ export function ChannelMutateDrawer({
                                         <SelectValue />
                                       </SelectTrigger>
                                     </FormControl>
-                                    <SelectContent
-                                      alignItemWithTrigger={false}
-                                    >
+                                    <SelectContent alignItemWithTrigger={false}>
                                       <SelectGroup>
                                         <SelectItem value='auto'>
                                           {t('Auto')}

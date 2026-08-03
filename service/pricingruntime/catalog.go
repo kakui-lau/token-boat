@@ -22,11 +22,12 @@ const (
 )
 
 type ActivePriceBundle struct {
-	ChannelModel model.ChannelModel                     `json:"channel_model"`
-	Official     *model.OfficialModelPriceVersion       `json:"official_price,omitempty"`
-	Purchase     model.ChannelModelPurchasePriceVersion `json:"purchase_price"`
-	Retail       model.ChannelModelRetailPriceVersion   `json:"retail_price"`
-	Revision     string                                 `json:"revision"`
+	ChannelModel     model.ChannelModel                     `json:"channel_model"`
+	ProviderCostMode string                                 `json:"provider_cost_mode"`
+	Official         *model.OfficialModelPriceVersion       `json:"official_price,omitempty"`
+	Purchase         model.ChannelModelPurchasePriceVersion `json:"purchase_price"`
+	Retail           model.ChannelModelRetailPriceVersion   `json:"retail_price"`
+	Revision         string                                 `json:"revision"`
 }
 
 type CatalogSnapshot struct {
@@ -112,6 +113,7 @@ func loadActivePriceBundle(db *gorm.DB, channelModelId int) (ActivePriceBundle, 
 		)
 	}
 	bundle.Retail = activeRetails[0]
+	bundle.ProviderCostMode = model.ProviderCostModeEstimated
 	if bundle.Purchase.OfficialPriceVersionId != nil {
 		var official model.OfficialModelPriceVersion
 		if err := db.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
@@ -368,9 +370,17 @@ func RefreshCatalog() error {
 	refreshLock.Lock()
 	defer refreshLock.Unlock()
 
-	var channelModels []model.ChannelModel
+	type catalogChannelModel struct {
+		model.ChannelModel
+		ChannelType      int    `gorm:"column:channel_type"`
+		ProviderCostMode string `gorm:"column:provider_cost_mode"`
+	}
+	var channelModels []catalogChannelModel
 	if err := model.DB.Model(&model.ChannelModel{}).
-		Select("channel_models.*").
+		Select(
+			"channel_models.*, channels.type AS channel_type, "+
+				"channels.provider_cost_mode AS provider_cost_mode",
+		).
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
 		Where(
 			"channel_models.runtime_mode = ? AND channel_models.status <> ? AND channels.status = ?",
@@ -399,6 +409,20 @@ func RefreshCatalog() error {
 			))
 			continue
 		}
+		providerCostMode, err := model.NormalizeProviderCostMode(
+			channelModel.ChannelType,
+			channelModel.ProviderCostMode,
+		)
+		if err != nil {
+			common.SysError(fmt.Sprintf(
+				"skip invalid v2 channel model %d and make its model unavailable: %v",
+				channelModel.Id,
+				err,
+			))
+			continue
+		}
+		bundle.ProviderCostMode = providerCostMode
+		bundle.Revision = bundleRevision(bundle)
 		next.RevisionByChannelModel[channelModel.Id] = bundle.Revision
 		next.BundleByChannelModel[channelModel.Id] = bundle
 	}
@@ -596,11 +620,12 @@ func bundleRevision(bundle ActivePriceBundle) string {
 		)
 	}
 	payload := fmt.Sprintf(
-		"cm=%d:%d:%d:%s|official=%s|purchase=%d:%d:%s:%s|retail=%d:%d:%s:%s",
+		"cm=%d:%d:%d:%s|provider_cost_mode=%s|official=%s|purchase=%d:%d:%s:%s|retail=%d:%d:%s:%s",
 		bundle.ChannelModel.Id,
 		bundle.ChannelModel.UpdatedAt,
 		bundle.ChannelModel.Status,
 		bundle.ChannelModel.RuntimeMode,
+		bundle.ProviderCostMode,
 		officialIdentity,
 		bundle.Purchase.Id,
 		bundle.Purchase.UpdatedAt,

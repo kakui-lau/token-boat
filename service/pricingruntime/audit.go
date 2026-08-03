@@ -64,6 +64,8 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		ReservedQuota:           int64(info.DynamicPricingSnapshot.ReservationQuota),
 		SettledQuota:            0,
 		PurchaseCost:            selected.EstimatedPurchaseUSD,
+		ProviderCostMode:        selected.ProviderCostMode,
+		ProviderCostStatus:      model.InitialProviderCostStatus(selected.ProviderCostMode),
 		RetailAmount:            selected.EstimatedRetailUSD,
 		BaseRetailAmount:        selected.EstimatedRetailUSD,
 		EstimatedCustomerCharge: selected.EstimatedCustomerChargeUSD,
@@ -229,6 +231,20 @@ func RecordProviderReportedCost(
 	providerCost decimal.Decimal,
 	scope string,
 ) error {
+	return RecordProviderReportedCostWithSource(
+		requestId,
+		providerCost,
+		scope,
+		model.ProviderCostSourceManual,
+	)
+}
+
+func RecordProviderReportedCostWithSource(
+	requestId string,
+	providerCost decimal.Decimal,
+	scope string,
+	source string,
+) error {
 	requestId = strings.TrimSpace(requestId)
 	if requestId == "" {
 		return errors.New("request id is required")
@@ -240,6 +256,10 @@ func RecordProviderReportedCost(
 	case "full_provider_cost", "platform_fee_only":
 	default:
 		return errors.New("provider cost scope is invalid")
+	}
+	providerCostStatus, err := model.ProviderCostRecordedStatus(source)
+	if err != nil {
+		return err
 	}
 	var snapshot model.RequestPricingSnapshot
 	if err := model.DB.Where("request_id = ?", requestId).First(&snapshot).Error; err != nil {
@@ -265,11 +285,14 @@ func RecordProviderReportedCost(
 	}
 	variance := providerCost.Sub(estimated)
 	updates := map[string]any{
-		"provider_reported_cost": providerCost.String(),
-		"provider_cost_known":    true,
-		"provider_cost_scope":    scope,
-		"cost_variance":          variance.String(),
-		"updated_at":             common.GetTimestamp(),
+		"provider_reported_cost":     providerCost.String(),
+		"provider_cost_known":        true,
+		"provider_cost_scope":        scope,
+		"provider_cost_status":       providerCostStatus,
+		"provider_cost_source":       source,
+		"provider_cost_confirmed_at": common.GetTimestamp(),
+		"cost_variance":              variance.String(),
+		"updated_at":                 common.GetTimestamp(),
 	}
 	if scope == "full_provider_cost" && snapshot.BillingSource == "wallet" {
 		if snapshot.Status == PricingSnapshotStatusRefunded {

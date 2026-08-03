@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -106,6 +107,8 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
 		adminInfo["estimated_retail_usd"] = snapshot.Selected.EstimatedRetailUSD
 		adminInfo["estimated_customer_charge_usd"] = snapshot.Selected.EstimatedCustomerChargeUSD
+		adminInfo["provider_cost_mode"] = snapshot.Selected.ProviderCostMode
+		adminInfo["provider_cost_status"] = model.InitialProviderCostStatus(snapshot.Selected.ProviderCostMode)
 		adminInfo["applied_group"] = snapshot.Group
 		adminInfo["applied_group_ratio"] = snapshot.GroupRatio
 		adminInfo["minimum_margin_rate"] = snapshot.Selected.MinimumMarginRate
@@ -129,6 +132,8 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 	}
 	adminInfo["provider_cost_usd"] = providerCost
 	adminInfo["provider_cost_known"] = true
+	adminInfo["provider_cost_status"] = model.ProviderCostStatusConfirmed
+	adminInfo["provider_cost_source"] = model.ProviderCostSourceResponse
 	if usage.IsByok != nil {
 		adminInfo["provider_is_byok"] = *usage.IsByok
 	}
@@ -147,10 +152,11 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["gross_margin_usd"] = float64(chargedQuota)/quotaPerUnit - providerCost
 	}
 	if relayInfo.DynamicPricingSnapshot != nil {
-		if err := pricingruntime.RecordProviderReportedCost(
+		if err := pricingruntime.RecordProviderReportedCostWithSource(
 			relayInfo.RequestId,
 			decimal.NewFromFloat(providerCost),
 			providerCostScope,
+			model.ProviderCostSourceResponse,
 		); err != nil {
 			common.SysError(fmt.Sprintf(
 				"record provider cost on pricing snapshot failed: request=%s error=%s",

@@ -53,6 +53,7 @@ const SENSITIVE_UPDATE_FIELDS = [
   'setting',
   'settings',
   'other',
+  'provider_cost_mode',
 ] satisfies (keyof Channel)[]
 
 function isRecord(value: unknown): value is Record<string, unknown> {

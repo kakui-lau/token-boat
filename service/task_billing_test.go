@@ -537,6 +537,8 @@ func TestRefundTaskQuotaFinalizesV2PricingSnapshot(t *testing.T) {
 	assert.Equal(t, "0", *snapshot.CustomerCharge)
 	assert.True(t, snapshot.ProviderCostKnown)
 	assert.Equal(t, "0.25", snapshot.ProviderReportedCost)
+	assert.Equal(t, model.ProviderCostStatusConfirmed, snapshot.ProviderCostStatus)
+	assert.Equal(t, model.ProviderCostSourceTaskResponse, snapshot.ProviderCostSource)
 	assert.Equal(t, "-0.25", snapshot.GrossMargin)
 }
 

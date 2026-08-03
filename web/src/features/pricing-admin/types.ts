@@ -120,6 +120,26 @@ export type RequestPricingSnapshot = {
   provider_reported_cost?: string
   provider_cost_known?: boolean
   provider_cost_scope?: 'full_provider_cost' | 'platform_fee_only'
+  provider_cost_mode?:
+    | 'estimated'
+    | 'response_reported'
+    | 'provider_api'
+    | 'invoice'
+    | 'manual'
+  provider_cost_status?:
+    | 'estimated'
+    | 'pending'
+    | 'confirmed'
+    | 'reconciled'
+    | 'failed'
+  provider_cost_source?:
+    | 'response'
+    | 'task_response'
+    | 'provider_api'
+    | 'invoice'
+    | 'manual'
+    | 'legacy'
+  provider_cost_confirmed_at?: number
   cost_variance?: string
   gross_margin?: string
   gross_margin_known?: boolean
@@ -179,6 +199,11 @@ export type PricingFinancialSummary = {
   gross_margin_usd: string
   provider_cost_known_count: number
   provider_cost_missing_count: number
+  provider_cost_estimated_count?: number
+  provider_cost_pending_count?: number
+  provider_cost_confirmed_count?: number
+  provider_cost_reconciled_count?: number
+  provider_cost_failed_count?: number
   customer_charge_known_count?: number
   customer_charge_missing_count?: number
   full_provider_cost_count: number

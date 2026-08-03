@@ -547,7 +547,10 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
 		"request_id", "model", "channel", "billing_mode", "currency",
-		"reserved_quota", "settled_quota", "purchase_cost", "base_retail_amount",
+		"reserved_quota", "settled_quota", "purchase_cost",
+		"provider_cost_mode", "provider_cost_status", "provider_cost_source",
+		"provider_reported_cost", "provider_cost_scope", "cost_variance",
+		"gross_margin", "gross_margin_known", "base_retail_amount",
 		"estimated_customer_charge", "customer_charge", "applied_group", "applied_group_ratio", "net_margin_rate",
 		"margin_compliant",
 		"status", "created_at", "updated_at",
@@ -562,6 +565,14 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 			strconv.FormatInt(row.ReservedQuota, 10),
 			strconv.FormatInt(row.SettledQuota, 10),
 			row.PurchaseCost,
+			row.ProviderCostMode,
+			row.ProviderCostStatus,
+			row.ProviderCostSource,
+			row.ProviderReportedCost,
+			row.ProviderCostScope,
+			row.CostVariance,
+			row.GrossMargin,
+			strconv.FormatBool(row.GrossMarginKnown),
 			row.BaseRetailAmount,
 			row.EstimatedCustomerCharge,
 			nullablePricingString(row.CustomerCharge),
@@ -663,10 +674,11 @@ func AdminRecordProviderReportedCost(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := pricingruntime.RecordProviderReportedCost(
+	if err := pricingruntime.RecordProviderReportedCostWithSource(
 		snapshot.RequestId,
 		cost,
 		strings.TrimSpace(input.Scope),
+		model.ProviderCostSourceManual,
 	); err != nil {
 		common.ApiError(c, err)
 		return
@@ -750,6 +762,24 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	type providerCostStatusTotal struct {
+		Status string `gorm:"column:provider_cost_status"`
+		Count  int64  `gorm:"column:record_count"`
+	}
+	var providerCostStatusTotals []providerCostStatusTotal
+	if err := finalizedQuery.Session(&gorm.Session{}).
+		Select("provider_cost_status, COUNT(*) AS record_count").
+		Group("provider_cost_status").
+		Scan(&providerCostStatusTotals).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	providerCostStatusCounts := make(map[string]int64, len(providerCostStatusTotals))
+	for _, total := range providerCostStatusTotals {
+		providerCostStatusCounts[total.Status] = total.Count
+	}
+	providerCostConfirmedCount := providerCostStatusCounts[model.ProviderCostStatusConfirmed] +
+		providerCostStatusCounts[model.ProviderCostStatusReconciled]
 	type grossMarginTotals struct {
 		Count       int64  `gorm:"column:record_count"`
 		GrossMargin string `gorm:"column:gross_margin"`
@@ -780,18 +810,23 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"settled_count":              settledCount,
-		"refunded_count":             refundedCount,
-		"finalized_count":            totals.Count,
-		"billed_amount_usd":          normalizePricingAmount(totals.Revenue),
-		"revenue_usd":                normalizePricingAmount(totals.Revenue),
-		"estimated_purchase_usd":     normalizePricingAmount(totals.EstimatedCost),
-		"provider_reported_cost_usd": normalizePricingAmount(providerTotals.ProviderCost),
-		"cost_variance_usd":          normalizePricingAmount(providerTotals.CostVariance),
-		"gross_margin_usd":           normalizePricingAmount(marginTotals.GrossMargin),
-		"provider_cost_known_count":  providerTotals.Count,
-		"provider_cost_missing_count": totals.Count -
-			providerTotals.Count,
+		"settled_count":                  settledCount,
+		"refunded_count":                 refundedCount,
+		"finalized_count":                totals.Count,
+		"billed_amount_usd":              normalizePricingAmount(totals.Revenue),
+		"revenue_usd":                    normalizePricingAmount(totals.Revenue),
+		"estimated_purchase_usd":         normalizePricingAmount(totals.EstimatedCost),
+		"provider_reported_cost_usd":     normalizePricingAmount(providerTotals.ProviderCost),
+		"cost_variance_usd":              normalizePricingAmount(providerTotals.CostVariance),
+		"gross_margin_usd":               normalizePricingAmount(marginTotals.GrossMargin),
+		"provider_cost_known_count":      providerTotals.Count,
+		"provider_cost_estimated_count":  providerCostStatusCounts[model.ProviderCostStatusEstimated],
+		"provider_cost_pending_count":    providerCostStatusCounts[model.ProviderCostStatusPending],
+		"provider_cost_confirmed_count":  providerCostConfirmedCount,
+		"provider_cost_reconciled_count": providerCostStatusCounts[model.ProviderCostStatusReconciled],
+		"provider_cost_failed_count":     providerCostStatusCounts[model.ProviderCostStatusFailed],
+		// Kept for older clients; "missing" now means an expected actual cost is pending.
+		"provider_cost_missing_count": providerCostStatusCounts[model.ProviderCostStatusPending],
 		"customer_charge_known_count": totals.CustomerChargeCount,
 		"customer_charge_missing_count": totals.Count -
 			totals.CustomerChargeCount,

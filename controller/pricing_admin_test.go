@@ -24,10 +24,19 @@ import (
 func setupPricingAdminControllerTestDB(t *testing.T) {
 	t.Helper()
 	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	originalRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	model.DB = db
+	model.LOG_DB = db
 	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Log{},
 		&model.Channel{},
 		&model.Model{},
 		&model.ChannelModel{},
@@ -40,6 +49,8 @@ func setupPricingAdminControllerTestDB(t *testing.T) {
 	))
 	t.Cleanup(func() {
 		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+		common.RedisEnabled = originalRedisEnabled
 	})
 }
 
@@ -810,10 +821,12 @@ func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T)
 	assert.Equal(t, "'+request", records[1][0])
 	assert.Equal(t, "'=model", records[1][1])
 	assert.Equal(t, "'@provider", records[1][2])
-	assert.Equal(t, "0.08", records[1][8])
-	assert.Equal(t, "0.08", records[1][9])
-	assert.Empty(t, records[1][10])
-	assert.Equal(t, "pending", records[1][15])
+	assert.Equal(t, model.ProviderCostModeEstimated, records[1][8])
+	assert.Equal(t, model.ProviderCostStatusEstimated, records[1][9])
+	assert.Equal(t, "0.08", records[1][16])
+	assert.Equal(t, "0.08", records[1][17])
+	assert.Empty(t, records[1][18])
+	assert.Equal(t, "pending", records[1][23])
 }
 
 func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testing.T) {
@@ -884,6 +897,9 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 	assert.False(t, snapshot.MarginCompliant)
 	assert.Equal(t, "0.35", snapshot.GrossMargin)
 	assert.True(t, snapshot.GrossMarginKnown)
+	assert.Equal(t, model.ProviderCostStatusReconciled, snapshot.ProviderCostStatus)
+	assert.Equal(t, model.ProviderCostSourceManual, snapshot.ProviderCostSource)
+	assert.Positive(t, snapshot.ProviderCostConfirmedAt)
 	summaryContext, summaryRecorder := newPricingAdminJSONContext(
 		t,
 		http.MethodGet,
@@ -925,6 +941,74 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 	assert.Equal(t, 1, response.Data.MarginBreachCount)
 	assert.Equal(t, 1, response.Data.GrossMarginKnownCount)
 	assert.Zero(t, response.Data.GrossMarginMissingCount)
+}
+
+func TestAdminFinancialSummarySeparatesProviderCostExpectations(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	snapshots := []model.RequestPricingSnapshot{
+		{
+			RequestId: "cost-estimated", UserId: 7, ModelId: 1, ChannelModelId: 1,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD",
+			ProviderCostMode:   model.ProviderCostModeEstimated,
+			ProviderCostStatus: model.ProviderCostStatusEstimated,
+			Status:             pricingruntime.PricingSnapshotStatusSettled,
+		},
+		{
+			RequestId: "cost-pending", UserId: 7, ModelId: 1, ChannelModelId: 1,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD",
+			ProviderCostMode:   model.ProviderCostModeInvoice,
+			ProviderCostStatus: model.ProviderCostStatusPending,
+			Status:             pricingruntime.PricingSnapshotStatusSettled,
+		},
+		{
+			RequestId: "cost-confirmed", UserId: 7, ModelId: 1, ChannelModelId: 1,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD",
+			ProviderReportedCost: "0.11", ProviderCostKnown: true,
+			ProviderCostMode:   model.ProviderCostModeResponseReported,
+			ProviderCostStatus: model.ProviderCostStatusConfirmed,
+			ProviderCostSource: model.ProviderCostSourceResponse,
+			Status:             pricingruntime.PricingSnapshotStatusSettled,
+		},
+		{
+			RequestId: "cost-failed", UserId: 7, ModelId: 1, ChannelModelId: 1,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD",
+			ProviderCostMode:   model.ProviderCostModeProviderAPI,
+			ProviderCostStatus: model.ProviderCostStatusFailed,
+			Status:             pricingruntime.PricingSnapshotStatusSettled,
+		},
+	}
+	require.NoError(t, model.DB.Create(&snapshots).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/financial-summary",
+		nil,
+	)
+
+	AdminGetPricingFinancialSummary(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Data struct {
+			Estimated     int `json:"provider_cost_estimated_count"`
+			Pending       int `json:"provider_cost_pending_count"`
+			Confirmed     int `json:"provider_cost_confirmed_count"`
+			Reconciled    int `json:"provider_cost_reconciled_count"`
+			Failed        int `json:"provider_cost_failed_count"`
+			LegacyMissing int `json:"provider_cost_missing_count"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, 1, response.Data.Estimated)
+	assert.Equal(t, 1, response.Data.Pending)
+	assert.Equal(t, 1, response.Data.Confirmed)
+	assert.Zero(t, response.Data.Reconciled)
+	assert.Equal(t, 1, response.Data.Failed)
+	assert.Equal(t, 1, response.Data.LegacyMissing)
 }
 
 func TestAdminFinancialSummaryDoesNotTreatLegacyRetailEstimateAsActualCharge(t *testing.T) {

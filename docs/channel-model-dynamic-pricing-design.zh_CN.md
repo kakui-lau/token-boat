@@ -679,6 +679,20 @@ INDEX(source_updated_at)
 
 唯一索引 `UNIQUE(source, idempotency_key)` 保证调度器重试不会重复生成价格修订。
 
+#### `channels.provider_cost_mode`
+
+渠道级字段 `provider_cost_mode varchar(32)` 定义供应商实际成本的取得方式，而不是定价方式：
+
+| 值 | 语义 | 新请求初始状态 |
+|---|---|---|
+| `estimated` | 上游不提供请求级金额，以冻结采购价作为成本估算 | `estimated` |
+| `response_reported` | 从上游响应读取请求级成本，例如 OpenRouter `usage.cost` | `pending`，收到后转 `confirmed` |
+| `provider_api` | 后续通过供应商账单 API 拉取请求级成本 | `pending` |
+| `invoice` | 通过供应商账单批量对账 | `pending` |
+| `manual` | 管理员人工录入实际成本 | `pending` |
+
+OpenRouter 旧渠道迁移默认归类为 `response_reported`，其他旧渠道默认归类为 `estimated`。管理员修改该字段只影响之后创建的请求快照；快照会冻结当时的模式，不能因渠道配置变化改写历史口径。
+
 ### 6.2 `channel_models`
 
 | 字段 | 类型 | 说明 |
@@ -1090,6 +1104,10 @@ purchase_cost
 provider_reported_cost
 provider_cost_known
 provider_cost_scope
+provider_cost_mode
+provider_cost_status
+provider_cost_source
+provider_cost_confirmed_at
 cost_variance
 gross_margin
 gross_margin_known
@@ -1126,6 +1144,10 @@ updated_at
 - `customer_charge`：结算或退款后的实际计费金额（按冻结 `quota_per_unit` 折算为 USD 用量价值），不是支付系统确认的现金收入。请求尚未终结、历史记录无法可靠复算时必须为 `NULL`，不得用基础销售金额冒充实际计费；
 - `purchase_cost`：按冻结采购版本计算的预计采购成本；
 - `provider_reported_cost`：供应商明确上报的真实成本，只有 `provider_cost_known=true` 时才能进入真实毛利；
+- `provider_cost_mode`：冻结请求发生时的渠道成本取得方式，不随渠道后续配置变化；
+- `provider_cost_status`：`estimated` 表示本渠道只要求估算成本，`pending` 表示应有实际成本但尚待取得，`confirmed` 表示由响应或账单 API 确认，`reconciled` 表示账单或人工已经对账，`failed` 表示成本同步失败；
+- `provider_cost_source`：实际成本凭据来源，支持 `response`、`task_response`、`provider_api`、`invoice`、`manual`、`legacy`；
+- `provider_cost_confirmed_at`：实际成本确认或对账时间；
 - `billing_source`、`subscription_id`：冻结钱包或订阅资金来源。订阅额度消耗只能作为用量价值，不能直接认定为本次现金收入；
 - `gross_margin`：仅当 `gross_margin_known=true` 时表示 `customer_charge - provider_reported_cost`。钱包计费且供应商上报完整成本时可以计算；订阅计费和仅上报平台费的 BYOK 请求保持未知。退款后钱包计费金额为零，若供应商已产生成本，则毛利为负数；
 - `net_margin_rate` 和 `margin_compliant`：按实际用户分组倍率后的售价计算，用于识别“基础售价满足利润线，但用户倍率后跌破利润线”的配置风险。
@@ -2262,7 +2284,7 @@ pricing_runtime_mode:
 - `reserved` 超过 15 分钟和 `pending` 快照没有持续增长；
 - `margin_breach_count` 为零；任何新增记录立即停止继续启用模型并核对分组倍率；
 - 钱包退款请求的实际计费金额为零；若供应商已经产生完整真实成本，`gross_margin_known=true` 且 `gross_margin` 正确体现负损失；订阅和 BYOK 平台费口径不得显示伪毛利；
-- `provider_cost_known_count` 覆盖率符合供应商回报能力，未知成本不能冒充零成本；
+- 供应商成本按能力分层统计：`estimated` 不是异常；只有要求实际成本的 `pending` 持续增长或出现 `failed` 才进入成本对账告警。`confirmed/reconciled` 覆盖率必须符合供应商回报能力，未知成本不能冒充零成本；
 - 渠道路由候选、熔断状态、429、5xx、P95 首 Token 延迟、异步任务待结算数和额度流水无异常突增；
 - 模型广场的官方价、用户分组最低结构化价、充值价格显示和“需按用量报价”语义与精确报价接口一致。
 

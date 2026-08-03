@@ -50,6 +50,7 @@ type Channel struct {
 	ParamOverride     *string `json:"param_override" gorm:"type:text"`
 	HeaderOverride    *string `json:"header_override" gorm:"type:text"`
 	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	ProviderCostMode  string  `json:"provider_cost_mode" gorm:"type:varchar(32);index"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 
@@ -57,6 +58,15 @@ type Channel struct {
 
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
+}
+
+func (channel *Channel) BeforeCreate(tx *gorm.DB) error {
+	mode, err := NormalizeProviderCostMode(channel.Type, channel.ProviderCostMode)
+	if err != nil {
+		return err
+	}
+	channel.ProviderCostMode = mode
+	return nil
 }
 
 type ChannelInfo struct {

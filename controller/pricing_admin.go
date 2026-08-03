@@ -1124,10 +1124,10 @@ func formatRetailOfficialDiscountForCSV(officialRaw string, retailRaw string) st
 		return ""
 	}
 
-	firstRatio := ratios[0].Ratio.Round(8)
+	firstRatio := ratios[0].Ratio.Round(4)
 	uniform := true
 	for _, ratio := range ratios[1:] {
-		if !ratio.Ratio.Round(8).Equal(firstRatio) {
+		if !ratio.Ratio.Round(4).Equal(firstRatio) {
 			uniform = false
 			break
 		}
@@ -1168,11 +1168,6 @@ func pricingPricePointsForCSV(raw string) []pricingCSVPricePoint {
 		for _, rawRule := range rules {
 			rule, ok := rawRule.(map[string]any)
 			if !ok {
-				continue
-			}
-			unitPrice := pricingComponentScalar(rule["unit_price"])
-			price, err := decimal.NewFromString(unitPrice)
-			if err != nil {
 				continue
 			}
 			identityParts := []string{
@@ -1222,11 +1217,36 @@ func pricingPricePointsForCSV(raw string) []pricingCSVPricePoint {
 			if len(conditions) > 0 {
 				label += "（" + strings.Join(conditions, "，") + "）"
 			}
-			points = append(points, pricingCSVPricePoint{
-				Key:   fmt.Sprintf("rule:%s:%d", identity, occurrences[identity]),
-				Label: label,
-				Price: price,
-			})
+
+			unitPrice := pricingComponentScalar(rule["unit_price"])
+			if price, err := decimal.NewFromString(unitPrice); err == nil {
+				points = append(points, pricingCSVPricePoint{
+					Key:   fmt.Sprintf("rule:%s:%d", identity, occurrences[identity]),
+					Label: label,
+					Price: price,
+				})
+				continue
+			}
+
+			for _, component := range pricingCSVFlatComponents {
+				price, err := decimal.NewFromString(
+					pricingComponentScalar(rule[component.Key]),
+				)
+				if err != nil {
+					continue
+				}
+				componentLabel := strings.SplitN(component.Label, " / ", 2)[0]
+				points = append(points, pricingCSVPricePoint{
+					Key: fmt.Sprintf(
+						"rule:%s:%d:%s",
+						identity,
+						occurrences[identity],
+						component.Key,
+					),
+					Label: label + " · " + componentLabel,
+					Price: price,
+				})
+			}
 		}
 		return points
 	}
@@ -1275,15 +1295,15 @@ func formatPricingComponentsForCSV(raw string, billingExpr string, currency stri
 				if !ok {
 					continue
 				}
-				unitPrice := pricingComponentScalar(rule["unit_price"])
-				if unitPrice == "" {
-					continue
-				}
 				name := pricingComponentScalar(rule["name"])
 				component := pricingComponentScalar(rule["component"])
 				label := pricingCSVComponentLabel(component)
-				if name != "" && name != label {
-					label = name + " · " + label
+				if name != "" {
+					if label != "" && name != label {
+						label = name + " · " + label
+					} else {
+						label = name
+					}
 				}
 				if label == "" {
 					label = fmt.Sprintf("规则 %d", index+1)
@@ -1312,18 +1332,37 @@ func formatPricingComponentsForCSV(raw string, billingExpr string, currency stri
 				if len(conditions) > 0 {
 					label += "（" + strings.Join(conditions, "，") + "）"
 				}
-				price := unitPrice
-				if currency != "" {
-					price += " " + currency
+
+				unitPrice := pricingComponentScalar(rule["unit_price"])
+				if unitPrice != "" {
+					price := unitPrice
+					if currency != "" {
+						price += " " + currency
+					}
+					unit := pricingCSVUnit(
+						pricingComponentScalar(rule["unit"]),
+						pricingComponentScalar(rule["unit_size"]),
+					)
+					if unit != "" {
+						price += " / " + unit
+					}
+					formattedRules = append(formattedRules, label+": "+price)
+					continue
 				}
-				unit := pricingCSVUnit(
-					pricingComponentScalar(rule["unit"]),
-					pricingComponentScalar(rule["unit_size"]),
-				)
-				if unit != "" {
-					price += " / " + unit
+
+				for _, component := range pricingCSVFlatComponents {
+					price := pricingComponentScalar(rule[component.Key])
+					if price == "" {
+						continue
+					}
+					if currency != "" {
+						price += " " + currency
+					}
+					formattedRules = append(
+						formattedRules,
+						label+" · "+component.Label+": "+price,
+					)
 				}
-				formattedRules = append(formattedRules, label+": "+price)
 			}
 			if len(formattedRules) > 0 {
 				return strings.Join(formattedRules, "；")

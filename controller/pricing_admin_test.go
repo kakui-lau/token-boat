@@ -481,6 +481,17 @@ func TestFormatPricingComponentsForCSVSupportsStructuredPrices(t *testing.T) {
 			"USD",
 		),
 	)
+
+	tiered := formatPricingComponentsForCSV(
+		`{"tiers":[`+
+			`{"name":"standard","upper_bound":"272000","input_unit_price":"5","output_unit_price":"30"},`+
+			`{"name":"long_context","upper_bound":"1050000","input_unit_price":"10","output_unit_price":"45"}`+
+			`]}`,
+		"",
+		"USD",
+	)
+	assert.Contains(t, tiered, "standard（用量≤272000） · 输入 / 1M Token: 5 USD")
+	assert.Contains(t, tiered, "long_context（用量≤1050000） · 输出 / 1M Token: 45 USD")
 }
 
 func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *testing.T) {
@@ -511,6 +522,20 @@ func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *
 			`{"schema_version":"v2","rules":[`+
 				`{"name":"1080p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.27216","resolution":"1080p"},`+
 				`{"name":"720p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.12096","resolution":"720p"}`+
+				`]}`,
+		),
+	)
+	assert.Equal(
+		t,
+		"6.674折（66.74%）",
+		formatRetailOfficialDiscountForCSV(
+			`{"tiers":[`+
+				`{"name":"standard","upper_bound":"272000","input_unit_price":"5","output_unit_price":"30","cache_read_unit_price":"0.5"},`+
+				`{"name":"long_context","upper_bound":"1050000","input_unit_price":"10","output_unit_price":"45","cache_read_unit_price":"1"}`+
+				`]}`,
+			`{"tiers":[`+
+				`{"name":"standard","upper_bound":"272000","input_unit_price":"3.33696","output_unit_price":"20.02174","cache_read_unit_price":"0.33370"},`+
+				`{"name":"long_context","upper_bound":"1050000","input_unit_price":"6.67392","output_unit_price":"30.03261","cache_read_unit_price":"0.66740"}`+
 				`]}`,
 		),
 	)

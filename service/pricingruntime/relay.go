@@ -78,7 +78,6 @@ func PrepareRelayPricing(
 	requestInput billingexpr.RequestInput,
 	businessUsage pricingengine.Usage,
 ) (hosttypes.PriceData, bool, error) {
-	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	bundles := GetCandidateBundles(group, info.OriginModelName)
 	if len(bundles) == 0 {
 		return hosttypes.PriceData{}, false, nil
@@ -95,6 +94,10 @@ func PrepareRelayPricing(
 	}
 	billingMode := bundles[0].Purchase.BillingMode
 	usedVars := usedPricingVars(bundles)
+	if !usedVars["param"] {
+		requestInput.Body = nil
+	}
+	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	if maxCompletionTokens <= 0 &&
 		groupRatioInfo.GroupRatio != 0 &&
 		usedVars["c"] {

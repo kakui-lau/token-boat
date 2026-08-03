@@ -902,6 +902,67 @@ func TestPrepareRelayPricingUsesRequestHeadersForConditionalPrices(t *testing.T)
 	assert.Equal(t, "4", snapshot.RetailAmount)
 }
 
+func TestPrepareRelayPricingAllowsLargeBodyWhenExpressionsDoNotReadParams(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 41, RuntimeModeV2)
+	require.NoError(t, RefreshCatalog())
+	info := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
+	largeBody := []byte(`{"prompt":"` +
+		strings.Repeat("x", pricingengine.MaxRequestBodySize) + `"}`)
+
+	_, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		41,
+		1_000,
+		100,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{Body: largeBody},
+		pricingengine.Usage{RequestCount: 1},
+	)
+
+	require.NoError(t, err)
+	assert.True(t, ok)
+	require.NotNil(t, info.BillingRequestInput)
+	assert.Empty(t, info.BillingRequestInput.Body)
+}
+
+func TestPrepareRelayPricingRejectsLargeBodyWhenExpressionReadsParams(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 42, RuntimeModeV2)
+	purchaseExpr := `v2:(has(param("quality"), "hd") ? tier("hd", p * 1 / 1000000) : tier("base", p * 1 / 1000000))`
+	retailExpr := `v2:(has(param("quality"), "hd") ? tier("hd", p * 2 / 1000000) : tier("base", p * 2 / 1000000))`
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 42).
+		Updates(map[string]any{
+			"purchase_billing_expr": purchaseExpr,
+			"purchase_expr_hash":    billingexpr.ExprHashString(purchaseExpr),
+		}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 42).
+		Updates(map[string]any{
+			"retail_billing_expr": retailExpr,
+			"retail_expr_hash":    billingexpr.ExprHashString(retailExpr),
+		}).Error)
+	require.NoError(t, RefreshCatalog())
+	largeBody := []byte(`{"quality":"hd","prompt":"` +
+		strings.Repeat("x", pricingengine.MaxRequestBodySize) + `"}`)
+
+	_, ok, err := PrepareRelayPricing(
+		&relaycommon.RelayInfo{OriginModelName: "runtime-model"},
+		"default",
+		42,
+		1_000,
+		100,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{Body: largeBody},
+		pricingengine.Usage{RequestCount: 1},
+	)
+
+	assert.False(t, ok)
+	require.ErrorContains(t, err, "request_body must not exceed 65536 bytes")
+}
+
 func TestPrepareRelayPricingRejectsCandidatesBelowMinimumMargin(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 10, RuntimeModeV2)

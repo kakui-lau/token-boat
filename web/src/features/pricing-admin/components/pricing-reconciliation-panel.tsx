@@ -360,43 +360,74 @@ export function PricingReconciliationPanel() {
           {
             label: t('Billed Amount'),
             value:
-              financialSummaryQuery.data?.data.billed_amount_usd ??
-              financialSummaryQuery.data?.data.revenue_usd ??
-              '0',
+              (financialSummaryQuery.data?.data.customer_charge_known_count ??
+              0)
+                ? (financialSummaryQuery.data?.data.billed_amount_usd ??
+                  financialSummaryQuery.data?.data.revenue_usd ??
+                  '0')
+                : '—',
+            isCurrency:
+              (financialSummaryQuery.data?.data.customer_charge_known_count ??
+                0) > 0,
           },
           {
             label: t('Estimated purchase cost'),
             value:
-              financialSummaryQuery.data?.data.estimated_purchase_usd ?? '0',
+              (financialSummaryQuery.data?.data.finalized_count ?? 0)
+                ? (financialSummaryQuery.data?.data.estimated_purchase_usd ??
+                  '0')
+                : '—',
+            isCurrency:
+              (financialSummaryQuery.data?.data.finalized_count ?? 0) > 0,
           },
           {
             label: t('Provider reported cost'),
             value:
-              financialSummaryQuery.data?.data.provider_reported_cost_usd ??
-              '0',
+              (financialSummaryQuery.data?.data.provider_cost_known_count ?? 0)
+                ? (financialSummaryQuery.data?.data
+                    .provider_reported_cost_usd ?? '0')
+                : '—',
+            isCurrency:
+              (financialSummaryQuery.data?.data.provider_cost_known_count ??
+                0) > 0,
           },
           {
             label: t('Cost variance'),
-            value: financialSummaryQuery.data?.data.cost_variance_usd ?? '0',
+            value:
+              (financialSummaryQuery.data?.data.provider_cost_known_count ?? 0)
+                ? (financialSummaryQuery.data?.data.cost_variance_usd ?? '0')
+                : '—',
+            isCurrency:
+              (financialSummaryQuery.data?.data.provider_cost_known_count ??
+                0) > 0,
           },
           {
             label: t('Gross margin'),
-            value: financialSummaryQuery.data?.data.gross_margin_usd ?? '0',
+            value:
+              (financialSummaryQuery.data?.data.gross_margin_known_count ?? 0)
+                ? (financialSummaryQuery.data?.data.gross_margin_usd ?? '0')
+                : '—',
+            isCurrency:
+              (financialSummaryQuery.data?.data.gross_margin_known_count ?? 0) >
+              0,
           },
           {
             label: t('Missing provider costs'),
             value:
               financialSummaryQuery.data?.data.provider_cost_missing_count ?? 0,
+            isCurrency: false,
           },
           {
             label: t('Missing charge snapshots'),
             value:
               financialSummaryQuery.data?.data.customer_charge_missing_count ??
               0,
+            isCurrency: false,
           },
           {
             label: t('Margin breaches'),
             value: financialSummaryQuery.data?.data.margin_breach_count ?? 0,
+            isCurrency: false,
           },
         ].map((item) => (
           <Card key={item.label} size='sm'>
@@ -404,7 +435,7 @@ export function PricingReconciliationPanel() {
               <div className='text-muted-foreground text-xs'>{item.label}</div>
               <div className='mt-1 font-mono text-lg font-semibold tabular-nums'>
                 {item.value}
-                {typeof item.value === 'string' ? ' USD' : ''}
+                {item.isCurrency ? ' USD' : ''}
               </div>
             </CardContent>
           </Card>
@@ -677,59 +708,67 @@ export function PricingReconciliationPanel() {
                 </div>
               ))}
             </div>
-            {selectedSnapshot.status === 'settled' &&
+            {(selectedSnapshot.status === 'settled' ||
+              selectedSnapshot.status === 'refunded') &&
             !selectedSnapshot.provider_cost_known ? (
-              <form
-                className='flex flex-wrap items-end gap-2'
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  providerCostMutation.mutate({
-                    id: selectedSnapshot.id,
-                    cost: providerCost,
-                    scope: providerCostScope,
-                  })
-                }}
-              >
-                <label className='grid gap-1 text-xs'>
-                  <span>{t('Provider reported cost')}</span>
-                  <Input
-                    type='number'
-                    required
-                    min='0'
-                    step='0.00000001'
-                    inputMode='decimal'
-                    value={providerCost}
-                    onChange={(event) => setProviderCost(event.target.value)}
-                  />
-                </label>
-                <label className='grid gap-1 text-xs'>
-                  <span>{t('Provider cost scope')}</span>
-                  <NativeSelect
-                    value={providerCostScope}
-                    onChange={(event) =>
-                      setProviderCostScope(
-                        event.target.value as
-                          | 'full_provider_cost'
-                          | 'platform_fee_only'
-                      )
-                    }
-                  >
-                    <NativeSelectOption value='full_provider_cost'>
-                      {t('Full provider cost')}
-                    </NativeSelectOption>
-                    <NativeSelectOption value='platform_fee_only'>
-                      {t('Platform fee only')}
-                    </NativeSelectOption>
-                  </NativeSelect>
-                </label>
-                <Button
-                  type='submit'
-                  size='sm'
-                  disabled={providerCostMutation.isPending}
+              <div className='grid gap-2'>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Record the final USD cost from the provider bill. A full provider cost recalculates margin and cannot be changed after recording.'
+                  )}
+                </p>
+                <form
+                  className='flex flex-wrap items-end gap-2'
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    providerCostMutation.mutate({
+                      id: selectedSnapshot.id,
+                      cost: providerCost,
+                      scope: providerCostScope,
+                    })
+                  }}
                 >
-                  {t('Record provider cost')}
-                </Button>
-              </form>
+                  <label className='grid gap-1 text-xs'>
+                    <span>{t('Provider reported cost (USD)')}</span>
+                    <Input
+                      type='number'
+                      required
+                      min='0'
+                      step='0.00000001'
+                      inputMode='decimal'
+                      value={providerCost}
+                      onChange={(event) => setProviderCost(event.target.value)}
+                    />
+                  </label>
+                  <label className='grid gap-1 text-xs'>
+                    <span>{t('Provider cost scope')}</span>
+                    <NativeSelect
+                      value={providerCostScope}
+                      onChange={(event) =>
+                        setProviderCostScope(
+                          event.target.value as
+                            | 'full_provider_cost'
+                            | 'platform_fee_only'
+                        )
+                      }
+                    >
+                      <NativeSelectOption value='full_provider_cost'>
+                        {t('Full provider cost')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='platform_fee_only'>
+                        {t('Platform fee only')}
+                      </NativeSelectOption>
+                    </NativeSelect>
+                  </label>
+                  <Button
+                    type='submit'
+                    size='sm'
+                    disabled={providerCostMutation.isPending}
+                  >
+                    {t('Record provider cost')}
+                  </Button>
+                </form>
+              </div>
             ) : null}
           </CardContent>
         </Card>

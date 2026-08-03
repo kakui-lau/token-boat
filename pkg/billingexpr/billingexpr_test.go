@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -315,6 +316,21 @@ func TestQuotaRound(t *testing.T) {
 			t.Errorf("QuotaRound(%f) = %d, want %d", tt.in, got, tt.want)
 		}
 	}
+}
+
+func TestComputeTieredQuotaV2RoundsChargeUp(t *testing.T) {
+	snap := &billingexpr.BillingSnapshot{
+		ExprString:   "v2:tier(\"base\", (p * 0.13348 + c * 0.83424) / 1000000)",
+		ExprHash:     billingexpr.ExprHashString("v2:tier(\"base\", (p * 0.13348 + c * 0.83424) / 1000000)"),
+		GroupRatio:   1,
+		QuotaPerUnit: 500000,
+		ExprVersion:  2,
+	}
+
+	result, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{P: 10, C: 4})
+	require.NoError(t, err)
+	assert.InDelta(t, 2.33588, result.ActualQuotaBeforeGroup, 0.000001)
+	assert.Equal(t, 3, result.ActualQuotaAfterGroup)
 }
 
 // ---------------------------------------------------------------------------

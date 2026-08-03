@@ -208,9 +208,17 @@ func composeTieredTextQuota(relayInfo *relaycommon.RelayInfo, summary textQuotaS
 
 	if tieredResult != nil {
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
-			quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromFloat(tieredResult.ActualQuotaBeforeGroup).
+			amount := decimal.NewFromFloat(tieredResult.ActualQuotaBeforeGroup).
 				Mul(decimal.NewFromFloat(snap.GroupRatio)).
-				Add(summary.ToolCallSurchargeQuota))
+				Add(summary.ToolCallSurchargeQuota)
+			var quota int
+			var clamp *common.QuotaClamp
+			if snap.ExprVersion == 2 {
+				value, _ := amount.Float64()
+				quota, clamp = common.QuotaCeilChecked(value)
+			} else {
+				quota, clamp = common.QuotaFromDecimalChecked(amount)
+			}
 			noteQuotaClamp(relayInfo, clamp)
 			return quota
 		}

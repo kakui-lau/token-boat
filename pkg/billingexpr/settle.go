@@ -38,7 +38,16 @@ func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, re
 	}
 
 	quotaBeforeGroup := quotaConversion(cost, snap)
-	afterGroup, clamp := common.QuotaRoundChecked(quotaBeforeGroup * snap.GroupRatio)
+	var afterGroup int
+	var clamp *common.QuotaClamp
+	if snap.ExprVersion == 2 {
+		// V2 expressions return actual currency. Always round a positive charge
+		// upward to the smallest billable quota unit so settlement cannot collect
+		// less than the configured retail expression and violate its margin floor.
+		afterGroup, clamp = common.QuotaCeilChecked(quotaBeforeGroup * snap.GroupRatio)
+	} else {
+		afterGroup, clamp = common.QuotaRoundChecked(quotaBeforeGroup * snap.GroupRatio)
+	}
 	crossed := trace.MatchedTier != snap.EstimatedTier
 
 	return TieredResult{

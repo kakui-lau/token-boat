@@ -858,8 +858,9 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
 		BillingMode: "token", PurchaseCost: "0.40", RetailAmount: "1.00",
 		BaseRetailAmount: "1.00", EstimatedCustomerCharge: "0.80",
-		CustomerCharge: common.GetPointer("0.80"),
-		NetMarginRate:  "0.20", MarginCompliant: true,
+		CustomerCharge:        common.GetPointer("0.80"),
+		TotalVariableCostRate: "0.10", EffectiveTaxRate: "0.16",
+		MinimumMarginRate: "0.30", NetMarginRate: "0.20", MarginCompliant: true,
 		Currency: "USD", ReservedQuota: 100, SettledQuota: 100,
 		Status: pricingruntime.PricingSnapshotStatusSettled,
 	}
@@ -878,6 +879,11 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 	AdminRecordProviderReportedCost(context)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
+	require.NoError(t, model.DB.First(&snapshot, snapshot.Id).Error)
+	assert.Equal(t, "0.2835", snapshot.NetMarginRate)
+	assert.False(t, snapshot.MarginCompliant)
+	assert.Equal(t, "0.35", snapshot.GrossMargin)
+	assert.True(t, snapshot.GrossMarginKnown)
 	summaryContext, summaryRecorder := newPricingAdminJSONContext(
 		t,
 		http.MethodGet,
@@ -916,7 +922,7 @@ func TestAdminRecordProviderCostAndFinancialSummary(t *testing.T) {
 	assert.Zero(t, response.Data.ProviderCostMissingCount)
 	assert.Equal(t, 1, response.Data.CustomerChargeKnownCount)
 	assert.Zero(t, response.Data.CustomerChargeMissingCount)
-	assert.Zero(t, response.Data.MarginBreachCount)
+	assert.Equal(t, 1, response.Data.MarginBreachCount)
 	assert.Equal(t, 1, response.Data.GrossMarginKnownCount)
 	assert.Zero(t, response.Data.GrossMarginMissingCount)
 }

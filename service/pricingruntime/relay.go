@@ -195,7 +195,7 @@ func PrepareRelayPricing(
 		return hosttypes.PriceData{}, false, ErrNoEligiblePriceCandidate
 	}
 	maximumCustomerChargeFloat, _ := maximumCustomerCharge.Float64()
-	reservationQuota, err := billingexpr.QuotaRoundStrict(
+	reservationQuota, err := common.QuotaCeilStrict(
 		maximumCustomerChargeFloat * common.QuotaPerUnit,
 	)
 	if err != nil {

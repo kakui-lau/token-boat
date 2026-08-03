@@ -33,6 +33,7 @@ import {
   confirmPricingSnapshotRefunded,
   getPricingReconciliationSummary,
   getRequestPricingSnapshots,
+  recordPricingSnapshotProviderCost,
 } from '../api'
 import { PricingReconciliationPanel } from '../components/pricing-reconciliation-panel'
 
@@ -69,6 +70,7 @@ vi.mock('../api', () => ({
   }),
   getPricingReconciliationSummary: vi.fn(),
   getRequestPricingSnapshots: vi.fn(),
+  recordPricingSnapshotProviderCost: vi.fn(),
 }))
 
 afterEach(cleanup)
@@ -167,6 +169,16 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
   expect(screen.getByText('Stale reservations')).toBeInTheDocument()
   expect(screen.getByText('Settled (24h)')).toBeInTheDocument()
   expect(screen.getByText('Refunded (24h)')).toBeInTheDocument()
+  expect(
+    screen
+      .getAllByText('Provider reported cost')
+      .find((element) => element.tagName === 'DIV')?.parentElement
+  ).toHaveTextContent('Provider reported cost—')
+  expect(
+    screen
+      .getAllByText('Gross margin')
+      .find((element) => element.tagName === 'DIV')?.parentElement
+  ).toHaveTextContent('Gross margin—')
   expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
     'href',
     '/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true'
@@ -466,5 +478,79 @@ test('switches to all pricing records and exports the same view', async () => {
   expect(screen.getByRole('button', { name: 'Export CSV' })).toHaveAttribute(
     'href',
     '/api/pricing-admin/request-pricing-snapshots/export?status=settled&billing_mode=video_duration'
+  )
+})
+
+test('allows provider cost reconciliation for a refunded request', async () => {
+  vi.mocked(getPricingReconciliationSummary).mockResolvedValue({
+    success: true,
+    data: {
+      pending: 0,
+      stale_reserved: 0,
+      settled_last_24h: 0,
+      refunded_last_24h: 1,
+      oldest_anomaly_created_at: 0,
+    },
+  })
+  vi.mocked(getRequestPricingSnapshots).mockResolvedValue({
+    success: true,
+    data: {
+      items: [
+        {
+          id: 19,
+          request_id: 'refunded-with-provider-cost',
+          model_name: 'model',
+          channel_id: 1,
+          channel_name: 'channel',
+          billing_mode: 'token',
+          reserved_quota: 10,
+          settled_quota: 0,
+          purchase_cost: '0.01',
+          retail_amount: '0.02',
+          currency: 'USD',
+          status: 'refunded',
+          provider_cost_known: false,
+          updated_at: 1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    },
+  })
+  vi.mocked(recordPricingSnapshotProviderCost).mockResolvedValue({
+    success: true,
+    data: {
+      id: 19,
+      provider_reported_cost: '0.015',
+      scope: 'full_provider_cost',
+    },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingReconciliationPanel />
+    </QueryClientProvider>
+  )
+
+  fireEvent.click(await screen.findByRole('button', { name: 'View details' }))
+  expect(
+    screen.getByText(
+      'Record the final USD cost from the provider bill. A full provider cost recalculates margin and cannot be changed after recording.'
+    )
+  ).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Provider reported cost (USD)'), {
+    target: { value: '0.015' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Record provider cost' }))
+
+  await waitFor(() =>
+    expect(recordPricingSnapshotProviderCost).toHaveBeenCalledWith(19, {
+      cost: '0.015',
+      scope: 'full_provider_cost',
+    })
   )
 })

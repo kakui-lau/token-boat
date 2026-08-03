@@ -73,13 +73,15 @@ describe('public price summary', () => {
       />
     )
 
-    expect(screen.getByText('Official Price')).toBeVisible()
+    expect(screen.queryByText('Official Price')).not.toBeInTheDocument()
     expect(screen.getByText('Lowest item price')).toBeVisible()
-    expect(screen.getByText('$2.5')).toBeVisible()
-    expect(screen.getByText('$1.25')).toBeVisible()
+    expect(screen.getByText('$2.5').closest('del')).toBeVisible()
+    expect(screen.getByText('$15').closest('del')).toBeVisible()
+    expect(screen.getByText('$1.25')).toHaveClass('text-primary')
+    expect(screen.getByText('$7.5')).toHaveClass('text-primary')
     expect(screen.getByText('Effective group')).toBeVisible()
     expect(screen.getByText('Default · ×0.8')).toBeVisible()
-    expect(screen.getAllByText(/1M tokens/)).toHaveLength(4)
+    expect(screen.getAllByText(/1M tokens/)).toHaveLength(2)
   })
 
   test('shows video resolution and per-second price without token units', () => {

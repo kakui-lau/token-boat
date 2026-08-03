@@ -31,7 +31,7 @@ const (
 // therefore clamped. It is surfaced to billing callers so the event can be
 // recorded on the related consume/task log for admin auditing.
 type QuotaClamp struct {
-	Op       string         `json:"op"`       // "QuotaFromFloat" | "QuotaRound" | "QuotaFromDecimal"
+	Op       string         `json:"op"`       // "QuotaFromFloat" | "QuotaRound" | "QuotaCeil" | "QuotaFromDecimal"
 	Kind     QuotaClampKind `json:"kind"`     // "overflow" | "underflow" | "nan"
 	Original float64        `json:"original"` // best-effort pre-clamp value (decimal -> float64 approx)
 	Clamped  int            `json:"clamped"`  // the saturated result actually used
@@ -131,6 +131,25 @@ func QuotaRoundChecked(value float64) (int, *QuotaClamp) {
 // error instead of allowing a saturated result to reach billing.
 func QuotaRoundStrict(value float64) (int, error) {
 	return strictQuota(QuotaRoundChecked(value))
+}
+
+// QuotaCeil converts a non-negative monetary charge to the smallest whole
+// quota amount that fully covers it. Billing amounts cannot be rounded down:
+// doing so can turn a price that meets its configured margin floor into a
+// loss when one quota is a relatively coarse currency unit.
+func QuotaCeil(value float64) int {
+	quota, _ := QuotaCeilChecked(value)
+	return quota
+}
+
+// QuotaCeilChecked is QuotaCeil with an auditable saturation marker.
+func QuotaCeilChecked(value float64) (int, *QuotaClamp) {
+	return saturateQuota(math.Ceil(value), "QuotaCeil")
+}
+
+// QuotaCeilStrict rejects an unrepresentable pre-consume charge.
+func QuotaCeilStrict(value float64) (int, error) {
+	return strictQuota(QuotaCeilChecked(value))
 }
 
 // QuotaFromDecimal converts a computed quota decimal to int with saturation.

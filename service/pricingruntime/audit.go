@@ -264,16 +264,49 @@ func RecordProviderReportedCost(
 		return fmt.Errorf("parse estimated purchase cost: %w", err)
 	}
 	variance := providerCost.Sub(estimated)
-	var grossMargin any = "0"
-	grossMarginKnown := false
+	updates := map[string]any{
+		"provider_reported_cost": providerCost.String(),
+		"provider_cost_known":    true,
+		"provider_cost_scope":    scope,
+		"cost_variance":          variance.String(),
+		"updated_at":             common.GetTimestamp(),
+	}
 	if scope == "full_provider_cost" && snapshot.BillingSource == "wallet" {
-		grossMargin = gorm.Expr(
-			"CASE WHEN status = ? THEN -? ELSE COALESCE(customer_charge, retail_amount) - ? END",
-			PricingSnapshotStatusRefunded,
-			providerCost.String(),
-			providerCost.String(),
-		)
-		grossMarginKnown = true
+		if snapshot.Status == PricingSnapshotStatusRefunded {
+			updates["gross_margin"] = providerCost.Neg().String()
+			updates["gross_margin_known"] = true
+			updates["margin_compliant"] = false
+		} else if snapshot.CustomerCharge != nil {
+			customerCharge, err := decimal.NewFromString(*snapshot.CustomerCharge)
+			if err != nil {
+				return fmt.Errorf("parse customer charge: %w", err)
+			}
+			variableCostRate, err := parseRate(
+				"total variable cost rate",
+				snapshot.TotalVariableCostRate,
+			)
+			if err != nil {
+				return err
+			}
+			taxRate, err := parseRate("effective tax rate", snapshot.EffectiveTaxRate)
+			if err != nil {
+				return err
+			}
+			minimumMargin, err := parseMargin(snapshot.MinimumMarginRate)
+			if err != nil {
+				return err
+			}
+			netMargin := calculateNetMargin(
+				providerCost,
+				customerCharge,
+				variableCostRate,
+				taxRate,
+			)
+			updates["gross_margin"] = customerCharge.Sub(providerCost).String()
+			updates["gross_margin_known"] = true
+			updates["net_margin_rate"] = netMargin.String()
+			updates["margin_compliant"] = meetsMinimumMargin(netMargin, minimumMargin)
+		}
 	}
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where(
@@ -282,15 +315,7 @@ func RecordProviderReportedCost(
 			[]string{PricingSnapshotStatusSettled, PricingSnapshotStatusRefunded},
 			false,
 		).
-		Updates(map[string]any{
-			"provider_reported_cost": providerCost.String(),
-			"provider_cost_known":    true,
-			"provider_cost_scope":    scope,
-			"cost_variance":          variance.String(),
-			"gross_margin":           grossMargin,
-			"gross_margin_known":     grossMarginKnown,
-			"updated_at":             common.GetTimestamp(),
-		})
+		Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}

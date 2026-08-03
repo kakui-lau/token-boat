@@ -111,6 +111,23 @@ func TestQuotaRoundChecked(t *testing.T) {
 	}
 }
 
+func TestQuotaCeilChecked(t *testing.T) {
+	quota, clamp := QuotaCeilChecked(2.000001)
+	assert.Equal(t, 3, quota)
+	assert.Nil(t, clamp)
+
+	quota, clamp = QuotaCeilChecked(2)
+	assert.Equal(t, 2, quota)
+	assert.Nil(t, clamp)
+
+	quota, clamp = QuotaCeilChecked(overflowingProduct)
+	assert.Equal(t, MaxQuota, quota)
+	if assert.NotNil(t, clamp) {
+		assert.Equal(t, "QuotaCeil", clamp.Op)
+		assert.Equal(t, QuotaClampOverflow, clamp.Kind)
+	}
+}
+
 // TestQuotaFromDecimalChecked verifies the decimal entry point reports clamps.
 func TestQuotaFromDecimalChecked(t *testing.T) {
 	quota, clamp := QuotaFromDecimalChecked(decimal.NewFromFloat(41.7))

@@ -140,15 +140,18 @@ function PriceUnit(props: { item: PublicPriceItem; tokenUnit: TokenUnit }) {
 
 export function PublicPriceSummaryCompact(props: {
   summary?: PublicPriceSummary
+  comparisonSummary?: PublicPriceSummary
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
   priceRate?: number
   usdExchangeRate?: number
   emptyLabel?: string
   className?: string
+  appearance?: 'default' | 'original' | 'sale'
 }) {
   const { t } = useTranslation()
   const items = firstPriceItems(props.summary)
+  const comparisonItems = firstPriceItems(props.comparisonSummary)
   const groupContext = commonAppliedGroupContext(items)
 
   if (items.length === 0) {
@@ -169,8 +172,24 @@ export function PublicPriceSummaryCompact(props: {
           </span>
         </div>
       )}
-      {items.map((item) => {
+      {items.map((item, index) => {
         const condition = itemCondition(item, t)
+        const comparisonItem =
+          comparisonItems.find(
+            (candidate) =>
+              candidate.component === item.component &&
+              itemCondition(candidate, t) === condition
+          ) || comparisonItems[index]
+        const amount = formatAmount(
+          item,
+          props.tokenUnit,
+          props.showRechargePrice,
+          props.priceRate,
+          props.usdExchangeRate
+        )
+        const comparisonAmount = comparisonItem
+          ? formatAmount(comparisonItem, props.tokenUnit)
+          : ''
         return (
           <div
             key={item.key}
@@ -182,15 +201,26 @@ export function PublicPriceSummaryCompact(props: {
                 : t(COMPONENT_LABELS[item.component] || item.component)}
             </span>
             <span className='shrink-0 text-right'>
-              <span className='text-foreground font-mono font-semibold tabular-nums'>
-                {formatAmount(
-                  item,
-                  props.tokenUnit,
-                  props.showRechargePrice,
-                  props.priceRate,
-                  props.usdExchangeRate
-                )}
-              </span>
+              {comparisonAmount && (
+                <del className='text-muted-foreground/70 mr-2 font-mono text-[11px] font-medium tabular-nums decoration-1'>
+                  {comparisonAmount}
+                </del>
+              )}
+              {props.appearance === 'original' ? (
+                <del className='text-muted-foreground decoration-muted-foreground/70 font-mono font-medium tabular-nums decoration-1'>
+                  {amount}
+                </del>
+              ) : (
+                <span
+                  className={cn(
+                    'text-foreground font-mono font-semibold tabular-nums',
+                    props.appearance === 'sale' &&
+                      'text-primary text-sm font-bold'
+                  )}
+                >
+                  {amount}
+                </span>
+              )}
               <span className='text-muted-foreground/60 ml-1 text-[10px]'>
                 / <PriceUnit item={item} tokenUnit={props.tokenUnit} />
               </span>
@@ -217,30 +247,48 @@ export function PublicPriceComparison(props: {
   className?: string
 }) {
   const { t } = useTranslation()
+  const hasLowestPrice = firstPriceItems(props.lowest).length > 0
+
   return (
-    <div className={cn('grid gap-2 sm:grid-cols-2', props.className)}>
-      <div className='bg-muted/15 rounded-lg border p-2.5'>
-        <div className='text-muted-foreground mb-1.5 text-[10px] font-semibold tracking-wide uppercase'>
-          {t('Official Price')}
+    <div
+      className={cn(
+        'bg-muted/10 rounded-lg border px-3 py-2.5',
+        props.className
+      )}
+    >
+      <div className='mb-2'>
+        <div
+          className={cn(
+            'text-[10px] font-semibold tracking-wide uppercase',
+            hasLowestPrice ? 'text-primary' : 'text-muted-foreground'
+          )}
+        >
+          {t(hasLowestPrice ? 'Lowest item price' : 'Official Price')}
         </div>
-        <PublicPriceSummaryCompact
-          summary={props.official}
-          tokenUnit={props.tokenUnit}
-        />
       </div>
-      <div className='border-primary/20 bg-primary/[0.035] rounded-lg border p-2.5'>
-        <div className='text-primary mb-1.5 text-[10px] font-semibold tracking-wide uppercase'>
-          {t('Lowest item price')}
-        </div>
+      {hasLowestPrice ? (
         <PublicPriceSummaryCompact
           summary={props.lowest}
+          comparisonSummary={props.official}
           tokenUnit={props.tokenUnit}
           showRechargePrice={props.showRechargePrice}
           priceRate={props.priceRate}
           usdExchangeRate={props.usdExchangeRate}
-          emptyLabel={props.lowestEmptyLabel}
+          appearance='sale'
         />
-      </div>
+      ) : (
+        <>
+          <PublicPriceSummaryCompact
+            summary={props.official}
+            tokenUnit={props.tokenUnit}
+          />
+          {props.lowestEmptyLabel && (
+            <div className='text-muted-foreground mt-2 border-t pt-2 text-[10px]'>
+              {t('Lowest item price')}: <span>{props.lowestEmptyLabel}</span>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

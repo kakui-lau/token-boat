@@ -363,6 +363,7 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 		Id: 145, ChannelModelId: 143, OfficialPriceVersionId: &official.Id,
 		BillingMode: "token", PricingMode: "official_ratio", PriceStructure: "flat",
 		PriceComponents:     `{"input_unit_price":"1.5","output_unit_price":"9","cache_read_unit_price":"0.15"}`,
+		PurchaseDiscount:    "0.6",
 		PurchaseBillingExpr: "v2:(p * 1.5 + c * 9 + cr * 0.15) / 1000000",
 		PurchaseExprHash:    "purchase-hash", ExpressionSource: "generated",
 		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
@@ -385,6 +386,16 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 		Id: 148, ChannelId: 147, ModelId: 142, UpstreamModelName: "unpublished-upstream",
 		Status: 1, RuntimeMode: "v2",
 	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		Id: 150, ChannelModelId: 148, OfficialPriceVersionId: &currentOfficial.Id,
+		BillingMode: "token", PricingMode: "component_ratio", PriceStructure: "flat",
+		QuoteSpec:           `{"input_discount":"0.5","output_discount":"0.75"}`,
+		PriceComponents:     `{"input_unit_price":"1.5","output_unit_price":"13.5"}`,
+		PurchaseBillingExpr: "v2:(p * 1.5 + c * 13.5) / 1000000",
+		PurchaseExprHash:    "component-purchase-hash", ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
 
 	context, recorder := newPricingAdminJSONContext(
 		t,
@@ -401,18 +412,26 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, records, 2)
 	assert.Equal(t, []string{
-		"\ufeff模型名称", "上游渠道", "上游模型", "官方价格", "销售价格", "币种",
+		"\ufeff模型名称", "上游渠道", "上游模型", "官方价格", "官方价版本",
+		"采购价版本", "采购定价方式", "采购折扣", "销售价格", "销售价版本",
+		"销售价折扣（相对官方价）", "币种",
 		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
 	}, records[0])
 	assert.Equal(t, "'+gpt-enterprise", records[1][0])
 	assert.Equal(t, "'=provider", records[1][1])
 	assert.Equal(t, "'@gpt-upstream", records[1][2])
 	assert.Equal(t, "输入 / 1M Token: 2.5 USD；输出 / 1M Token: 15 USD；缓存读取 / 1M Token: 0.25 USD", records[1][3])
-	assert.Equal(t, "输入 / 1M Token: 2 USD；输出 / 1M Token: 12 USD；缓存读取 / 1M Token: 0.2 USD", records[1][4])
-	assert.Equal(t, "USD", records[1][5])
-	assert.Equal(t, "11%", records[1][6])
-	assert.Equal(t, "16.5%", records[1][7])
-	assert.Equal(t, "20%", records[1][8])
+	assert.Equal(t, "v1 (#144)", records[1][4])
+	assert.Equal(t, "v1 (#145)", records[1][5])
+	assert.Equal(t, "官方价统一折扣", records[1][6])
+	assert.Equal(t, "6折（官方价的60%）", records[1][7])
+	assert.Equal(t, "输入 / 1M Token: 2 USD；输出 / 1M Token: 12 USD；缓存读取 / 1M Token: 0.2 USD", records[1][8])
+	assert.Equal(t, "v1 (#146)", records[1][9])
+	assert.Equal(t, "8折（80%）", records[1][10])
+	assert.Equal(t, "USD", records[1][11])
+	assert.Equal(t, "11%", records[1][12])
+	assert.Equal(t, "16.5%", records[1][13])
+	assert.Equal(t, "20%", records[1][14])
 
 	context, recorder = newPricingAdminJSONContext(
 		t,
@@ -426,10 +445,16 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 	require.Len(t, records, 2)
 	assert.Equal(t, "unpublished-upstream", records[1][2])
 	assert.Equal(t, "输入 / 1M Token: 3 USD；输出 / 1M Token: 18 USD；缓存读取 / 1M Token: 0.3 USD", records[1][3])
-	assert.Empty(t, records[1][4])
-	assert.Empty(t, records[1][6])
-	assert.Empty(t, records[1][7])
+	assert.Equal(t, "v2 (#149)", records[1][4])
+	assert.Equal(t, "v1 (#150)", records[1][5])
+	assert.Equal(t, "官方价分项折扣", records[1][6])
+	assert.Equal(t, "输入 5折（50%）；输出 7.5折（75%）", records[1][7])
 	assert.Empty(t, records[1][8])
+	assert.Empty(t, records[1][9])
+	assert.Empty(t, records[1][10])
+	assert.Empty(t, records[1][12])
+	assert.Empty(t, records[1][13])
+	assert.Empty(t, records[1][14])
 }
 
 func TestFormatPricingComponentsForCSVSupportsStructuredPrices(t *testing.T) {
@@ -454,6 +479,39 @@ func TestFormatPricingComponentsForCSVSupportsStructuredPrices(t *testing.T) {
 			"{}",
 			`v2:tier("custom", param("size"))`,
 			"USD",
+		),
+	)
+}
+
+func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *testing.T) {
+	assert.Equal(
+		t,
+		"8折（80%）",
+		formatRetailOfficialDiscountForCSV(
+			`{"input_unit_price":"2.5","output_unit_price":"15"}`,
+			`{"input_unit_price":"2","output_unit_price":"12"}`,
+		),
+	)
+	assert.Equal(
+		t,
+		"输入 5折（50%）；输出 8折（80%）",
+		formatRetailOfficialDiscountForCSV(
+			`{"input_unit_price":"2","output_unit_price":"10"}`,
+			`{"input_unit_price":"1","output_unit_price":"8"}`,
+		),
+	)
+	assert.Equal(
+		t,
+		"8折（80%）",
+		formatRetailOfficialDiscountForCSV(
+			`{"schema_version":"v2","rules":[`+
+				`{"name":"1080p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.3402","resolution":"1080p"},`+
+				`{"name":"720p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.1512","resolution":"720p"}`+
+				`]}`,
+			`{"schema_version":"v2","rules":[`+
+				`{"name":"1080p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.27216","resolution":"1080p"},`+
+				`{"name":"720p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.12096","resolution":"720p"}`+
+				`]}`,
 		),
 	)
 }

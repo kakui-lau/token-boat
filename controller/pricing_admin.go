@@ -34,6 +34,15 @@ type channelPricingExportRow struct {
 	OfficialPriceComponents    string
 	OfficialBillingExpr        string
 	OfficialCurrency           string
+	OfficialPriceVersionId     sql.NullInt64
+	OfficialPriceVersion       sql.NullInt64
+	PurchasePriceVersionId     sql.NullInt64
+	PurchasePriceVersion       sql.NullInt64
+	PurchasePricingMode        string
+	PurchaseDiscount           string
+	PurchaseQuoteSpec          string
+	RetailPriceVersionId       sql.NullInt64
+	RetailPriceVersion         sql.NullInt64
 	RetailPriceComponents      string
 	RetailBillingExpr          string
 	RetailCurrency             string
@@ -41,6 +50,12 @@ type channelPricingExportRow struct {
 	EffectiveTaxRate           sql.NullString
 	TargetNetMargin            sql.NullString
 	ActiveRetailPriceVersionId int
+}
+
+type pricingCSVPricePoint struct {
+	Key   string
+	Label string
+	Price decimal.Decimal
 }
 
 var pricingCSVFlatComponents = []struct {
@@ -85,6 +100,20 @@ var pricingCSVComponentLabels = map[string]string{
 var pricingCSVUnitLabels = map[string]string{
 	"token": "Token", "request": "请求", "image": "图片",
 	"second": "秒", "character": "字符",
+}
+
+var pricingCSVDiscountComponents = []struct {
+	Key   string
+	Label string
+}{
+	{Key: "input_discount", Label: "输入"},
+	{Key: "output_discount", Label: "输出"},
+	{Key: "cache_read_discount", Label: "缓存读取"},
+	{Key: "cache_write_discount", Label: "缓存写入"},
+	{Key: "image_input_discount", Label: "图片输入"},
+	{Key: "image_output_discount", Label: "图片输出"},
+	{Key: "audio_input_discount", Label: "音频输入"},
+	{Key: "audio_output_discount", Label: "音频输出"},
 }
 
 type pricingAdminCatalogOption struct {
@@ -371,12 +400,25 @@ func AdminExportChannelPricing(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	activePurchasePrices := model.DB.Table("channel_model_purchase_price_versions").
+		Select("channel_model_id, MAX(id) AS active_purchase_price_version_id").
+		Where("status = ?", model.PricingVersionStatusActive).
+		Group("channel_model_id")
 	query = query.
 		Select(`models.model_name, channels.name AS channel_name,
 			channel_models.upstream_model_name,
 			COALESCE(linked_official.price_components, current_official.price_components, '') AS official_price_components,
 			COALESCE(linked_official.billing_expr, current_official.billing_expr, '') AS official_billing_expr,
 			COALESCE(linked_official.currency, current_official.currency, '') AS official_currency,
+			purchase.official_price_version_id AS official_price_version_id,
+			linked_official.version AS official_price_version,
+			purchase.id AS purchase_price_version_id,
+			purchase.version AS purchase_price_version,
+			COALESCE(purchase.pricing_mode, '') AS purchase_pricing_mode,
+			COALESCE(purchase.purchase_discount, '') AS purchase_discount,
+			COALESCE(purchase.quote_spec, '') AS purchase_quote_spec,
+			retail.id AS retail_price_version_id,
+			retail.version AS retail_price_version,
 			COALESCE(retail.price_components, '') AS retail_price_components,
 			COALESCE(retail.retail_billing_expr, '') AS retail_billing_expr,
 			COALESCE(retail.currency, '') AS retail_currency,
@@ -385,7 +427,11 @@ func AdminExportChannelPricing(c *gin.Context) {
 			retail.target_net_margin,
 			COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id`).
 		Joins("LEFT JOIN channel_model_retail_price_versions AS retail ON retail.id = active_retail.active_retail_price_version_id").
-		Joins("LEFT JOIN channel_model_purchase_price_versions AS purchase ON purchase.id = retail.purchase_price_version_id").
+		Joins(
+			"LEFT JOIN (?) AS active_purchase ON active_purchase.channel_model_id = channel_models.id",
+			activePurchasePrices,
+		).
+		Joins("LEFT JOIN channel_model_purchase_price_versions AS purchase ON purchase.id = COALESCE(retail.purchase_price_version_id, active_purchase.active_purchase_price_version_id)").
 		Joins("LEFT JOIN official_model_price_versions AS linked_official ON linked_official.id = purchase.official_price_version_id").
 		Joins("LEFT JOIN model_official_prices ON model_official_prices.model_id = channel_models.model_id").
 		Joins("LEFT JOIN official_model_price_versions AS current_official ON current_official.id = model_official_prices.current_revision_id")
@@ -405,7 +451,9 @@ func AdminExportChannelPricing(c *gin.Context) {
 	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
-		"模型名称", "上游渠道", "上游模型", "官方价格", "销售价格", "币种",
+		"模型名称", "上游渠道", "上游模型", "官方价格", "官方价版本",
+		"采购价版本", "采购定价方式", "采购折扣", "销售价格", "销售价版本",
+		"销售价折扣（相对官方价）", "币种",
 		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
 	})
 	for _, row := range rows {
@@ -430,7 +478,29 @@ func AdminExportChannelPricing(c *gin.Context) {
 				row.OfficialBillingExpr,
 				row.OfficialCurrency,
 			),
+			formatPriceVersionForCSV(
+				row.OfficialPriceVersionId,
+				row.OfficialPriceVersion,
+			),
+			formatPriceVersionForCSV(
+				row.PurchasePriceVersionId,
+				row.PurchasePriceVersion,
+			),
+			formatPurchasePricingModeForCSV(row.PurchasePricingMode),
+			formatPurchaseDiscountForCSV(
+				row.PurchasePricingMode,
+				row.PurchaseDiscount,
+				row.PurchaseQuoteSpec,
+			),
 			retailSummary,
+			formatPriceVersionForCSV(
+				row.RetailPriceVersionId,
+				row.RetailPriceVersion,
+			),
+			formatRetailOfficialDiscountForCSV(
+				row.OfficialPriceComponents,
+				row.RetailPriceComponents,
+			),
 			currency,
 			formatPricingRatePercentage(row.TotalVariableCostRate.String),
 			formatPricingRatePercentage(row.EffectiveTaxRate.String),
@@ -955,6 +1025,240 @@ func spreadsheetSafeCSVCell(value string) string {
 	default:
 		return value
 	}
+}
+
+func formatPriceVersionForCSV(id sql.NullInt64, version sql.NullInt64) string {
+	if !id.Valid || id.Int64 <= 0 {
+		return ""
+	}
+	if !version.Valid || version.Int64 <= 0 {
+		return fmt.Sprintf("#%d", id.Int64)
+	}
+	return fmt.Sprintf("v%d (#%d)", version.Int64, id.Int64)
+}
+
+func formatPurchasePricingModeForCSV(pricingMode string) string {
+	switch strings.TrimSpace(pricingMode) {
+	case "official_ratio":
+		return "官方价统一折扣"
+	case "component_ratio":
+		return "官方价分项折扣"
+	case "fixed_unit_price":
+		return "固定采购价"
+	case "hybrid":
+		return "混合定价"
+	case "custom_expr":
+		return "自定义表达式"
+	default:
+		return spreadsheetSafeCSVCell(strings.TrimSpace(pricingMode))
+	}
+}
+
+func formatPurchaseDiscountForCSV(pricingMode string, purchaseDiscount string, quoteSpec string) string {
+	if strings.TrimSpace(pricingMode) == "official_ratio" {
+		return formatPurchaseDiscountMultiplierForCSV(purchaseDiscount, true)
+	}
+
+	var discounts map[string]any
+	if err := common.UnmarshalJsonStr(strings.TrimSpace(quoteSpec), &discounts); err != nil {
+		return ""
+	}
+	parts := make([]string, 0, len(pricingCSVDiscountComponents))
+	for _, component := range pricingCSVDiscountComponents {
+		value := pricingComponentScalar(discounts[component.Key])
+		if value == "" {
+			continue
+		}
+		formatted := formatPurchaseDiscountMultiplierForCSV(value, false)
+		if formatted != "" {
+			parts = append(parts, component.Label+" "+formatted)
+		}
+	}
+	return strings.Join(parts, "；")
+}
+
+func formatPurchaseDiscountMultiplierForCSV(value string, includeOfficialPriceLabel bool) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	multiplier, err := decimal.NewFromString(value)
+	if err != nil {
+		return spreadsheetSafeCSVCell(value)
+	}
+	discount := multiplier.Mul(decimal.NewFromInt(10)).String() + "折"
+	percentage := multiplier.Mul(decimal.NewFromInt(100)).String() + "%"
+	if includeOfficialPriceLabel {
+		return discount + "（官方价的" + percentage + "）"
+	}
+	return discount + "（" + percentage + "）"
+}
+
+func formatRetailOfficialDiscountForCSV(officialRaw string, retailRaw string) string {
+	officialPrices := pricingPricePointsForCSV(officialRaw)
+	retailPrices := pricingPricePointsForCSV(retailRaw)
+	if len(officialPrices) == 0 || len(retailPrices) == 0 {
+		return ""
+	}
+
+	retailByKey := make(map[string]pricingCSVPricePoint, len(retailPrices))
+	for _, point := range retailPrices {
+		retailByKey[point.Key] = point
+	}
+	type componentRatio struct {
+		Label string
+		Ratio decimal.Decimal
+	}
+	ratios := make([]componentRatio, 0, len(officialPrices))
+	for _, official := range officialPrices {
+		retail, exists := retailByKey[official.Key]
+		if !exists || !official.Price.IsPositive() || retail.Price.IsNegative() {
+			continue
+		}
+		ratios = append(ratios, componentRatio{
+			Label: official.Label,
+			Ratio: retail.Price.Div(official.Price),
+		})
+	}
+	if len(ratios) == 0 {
+		return ""
+	}
+
+	firstRatio := ratios[0].Ratio.Round(8)
+	uniform := true
+	for _, ratio := range ratios[1:] {
+		if !ratio.Ratio.Round(8).Equal(firstRatio) {
+			uniform = false
+			break
+		}
+	}
+	if uniform {
+		return formatRetailOfficialMultiplierForCSV(firstRatio)
+	}
+
+	parts := make([]string, 0, len(ratios))
+	for _, ratio := range ratios {
+		parts = append(
+			parts,
+			ratio.Label+" "+formatRetailOfficialMultiplierForCSV(ratio.Ratio),
+		)
+	}
+	return strings.Join(parts, "；")
+}
+
+func formatRetailOfficialMultiplierForCSV(multiplier decimal.Decimal) string {
+	discount := multiplier.Mul(decimal.NewFromInt(10)).Round(4).String() + "折"
+	percentage := multiplier.Mul(decimal.NewFromInt(100)).Round(4).String() + "%"
+	return discount + "（" + percentage + "）"
+}
+
+func pricingPricePointsForCSV(raw string) []pricingCSVPricePoint {
+	var components map[string]any
+	if err := common.UnmarshalJsonStr(strings.TrimSpace(raw), &components); err != nil {
+		return nil
+	}
+
+	rules, _ := components["rules"].([]any)
+	if len(rules) == 0 {
+		rules, _ = components["tiers"].([]any)
+	}
+	if len(rules) > 0 {
+		points := make([]pricingCSVPricePoint, 0, len(rules))
+		occurrences := make(map[string]int, len(rules))
+		for _, rawRule := range rules {
+			rule, ok := rawRule.(map[string]any)
+			if !ok {
+				continue
+			}
+			unitPrice := pricingComponentScalar(rule["unit_price"])
+			price, err := decimal.NewFromString(unitPrice)
+			if err != nil {
+				continue
+			}
+			identityParts := []string{
+				pricingComponentScalar(rule["name"]),
+				pricingComponentScalar(rule["component"]),
+				pricingComponentScalar(rule["unit"]),
+				pricingComponentScalar(rule["unit_size"]),
+				pricingComponentScalar(rule["operation"]),
+				pricingComponentScalar(rule["quality"]),
+				pricingComponentScalar(rule["resolution"]),
+				pricingComponentScalar(rule["with_audio"]),
+				pricingComponentScalar(rule["upper_bound"]),
+			}
+			identity := strings.Join(identityParts, "\x1f")
+			occurrences[identity]++
+
+			name := pricingComponentScalar(rule["name"])
+			component := pricingCSVComponentLabel(pricingComponentScalar(rule["component"]))
+			label := component
+			if name != "" {
+				label = name
+				if component != "" && component != name {
+					label += " · " + component
+				}
+			}
+			if label == "" {
+				label = "价格规则"
+			}
+			conditions := make([]string, 0, 5)
+			if value := pricingComponentScalar(rule["operation"]); value != "" {
+				conditions = append(conditions, "操作="+value)
+			}
+			if value := pricingComponentScalar(rule["quality"]); value != "" {
+				conditions = append(conditions, "质量="+value)
+			}
+			if value := pricingComponentScalar(rule["resolution"]); value != "" {
+				conditions = append(conditions, "分辨率="+value)
+			}
+			if value := pricingComponentScalar(rule["with_audio"]); value == "true" {
+				conditions = append(conditions, "含音频")
+			} else if value == "false" {
+				conditions = append(conditions, "不含音频")
+			}
+			if value := pricingComponentScalar(rule["upper_bound"]); value != "" {
+				conditions = append(conditions, "用量≤"+value)
+			}
+			if len(conditions) > 0 {
+				label += "（" + strings.Join(conditions, "，") + "）"
+			}
+			points = append(points, pricingCSVPricePoint{
+				Key:   fmt.Sprintf("rule:%s:%d", identity, occurrences[identity]),
+				Label: label,
+				Price: price,
+			})
+		}
+		return points
+	}
+
+	points := make([]pricingCSVPricePoint, 0, len(pricingCSVFlatComponents))
+	seen := make(map[string]struct{}, len(pricingCSVFlatComponents))
+	for _, component := range pricingCSVFlatComponents {
+		seen[component.Key] = struct{}{}
+		price, err := decimal.NewFromString(pricingComponentScalar(components[component.Key]))
+		if err != nil {
+			continue
+		}
+		label := strings.SplitN(component.Label, " / ", 2)[0]
+		points = append(points, pricingCSVPricePoint{
+			Key: component.Key, Label: label, Price: price,
+		})
+	}
+	unknownKeys := make([]string, 0)
+	for key := range components {
+		if _, exists := seen[key]; exists || !strings.HasSuffix(key, "_unit_price") {
+			continue
+		}
+		if _, err := decimal.NewFromString(pricingComponentScalar(components[key])); err == nil {
+			unknownKeys = append(unknownKeys, key)
+		}
+	}
+	sort.Strings(unknownKeys)
+	for _, key := range unknownKeys {
+		price, _ := decimal.NewFromString(pricingComponentScalar(components[key]))
+		points = append(points, pricingCSVPricePoint{Key: key, Label: key, Price: price})
+	}
+	return points
 }
 
 func formatPricingComponentsForCSV(raw string, billingExpr string, currency string) string {

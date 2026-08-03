@@ -498,6 +498,7 @@ func AdminExportChannelPricing(c *gin.Context) {
 				row.RetailPriceVersion,
 			),
 			formatRetailOfficialDiscountForCSV(
+				row.PurchasePricingMode,
 				row.OfficialPriceComponents,
 				row.RetailPriceComponents,
 			),
@@ -1094,7 +1095,7 @@ func formatPurchaseDiscountMultiplierForCSV(value string, includeOfficialPriceLa
 	return discount + "（" + percentage + "）"
 }
 
-func formatRetailOfficialDiscountForCSV(officialRaw string, retailRaw string) string {
+func formatRetailOfficialDiscountForCSV(pricingMode string, officialRaw string, retailRaw string) string {
 	officialPrices := pricingPricePointsForCSV(officialRaw)
 	retailPrices := pricingPricePointsForCSV(retailRaw)
 	if len(officialPrices) == 0 || len(retailPrices) == 0 {
@@ -1125,6 +1126,9 @@ func formatRetailOfficialDiscountForCSV(officialRaw string, retailRaw string) st
 	}
 
 	firstRatio := ratios[0].Ratio.Round(4)
+	if strings.TrimSpace(pricingMode) == "official_ratio" {
+		return formatRetailOfficialMultiplierForCSV(firstRatio)
+	}
 	uniform := true
 	for _, ratio := range ratios[1:] {
 		if !ratio.Ratio.Round(4).Equal(firstRatio) {

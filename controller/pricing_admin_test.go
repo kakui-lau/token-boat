@@ -499,6 +499,7 @@ func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *
 		t,
 		"8折（80%）",
 		formatRetailOfficialDiscountForCSV(
+			"official_ratio",
 			`{"input_unit_price":"2.5","output_unit_price":"15"}`,
 			`{"input_unit_price":"2","output_unit_price":"12"}`,
 		),
@@ -507,6 +508,7 @@ func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *
 		t,
 		"输入 5折（50%）；输出 8折（80%）",
 		formatRetailOfficialDiscountForCSV(
+			"component_ratio",
 			`{"input_unit_price":"2","output_unit_price":"10"}`,
 			`{"input_unit_price":"1","output_unit_price":"8"}`,
 		),
@@ -515,6 +517,7 @@ func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *
 		t,
 		"8折（80%）",
 		formatRetailOfficialDiscountForCSV(
+			"component_ratio",
 			`{"schema_version":"v2","rules":[`+
 				`{"name":"1080p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.3402","resolution":"1080p"},`+
 				`{"name":"720p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.1512","resolution":"720p"}`+
@@ -529,6 +532,7 @@ func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *
 		t,
 		"6.674折（66.74%）",
 		formatRetailOfficialDiscountForCSV(
+			"component_ratio",
 			`{"tiers":[`+
 				`{"name":"standard","upper_bound":"272000","input_unit_price":"5","output_unit_price":"30","cache_read_unit_price":"0.5"},`+
 				`{"name":"long_context","upper_bound":"1050000","input_unit_price":"10","output_unit_price":"45","cache_read_unit_price":"1"}`+
@@ -537,6 +541,15 @@ func TestFormatRetailOfficialDiscountForCSVSupportsUniformAndComponentPrices(t *
 				`{"name":"standard","upper_bound":"272000","input_unit_price":"3.33696","output_unit_price":"20.02174","cache_read_unit_price":"0.33370"},`+
 				`{"name":"long_context","upper_bound":"1050000","input_unit_price":"6.67392","output_unit_price":"30.03261","cache_read_unit_price":"0.66740"}`+
 				`]}`,
+		),
+	)
+	assert.Equal(
+		t,
+		"5折（50%）",
+		formatRetailOfficialDiscountForCSV(
+			"official_ratio",
+			`{"input_unit_price":"2","output_unit_price":"10","cache_read_unit_price":"1"}`,
+			`{"input_unit_price":"1","output_unit_price":"8","cache_read_unit_price":"0.7"}`,
 		),
 	)
 }

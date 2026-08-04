@@ -186,7 +186,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, ov)
+	}
 	return vResp.TaskId, responseBody, nil
 }
 
@@ -226,14 +228,21 @@ func (a *TaskAdaptor) GetChannelName() string {
 // ============================
 
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) (*requestPayload, error) {
+	resolution := req.Resolution
+	if resolution == "" {
+		resolution = req.Size
+	}
 	r := requestPayload{
 		Model:             taskcommon.DefaultString(info.UpstreamModelName, "viduq1"),
 		Images:            req.Images,
 		Prompt:            req.Prompt,
 		Duration:          taskcommon.DefaultInt(req.Duration, 5),
-		Resolution:        taskcommon.DefaultString(req.Size, "1080p"),
+		Resolution:        taskcommon.DefaultString(resolution, "1080p"),
 		MovementAmplitude: "auto",
 		Bgm:               false,
+	}
+	if req.Seed != nil {
+		r.Seed = *req.Seed
 	}
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")

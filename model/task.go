@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -43,6 +44,8 @@ const (
 	TaskStatusInProgress            = "IN_PROGRESS"
 	TaskStatusFailure               = "FAILURE"
 	TaskStatusSuccess               = "SUCCESS"
+	TaskStatusCancelled             = "CANCELLED"
+	TaskStatusExpired               = "EXPIRED"
 	TaskStatusUnknown               = "UNKNOWN"
 
 	TaskRefundStatusCompleted     = "completed"
@@ -100,6 +103,7 @@ type Properties struct {
 	Input             string `json:"input"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 	OriginModelName   string `json:"origin_model_name,omitempty"`
+	GenerationID      string `json:"generation_id,omitempty"`
 }
 
 func (m *Properties) Scan(val interface{}) error {
@@ -119,18 +123,23 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	Key            string `json:"key,omitempty"`
-	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
-	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	Key            string   `json:"key,omitempty"`
+	UpstreamTaskID string   `json:"upstream_task_id,omitempty"` // 上游真实 task ID
+	ResultURL      string   `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	ResultURLs     []string `json:"result_urls,omitempty"`      // 多结果视频 URL，顺序对应公开 content index
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
-	BillingSource     string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
-	SubscriptionId    int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
-	TokenId           int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
-	NodeName          string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
-	BillingContext    *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
-	ProviderCost      float64             `json:"provider_cost,omitempty"`   // 上游实际成本，仅用于内部成本核算
-	ProviderCostKnown bool                `json:"provider_cost_known,omitempty"`
-	ProviderIsByok    bool                `json:"provider_is_byok,omitempty"`
+	BillingSource       string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
+	SubscriptionId      int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
+	TokenId             int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
+	NodeName            string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
+	BillingContext      *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	ProviderCost        float64             `json:"provider_cost,omitempty"`   // 上游实际成本，仅用于内部成本核算
+	ProviderCostKnown   bool                `json:"provider_cost_known,omitempty"`
+	ProviderIsByok      bool                `json:"provider_is_byok,omitempty"`
+	CallbackURL         string              `json:"callback_url,omitempty"`
+	CallbackAttempts    int                 `json:"callback_attempts,omitempty"`
+	CallbackLastError   string              `json:"callback_last_error,omitempty"`
+	CallbackDeliveredAt int64               `json:"callback_delivered_at,omitempty"`
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
@@ -171,6 +180,11 @@ func GenerateTaskID() string {
 	return "task_" + key
 }
 
+func GenerateVideoGenerationID() string {
+	key, _ := common.GenerateRandomCharsKey(24)
+	return "gen_" + key
+}
+
 func (p *TaskPrivateData) Scan(val interface{}) error {
 	bytesValue, _ := val.([]byte)
 	if len(bytesValue) == 0 {
@@ -180,7 +194,7 @@ func (p *TaskPrivateData) Scan(val interface{}) error {
 }
 
 func (p TaskPrivateData) Value() (driver.Value, error) {
-	if (p == TaskPrivateData{}) {
+	if reflect.DeepEqual(p, TaskPrivateData{}) {
 		return nil, nil
 	}
 	return common.Marshal(p)
@@ -202,6 +216,10 @@ type SyncTaskQueryParams struct {
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
 	properties := Properties{}
 	privateData := TaskPrivateData{}
+	if relayInfo != nil {
+		privateData.CallbackURL = relayInfo.CallbackURL
+		properties.GenerationID = relayInfo.GenerationID
+	}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
 			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi ||

@@ -197,6 +197,9 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 }
 
 func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
+	if IsOpenRouterVideoRequest(c) {
+		return parseOpenRouterVideoRequest(c, info)
+	}
 	var prompt string
 	var model string
 	var seconds int
@@ -281,6 +284,9 @@ func isKnownTaskField(field string) bool {
 }
 
 func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *dto.TaskError {
+	if IsOpenRouterVideoRequest(c) {
+		return parseOpenRouterVideoRequest(c, info)
+	}
 	var err error
 	contentType := c.GetHeader("Content-Type")
 	var req TaskSubmitReq

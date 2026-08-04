@@ -144,6 +144,33 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 }
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	if request, ok := relaycommon.GetOpenRouterVideoRequest(c); ok {
+		payload := map[string]any{"model": info.UpstreamModelName}
+		if request.Prompt != nil {
+			payload["prompt"] = *request.Prompt
+		}
+		if request.Duration != nil {
+			payload["seconds"] = strconv.Itoa(*request.Duration)
+		}
+		if request.Size != nil {
+			payload["size"] = *request.Size
+		} else if request.Resolution != nil && request.AspectRatio != nil {
+			if size := soraSize(*request.Resolution, *request.AspectRatio); size != "" {
+				payload["size"] = size
+			}
+		}
+		for _, frame := range request.FrameImages {
+			if frame.FrameType == "first_frame" {
+				payload["input_reference"] = frame.ImageURL.URL
+			}
+		}
+		body, err := common.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		c.Request.Header.Set("Content-Type", "application/json")
+		return bytes.NewReader(body), nil
+	}
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return nil, errors.Wrap(err, "get_request_body_failed")
@@ -219,6 +246,21 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return common.ReaderOnly(storage), nil
 }
 
+func soraSize(resolution, aspectRatio string) string {
+	switch strings.ToLower(resolution) + ":" + aspectRatio {
+	case "720p:16:9":
+		return "1280x720"
+	case "720p:9:16":
+		return "720x1280"
+	case "1080p:16:9":
+		return "1792x1024"
+	case "1080p:9:16":
+		return "1024x1792"
+	default:
+		return ""
+	}
+}
+
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
@@ -252,7 +294,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	// 使用公开 task_xxxx ID 返回给客户端
 	dResp.ID = info.PublicTaskID
 	dResp.TaskID = info.PublicTaskID
-	c.JSON(http.StatusOK, dResp)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, dResp)
+	}
 	return upstreamID, responseBody, nil
 }
 

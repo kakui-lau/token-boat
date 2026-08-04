@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -175,6 +174,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 		return nil, taskErr
 	}
+	if taskErr := relaycommon.ValidateOpenRouterVideoChannelSupport(c, info); taskErr != nil {
+		return nil, taskErr
+	}
 
 	// 2. 确定模型名称
 	if modelName == "" {
@@ -193,6 +195,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 3. 预生成公开 task ID（仅首次）
 	if info.PublicTaskID == "" {
 		info.PublicTaskID = model.GenerateTaskID()
+	}
+	if info.GenerationID == "" {
+		info.GenerationID = model.GenerateVideoGenerationID()
 	}
 
 	// 4. 价格计算：任务请求必须由完整 V2 价格链接管。无法在提交前
@@ -375,7 +380,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
-	if info.ChannelType == constant.ChannelTypeOpenRouter {
+	if info.ChannelType == constant.ChannelTypeOpenRouter || relaycommon.IsOpenRouterVideoRequest(c) {
 		if err := persistOpenRouterTaskBeforeSubmit(info, platform); err != nil {
 			return nil, service.TaskErrorWrapperLocal(err, "persist_task_before_submit_failed", http.StatusInternalServerError)
 		}
@@ -411,6 +416,15 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return nil, taskErr
+	}
+	if relaycommon.IsOpenRouterVideoRequest(c) {
+		generationID := info.GenerationID
+		c.Set("deferred_task_response", dto.OpenRouterVideoGenerationResponse{
+			ID:           info.PublicTaskID,
+			PollingURL:   "/v1/videos/" + info.PublicTaskID,
+			Status:       dto.OpenRouterVideoStatusPending,
+			GenerationID: &generationID,
+		})
 	}
 	info.UpstreamTaskAccepted = true
 	info.AcceptedUpstreamTaskID = upstreamTaskID
@@ -616,23 +630,12 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	// OpenAI Video API 格式: 走各 adaptor 的 ConvertToOpenAIVideo
+	// /v1/videos always uses the provider-independent OpenRouter public schema.
 	if isOpenAIVideoAPI {
-		adaptor := GetTaskAdaptor(originTask.Platform)
-		if adaptor == nil {
-			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
-			return
+		respBody, err = common.Marshal(buildOpenRouterVideoResponse(originTask))
+		if err != nil {
+			taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 		}
-		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
-			openAIVideoData, err := converter.ConvertToOpenAIVideo(originTask)
-			if err != nil {
-				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
-				return
-			}
-			respBody = openAIVideoData
-			return
-		}
-		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
 		return
 	}
 
@@ -645,6 +648,47 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
+}
+
+func buildOpenRouterVideoResponse(task *model.Task) dto.OpenRouterVideoGenerationResponse {
+	response := dto.OpenRouterVideoGenerationResponse{
+		ID:         task.TaskID,
+		PollingURL: "/v1/videos/" + task.TaskID,
+		Status:     dto.OpenRouterVideoStatusPending,
+	}
+	if task.Properties.GenerationID != "" {
+		response.GenerationID = common.GetPointer(task.Properties.GenerationID)
+	}
+	switch task.Status {
+	case model.TaskStatusInProgress:
+		response.Status = dto.OpenRouterVideoStatusInProgress
+	case model.TaskStatusSuccess:
+		response.Status = dto.OpenRouterVideoStatusCompleted
+		resultCount := len(task.PrivateData.ResultURLs)
+		if resultCount == 0 {
+			resultCount = 1
+		}
+		response.UnsignedURLs = make([]string, resultCount)
+		for index := range response.UnsignedURLs {
+			response.UnsignedURLs[index] = taskcommon.BuildProxyURL(task.TaskID) + "?index=" + strconv.Itoa(index)
+		}
+	case model.TaskStatusFailure:
+		response.Status = dto.OpenRouterVideoStatusFailed
+		if task.FailReason != "" {
+			response.Error = common.GetPointer(task.FailReason)
+		}
+	case model.TaskStatusCancelled:
+		response.Status = dto.OpenRouterVideoStatusCancelled
+	case model.TaskStatusExpired:
+		response.Status = dto.OpenRouterVideoStatusExpired
+	}
+	if task.PrivateData.BillingContext != nil && task.PrivateData.BillingContext.QuotaPerUnit > 0 &&
+		(task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure ||
+			task.Status == model.TaskStatusCancelled || task.Status == model.TaskStatusExpired) {
+		cost := float64(task.Quota) / task.PrivateData.BillingContext.QuotaPerUnit
+		response.Usage = &dto.OpenRouterVideoGenerationUsage{Cost: &cost, IsBYOK: false}
+	}
+	return response
 }
 
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。

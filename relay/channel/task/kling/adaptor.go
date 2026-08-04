@@ -135,7 +135,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	path := lo.Ternary(info.Action == constant.TaskActionGenerate, "/v1/videos/image2video", "/v1/videos/text2video")
+	path := lo.Ternary(info.Action != constant.TaskActionTextGenerate, "/v1/videos/image2video", "/v1/videos/text2video")
 
 	if isNewAPIRelay(info.ApiKey) {
 		return fmt.Sprintf("%s/kling%s", a.baseURL, path), nil
@@ -211,7 +211,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, ov)
+	}
 	return kResp.Data.TaskId, responseBody, nil
 }
 
@@ -265,12 +267,25 @@ func (a *TaskAdaptor) GetChannelName() string {
 // ============================
 
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) (*requestPayload, error) {
+	image := req.Image
+	imageTail := ""
+	if len(req.Images) > 0 {
+		image = req.Images[0]
+	}
+	if len(req.Images) > 1 {
+		imageTail = req.Images[1]
+	}
+	aspectRatio := req.AspectRatio
+	if aspectRatio == "" {
+		aspectRatio = a.getAspectRatio(req.Size)
+	}
 	r := requestPayload{
 		Prompt:         req.Prompt,
-		Image:          req.Image,
+		Image:          image,
+		ImageTail:      imageTail,
 		Mode:           taskcommon.DefaultString(req.Mode, "std"),
 		Duration:       fmt.Sprintf("%d", taskcommon.DefaultInt(req.Duration, 5)),
-		AspectRatio:    a.getAspectRatio(req.Size),
+		AspectRatio:    aspectRatio,
 		ModelName:      info.UpstreamModelName,
 		Model:          info.UpstreamModelName,
 		CfgScale:       0.5,

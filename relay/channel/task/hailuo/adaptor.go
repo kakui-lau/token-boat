@@ -108,7 +108,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
 
-	c.JSON(http.StatusOK, ov)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, ov)
+	}
 	return hResp.TaskID, responseBody, nil
 }
 
@@ -150,7 +152,9 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 		duration = req.Duration
 	}
 	resolution := modelConfig.DefaultResolution
-	if req.Size != "" {
+	if req.Resolution != "" {
+		resolution = strings.ToUpper(req.Resolution)
+	} else if req.Size != "" {
 		resolution = a.parseResolutionFromSize(req.Size, modelConfig)
 	}
 

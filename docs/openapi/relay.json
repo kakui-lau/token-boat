@@ -543,136 +543,91 @@
         ]
       }
     },
-    "/v1/videos": {
-      "post": {
-        "summary": "创建视频 ",
-        "deprecated": false,
-        "description": "OpenAI 兼容的视频生成接口。\n\n参考文档: https://platform.openai.com/docs/api-reference/videos/create\n",
-        "operationId": "createVideo",
-        "tags": [
-          "视频生成/Sora兼容格式"
-        ],
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "model": {
-                    "description": "模型名称",
-                    "example": "sora-2",
-                    "type": "string"
-                  },
-                  "prompt": {
-                    "description": "提示词",
-                    "example": "cute cat dance",
-                    "type": "string"
-                  },
-                  "seconds": {
-                    "description": "生成秒数",
-                    "example": "8",
-                    "type": "string"
-                  },
-                  "input_reference": {
-                    "format": "binary",
-                    "type": "string",
-                    "description": "参考图片文件",
-                    "example": ""
-                  }
-                }
-              },
-              "examples": {}
-            }
-          }
-        },
+    "/v1/videos/models": {
+      "get": {
+        "summary": "列出视频生成模型",
+        "description": "返回当前令牌可用的视频生成模型及 OpenRouter 兼容的能力描述。",
+        "operationId": "listVideoModels",
+        "tags": ["视频生成/OpenRouter格式"],
         "responses": {
           "200": {
-            "description": "成功创建视频任务",
+            "description": "视频模型列表",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": ["data"],
                   "properties": {
-                    "id": {
-                      "type": "string",
-                      "description": "视频 ID"
-                    },
-                    "object": {
-                      "type": "string",
-                      "description": "对象类型"
-                    },
-                    "model": {
-                      "type": "string",
-                      "description": "使用的模型"
-                    },
-                    "status": {
-                      "type": "string",
-                      "description": "任务状态"
-                    },
-                    "progress": {
-                      "type": "integer",
-                      "description": "进度百分比"
-                    },
-                    "created_at": {
-                      "type": "integer",
-                      "description": "创建时间戳"
-                    },
-                    "seconds": {
-                      "type": "string",
-                      "description": "视频时长"
-                    },
-                    "completed_at": {
-                      "type": "integer",
-                      "description": "完成时间戳"
-                    },
-                    "expires_at": {
-                      "type": "integer",
-                      "description": "过期时间戳"
-                    },
-                    "size": {
-                      "type": "string",
-                      "description": "视频尺寸"
-                    },
-                    "error": {
-                      "$ref": "#/components/schemas/OpenAIVideoError"
-                    },
-                    "metadata": {
-                      "type": "object",
-                      "description": "额外元数据",
-                      "additionalProperties": true,
-                      "properties": {}
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id", "canonical_slug", "name", "created",
+                          "supported_resolutions", "supported_aspect_ratios",
+                          "supported_sizes", "supported_durations",
+                          "supported_frame_images", "generate_audio", "seed",
+                          "allowed_passthrough_parameters"
+                        ],
+                        "properties": {
+                          "id": {"type": "string"},
+                          "canonical_slug": {"type": "string"},
+                          "name": {"type": "string"},
+                          "created": {"type": "integer"},
+                          "description": {"type": "string"},
+                          "supported_resolutions": {"type": ["array", "null"], "items": {"type": "string"}},
+                          "supported_aspect_ratios": {"type": ["array", "null"], "items": {"type": "string"}},
+                          "supported_sizes": {"type": ["array", "null"], "items": {"type": "string"}},
+                          "supported_durations": {"type": ["array", "null"], "items": {"type": "integer"}},
+                          "supported_frame_images": {"type": ["array", "null"], "items": {"type": "string"}},
+                          "generate_audio": {"type": ["boolean", "null"]},
+                          "seed": {"type": ["boolean", "null"]},
+                          "allowed_passthrough_parameters": {"type": "array", "items": {"type": "string"}}
+                        }
+                      }
                     }
-                  },
-                  "required": [
-                    "id",
-                    "object",
-                    "model",
-                    "status",
-                    "progress",
-                    "created_at",
-                    "seconds"
-                  ]
-                },
-                "example": {
-                  "id": "sora-2-123456",
-                  "object": "video",
-                  "model": "sora-2",
-                  "status": "queued",
-                  "progress": 0,
-                  "created_at": 1764347090922,
-                  "seconds": "8"
+                  }
                 }
               }
-            },
-            "headers": {}
-          },
+            }
+          }
+        },
+        "security": [{"BearerAuth": []}]
+      }
+    },
+    "/v1/videos": {
+      "post": {
+        "summary": "提交视频生成任务",
+        "deprecated": false,
+        "description": "OpenRouter Video Generation API 兼容接口。",
+        "operationId": "createVideo",
+        "tags": [
+          "视频生成/OpenRouter格式"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/OpenRouterVideoGenerationRequest"}
+            }
+          }
+        },
+        "responses": {
+        "202": {
+          "description": "视频任务已接受",
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/OpenRouterVideoGenerationResponse"}
+            }
+          }
+        },
           "400": {
             "description": "请求参数错误",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/OpenRouterVideoErrorResponse"
                 }
               }
             },
@@ -688,12 +643,12 @@
     },
     "/v1/videos/{task_id}": {
       "get": {
-        "summary": "获取视频任务状态 ",
+        "summary": "获取视频生成任务状态",
         "deprecated": false,
-        "description": "OpenAI 兼容的视频任务状态查询接口。\n\n返回视频任务的详细状态信息。\n",
+        "description": "返回 OpenRouter 格式的视频生成任务状态。",
         "operationId": "getVideo",
         "tags": [
-          "视频生成/Sora兼容格式"
+          "视频生成/OpenRouter格式"
         ],
         "parameters": [
           {
@@ -712,50 +667,7 @@
             "description": "成功获取视频任务状态",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "object": {
-                      "type": "string"
-                    },
-                    "model": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "progress": {
-                      "type": "integer"
-                    },
-                    "created_at": {
-                      "type": "integer"
-                    },
-                    "seconds": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "object",
-                    "model",
-                    "status",
-                    "progress",
-                    "created_at",
-                    "seconds"
-                  ]
-                },
-                "example": {
-                  "id": "sora-2-123456",
-                  "object": "video",
-                  "model": "sora-2",
-                  "status": "queued",
-                  "progress": 0,
-                  "created_at": 1764347090922,
-                  "seconds": "8"
-                }
+                "schema": {"$ref": "#/components/schemas/OpenRouterVideoGenerationResponse"}
               }
             },
             "headers": {}
@@ -765,7 +677,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/OpenRouterVideoErrorResponse"
                 }
               }
             },
@@ -783,10 +695,10 @@
       "get": {
         "summary": "获取视频内容",
         "deprecated": false,
-        "description": "获取已完成视频任务的视频文件内容。\n\n此接口会代理返回视频文件流。\n",
+        "description": "代理返回已完成任务的指定视频文件，支持 Range 请求。",
         "operationId": "getVideoContent",
         "tags": [
-          "视频生成/Sora兼容格式"
+          "视频生成/OpenRouter格式"
         ],
         "parameters": [
           {
@@ -798,6 +710,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "index",
+            "in": "query",
+            "description": "多结果任务中的视频序号，默认为 0",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 0, "default": 0}
           }
         ],
         "responses": {
@@ -818,7 +737,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/OpenRouterVideoErrorResponse"
                 }
               }
             },
@@ -4057,6 +3976,106 @@
   },
   "components": {
     "schemas": {
+      "OpenRouterVideoURL": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {"url": {"type": "string"}}
+      },
+      "OpenRouterVideoFrameImage": {
+        "type": "object",
+        "required": ["type", "image_url", "frame_type"],
+        "properties": {
+          "type": {"type": "string", "enum": ["image_url"]},
+          "image_url": {"$ref": "#/components/schemas/OpenRouterVideoURL"},
+          "frame_type": {"type": "string", "enum": ["first_frame", "last_frame"]}
+        }
+      },
+      "OpenRouterVideoInputReference": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["type", "image_url"],
+            "properties": {
+              "type": {"type": "string", "enum": ["image_url"]},
+              "image_url": {"$ref": "#/components/schemas/OpenRouterVideoURL"}
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "audio_url"],
+            "properties": {
+              "type": {"type": "string", "enum": ["audio_url"]},
+              "audio_url": {"$ref": "#/components/schemas/OpenRouterVideoURL"}
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "video_url"],
+            "properties": {
+              "type": {"type": "string", "enum": ["video_url"]},
+              "video_url": {"$ref": "#/components/schemas/OpenRouterVideoURL"}
+            }
+          }
+        ]
+      },
+      "OpenRouterVideoGenerationRequest": {
+        "type": "object",
+        "required": ["model"],
+        "properties": {
+          "model": {"type": "string"},
+          "prompt": {"type": "string"},
+          "duration": {"type": "integer", "minimum": 1},
+          "resolution": {"type": "string", "enum": ["480p", "720p", "768p", "1080p", "1K", "2K", "4K"]},
+          "aspect_ratio": {"type": "string", "enum": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"]},
+          "size": {"type": "string", "example": "1280x720"},
+          "generate_audio": {"type": "boolean"},
+          "seed": {"type": "integer"},
+          "frame_images": {"type": "array", "items": {"$ref": "#/components/schemas/OpenRouterVideoFrameImage"}},
+          "input_references": {"type": "array", "items": {"$ref": "#/components/schemas/OpenRouterVideoInputReference"}},
+          "provider": {
+            "type": "object",
+            "properties": {
+              "options": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": true}}
+            }
+          },
+          "callback_url": {"type": "string", "format": "uri"}
+        }
+      },
+      "OpenRouterVideoGenerationResponse": {
+        "type": "object",
+        "required": ["id", "polling_url", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "polling_url": {"type": "string"},
+          "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "failed", "cancelled", "expired"]},
+          "error": {"type": "string"},
+          "generation_id": {"type": "string"},
+          "unsigned_urls": {"type": "array", "items": {"type": "string"}},
+          "usage": {
+            "type": "object",
+            "required": ["is_byok"],
+            "properties": {
+              "cost": {"type": ["number", "null"]},
+              "is_byok": {"type": "boolean"}
+            }
+          }
+        }
+      },
+      "OpenRouterVideoErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {"type": "integer"},
+              "message": {"type": "string"},
+              "metadata": {"type": "object", "additionalProperties": true}
+            }
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {

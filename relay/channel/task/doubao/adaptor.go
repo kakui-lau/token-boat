@@ -420,7 +420,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
 
-	c.JSON(http.StatusOK, ov)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, ov)
+	}
 	return dResp.ID, responseBody, nil
 }
 
@@ -463,8 +465,8 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		Content: []ContentItem{},
 	}
 
-	// Add images if present
-	if req.HasImage() {
+	// Legacy image inputs remain supported outside the OpenRouter video route.
+	if len(req.FrameImages) == 0 && len(req.InputReferences) == 0 && req.HasImage() {
 		for _, imgURL := range req.Images {
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
@@ -473,6 +475,23 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 				},
 			})
 		}
+	}
+	for _, frame := range req.FrameImages {
+		r.Content = append(r.Content, ContentItem{
+			Type: "image_url", ImageURL: &MediaURL{URL: frame.ImageURL.URL}, Role: frame.FrameType,
+		})
+	}
+	for _, reference := range req.InputReferences {
+		item := ContentItem{Type: reference.Type}
+		switch reference.Type {
+		case "image_url":
+			item.ImageURL = &MediaURL{URL: reference.ImageURL.URL}
+		case "audio_url":
+			item.AudioURL = &MediaURL{URL: reference.AudioURL.URL}
+		case "video_url":
+			item.VideoURL = &MediaURL{URL: reference.VideoURL.URL}
+		}
+		r.Content = append(r.Content, item)
 	}
 
 	metadata := req.Metadata
@@ -490,6 +509,14 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
 	} else if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
+	}
+	if req.GenerateAudio != nil {
+		value := dto.BoolValue(*req.GenerateAudio)
+		r.GenerateAudio = &value
+	}
+	if req.Seed != nil {
+		value := dto.IntValue(*req.Seed)
+		r.Seed = &value
 	}
 
 	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })

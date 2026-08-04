@@ -165,6 +165,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if params.DurationSeconds == 0 && req.Duration > 0 {
 		params.DurationSeconds = req.Duration
 	}
+	if params.Resolution == "" && req.Resolution != "" {
+		params.Resolution = req.Resolution
+	}
+	if params.AspectRatio == "" && req.AspectRatio != "" {
+		params.AspectRatio = req.AspectRatio
+	}
 	if params.Resolution == "" && req.Size != "" {
 		params.Resolution = geminitask.SizeToVeoResolution(req.Size)
 	}
@@ -172,6 +178,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		params.AspectRatio = geminitask.SizeToVeoAspectRatio(req.Size)
 	}
 	params.Resolution = strings.ToLower(params.Resolution)
+	if params.Seed == nil {
+		params.Seed = req.Seed
+	}
+	if params.GenerateAudio == nil {
+		params.GenerateAudio = req.GenerateAudio
+	}
 	params.SampleCount = 1
 
 	body := geminitask.VeoRequestPayload{
@@ -212,7 +224,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, ov)
+	}
 	return localID, responseBody, nil
 }
 

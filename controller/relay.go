@@ -739,7 +739,7 @@ func RelayNotFound(c *gin.Context) {
 func RelayTaskFetch(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
+		respondTaskError(c, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",
 			Message:    err.Error(),
 			StatusCode: http.StatusInternalServerError,
@@ -754,7 +754,7 @@ func RelayTaskFetch(c *gin.Context) {
 func RelayTask(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
+		respondTaskError(c, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",
 			Message:    err.Error(),
 			StatusCode: http.StatusInternalServerError,
@@ -848,6 +848,12 @@ func RelayTask(c *gin.Context) {
 				)
 			}
 			break
+		}
+		if taskErr.LocalError && taskErr.Code == "unsupported_parameter" &&
+			retryParam.GetRetry() < common.RetryTimes {
+			if _, specificChannel := c.Get("specific_channel_id"); !specificChannel {
+				continue
+			}
 		}
 
 		if !taskErr.LocalError {
@@ -993,6 +999,15 @@ func RelayTask(c *gin.Context) {
 func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
+	}
+	if c.Request != nil && (c.Request.URL.Path == "/v1/videos" || strings.HasPrefix(c.Request.URL.Path, "/v1/videos/")) {
+		c.JSON(taskErr.StatusCode, taskdto.OpenRouterVideoErrorResponse{
+			Error: taskdto.OpenRouterVideoErrorData{
+				Code:    taskErr.StatusCode,
+				Message: taskErr.Message,
+			},
+		})
+		return
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

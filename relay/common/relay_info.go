@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -837,9 +838,11 @@ func (info *RelayInfo) HasSendResponse() bool {
 type TaskRelayInfo struct {
 	Action       string
 	OriginTaskID string
+	CallbackURL  string
 	// PublicTaskID 是提交时预生成的 task_xxxx 格式公开 ID，
 	// 供 DoResponse 在返回给客户端时使用（避免暴露上游真实 ID）。
 	PublicTaskID string
+	GenerationID string
 	// PersistedTaskID is the local task row created before an upstream async
 	// submission. It survives retries so the public task ID is durable before
 	// a provider can accept billable work.
@@ -863,20 +866,24 @@ type TaskRelayInfo struct {
 }
 
 type TaskSubmitReq struct {
-	Prompt         string                 `json:"prompt"`
-	Model          string                 `json:"model,omitempty"`
-	Mode           string                 `json:"mode,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	Images         []string               `json:"images,omitempty"`
-	Size           string                 `json:"size,omitempty"`
-	Resolution     string                 `json:"resolution,omitempty"`
-	AspectRatio    string                 `json:"aspect_ratio,omitempty"`
-	Duration       int                    `json:"duration,omitempty"`
-	Seconds        string                 `json:"seconds,omitempty"`
-	GenerateAudio  *bool                  `json:"generate_audio,omitempty"`
-	Seed           *int                   `json:"seed,omitempty"`
-	InputReference string                 `json:"input_reference,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Prompt          string                                  `json:"prompt"`
+	Model           string                                  `json:"model,omitempty"`
+	Mode            string                                  `json:"mode,omitempty"`
+	Image           string                                  `json:"image,omitempty"`
+	Images          []string                                `json:"images,omitempty"`
+	Size            string                                  `json:"size,omitempty"`
+	Resolution      string                                  `json:"resolution,omitempty"`
+	AspectRatio     string                                  `json:"aspect_ratio,omitempty"`
+	Duration        int                                     `json:"duration,omitempty"`
+	Seconds         string                                  `json:"seconds,omitempty"`
+	GenerateAudio   *bool                                   `json:"generate_audio,omitempty"`
+	Seed            *int                                    `json:"seed,omitempty"`
+	InputReference  string                                  `json:"input_reference,omitempty"`
+	Metadata        map[string]interface{}                  `json:"metadata,omitempty"`
+	FrameImages     []taskdto.OpenRouterVideoFrameImage     `json:"frame_images,omitempty"`
+	InputReferences []taskdto.OpenRouterVideoInputReference `json:"input_references,omitempty"`
+	Provider        *taskdto.OpenRouterVideoProvider        `json:"provider,omitempty"`
+	CallbackURL     *string                                 `json:"callback_url,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {
@@ -955,6 +962,7 @@ type TaskInfo struct {
 	Reason           string             `json:"reason,omitempty"`
 	Url              string             `json:"url,omitempty"`
 	RemoteUrl        string             `json:"remote_url,omitempty"`
+	RemoteUrls       []string           `json:"remote_urls,omitempty"`
 	Progress         string             `json:"progress,omitempty"`
 	CompletionTokens int                `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int                `json:"total_tokens,omitempty"`      // 用于按倍率计费

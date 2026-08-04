@@ -216,6 +216,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, fmt.Errorf("OpenRouter video requests must use JSON: %w", err)
 	}
 	payload["model"] = info.UpstreamModelName
+	// The public callback is delivered by this gateway after local settlement;
+	// forwarding it upstream would produce duplicate and unauthenticated events.
+	delete(payload, "callback_url")
 	// Pin provider defaults so the frozen pre-charge snapshot and the generated
 	// video always describe the same billable SKU.
 	if _, ok := payload["duration"]; !ok {
@@ -311,8 +314,9 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 		result.Status = string(model.TaskStatusSuccess)
 		if len(response.UnsignedURLs) > 0 {
 			result.RemoteUrl = response.UnsignedURLs[0]
+			result.RemoteUrls = append([]string(nil), response.UnsignedURLs...)
 		}
-	case "failed", "cancelled":
+	case "failed":
 		result.Status = string(model.TaskStatusFailure)
 		switch upstreamError := response.Error.(type) {
 		case string:
@@ -323,6 +327,10 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 		if result.Reason == "" {
 			result.Reason = "OpenRouter video generation failed"
 		}
+	case "cancelled":
+		result.Status = string(model.TaskStatusCancelled)
+	case "expired":
+		result.Status = string(model.TaskStatusExpired)
 	default:
 		return nil, fmt.Errorf("unknown OpenRouter video status %q", response.Status)
 	}

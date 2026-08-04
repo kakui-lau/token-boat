@@ -366,7 +366,9 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	}
 
 	// 处理分辨率映射
-	if req.Size != "" {
+	if req.Resolution != "" {
+		aliReq.Parameters.Resolution = strings.ToUpper(req.Resolution)
+	} else if req.Size != "" {
 		// text to video size must be contained *
 		if strings.Contains(req.Model, "t2v") && !strings.Contains(req.Size, "*") {
 			return nil, fmt.Errorf("invalid size: %s, example: %s", req.Size, "1920*1080")
@@ -419,6 +421,12 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	}
 	if aliReq.Parameters.Duration <= 0 {
 		aliReq.Parameters.Duration = 5 // 默认5秒
+	}
+	if req.GenerateAudio != nil {
+		aliReq.Parameters.Audio = req.GenerateAudio
+	}
+	if req.Seed != nil {
+		aliReq.Parameters.Seed = *req.Seed
 	}
 
 	// 从 metadata 中提取额外参数
@@ -516,7 +524,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	openAIResp.CreatedAt = common.GetTimestamp()
 
 	// 返回 OpenAI 格式
-	c.JSON(http.StatusOK, openAIResp)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, openAIResp)
+	}
 
 	return aliResp.Output.TaskID, responseBody, nil
 }

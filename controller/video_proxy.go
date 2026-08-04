@@ -7,11 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -20,13 +22,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// videoProxyError returns a standardized OpenAI-style error response.
-func videoProxyError(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"error": gin.H{
-			"message": message,
-			"type":    errType,
-		},
+func videoProxyError(c *gin.Context, status int, _ string, message string) {
+	c.JSON(status, dto.OpenRouterVideoErrorResponse{
+		Error: dto.OpenRouterVideoErrorData{Code: status, Message: message},
 	})
 }
 
@@ -35,6 +33,15 @@ func VideoProxy(c *gin.Context) {
 	if taskID == "" {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "task_id is required")
 		return
+	}
+	index := 0
+	if rawIndex := c.Query("index"); rawIndex != "" {
+		parsedIndex, parseErr := strconv.Atoi(rawIndex)
+		if parseErr != nil || parsedIndex < 0 {
+			videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "index must be a non-negative integer")
+			return
+		}
+		index = parsedIndex
 	}
 
 	userID := c.GetInt("id")
@@ -52,6 +59,14 @@ func VideoProxy(c *gin.Context) {
 	if task.Status != model.TaskStatusSuccess {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("Task is not completed yet, current status: %s", task.Status))
+		return
+	}
+	if len(task.PrivateData.ResultURLs) > 0 && index >= len(task.PrivateData.ResultURLs) {
+		videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "index is out of range")
+		return
+	}
+	if len(task.PrivateData.ResultURLs) == 0 && index > 0 {
+		videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "index is out of range")
 		return
 	}
 
@@ -112,15 +127,25 @@ func VideoProxy(c *gin.Context) {
 			return
 		}
 	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora, constant.ChannelTypeOpenRouter:
-		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+		videoURL = fmt.Sprintf("%s/v1/videos/%s/content?index=%d", baseURL, task.GetUpstreamTaskID(), index)
 		apiKey := task.PrivateData.Key
 		if apiKey == "" {
 			apiKey = channel.Key
 		}
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	default:
-		// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
-		videoURL = task.GetResultURL()
+		if len(task.PrivateData.ResultURLs) > 0 {
+			if index >= len(task.PrivateData.ResultURLs) {
+				videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "index is out of range")
+				return
+			}
+			videoURL = task.PrivateData.ResultURLs[index]
+		} else if index == 0 {
+			videoURL = task.GetResultURL()
+		} else {
+			videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "index is out of range")
+			return
+		}
 	}
 
 	videoURL = strings.TrimSpace(videoURL)
@@ -157,6 +182,11 @@ func VideoProxy(c *gin.Context) {
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
 	}
+	for _, header := range []string{"Range", "If-Range", "If-None-Match", "If-Modified-Since"} {
+		if value := c.GetHeader(header); value != "" {
+			req.Header.Set(header, value)
+		}
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -166,7 +196,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
 		videoProxyError(c, http.StatusBadGateway, "server_error",
 			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
@@ -174,6 +204,13 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	for key, values := range resp.Header {
+		normalized := strings.ToLower(key)
+		if strings.HasPrefix(normalized, "access-control-") || normalized == "connection" ||
+			normalized == "keep-alive" || normalized == "proxy-authenticate" ||
+			normalized == "proxy-authorization" || normalized == "te" ||
+			normalized == "trailer" || normalized == "transfer-encoding" || normalized == "upgrade" {
+			continue
+		}
 		for _, value := range values {
 			c.Writer.Header().Add(key, value)
 		}

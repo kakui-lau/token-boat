@@ -610,10 +610,15 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}
+		if len(taskResult.RemoteUrls) > 0 {
+			task.PrivateData.ResultURLs = append([]string(nil), taskResult.RemoteUrls...)
+		} else if taskResult.Url != "" {
+			task.PrivateData.ResultURLs = []string{taskResult.Url}
+		}
 		shouldSettle = true
-	case model.TaskStatusFailure:
+	case model.TaskStatusFailure, model.TaskStatusCancelled, model.TaskStatusExpired:
 		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
-		task.Status = model.TaskStatusFailure
+		task.Status = model.TaskStatus(taskResult.Status)
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
 			task.FinishTime = now
@@ -634,7 +639,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		shouldSettle = prepareTieredTaskSettlement(task, taskResult)
 	}
 
-	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
+	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure ||
+		task.Status == model.TaskStatusCancelled || task.Status == model.TaskStatusExpired
 	if isDone && snap.Status != task.Status {
 		won, err := task.UpdateWithStatus(snap.Status)
 		if err != nil {
@@ -670,6 +676,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)
+	}
+	if isDone && snap.Status != task.Status && task.PrivateData.CallbackURL != "" {
+		scheduleOpenRouterVideoCallback(task.ID)
 	}
 
 	return nil

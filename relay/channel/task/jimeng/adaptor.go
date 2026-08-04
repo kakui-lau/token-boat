@@ -208,7 +208,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+	if !relaycommon.IsOpenRouterVideoRequest(c) {
+		c.JSON(http.StatusOK, ov)
+	}
 	return jResp.Data.TaskID, responseBody, nil
 }
 
@@ -383,6 +385,12 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	r := requestPayload{
 		ReqKey: info.UpstreamModelName,
 		Prompt: req.Prompt,
+	}
+	if req.AspectRatio != "" {
+		r.AspectRatio = req.AspectRatio
+	}
+	if req.Seed != nil {
+		r.Seed = int64(*req.Seed)
 	}
 
 	switch req.Duration {

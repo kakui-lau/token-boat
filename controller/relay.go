@@ -991,8 +991,74 @@ func RelayTask(c *gin.Context) {
 	}
 
 	if taskErr != nil {
+		requestPreview := "unavailable"
+		if request, requestErr := relaycommon.GetTaskRequest(c); requestErr == nil {
+			if requestBody, marshalErr := common.Marshal(request); marshalErr == nil {
+				requestPreview = common.LocalLogPreview(string(requestBody))
+			}
+		}
+		logger.LogWarn(c, fmt.Sprintf(
+			"video task request failed: channel_id=%d channel_type=%d origin_model=%q upstream_model=%q status=%d code=%q message=%q request=%s",
+			relayInfo.ChannelId, relayInfo.ChannelType, relayInfo.OriginModelName, relayInfo.UpstreamModelName,
+			taskErr.StatusCode, taskErr.Code, taskErr.Message, requestPreview,
+		))
 		respondTaskError(c, taskErr)
 	}
+}
+
+func buildOpenRouterVideoErrorData(taskErr *taskdto.TaskError) taskdto.OpenRouterVideoErrorData {
+	errorData := taskdto.OpenRouterVideoErrorData{Code: taskErr.StatusCode, Message: taskErr.Message}
+	var upstream struct {
+		Code      any    `json:"code"`
+		Message   string `json:"message"`
+		RequestID string `json:"request_id"`
+		TraceID   string `json:"trace_id"`
+		Timestamp string `json:"timestamp"`
+		Error     *struct {
+			Code      any    `json:"code"`
+			Message   string `json:"message"`
+			RequestID string `json:"request_id"`
+			TraceID   string `json:"trace_id"`
+		} `json:"error"`
+	}
+	if err := common.UnmarshalJsonStr(taskErr.Message, &upstream); err != nil {
+		return errorData
+	}
+	if upstream.Error != nil {
+		if upstream.Message == "" {
+			upstream.Message = upstream.Error.Message
+		}
+		if upstream.Code == nil {
+			upstream.Code = upstream.Error.Code
+		}
+		if upstream.RequestID == "" {
+			upstream.RequestID = upstream.Error.RequestID
+		}
+		if upstream.TraceID == "" {
+			upstream.TraceID = upstream.Error.TraceID
+		}
+	}
+	if upstream.Message == "" {
+		return errorData
+	}
+	errorData.Message = upstream.Message
+	metadata := make(map[string]any)
+	if upstream.Code != nil {
+		metadata["upstream_code"] = upstream.Code
+	}
+	if upstream.RequestID != "" {
+		metadata["request_id"] = upstream.RequestID
+	}
+	if upstream.TraceID != "" {
+		metadata["trace_id"] = upstream.TraceID
+	}
+	if upstream.Timestamp != "" {
+		metadata["timestamp"] = upstream.Timestamp
+	}
+	if len(metadata) > 0 {
+		errorData.Metadata = metadata
+	}
+	return errorData
 }
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
@@ -1002,10 +1068,7 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 	}
 	if c.Request != nil && (c.Request.URL.Path == "/v1/videos" || strings.HasPrefix(c.Request.URL.Path, "/v1/videos/")) {
 		c.JSON(taskErr.StatusCode, taskdto.OpenRouterVideoErrorResponse{
-			Error: taskdto.OpenRouterVideoErrorData{
-				Code:    taskErr.StatusCode,
-				Message: taskErr.Message,
-			},
+			Error: buildOpenRouterVideoErrorData(taskErr),
 		})
 		return
 	}

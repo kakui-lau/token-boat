@@ -246,13 +246,18 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.LogError(c, fmt.Sprintf("Anitix upstream response read failed: channel_id=%d error=%q", info.ChannelId, err.Error()))
 		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	upstream, err := decodeTaskResponse(body)
 	if err != nil {
+		logger.LogError(c, fmt.Sprintf("Anitix upstream response parse failed: channel_id=%d error=%q response=%s",
+			info.ChannelId, err.Error(), common.LocalLogPreview(string(body))))
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("unmarshal Anitix response: %w", err), "invalid_response", http.StatusBadGateway)
 	}
 	if strings.TrimSpace(upstream.TaskID) == "" {
+		logger.LogWarn(c, fmt.Sprintf("Anitix upstream response missing task_id: channel_id=%d response=%s",
+			info.ChannelId, common.LocalLogPreview(string(body))))
 		return "", nil, service.TaskErrorWrapperLocal(fmt.Errorf("Anitix response is missing task_id: %s", common.LocalLogPreview(string(body))), "invalid_response", http.StatusBadGateway)
 	}
 	if !relaycommon.IsOpenRouterVideoRequest(c) {
@@ -287,6 +292,8 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error) {
 	upstream, err := decodeTaskResponse(body)
 	if err != nil {
+		logger.LogError(nil, fmt.Sprintf("Anitix task response parse failed: error=%q response=%s",
+			err.Error(), common.LocalLogPreview(string(body))))
 		return nil, fmt.Errorf("unmarshal Anitix task result: %w", err)
 	}
 	result := &relaycommon.TaskInfo{}
@@ -315,11 +322,15 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 		if result.Reason == "" {
 			result.Reason = fmt.Sprint(upstream.Error)
 		}
+		logger.LogWarn(nil, fmt.Sprintf("Anitix upstream task failed: task_id=%q reason=%q response=%s",
+			upstream.TaskID, result.Reason, common.LocalLogPreview(string(body))))
 	case "cancelled", "canceled":
 		result.Status = string(model.TaskStatusCancelled)
 	case "expired":
 		result.Status = string(model.TaskStatusExpired)
 	default:
+		logger.LogWarn(nil, fmt.Sprintf("Anitix upstream returned unknown task status: task_id=%q status=%q response=%s",
+			upstream.TaskID, upstream.Status, common.LocalLogPreview(string(body))))
 		return nil, fmt.Errorf("unknown Anitix task status %q", upstream.Status)
 	}
 	return result, nil

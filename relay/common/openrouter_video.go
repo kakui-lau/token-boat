@@ -189,16 +189,20 @@ func ValidateOpenRouterVideoChannelSupport(c *gin.Context, info *RelayInfo) *dto
 	modelName := strings.ToLower(info.UpstreamModelName)
 	isSeedance20 := strings.Contains(modelName, "seedance-2.0") || strings.Contains(modelName, "seedance-2-0") || strings.Contains(modelName, "seedance2")
 	supportsReferences := info.ChannelType == constant.ChannelTypeOpenRouter ||
+		info.ChannelType == constant.ChannelTypeAnitix ||
 		((info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) && isSeedance20) ||
 		info.ChannelType == constant.ChannelTypeVidu
 	supportsRichReferences := info.ChannelType == constant.ChannelTypeOpenRouter ||
 		((info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) && isSeedance20)
 	supportsLastFrame := supportsRichReferences || info.ChannelType == constant.ChannelTypeVidu ||
+		info.ChannelType == constant.ChannelTypeAnitix ||
 		info.ChannelType == constant.ChannelTypeAli || info.ChannelType == constant.ChannelTypeJimeng ||
 		info.ChannelType == constant.ChannelTypeKling
 	supportsGenerateAudio := supportsRichReferences || info.ChannelType == constant.ChannelTypeAli ||
+		info.ChannelType == constant.ChannelTypeAnitix ||
 		info.ChannelType == constant.ChannelTypeGemini || info.ChannelType == constant.ChannelTypeVertexAi
 	supportsSeed := supportsRichReferences || info.ChannelType == constant.ChannelTypeVidu ||
+		info.ChannelType == constant.ChannelTypeAnitix ||
 		info.ChannelType == constant.ChannelTypeAli || info.ChannelType == constant.ChannelTypeJimeng ||
 		info.ChannelType == constant.ChannelTypeGemini || info.ChannelType == constant.ChannelTypeVertexAi
 	if request.Provider != nil && len(request.Provider.Options) > 0 && info.ChannelType != constant.ChannelTypeOpenRouter {

@@ -754,8 +754,8 @@
     "/kling/v1/videos/text2video": {
       "post": {
         "summary": "Kling 文生视频",
-        "deprecated": false,
-        "description": "使用 Kling 模型从文本描述生成视频。\n\n支持的模型：kling-v1, kling-v1-5 等\n",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 OpenRouter 格式的 `POST /v1/videos`。",
         "operationId": "createKlingText2Video",
         "tags": [
           "视频生成/Kling格式"
@@ -812,8 +812,8 @@
     "/kling/v1/videos/text2video/{task_id}": {
       "get": {
         "summary": "获取 Kling 文生视频任务状态",
-        "deprecated": false,
-        "description": "查询 Kling 文生视频任务的状态和结果。",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 `GET /v1/videos/{task_id}`。",
         "operationId": "getKlingText2Video",
         "tags": [
           "视频生成/Kling格式"
@@ -864,8 +864,8 @@
     "/kling/v1/videos/image2video": {
       "post": {
         "summary": "Kling 图生视频",
-        "deprecated": false,
-        "description": "使用 Kling 模型从图片生成视频。\n\n支持通过 image 参数传入图片 URL 或 Base64 编码的图片数据。\n",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 OpenRouter 格式的 `POST /v1/videos`。",
         "operationId": "createKlingImage2Video",
         "tags": [
           "视频生成/Kling格式"
@@ -922,8 +922,8 @@
     "/kling/v1/videos/image2video/{task_id}": {
       "get": {
         "summary": "获取 Kling 图生视频任务状态",
-        "deprecated": false,
-        "description": "查询 Kling 图生视频任务的状态和结果。",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 `GET /v1/videos/{task_id}`。",
         "operationId": "getKlingImage2Video",
         "tags": [
           "视频生成/Kling格式"
@@ -974,8 +974,8 @@
     "/jimeng/": {
       "post": {
         "summary": "即梦视频生成",
-        "deprecated": false,
-        "description": "即梦官方 API 格式的视频生成接口。\n\n支持通过 Action 参数指定操作类型：\n- `CVSync2AsyncSubmitTask`: 提交视频生成任务\n- `CVSync2AsyncGetResult`: 获取任务结果\n\n需要在查询参数中指定 Action 和 Version。\n",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 OpenRouter 格式的 `/v1/videos` 接口。",
         "operationId": "createJimengVideo",
         "tags": [
           "视频生成/即梦格式"
@@ -1065,8 +1065,8 @@
     "/v1/video/generations": {
       "post": {
         "summary": "创建视频生成任务",
-        "deprecated": false,
-        "description": "提交视频生成任务，支持文生视频和图生视频。\n\n返回任务 ID，可通过 GET 接口查询任务状态。\n",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 OpenRouter 格式的 `POST /v1/videos`。",
         "operationId": "createVideoGeneration",
         "tags": [
           "视频生成"
@@ -1145,8 +1145,8 @@
     "/v1/video/generations/{task_id}": {
       "get": {
         "summary": "获取视频生成任务状态",
-        "deprecated": false,
-        "description": "查询视频生成任务的状态和结果。\n\n任务状态：\n- `queued`: 排队中\n- `in_progress`: 生成中\n- `completed`: 已完成\n- `failed`: 失败\n",
+        "deprecated": true,
+        "description": "已废弃，请迁移至 `GET /v1/videos/{task_id}`。",
         "operationId": "getVideoGeneration",
         "tags": [
           "视频生成"
@@ -2067,6 +2067,8 @@
     "/v1/videos/{video_id}/remix": {
       "post": {
         "summary": "基于已有视频创建 Remix",
+        "deprecated": true,
+        "description": "已废弃，不再作为统一视频生成协议的一部分。",
         "tags": [
           "视频生成"
         ],
@@ -2712,6 +2714,8 @@
     "/mj/submit/video": {
       "post": {
         "summary": "Midjourney video",
+        "deprecated": true,
+        "description": "已废弃，不再作为统一视频生成协议的一部分。",
         "tags": [
           "图像/Midjourney"
         ],
@@ -3502,6 +3506,8 @@
     "/{mode}/mj/submit/video": {
       "post": {
         "summary": "Midjourney video",
+        "deprecated": true,
+        "description": "已废弃，不再作为统一视频生成协议的一部分。",
         "tags": [
           "图像/Midjourney"
         ],

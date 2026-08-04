@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildOpenRouterVideoResponseUsesPublicContentIndexes(t *testing.T) {
+func TestBuildOpenRouterVideoResponseUsesDirectProviderURLs(t *testing.T) {
 	costPerUnit := 500000.0
 	task := &model.Task{
 		TaskID: "task_public",
@@ -26,12 +26,25 @@ func TestBuildOpenRouterVideoResponseUsesPublicContentIndexes(t *testing.T) {
 	response := buildOpenRouterVideoResponse(task)
 
 	assert.Equal(t, dto.OpenRouterVideoStatusCompleted, response.Status)
-	require.Len(t, response.UnsignedURLs, 2)
-	assert.Contains(t, response.UnsignedURLs[0], "/v1/videos/task_public/content?index=0")
-	assert.Contains(t, response.UnsignedURLs[1], "/v1/videos/task_public/content?index=1")
+	assert.Equal(t, []string{"https://upstream/one.mp4", "https://upstream/two.mp4"}, response.UnsignedURLs)
 	require.NotNil(t, response.Usage)
 	require.NotNil(t, response.Usage.Cost)
 	assert.Equal(t, 0.5, *response.Usage.Cost)
+}
+
+func TestBuildOpenRouterVideoResponseFallsBackToContentProxy(t *testing.T) {
+	task := &model.Task{
+		TaskID: "task_public",
+		Status: model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{
+			ResultURLs: []string{"data:video/mp4;base64,AAAA"},
+		},
+	}
+
+	response := buildOpenRouterVideoResponse(task)
+
+	require.Len(t, response.UnsignedURLs, 1)
+	assert.Contains(t, response.UnsignedURLs[0], "/v1/videos/task_public/content?index=0")
 }
 
 func TestTaskModel2DtoRedactsOpenRouterSupplierData(t *testing.T) {

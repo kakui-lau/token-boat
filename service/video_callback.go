@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -62,13 +61,9 @@ func sendOpenRouterVideoCallback(task *model.Task) error {
 	switch task.Status {
 	case model.TaskStatusSuccess:
 		response.Status = dto.OpenRouterVideoStatusCompleted
-		resultCount := len(task.PrivateData.ResultURLs)
-		if resultCount == 0 {
-			resultCount = 1
-		}
-		response.UnsignedURLs = make([]string, resultCount)
-		for index := range response.UnsignedURLs {
-			response.UnsignedURLs[index] = taskcommon.BuildProxyURL(task.TaskID) + "?index=" + strconv.Itoa(index)
+		response.UnsignedURLs = task.GetDirectResultURLs()
+		if len(response.UnsignedURLs) == 0 {
+			response.UnsignedURLs = []string{taskcommon.BuildProxyURL(task.TaskID) + "?index=0"}
 		}
 	case model.TaskStatusFailure:
 		response.Status = dto.OpenRouterVideoStatusFailed

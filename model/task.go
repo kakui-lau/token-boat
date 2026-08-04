@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -172,6 +174,27 @@ func (t *Task) GetResultURL() string {
 		return t.PrivateData.ResultURL
 	}
 	return t.FailReason
+}
+
+// GetDirectResultURLs returns provider-hosted HTTP(S) result resources that
+// can be exposed directly to API clients. Embedded data URIs and local proxy
+// placeholders are intentionally excluded so callers can fall back to the
+// authenticated content endpoint.
+func (t *Task) GetDirectResultURLs() []string {
+	candidates := t.PrivateData.ResultURLs
+	if len(candidates) == 0 && t.PrivateData.ResultURL != "" {
+		candidates = []string{t.PrivateData.ResultURL}
+	}
+	result := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		parsed, err := url.ParseRequestURI(candidate)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			continue
+		}
+		result = append(result, candidate)
+	}
+	return result
 }
 
 // GenerateTaskID 生成对外暴露的 task_xxxx 格式 ID

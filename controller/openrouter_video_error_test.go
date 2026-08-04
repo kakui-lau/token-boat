@@ -31,3 +31,14 @@ func TestBuildOpenRouterVideoErrorDataKeepsPlainMessage(t *testing.T) {
 	assert.Equal(t, "Rate limit exceeded", errorData.Message)
 	assert.Nil(t, errorData.Metadata)
 }
+
+func TestBuildOpenRouterVideoErrorDataUnwrapsAnisparkError(t *testing.T) {
+	errorData := buildOpenRouterVideoErrorData(&taskdto.TaskError{
+		StatusCode: 400,
+		Message:    `{"ErrorCode":"InvalidParameter","ErrorMessage":"role must be specified for image contents"}`,
+	})
+
+	assert.Equal(t, 400, errorData.Code)
+	assert.Equal(t, "role must be specified for image contents", errorData.Message)
+	assert.Equal(t, "InvalidParameter", errorData.Metadata["upstream_code"])
+}

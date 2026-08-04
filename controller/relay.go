@@ -1009,12 +1009,14 @@ func RelayTask(c *gin.Context) {
 func buildOpenRouterVideoErrorData(taskErr *taskdto.TaskError) taskdto.OpenRouterVideoErrorData {
 	errorData := taskdto.OpenRouterVideoErrorData{Code: taskErr.StatusCode, Message: taskErr.Message}
 	var upstream struct {
-		Code      any    `json:"code"`
-		Message   string `json:"message"`
-		RequestID string `json:"request_id"`
-		TraceID   string `json:"trace_id"`
-		Timestamp string `json:"timestamp"`
-		Error     *struct {
+		Code         any    `json:"code"`
+		Message      string `json:"message"`
+		UpperCode    any    `json:"ErrorCode"`
+		UpperMessage string `json:"ErrorMessage"`
+		RequestID    string `json:"request_id"`
+		TraceID      string `json:"trace_id"`
+		Timestamp    string `json:"timestamp"`
+		Error        *struct {
 			Code      any    `json:"code"`
 			Message   string `json:"message"`
 			RequestID string `json:"request_id"`
@@ -1037,6 +1039,12 @@ func buildOpenRouterVideoErrorData(taskErr *taskdto.TaskError) taskdto.OpenRoute
 		if upstream.TraceID == "" {
 			upstream.TraceID = upstream.Error.TraceID
 		}
+	}
+	if upstream.Message == "" {
+		upstream.Message = upstream.UpperMessage
+	}
+	if upstream.Code == nil {
+		upstream.Code = upstream.UpperCode
 	}
 	if upstream.Message == "" {
 		return errorData

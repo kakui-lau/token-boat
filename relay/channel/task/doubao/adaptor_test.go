@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/gin-gonic/gin"
@@ -91,6 +92,25 @@ func TestConvertToRequestPayloadCarriesTopLevelVideoOptions(t *testing.T) {
 	assert.Equal(t, "9:16", payload.Ratio)
 	require.NotNil(t, payload.Duration)
 	assert.Equal(t, 8, int(*payload.Duration))
+}
+
+func TestConvertToRequestPayloadMarksInputImagesAsReferences(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	payload, err := adaptor.convertToRequestPayload(&relaycommon.TaskSubmitReq{
+		Model: "doubao-seedance-2-0-260128",
+		InputReferences: []taskdto.OpenRouterVideoInputReference{
+			{
+				Type:     "image_url",
+				ImageURL: &taskdto.OpenRouterVideoURL{URL: "https://example.com/reference.png"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, payload.Content)
+	assert.Equal(t, "image_url", payload.Content[0].Type)
+	assert.Equal(t, "reference_image", payload.Content[0].Role)
+	require.NotNil(t, payload.Content[0].ImageURL)
+	assert.Equal(t, "https://example.com/reference.png", payload.Content[0].ImageURL.URL)
 }
 
 func TestValidateOnlyAppliesStrictEstimatorToTieredSeedance20(t *testing.T) {

@@ -486,6 +486,7 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		switch reference.Type {
 		case "image_url":
 			item.ImageURL = &MediaURL{URL: reference.ImageURL.URL}
+			item.Role = "reference_image"
 		case "audio_url":
 			item.AudioURL = &MediaURL{URL: reference.AudioURL.URL}
 		case "video_url":

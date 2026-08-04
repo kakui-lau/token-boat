@@ -63,9 +63,29 @@ type taskResponse struct {
 	Result          struct {
 		Videos []string `json:"videos"`
 	} `json:"result,omitempty"`
-	Error   any    `json:"error,omitempty"`
-	Code    any    `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
+	Error        any    `json:"error,omitempty"`
+	Code         any    `json:"code,omitempty"`
+	Message      string `json:"message,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+type taskResponseEnvelope struct {
+	Data taskResponse `json:"data"`
+}
+
+func decodeTaskResponse(body []byte) (taskResponse, error) {
+	var envelope taskResponseEnvelope
+	if err := common.Unmarshal(body, &envelope); err != nil {
+		return taskResponse{}, err
+	}
+	if envelope.Data.TaskID != "" || envelope.Data.Status != "" {
+		return envelope.Data, nil
+	}
+	var response taskResponse
+	if err := common.Unmarshal(body, &response); err != nil {
+		return taskResponse{}, err
+	}
+	return response, nil
 }
 
 type TaskAdaptor struct {
@@ -228,8 +248,8 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
-	var upstream taskResponse
-	if err := common.Unmarshal(body, &upstream); err != nil {
+	upstream, err := decodeTaskResponse(body)
+	if err != nil {
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("unmarshal Anitix response: %w", err), "invalid_response", http.StatusBadGateway)
 	}
 	if strings.TrimSpace(upstream.TaskID) == "" {
@@ -265,8 +285,8 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 }
 
 func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error) {
-	var upstream taskResponse
-	if err := common.Unmarshal(body, &upstream); err != nil {
+	upstream, err := decodeTaskResponse(body)
+	if err != nil {
 		return nil, fmt.Errorf("unmarshal Anitix task result: %w", err)
 	}
 	result := &relaycommon.TaskInfo{}
@@ -288,7 +308,10 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 	case "failed", "error":
 		result.Status = string(model.TaskStatusFailure)
 		result.Progress = taskcommon.ProgressComplete
-		result.Reason = upstream.Message
+		result.Reason = upstream.ErrorMessage
+		if result.Reason == "" {
+			result.Reason = upstream.Message
+		}
 		if result.Reason == "" {
 			result.Reason = fmt.Sprint(upstream.Error)
 		}

@@ -71,16 +71,36 @@ func TestBuildRequestBodyConvertsOpenRouterFramesToAnitixOptions(t *testing.T) {
 
 func TestParseTaskResultReturnsAllDirectVideoURLs(t *testing.T) {
 	result, err := (&TaskAdaptor{}).ParseTaskResult([]byte(`{
-		"task_id":"task_123",
-		"status":"completed",
-		"progress":100,
-		"result":{"videos":["https://cdn.example/a.mp4","https://cdn.example/b.mp4"]}
+		"code":200,
+		"message":"success",
+		"data":{
+			"task_id":"task_123",
+			"status":"completed",
+			"progress":100,
+			"result":{"videos":["https://cdn.example/a.mp4","https://cdn.example/b.mp4"]}
+		}
 	}`))
 	require.NoError(t, err)
 	assert.Equal(t, string(model.TaskStatusSuccess), result.Status)
 	assert.Equal(t, "100%", result.Progress)
 	assert.Equal(t, "https://cdn.example/a.mp4", result.RemoteUrl)
 	assert.Equal(t, []string{"https://cdn.example/a.mp4", "https://cdn.example/b.mp4"}, result.RemoteUrls)
+}
+
+func TestDoResponseReadsTaskIDFromAnitixEnvelope(t *testing.T) {
+	response := &http.Response{
+		Body: io.NopCloser(strings.NewReader(`{
+			"code":200,
+			"message":"success",
+			"data":{"message":"任务已提交","status":"pending","task_id":"task_123"}
+		}`)),
+	}
+	context, info := newOpenRouterVideoContext(`{"model":"byteplus/seedance-2.0-fast","prompt":"test"}`)
+	info.PublicTaskID = "video_public"
+
+	taskID, _, taskErr := (&TaskAdaptor{}).DoResponse(context, response, info)
+	require.Nil(t, taskErr)
+	assert.Equal(t, "task_123", taskID)
 }
 
 func TestDoRequestPreservesRejectedResponseForRelayError(t *testing.T) {

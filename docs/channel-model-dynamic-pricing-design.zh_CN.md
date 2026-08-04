@@ -2250,6 +2250,8 @@ pricing_runtime_mode:
 
 本次 `request_pricing_snapshots` 需要新增或确认以下 nullable 字段：`base_retail_amount`、`estimated_customer_charge`、`customer_charge`、`applied_group`、`applied_group_ratio`、`quota_per_unit`、`total_variable_cost_rate`、`effective_tax_rate`、`minimum_margin_rate`、`net_margin_rate`、`margin_compliant`、`billing_source`、`subscription_id`、`gross_margin_known`。旧版本应用会忽略这些增量列，因此采用“结构先行、应用后发”兼容滚动。不得删除旧列，也不得把历史 `customer_charge` 从 `retail_amount` 猜测回填；历史 `billing_source` 和 `gross_margin_known` 保持未知。
 
+本次系统模型别名能力还会在 `models` 增加 `visibility`、`model_purpose` 和 nullable `routing_target_model_id`。三列均为向后兼容的增量字段；旧记录的空 `visibility` 按 `public` 解释。迁移后先创建目标直连模型及完整 V2 价格链，再创建别名记录，禁止反向顺序。
+
 #### 18.7.2 价格数据准备
 
 1. 每个启用的 `ability(group, model, channel)` 都必须能唯一映射到启用的 `channel_model`，上游模型名与渠道 `model_mapping` 一致。
@@ -2293,6 +2295,77 @@ pricing_runtime_mode:
 #### 18.7.6 回滚原则
 
 当前后台不提供从 V2 回退 legacy 的操作，避免在新旧计费之间产生双重口径。发生阻断性事故时回滚到上一稳定应用镜像，保持新增表和 nullable 列不动；旧镜像会忽略增量字段。价格版本是不可变财务证据，禁止通过修改已发布采购/销售版本或删除请求快照“回滚数据”。回滚后继续保留并导出事故窗口内的 `request_pricing_snapshots`、任务结算状态、额度日志和供应商成本，完成财务对账后再发布修复版本。
+
+### 18.8 系统模型别名（Codex 自动审批模型）
+
+`codex-auto-review` 不是一个需要单独采购、定价和建渠道的真实上游模型，而是平台内部稳定的请求名称。管理员把它配置为系统别名，并将路由目标设置为 `openai/gpt-5.6-terra`。请求进入分发中间件后先解析别名，后续所有财务和运行时行为只读取 Terra 的现有配置：
+
+```text
+客户端请求 codex-auto-review
+        ↓
+models 精确匹配系统别名
+        ↓
+解析 routing_target_model_id → openai/gpt-5.6-terra
+        ↓
+Token 权限、V2 价格目录、候选渠道、利润门禁、重试、熔断
+        ↓
+按 Terra 的渠道模型、采购版本、销售版本和用户分组倍率结算
+```
+
+#### 18.8.1 数据模型
+
+系统别名复用 `models`，不新增独立别名表：
+
+| 字段 | 说明 |
+|---|---|
+| `visibility` | `public` 或 `internal`；系统别名强制为 `internal` |
+| `model_purpose` | 当前支持 `approval_review`，表示自动审批审核 |
+| `routing_target_model_id` | 指向目标直连模型的 `models.id`；为空表示普通直连模型 |
+
+约束如下：
+
+1. 别名必须使用精确名称匹配，不能使用前缀、包含或后缀规则。
+2. 目标必须存在、启用且为精确匹配的直连模型。
+3. 禁止自引用、别名链和环形引用；别名不能再指向另一个别名。
+4. 被引用的目标模型不能停用、删除、改成规则匹配或转换成别名。
+5. 别名强制关闭官方同步，不配置 `endpoints`，不创建 `abilities`、`channel_models`、官方价、采购价或销售价。
+6. 别名不显示在模型广场、公开价格目录和官方价格管理列表中；模型管理列表仍显示它及其目标，便于审计。
+
+未单独建立数据库外键，是为了兼容 SQLite、MySQL 和 PostgreSQL 的现有软删除及迁移策略；所有写入仍由服务层执行同等引用完整性校验。
+
+#### 18.8.2 路由和计费语义
+
+别名必须在渠道选择之前解析。解析完成后：
+
+- `original_model`、V2 目录查询、报价、预扣、结算和用量统计使用目标模型名；因此 `codex-auto-review → openai/gpt-5.6-terra` 必然使用 Terra 的价格，不能读取或生成别名价格。
+- Token 模型访问限制按目标模型校验；允许使用 Terra 的密钥才能调用该别名。
+- 渠道映射、低价候选、利润红线、渠道亲和、重试和熔断全部沿用 Terra 的候选集合。
+- 请求日志的主模型维度记录目标模型，管理审计附加 `requested_model_name=codex-auto-review` 和 `resolved_model_name=openai/gpt-5.6-terra`，既保证财务聚合统一，又能追踪调用来源。
+- 精确报价接口接受别名，但按目标模型报价，同时返回请求模型名和 `resolved_model_name`。
+
+解析目录使用进程内只读快照并定时刷新；后台增删改模型会立即失效本实例缓存，其他副本最迟在 30 秒 TTL 后读取新配置。切换目标会改变之后新请求的路由与价格，已经冻结价格快照的请求和异步任务不受影响。
+
+#### 18.8.3 后台交互
+
+模型表单增加“路由与可见性”：
+
+- `直连模型`：继续配置匹配规则、端点、旧价格兼容字段、可见性和官方同步。
+- `系统别名`：选择系统用途和启用的精确目标模型；隐藏匹配、端点和旧价格配置，并明确提示不需要重复定价。
+
+模型列表增加“模型类型”，别名行同时展示“系统别名”和实际路由目标。别名详情展示目标模型继承的有效渠道、分组、端点和计费类型，不把继承信息误认为别名自有配置。
+
+#### 18.8.4 首次配置与发布核验
+
+首次上线按以下顺序执行：
+
+1. 完成增量数据库迁移，确认 `models` 三个新字段存在。
+2. 确认 `openai/gpt-5.6-terra` 为启用的精确模型，并具有完整、已发布、可路由的 V2 官方价—采购价—销售价链。
+3. 在模型管理中新建 `codex-auto-review`，选择“系统别名 / 自动审批审核 / openai/gpt-5.6-terra”。
+4. 验证模型广场和公开价格目录不显示别名，模型管理列表能显示别名目标。
+5. 使用受限测试账号调用 `/v1/responses`，请求模型传 `codex-auto-review`；核对实际渠道、销售版本、用户分组倍率、扣费和日志中的 requested/resolved 模型。
+6. 分别模拟目标渠道成功、429、5xx 和超时，确认重试及熔断与直接请求 Terra 共用同一状态。
+
+生产回滚只删除或停用别名记录即可阻止新的别名请求，不能修改 Terra 的价格历史；如果直接停用 Terra，会同时影响所有正常 Terra 请求，因此后端会拒绝在存在启用别名引用时停用目标。
 
 ## 19. 测试
 

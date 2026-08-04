@@ -27,6 +27,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  HandCoins,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -42,6 +43,10 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -139,25 +144,37 @@ export function useSidebarData(): SidebarData {
             title: t('Official Pricing'),
             url: '/official-pricing',
             icon: BadgeDollarSign,
-            requiredRole: ROLE.SUPER_ADMIN,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.PRICING,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
           },
           {
             title: t('Channel Pricing'),
             url: '/pricing-admin',
             icon: Coins,
-            requiredRole: ROLE.SUPER_ADMIN,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.PRICING,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
           },
           {
             title: t('Pricing Reconciliation'),
             url: '/pricing-reconciliation',
             icon: ClipboardCheck,
-            requiredRole: ROLE.SUPER_ADMIN,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.PRICING_GOVERNANCE,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
           },
           {
             title: t('Circuit Analysis'),
             url: '/circuit-analysis',
             icon: Activity,
-            requiredRole: ROLE.SUPER_ADMIN,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.PRICING_GOVERNANCE,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
           },
           {
             title: t('Channel Daily Usage'),
@@ -178,6 +195,15 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Financial Operations'),
+            url: '/finance',
+            icon: HandCoins,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.FINANCE,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
           },
           {
             title: t('Redemption Codes'),

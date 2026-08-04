@@ -14,6 +14,14 @@ type PermissionsMap map[string]map[string]bool
 const (
 	EffectAllow = "allow"
 	EffectDeny  = "deny"
+
+	ActionRead           = "read"
+	ActionOperate        = "operate"
+	ActionWrite          = "write"
+	ActionPublish        = "publish"
+	ActionExport         = "export"
+	ActionSensitiveWrite = "sensitive_write"
+	ActionSecretView     = "secret_view"
 )
 
 // UserSubject is the casbin subject string for a single user.

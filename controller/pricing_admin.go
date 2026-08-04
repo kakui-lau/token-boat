@@ -2040,12 +2040,12 @@ func requireChannelModelReferences(channelId int, modelId int) error {
 	if channelCount == 0 {
 		return errors.New("渠道不存在")
 	}
-	var modelCount int64
-	if err := model.DB.Model(&model.Model{}).Where("id = ?", modelId).Count(&modelCount).Error; err != nil {
+	var logicalModel model.Model
+	if err := model.DB.First(&logicalModel, modelId).Error; err != nil {
 		return err
 	}
-	if modelCount == 0 {
-		return errors.New("模型不存在")
+	if logicalModel.RoutingTargetModelId != nil {
+		return errors.New("系统模型别名复用目标模型路由，不能创建独立渠道模型")
 	}
 	return nil
 }

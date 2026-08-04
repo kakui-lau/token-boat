@@ -22,6 +22,7 @@ import type {
   GetModelsParams,
   GetModelsResponse,
   GetModelResponse,
+  GetModelRoutingTargetsResponse,
   GetVendorsResponse,
   GetVendorResponse,
   Model,
@@ -67,6 +68,15 @@ export async function searchModels(
  */
 export async function getModel(id: number): Promise<GetModelResponse> {
   const res = await api.get(`/api/models/${id}`)
+  return res.data
+}
+
+export async function getModelRoutingTargets(
+  excludeModelId?: number
+): Promise<GetModelRoutingTargetsResponse> {
+  const res = await api.get('/api/models/routing-targets', {
+    params: excludeModelId ? { exclude_model_id: excludeModelId } : undefined,
+  })
   return res.data
 }
 

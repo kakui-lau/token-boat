@@ -50,6 +50,8 @@ type OfficialPriceOverviewTableProps = {
   onManage: (modelId: number) => void
   onDeleteDraft: (draftId: number) => void
   onPublishDraft: (draftId: number) => void
+  canWrite: boolean
+  canPublish: boolean
 }
 
 function displayPrice(value: string): string {
@@ -336,27 +338,32 @@ export function OfficialPriceOverviewTable(
                         </TableCell>
                         <TableCell className='text-right'>
                           <div className='flex justify-end gap-2'>
-                            {row.latest_draft_id > 0 ? (
+                            {row.latest_draft_id > 0 &&
+                            (props.canWrite || props.canPublish) ? (
                               <>
-                                <Button
-                                  size='sm'
-                                  disabled={props.isPublishing}
-                                  onClick={() =>
-                                    props.onPublishDraft(row.latest_draft_id)
-                                  }
-                                >
-                                  {t('Publish')}
-                                </Button>
-                                <Button
-                                  size='sm'
-                                  variant='destructive'
-                                  disabled={props.isDeleting}
-                                  onClick={() =>
-                                    setDeleteDraftId(row.latest_draft_id)
-                                  }
-                                >
-                                  {t('Delete')}
-                                </Button>
+                                {props.canPublish ? (
+                                  <Button
+                                    size='sm'
+                                    disabled={props.isPublishing}
+                                    onClick={() =>
+                                      props.onPublishDraft(row.latest_draft_id)
+                                    }
+                                  >
+                                    {t('Publish')}
+                                  </Button>
+                                ) : null}
+                                {props.canWrite ? (
+                                  <Button
+                                    size='sm'
+                                    variant='destructive'
+                                    disabled={props.isDeleting}
+                                    onClick={() =>
+                                      setDeleteDraftId(row.latest_draft_id)
+                                    }
+                                  >
+                                    {t('Delete')}
+                                  </Button>
+                                ) : null}
                               </>
                             ) : null}
                             <Button

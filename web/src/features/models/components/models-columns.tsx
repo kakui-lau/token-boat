@@ -202,6 +202,36 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
       enableSorting: false,
     },
 
+    // Routing type column
+    {
+      id: 'routing_type',
+      header: t('Model Type'),
+      meta: { mobileHidden: true },
+      cell: ({ row }) => {
+        const model = row.original
+        if (!model.routing_target_model_id) {
+          return (
+            <StatusBadge variant='neutral' size='sm' copyable={false}>
+              {t('Direct model')}
+            </StatusBadge>
+          )
+        }
+
+        return (
+          <div className='flex min-w-0 flex-col gap-1'>
+            <StatusBadge variant='info' size='sm' copyable={false}>
+              {t('System alias')}
+            </StatusBadge>
+            <span className='text-muted-foreground max-w-48 truncate font-mono text-xs'>
+              {t('Routes to')}: {model.routing_target_model_name || '-'}
+            </span>
+          </div>
+        )
+      },
+      size: 180,
+      enableSorting: false,
+    },
+
     // Status column
     {
       accessorKey: 'status',

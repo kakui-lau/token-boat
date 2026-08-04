@@ -83,8 +83,12 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
 	input.ContentHash = officialPriceContentHash(*input)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
-		if _, err := model.GetLogicalModelForUpdate(tx, input.ModelId); err != nil {
+		logicalModel, err := model.GetLogicalModelForUpdate(tx, input.ModelId)
+		if err != nil {
 			return err
+		}
+		if logicalModel.RoutingTargetModelId != nil {
+			return errors.New("system model aliases reuse their routing target price")
 		}
 		var maxVersion int64
 		if err := tx.Model(&model.OfficialModelPriceVersion{}).
@@ -654,7 +658,7 @@ func PublishRetailPriceVersion(id int) error {
 func ImportLegacyOfficialPriceDrafts(userId int) (LegacyOfficialPriceImportResult, error) {
 	result := LegacyOfficialPriceImportResult{}
 	var models []model.Model
-	if err := model.DB.Order("id ASC").Find(&models).Error; err != nil {
+	if err := model.DB.Where("routing_target_model_id IS NULL").Order("id ASC").Find(&models).Error; err != nil {
 		return result, err
 	}
 	for _, logicalModel := range models {

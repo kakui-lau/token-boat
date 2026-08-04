@@ -20,6 +20,18 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 81, ModelName: "public-quote-model",
 	}).Error)
+	targetModelId := 81
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id:                   86,
+		ModelName:            "internal-quote-alias",
+		Status:               1,
+		NameRule:             model.NameRuleExact,
+		Visibility:           model.ModelVisibilityInternal,
+		ModelPurpose:         model.ModelPurposeApprovalReview,
+		RoutingTargetModelId: &targetModelId,
+	}).Error)
+	model.InvalidateModelRoutingCache()
+	t.Cleanup(model.InvalidateModelRoutingCache)
 	require.NoError(t, model.DB.Create(&model.Channel{
 		Id: 83, Name: "public-quote-channel", Status: common.ChannelStatusEnabled,
 	}).Error)
@@ -58,7 +70,7 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 		http.MethodPost,
 		"/api/pricing/quote",
 		PricingQuoteInput{
-			ModelName: "public-quote-model",
+			ModelName: "internal-quote-alias",
 			Usage:     pricingengine.Usage{PromptTokens: 1_000_000},
 		},
 	)
@@ -74,6 +86,8 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	assert.Equal(t, "2", data["minimum_retail_amount"])
 	assert.Equal(t, "2", data["maximum_reservation_amount"])
 	assert.Equal(t, "default", data["group"])
+	assert.Equal(t, "internal-quote-alias", data["model_name"])
+	assert.Equal(t, "public-quote-model", data["resolved_model_name"])
 	assert.NotContains(t, data, "quotes")
 	assert.NotContains(t, data, "purchase_cost")
 	assert.NotContains(t, data, "channel_id")

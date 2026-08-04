@@ -350,9 +350,7 @@ describe('retail percentage inputs', () => {
     expect(screen.getByText('Selling Factor: 1.12')).toHaveClass(
       'text-emerald-600'
     )
-    expect(
-      screen.getByText(/Purchase Discount: 6\.5\/10/)
-    ).toBeVisible()
+    expect(screen.getByText(/Purchase Discount: 6\.5\/10/)).toBeVisible()
     expect(screen.getByText('Retail Markup: 11.11%')).toBeVisible()
     expect(screen.getByText('Below official price')).toBeVisible()
     expect(screen.getByText('480p')).toBeVisible()

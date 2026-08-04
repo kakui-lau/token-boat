@@ -65,7 +65,9 @@ export function PricingRuntimeStatus() {
             })}
           </Badge>
           <Badge
-            variant={runtime.distributed_circuit_state ? 'outline' : 'destructive'}
+            variant={
+              runtime.distributed_circuit_state ? 'outline' : 'destructive'
+            }
           >
             {runtime.distributed_circuit_state
               ? t('Distributed circuit state is active')

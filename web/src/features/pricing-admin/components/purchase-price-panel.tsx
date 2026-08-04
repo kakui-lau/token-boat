@@ -57,6 +57,8 @@ type PurchasePricePanelProps = {
   onSuspend: (id: number) => void
   onDelete: (id: number) => void
   onCreated: () => Promise<void>
+  canWrite?: boolean
+  canPublish?: boolean
 }
 
 const emptyPrices = {
@@ -297,261 +299,263 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
 
   return (
     <div className='space-y-6'>
-      <form
-        className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
-        onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
-      >
-        <div className='flex items-center justify-between gap-3'>
-          <h3 className='font-medium'>
-            {t(
-              editVersionId ? 'Edit Purchase Version' : 'New Purchase Version'
-            )}
-          </h3>
-          {editVersionId ? (
-            <Button
-              type='button'
-              size='sm'
-              variant='ghost'
-              onClick={() => {
-                form.reset()
-                setEditVersionId(null)
-                setEditVersionUpdatedAt(undefined)
-              }}
-            >
-              {t('Cancel Editing')}
-            </Button>
-          ) : null}
-        </div>
-        <FieldGroup className='grid gap-4 sm:grid-cols-2'>
-          <Field>
-            <FieldLabel htmlFor='purchase-pricing-mode'>
-              {t('Cost Basis')}
-            </FieldLabel>
-            <NativeSelect
-              id='purchase-pricing-mode'
-              className='w-full'
-              {...form.register('pricing_mode')}
-            >
-              <NativeSelectOption value='official_ratio'>
-                {t('Official Discount')}
-              </NativeSelectOption>
-              <NativeSelectOption value='component_ratio'>
-                {t('Component Discounts')}
-              </NativeSelectOption>
-              <NativeSelectOption value='fixed_unit_price'>
-                {t('Fixed Prices')}
-              </NativeSelectOption>
-            </NativeSelect>
-          </Field>
-          {pricingMode !== 'fixed_unit_price' ? (
-            <Field
-              data-invalid={Boolean(
-                form.formState.errors.official_price_version_id
+      {props.canWrite !== false ? (
+        <form
+          className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
+          onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
+        >
+          <div className='flex items-center justify-between gap-3'>
+            <h3 className='font-medium'>
+              {t(
+                editVersionId ? 'Edit Purchase Version' : 'New Purchase Version'
               )}
-            >
-              <FieldLabel htmlFor='purchase-official-version'>
-                {t('Official Version')}
+            </h3>
+            {editVersionId ? (
+              <Button
+                type='button'
+                size='sm'
+                variant='ghost'
+                onClick={() => {
+                  form.reset()
+                  setEditVersionId(null)
+                  setEditVersionUpdatedAt(undefined)
+                }}
+              >
+                {t('Cancel Editing')}
+              </Button>
+            ) : null}
+          </div>
+          <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+            <Field>
+              <FieldLabel htmlFor='purchase-pricing-mode'>
+                {t('Cost Basis')}
               </FieldLabel>
               <NativeSelect
-                id='purchase-official-version'
+                id='purchase-pricing-mode'
                 className='w-full'
-                aria-invalid={Boolean(
+                {...form.register('pricing_mode')}
+              >
+                <NativeSelectOption value='official_ratio'>
+                  {t('Official Discount')}
+                </NativeSelectOption>
+                <NativeSelectOption value='component_ratio'>
+                  {t('Component Discounts')}
+                </NativeSelectOption>
+                <NativeSelectOption value='fixed_unit_price'>
+                  {t('Fixed Prices')}
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            {pricingMode !== 'fixed_unit_price' ? (
+              <Field
+                data-invalid={Boolean(
                   form.formState.errors.official_price_version_id
                 )}
-                {...form.register('official_price_version_id')}
               >
-                <NativeSelectOption value=''>
-                  {t('Select a version')}
-                </NativeSelectOption>
-                {eligibleOfficialVersions.map((version) => (
-                  <NativeSelectOption
-                    key={version.id}
-                    value={String(version.id)}
-                  >
-                    {t('Version')} {version.version} · {t(version.status)}
-                    {' · '}
-                    {t(version.price_structure)}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <FieldError>
-                {form.formState.errors.official_price_version_id?.message
-                  ? t(form.formState.errors.official_price_version_id.message)
-                  : null}
-              </FieldError>
-              {eligibleOfficialVersions.length === 0 ? (
-                <p className='text-muted-foreground text-xs'>
-                  {t(
-                    'Publish a compatible official price before creating a discount-based purchase version.'
+                <FieldLabel htmlFor='purchase-official-version'>
+                  {t('Official Version')}
+                </FieldLabel>
+                <NativeSelect
+                  id='purchase-official-version'
+                  className='w-full'
+                  aria-invalid={Boolean(
+                    form.formState.errors.official_price_version_id
                   )}
-                </p>
-              ) : null}
-            </Field>
-          ) : null}
-          {pricingMode === 'fixed_unit_price' ? (
+                  {...form.register('official_price_version_id')}
+                >
+                  <NativeSelectOption value=''>
+                    {t('Select a version')}
+                  </NativeSelectOption>
+                  {eligibleOfficialVersions.map((version) => (
+                    <NativeSelectOption
+                      key={version.id}
+                      value={String(version.id)}
+                    >
+                      {t('Version')} {version.version} · {t(version.status)}
+                      {' · '}
+                      {t(version.price_structure)}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                <FieldError>
+                  {form.formState.errors.official_price_version_id?.message
+                    ? t(form.formState.errors.official_price_version_id.message)
+                    : null}
+                </FieldError>
+                {eligibleOfficialVersions.length === 0 ? (
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Publish a compatible official price before creating a discount-based purchase version.'
+                    )}
+                  </p>
+                ) : null}
+              </Field>
+            ) : null}
+            {pricingMode === 'fixed_unit_price' ? (
+              <Field>
+                <FieldLabel htmlFor='purchase-currency'>
+                  {t('Currency')}
+                </FieldLabel>
+                <Input
+                  id='purchase-currency'
+                  maxLength={8}
+                  disabled
+                  {...form.register('currency')}
+                />
+              </Field>
+            ) : null}
+            {pricingMode === 'official_ratio' ? (
+              <DiscountInputField
+                id='purchase-discount'
+                label='Purchase Discount'
+                registration={form.register('purchase_discount')}
+                error={form.formState.errors.purchase_discount}
+              />
+            ) : null}
+            {pricingMode === 'component_ratio' ? (
+              <>
+                <DiscountInputField
+                  id='purchase-input-discount'
+                  label='Input discount'
+                  registration={form.register('input_discount')}
+                  error={form.formState.errors.input_discount}
+                />
+                <DiscountInputField
+                  id='purchase-output-discount'
+                  label='Output discount'
+                  registration={form.register('output_discount')}
+                  error={form.formState.errors.output_discount}
+                />
+                <DiscountInputField
+                  id='purchase-cache-read-discount'
+                  label='Cache read discount'
+                  registration={form.register('cache_read_discount')}
+                  error={form.formState.errors.cache_read_discount}
+                />
+                <DiscountInputField
+                  id='purchase-cache-write-discount'
+                  label='Cache write discount'
+                  registration={form.register('cache_write_discount')}
+                  error={form.formState.errors.cache_write_discount}
+                />
+                <DiscountInputField
+                  id='purchase-image-input-discount'
+                  label='Image input discount'
+                  registration={form.register('image_input_discount')}
+                  error={form.formState.errors.image_input_discount}
+                />
+                <DiscountInputField
+                  id='purchase-image-output-discount'
+                  label='Image output discount'
+                  registration={form.register('image_output_discount')}
+                  error={form.formState.errors.image_output_discount}
+                />
+                <DiscountInputField
+                  id='purchase-audio-input-discount'
+                  label='Audio input discount'
+                  registration={form.register('audio_input_discount')}
+                  error={form.formState.errors.audio_input_discount}
+                />
+                <DiscountInputField
+                  id='purchase-audio-output-discount'
+                  label='Audio output discount'
+                  registration={form.register('audio_output_discount')}
+                  error={form.formState.errors.audio_output_discount}
+                />
+              </>
+            ) : null}
+            {pricingMode === 'fixed_unit_price' ? (
+              <>
+                <PriceInputField
+                  id='purchase-input-price'
+                  label='Input / 1M tokens'
+                  registration={form.register('input_unit_price')}
+                  error={form.formState.errors.input_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-output-price'
+                  label='Output / 1M tokens'
+                  registration={form.register('output_unit_price')}
+                  error={form.formState.errors.output_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-cache-read-price'
+                  label='Cache Read / 1M tokens'
+                  registration={form.register('cache_read_unit_price')}
+                  error={form.formState.errors.cache_read_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-cache-write-price'
+                  label='Cache Write / 1M tokens'
+                  registration={form.register('cache_write_unit_price')}
+                  error={form.formState.errors.cache_write_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-image-input-price'
+                  label='Image Input / 1M tokens'
+                  registration={form.register('image_input_unit_price')}
+                  error={form.formState.errors.image_input_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-image-output-price'
+                  label='Image Output / 1M tokens'
+                  registration={form.register('image_output_unit_price')}
+                  error={form.formState.errors.image_output_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-audio-input-price'
+                  label='Audio Input / 1M tokens'
+                  registration={form.register('audio_input_unit_price')}
+                  error={form.formState.errors.audio_input_unit_price}
+                />
+                <PriceInputField
+                  id='purchase-audio-output-price'
+                  label='Audio Output / 1M tokens'
+                  registration={form.register('audio_output_unit_price')}
+                  error={form.formState.errors.audio_output_unit_price}
+                />
+              </>
+            ) : null}
             <Field>
-              <FieldLabel htmlFor='purchase-currency'>
-                {t('Currency')}
+              <FieldLabel htmlFor='purchase-quote-reference'>
+                {t('Quote ID')}
               </FieldLabel>
               <Input
-                id='purchase-currency'
-                maxLength={8}
-                disabled
-                {...form.register('currency')}
+                id='purchase-quote-reference'
+                {...form.register('quote_reference')}
               />
             </Field>
-          ) : null}
-          {pricingMode === 'official_ratio' ? (
-            <DiscountInputField
-              id='purchase-discount'
-              label='Purchase Discount'
-              registration={form.register('purchase_discount')}
-              error={form.formState.errors.purchase_discount}
-            />
-          ) : null}
-          {pricingMode === 'component_ratio' ? (
-            <>
-              <DiscountInputField
-                id='purchase-input-discount'
-                label='Input discount'
-                registration={form.register('input_discount')}
-                error={form.formState.errors.input_discount}
+            <Field>
+              <FieldLabel htmlFor='purchase-contract-reference'>
+                {t('Contract ID')}
+              </FieldLabel>
+              <Input
+                id='purchase-contract-reference'
+                {...form.register('contract_reference')}
               />
-              <DiscountInputField
-                id='purchase-output-discount'
-                label='Output discount'
-                registration={form.register('output_discount')}
-                error={form.formState.errors.output_discount}
-              />
-              <DiscountInputField
-                id='purchase-cache-read-discount'
-                label='Cache read discount'
-                registration={form.register('cache_read_discount')}
-                error={form.formState.errors.cache_read_discount}
-              />
-              <DiscountInputField
-                id='purchase-cache-write-discount'
-                label='Cache write discount'
-                registration={form.register('cache_write_discount')}
-                error={form.formState.errors.cache_write_discount}
-              />
-              <DiscountInputField
-                id='purchase-image-input-discount'
-                label='Image input discount'
-                registration={form.register('image_input_discount')}
-                error={form.formState.errors.image_input_discount}
-              />
-              <DiscountInputField
-                id='purchase-image-output-discount'
-                label='Image output discount'
-                registration={form.register('image_output_discount')}
-                error={form.formState.errors.image_output_discount}
-              />
-              <DiscountInputField
-                id='purchase-audio-input-discount'
-                label='Audio input discount'
-                registration={form.register('audio_input_discount')}
-                error={form.formState.errors.audio_input_discount}
-              />
-              <DiscountInputField
-                id='purchase-audio-output-discount'
-                label='Audio output discount'
-                registration={form.register('audio_output_discount')}
-                error={form.formState.errors.audio_output_discount}
-              />
-            </>
-          ) : null}
-          {pricingMode === 'fixed_unit_price' ? (
-            <>
-              <PriceInputField
-                id='purchase-input-price'
-                label='Input / 1M tokens'
-                registration={form.register('input_unit_price')}
-                error={form.formState.errors.input_unit_price}
-              />
-              <PriceInputField
-                id='purchase-output-price'
-                label='Output / 1M tokens'
-                registration={form.register('output_unit_price')}
-                error={form.formState.errors.output_unit_price}
-              />
-              <PriceInputField
-                id='purchase-cache-read-price'
-                label='Cache Read / 1M tokens'
-                registration={form.register('cache_read_unit_price')}
-                error={form.formState.errors.cache_read_unit_price}
-              />
-              <PriceInputField
-                id='purchase-cache-write-price'
-                label='Cache Write / 1M tokens'
-                registration={form.register('cache_write_unit_price')}
-                error={form.formState.errors.cache_write_unit_price}
-              />
-              <PriceInputField
-                id='purchase-image-input-price'
-                label='Image Input / 1M tokens'
-                registration={form.register('image_input_unit_price')}
-                error={form.formState.errors.image_input_unit_price}
-              />
-              <PriceInputField
-                id='purchase-image-output-price'
-                label='Image Output / 1M tokens'
-                registration={form.register('image_output_unit_price')}
-                error={form.formState.errors.image_output_unit_price}
-              />
-              <PriceInputField
-                id='purchase-audio-input-price'
-                label='Audio Input / 1M tokens'
-                registration={form.register('audio_input_unit_price')}
-                error={form.formState.errors.audio_input_unit_price}
-              />
-              <PriceInputField
-                id='purchase-audio-output-price'
-                label='Audio Output / 1M tokens'
-                registration={form.register('audio_output_unit_price')}
-                error={form.formState.errors.audio_output_unit_price}
-              />
-            </>
+            </Field>
+          </FieldGroup>
+          {pricingMode !== 'fixed_unit_price' ? (
+            <p className='text-muted-foreground text-xs'>
+              {t('Enter 7 for 70% of the official price.')}
+            </p>
           ) : null}
           <Field>
-            <FieldLabel htmlFor='purchase-quote-reference'>
-              {t('Quote ID')}
-            </FieldLabel>
-            <Input
-              id='purchase-quote-reference'
-              {...form.register('quote_reference')}
-            />
+            <FieldLabel htmlFor='purchase-remark'>{t('Remark')}</FieldLabel>
+            <Textarea id='purchase-remark' {...form.register('remark')} />
           </Field>
-          <Field>
-            <FieldLabel htmlFor='purchase-contract-reference'>
-              {t('Contract ID')}
-            </FieldLabel>
-            <Input
-              id='purchase-contract-reference'
-              {...form.register('contract_reference')}
-            />
-          </Field>
-        </FieldGroup>
-        {pricingMode !== 'fixed_unit_price' ? (
-          <p className='text-muted-foreground text-xs'>
-            {t('Enter 7 for 70% of the official price.')}
-          </p>
-        ) : null}
-        <Field>
-          <FieldLabel htmlFor='purchase-remark'>{t('Remark')}</FieldLabel>
-          <Textarea id='purchase-remark' {...form.register('remark')} />
-        </Field>
-        <Button
-          type='submit'
-          disabled={
-            createMutation.isPending ||
-            (pricingMode !== 'fixed_unit_price' &&
-              eligibleOfficialVersions.length === 0)
-          }
-        >
-          {t(editVersionId ? 'Update Draft' : 'Save Draft')}
-        </Button>
-      </form>
+          <Button
+            type='submit'
+            disabled={
+              createMutation.isPending ||
+              (pricingMode !== 'fixed_unit_price' &&
+                eligibleOfficialVersions.length === 0)
+            }
+          >
+            {t(editVersionId ? 'Update Draft' : 'Save Draft')}
+          </Button>
+        </form>
+      ) : null}
 
       <section className='space-y-3'>
         <h3 className='font-medium'>{t('Version History')}</h3>
@@ -575,6 +579,8 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           }
           onFill={fillFromVersion}
           onEdit={editVersion}
+          canWrite={props.canWrite}
+          canPublish={props.canPublish}
         />
       </section>
       <ChannelPriceVersionDialog

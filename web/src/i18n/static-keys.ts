@@ -123,6 +123,28 @@ export const STATIC_I18N_KEYS = [
   'Failed to delete user',
   'No user selected',
 
+  // Fine-grained administrator permissions (backend catalog labels)
+  'View financial operations',
+  'View platform balances, recharge orders, payment statistics, and financial reports.',
+  'Operate financial orders',
+  'Manually complete recharge orders and perform other audited financial operations.',
+  'Export financial data',
+  'Export recharge orders and financial reports.',
+  'View model pricing',
+  'View official, purchase, and retail price versions and channel pricing details.',
+  'Create and edit price drafts, channel models, and pricing runtime settings.',
+  'Publish model pricing',
+  'Publish or suspend official, purchase, and retail price versions.',
+  'Export model pricing',
+  'Export channel pricing and model price reports.',
+  'Pricing Governance',
+  'View pricing governance',
+  'View billing reconciliation, cost coverage, and channel circuit status.',
+  'Operate pricing governance',
+  'Confirm refunds, record supplier costs, and reset channel circuits.',
+  'Export pricing governance data',
+  'Export billing reconciliation and anomaly reports.',
+
   // Redemption codes
   'Unused',
   'Disabled',
@@ -556,6 +578,14 @@ export const STATIC_I18N_KEYS = [
   'The user group applied to the requests',
   'The model that was requested',
   'The upstream channel that served the requests',
+
+  // Finance alert titles returned by the backend
+  'Payment callback requires review',
+  'Payment callback processing failed',
+  'Duplicate payment callback received',
+  'Negative user wallet balance',
+  'Recharge order remained pending for over 24 hours',
+  'Completed recharge order is missing completion time',
 
   // Misc
   'Cancel',

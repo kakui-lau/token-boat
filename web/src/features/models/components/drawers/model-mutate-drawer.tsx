@@ -82,31 +82,52 @@ import { normalizeJsonString } from '@/features/system-settings/models/utils'
 import type { ModelSettings } from '@/features/system-settings/types'
 import { safeJsonParse } from '@/features/system-settings/utils/json-parser'
 
-import { createModel, updateModel, getModel, getVendors } from '../../api'
+import {
+  createModel,
+  updateModel,
+  getModel,
+  getModelRoutingTargets,
+  getVendors,
+} from '../../api'
 import { getNameRuleOptions, ENDPOINT_TEMPLATES } from '../../constants'
 import { modelsQueryKeys, vendorsQueryKeys, parseModelTags } from '../../lib'
+import { buildModelRoutingFields } from '../../lib/model-routing'
 import type { Model } from '../../types'
 
 // Extended schema for ratio configuration (internal form state only)
-const extendedModelFormSchema = z.object({
-  id: z.number().optional(),
-  model_name: z.string().min(1, 'Model name is required'),
-  description: z.string(),
-  icon: z.string(),
-  tags: z.array(z.string()),
-  vendor_id: z.number().optional(),
-  endpoints: z.string(),
-  name_rule: z.number(),
-  status: z.boolean(),
-  sync_official: z.boolean(),
-  price: z.string().optional(),
-  ratio: z.string().optional(),
-  cacheRatio: z.string().optional(),
-  completionRatio: z.string().optional(),
-  imageRatio: z.string().optional(),
-  audioRatio: z.string().optional(),
-  audioCompletionRatio: z.string().optional(),
-})
+const extendedModelFormSchema = z
+  .object({
+    id: z.number().optional(),
+    model_name: z.string().min(1, 'Model name is required'),
+    description: z.string(),
+    icon: z.string(),
+    tags: z.array(z.string()),
+    vendor_id: z.number().optional(),
+    endpoints: z.string(),
+    name_rule: z.number(),
+    status: z.boolean(),
+    sync_official: z.boolean(),
+    routing_mode: z.enum(['direct', 'alias']),
+    visibility: z.enum(['public', 'internal']),
+    model_purpose: z.string(),
+    routing_target_model_id: z.number().nullable().optional(),
+    price: z.string().optional(),
+    ratio: z.string().optional(),
+    cacheRatio: z.string().optional(),
+    completionRatio: z.string().optional(),
+    imageRatio: z.string().optional(),
+    audioRatio: z.string().optional(),
+    audioCompletionRatio: z.string().optional(),
+  })
+  .superRefine((values, context) => {
+    if (values.routing_mode === 'alias' && !values.routing_target_model_id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['routing_target_model_id'],
+        message: 'Routing target is required',
+      })
+    }
+  })
 
 type ExtendedModelFormValues = z.infer<typeof extendedModelFormSchema>
 
@@ -193,9 +214,7 @@ function readPricingConfig(
     return {
       ...EMPTY_PRICING_CONFIG,
       mode:
-        billingMode === 'video_per_second'
-          ? 'video_per_second'
-          : 'per-request',
+        billingMode === 'video_per_second' ? 'video_per_second' : 'per-request',
       fields: { ...EMPTY_PRICING_FIELDS, price: price.toString() },
     }
   }
@@ -273,6 +292,17 @@ export function ModelMutateDrawer({
   })
 
   const vendors = vendorsData?.data?.items || []
+
+  const { data: routingTargetsData } = useQuery({
+    queryKey: [...modelsQueryKeys.all, 'routing-targets', currentModelId],
+    queryFn: () => getModelRoutingTargets(currentModelId || undefined),
+    enabled: open,
+  })
+
+  const routingTargets = useMemo(
+    () => routingTargetsData?.data || [],
+    [routingTargetsData]
+  )
 
   // Fetch model detail if editing
   const { data: modelData } = useQuery({
@@ -376,6 +406,10 @@ export function ModelMutateDrawer({
       name_rule: 0,
       status: true,
       sync_official: true,
+      routing_mode: 'direct',
+      visibility: 'public',
+      model_purpose: '',
+      routing_target_model_id: null,
       price: '',
       ratio: '',
       cacheRatio: '',
@@ -444,6 +478,10 @@ export function ModelMutateDrawer({
         name_rule: model.name_rule || 0,
         status: model.status === 1,
         sync_official: model.sync_official === 1,
+        routing_mode: model.routing_target_model_id ? 'alias' : 'direct',
+        visibility: model.visibility === 'internal' ? 'internal' : 'public',
+        model_purpose: model.model_purpose || '',
+        routing_target_model_id: model.routing_target_model_id || null,
         ...pricing.fields,
       })
     } else if (open && !isEditing) {
@@ -469,6 +507,10 @@ export function ModelMutateDrawer({
         name_rule: 0,
         status: true,
         sync_official: true,
+        routing_mode: 'direct',
+        visibility: 'public',
+        model_purpose: '',
+        routing_target_model_id: null,
         ...pricing.fields,
       })
     }
@@ -478,12 +520,14 @@ export function ModelMutateDrawer({
     async (values: ExtendedModelFormValues): Promise<void> => {
       setIsSubmitting(true)
       try {
+        const { routing_mode: routingModeValue, ...persistedValues } = values
+        const isRoutingAlias = routingModeValue === 'alias'
         const submitData = {
-          ...values,
+          ...persistedValues,
+          ...buildModelRoutingFields(values),
           id: isEditing ? currentModelId : undefined,
           tags: Array.isArray(values.tags) ? values.tags.join(',') : '',
           status: values.status ? 1 : 0,
-          sync_official: values.sync_official ? 1 : 0,
         }
 
         // Remove ratio fields from model data (they're stored in system settings)
@@ -507,17 +551,18 @@ export function ModelMutateDrawer({
           // Handle ratio configuration updates in system settings
           const finalModelName = values.model_name
           const hasRatioConfig =
-            ((pricingMode === 'per-request' ||
+            !isRoutingAlias &&
+            (((pricingMode === 'per-request' ||
               pricingMode === 'video_per_second') &&
               values.price &&
               values.price !== '') ||
-            (pricingMode === 'per-token' &&
-              (values.ratio ||
-                values.cacheRatio ||
-                values.completionRatio ||
-                values.imageRatio ||
-                values.audioRatio ||
-                values.audioCompletionRatio))
+              (pricingMode === 'per-token' &&
+                (values.ratio ||
+                  values.cacheRatio ||
+                  values.completionRatio ||
+                  values.imageRatio ||
+                  values.audioRatio ||
+                  values.audioCompletionRatio)))
 
           // Always process system settings updates if we have modelSettings
           // This ensures we can remove stale entries even when clearing all pricing fields
@@ -722,17 +767,17 @@ export function ModelMutateDrawer({
 
           toast.success(
             isEditing
-              ? 'Model updated successfully'
-              : 'Model created successfully'
+              ? t('Model updated successfully')
+              : t('Model created successfully')
           )
           queryClient.invalidateQueries({ queryKey: modelsQueryKeys.lists() })
           queryClient.invalidateQueries({ queryKey: ['system-options'] })
           onOpenChange(false)
         } else {
-          toast.error(response.message || 'Operation failed')
+          toast.error(response.message || t('Operation failed'))
         }
       } catch (error: unknown) {
-        toast.error((error as Error)?.message || 'Operation failed')
+        toast.error((error as Error)?.message || t('Operation failed'))
       } finally {
         setIsSubmitting(false)
       }
@@ -747,6 +792,7 @@ export function ModelMutateDrawer({
       loadedPricingName,
       modelSettings,
       updateOption,
+      t,
     ]
   )
 
@@ -757,6 +803,8 @@ export function ModelMutateDrawer({
       form.setValue('endpoints', templateJson)
     }
   }
+
+  const routingMode = form.watch('routing_mode')
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -909,8 +957,214 @@ export function ModelMutateDrawer({
               />
             </SideDrawerSection>
 
-            {/* Matching Configuration */}
             <SideDrawerSection>
+              <div className='space-y-1'>
+                <h3 className='text-sm font-semibold'>
+                  {t('Routing and visibility')}
+                </h3>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'System aliases resolve to a target model before channel routing and billing.'
+                  )}
+                </p>
+              </div>
+
+              <FormField
+                control={form.control}
+                name='routing_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Routing mode')}</FormLabel>
+                    <Select
+                      items={[
+                        { value: 'direct', label: t('Direct model') },
+                        { value: 'alias', label: t('System alias') },
+                      ]}
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        if (value === 'alias') {
+                          form.setValue('visibility', 'internal')
+                          form.setValue('model_purpose', 'approval_review')
+                          form.setValue('sync_official', false)
+                          form.setValue('name_rule', 0)
+                        } else {
+                          form.setValue('routing_target_model_id', null)
+                          form.setValue('model_purpose', '')
+                        }
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='direct'>
+                            {t('Direct model')}
+                          </SelectItem>
+                          <SelectItem value='alias'>
+                            {t('System alias')}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {routingMode === 'alias'
+                        ? t(
+                            'The request name remains stable while routing, pricing, retries, and circuit breaking use the target model.'
+                          )
+                        : t(
+                            'Direct models use their own channels and price versions.'
+                          )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {routingMode === 'alias' ? (
+                <>
+                  <FormField
+                    control={form.control}
+                    name='model_purpose'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('System purpose')}</FormLabel>
+                        <Select
+                          items={[
+                            {
+                              value: 'approval_review',
+                              label: t('Automatic approval review'),
+                            },
+                          ]}
+                          value={field.value || 'approval_review'}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectItem value='approval_review'>
+                              {t('Automatic approval review')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          {t(
+                            'Used by Codex when an operation requires an automatic permission decision.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='routing_target_model_id'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Routing target')}</FormLabel>
+                        <Select
+                          items={routingTargets.map((candidate) => ({
+                            value: String(candidate.id),
+                            label: candidate.model_name,
+                          }))}
+                          value={field.value ? String(field.value) : undefined}
+                          onValueChange={(value) =>
+                            field.onChange(
+                              value ? Number.parseInt(value) : null
+                            )
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={t('Select target model')}
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {routingTargets.map((candidate) => (
+                                <SelectItem
+                                  key={candidate.id}
+                                  value={String(candidate.id)}
+                                >
+                                  {candidate.model_name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          {t(
+                            'The target model supplies channels, official price, purchase cost, retail price, group multipliers, retries, and circuit state.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className='border-border bg-muted/30 rounded-md border p-3 text-sm'>
+                    <div className='font-medium'>
+                      {t('No duplicate pricing required')}
+                    </div>
+                    <div className='text-muted-foreground mt-1'>
+                      {t(
+                        'This alias is internal and does not create official, purchase, retail, channel-model, or ability records of its own.'
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name='visibility'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Visibility')}</FormLabel>
+                      <Select
+                        items={[
+                          { value: 'public', label: t('Public') },
+                          { value: 'internal', label: t('Internal') },
+                        ]}
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectItem value='public'>{t('Public')}</SelectItem>
+                          <SelectItem value='internal'>
+                            {t('Internal')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t(
+                          'Internal models are hidden from the model marketplace and public pricing catalog.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </SideDrawerSection>
+
+            {/* Matching Configuration */}
+            <SideDrawerSection
+              className={routingMode === 'direct' ? undefined : 'hidden'}
+            >
               <h3 className='text-sm font-semibold'>{t('Matching Rules')}</h3>
 
               <FormField
@@ -956,7 +1210,9 @@ export function ModelMutateDrawer({
             </SideDrawerSection>
 
             {/* Endpoints Configuration */}
-            <SideDrawerSection>
+            <SideDrawerSection
+              className={routingMode === 'direct' ? undefined : 'hidden'}
+            >
               <div className='flex items-center justify-between'>
                 <h3 className='text-sm font-semibold'>{t('Endpoints')}</h3>
                 <Select<string>
@@ -1013,7 +1269,9 @@ export function ModelMutateDrawer({
             </SideDrawerSection>
 
             {/* Pricing Configuration */}
-            <SideDrawerSection>
+            <SideDrawerSection
+              className={routingMode === 'direct' ? undefined : 'hidden'}
+            >
               <h3 className='text-sm font-semibold'>
                 {t('Pricing Configuration')}
               </h3>
@@ -1402,28 +1660,30 @@ export function ModelMutateDrawer({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='sync_official'
-                render={({ field }) => (
-                  <FormItem className={sideDrawerSwitchItemClassName()}>
-                    <div className='flex flex-col gap-0.5'>
-                      <FormLabel className='text-base'>
-                        {t('Official Sync')}
-                      </FormLabel>
-                      <FormDescription>
-                        {t('Sync this model with official upstream')}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
+              {routingMode === 'direct' && (
+                <FormField
+                  control={form.control}
+                  name='sync_official'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='text-base'>
+                          {t('Official Sync')}
+                        </FormLabel>
+                        <FormDescription>
+                          {t('Sync this model with official upstream')}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
             </SideDrawerSection>
           </form>
         </Form>

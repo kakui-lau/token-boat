@@ -39,12 +39,12 @@ import {
   type PriceRule,
   readPriceComponents,
 } from '../lib/price-components'
+import { formatPurchaseDiscount } from '../lib/purchase-discount'
 import {
   formatStoredRatePercentage,
   percentageToStoredRate,
   storedRateToPercentage,
 } from '../lib/rate-format'
-import { formatPurchaseDiscount } from '../lib/purchase-discount'
 import { retailPriceExceedsOfficial } from '../lib/retail-price-cap'
 import { retailPriceSchema, type RetailPriceForm } from '../lib/schemas'
 import type {
@@ -68,6 +68,8 @@ type RetailPricePanelProps = {
   onSuspend: (id: number) => void
   onDelete: (id: number) => void
   onCreated: () => Promise<void>
+  canWrite?: boolean
+  canPublish?: boolean
 }
 
 export function RetailPricePanel(props: RetailPricePanelProps) {
@@ -384,170 +386,177 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
 
   return (
     <div className='space-y-6'>
-      <form
-        className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
-        onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
-      >
-        <div className='flex items-center justify-between gap-3'>
-          <h3 className='font-medium'>
-            {t(editVersionId ? 'Edit Retail Version' : 'New Retail Version')}
-          </h3>
-          {editVersionId ? (
-            <Button
-              type='button'
-              size='sm'
-              variant='ghost'
-              onClick={() => {
-                form.reset()
-                setEditVersionId(null)
-                setEditVersionUpdatedAt(undefined)
-              }}
-            >
-              {t('Cancel Editing')}
-            </Button>
-          ) : null}
-        </div>
-        <FieldGroup className='grid gap-4 sm:grid-cols-2'>
-          <Field
-            data-invalid={Boolean(
-              form.formState.errors.purchase_price_version_id
-            )}
-          >
-            <FieldLabel htmlFor='retail-purchase-version'>
-              {t('Purchase Version')}
-            </FieldLabel>
-            <NativeSelect
-              id='retail-purchase-version'
-              className='w-full'
-              aria-invalid={Boolean(
+      {props.canWrite !== false ? (
+        <form
+          className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
+          onSubmit={form.handleSubmit((value) => createMutation.mutate(value))}
+        >
+          <div className='flex items-center justify-between gap-3'>
+            <h3 className='font-medium'>
+              {t(editVersionId ? 'Edit Retail Version' : 'New Retail Version')}
+            </h3>
+            {editVersionId ? (
+              <Button
+                type='button'
+                size='sm'
+                variant='ghost'
+                onClick={() => {
+                  form.reset()
+                  setEditVersionId(null)
+                  setEditVersionUpdatedAt(undefined)
+                }}
+              >
+                {t('Cancel Editing')}
+              </Button>
+            ) : null}
+          </div>
+          <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+            <Field
+              data-invalid={Boolean(
                 form.formState.errors.purchase_price_version_id
               )}
-              {...form.register('purchase_price_version_id')}
             >
-              <NativeSelectOption value=''>
-                {t('Select a version')}
-              </NativeSelectOption>
-              {eligiblePurchaseVersions.map((version) => (
-                <NativeSelectOption key={version.id} value={String(version.id)}>
-                  {t('Version')} {version.version} · {t(version.status)}
+              <FieldLabel htmlFor='retail-purchase-version'>
+                {t('Purchase Version')}
+              </FieldLabel>
+              <NativeSelect
+                id='retail-purchase-version'
+                className='w-full'
+                aria-invalid={Boolean(
+                  form.formState.errors.purchase_price_version_id
+                )}
+                {...form.register('purchase_price_version_id')}
+              >
+                <NativeSelectOption value=''>
+                  {t('Select a version')}
                 </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <FieldError>
-              {form.formState.errors.purchase_price_version_id?.message
-                ? t(form.formState.errors.purchase_price_version_id.message)
-                : null}
-            </FieldError>
-            {eligiblePurchaseVersions.length === 0 ? (
+                {eligiblePurchaseVersions.map((version) => (
+                  <NativeSelectOption
+                    key={version.id}
+                    value={String(version.id)}
+                  >
+                    {t('Version')} {version.version} · {t(version.status)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <FieldError>
+                {form.formState.errors.purchase_price_version_id?.message
+                  ? t(form.formState.errors.purchase_price_version_id.message)
+                  : null}
+              </FieldError>
+              {eligiblePurchaseVersions.length === 0 ? (
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Create or activate a purchase price version before creating a retail version.'
+                  )}
+                </p>
+              ) : null}
+            </Field>
+            <PercentageInputField
+              id='retail-vcr'
+              label='Variable Cost Rate (VCR)'
+              registration={form.register('total_variable_cost_rate')}
+              error={form.formState.errors.total_variable_cost_rate}
+            />
+            <PercentageInputField
+              id='retail-tax'
+              label='Tax Rate (TR)'
+              registration={form.register('effective_tax_rate')}
+              error={form.formState.errors.effective_tax_rate}
+            />
+            <PercentageInputField
+              id='retail-target-margin'
+              label='Target Margin (TM)'
+              registration={form.register('target_net_margin')}
+              error={form.formState.errors.target_net_margin}
+            />
+            <PercentageInputField
+              id='retail-minimum-margin'
+              label='Margin Floor'
+              description='Used only for price simulation and margin alerts; it does not affect retail price generation.'
+              registration={form.register('minimum_margin_rate')}
+              error={form.formState.errors.minimum_margin_rate}
+            />
+          </FieldGroup>
+          <p className='text-muted-foreground text-xs'>
+            {t(
+              'Enter rates as percentages; for example, enter 16.5 for 16.5%.'
+            )}
+          </p>
+          <Field>
+            <FieldLabel htmlFor='retail-remark'>{t('Remark')}</FieldLabel>
+            <Textarea id='retail-remark' {...form.register('remark')} />
+          </Field>
+          <p className='text-muted-foreground text-xs'>
+            {t(
+              'Retail prices are generated from the selected purchase version and the configured cost and margin rates.'
+            )}
+          </p>
+          {preview ? (
+            <div className='bg-muted/40 space-y-3 rounded-lg border p-3'>
+              <div className='flex flex-wrap items-center justify-between gap-3'>
+                <p className='font-medium'>{t('Price Preview')}</p>
+                {preview.valid ? (
+                  <div className='flex flex-wrap items-center justify-end gap-3 text-xs'>
+                    <span>
+                      {t('Purchase Discount')}:{' '}
+                      {formatPurchaseDiscount(
+                        selectedPurchase?.purchase_discount || '',
+                        t
+                      )}
+                    </span>
+                    <span>
+                      {t('Retail Markup')}:{' '}
+                      {((preview.factor - 1) * 100).toFixed(2)}%
+                    </span>
+                    {selectedOfficial && !exceedsOfficialPrice ? (
+                      <span>{t('Below official price')}</span>
+                    ) : null}
+                    <span className='text-emerald-600 dark:text-emerald-400'>
+                      {t('Selling Factor')}:{' '}
+                      {(Math.ceil(preview.factor * 100) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              {previewPriceDetails}
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  'Create or activate a purchase price version before creating a retail version.'
+                  'This preview is informational. The backend recalculates exact decimal prices when the draft is saved.'
                 )}
               </p>
-            ) : null}
-          </Field>
-          <PercentageInputField
-            id='retail-vcr'
-            label='Variable Cost Rate (VCR)'
-            registration={form.register('total_variable_cost_rate')}
-            error={form.formState.errors.total_variable_cost_rate}
-          />
-          <PercentageInputField
-            id='retail-tax'
-            label='Tax Rate (TR)'
-            registration={form.register('effective_tax_rate')}
-            error={form.formState.errors.effective_tax_rate}
-          />
-          <PercentageInputField
-            id='retail-target-margin'
-            label='Target Margin (TM)'
-            registration={form.register('target_net_margin')}
-            error={form.formState.errors.target_net_margin}
-          />
-          <PercentageInputField
-            id='retail-minimum-margin'
-            label='Margin Floor'
-            description='Used only for price simulation and margin alerts; it does not affect retail price generation.'
-            registration={form.register('minimum_margin_rate')}
-            error={form.formState.errors.minimum_margin_rate}
-          />
-        </FieldGroup>
-        <p className='text-muted-foreground text-xs'>
-          {t('Enter rates as percentages; for example, enter 16.5 for 16.5%.')}
-        </p>
-        <Field>
-          <FieldLabel htmlFor='retail-remark'>{t('Remark')}</FieldLabel>
-          <Textarea id='retail-remark' {...form.register('remark')} />
-        </Field>
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Retail prices are generated from the selected purchase version and the configured cost and margin rates.'
-          )}
-        </p>
-        {preview ? (
-          <div className='bg-muted/40 space-y-3 rounded-lg border p-3'>
-            <div className='flex flex-wrap items-center justify-between gap-3'>
-              <p className='font-medium'>{t('Price Preview')}</p>
-              {preview.valid ? (
-                <div className='flex flex-wrap items-center justify-end gap-3 text-xs'>
-                  <span>
-                    {t('Purchase Discount')}:{' '}
-                    {formatPurchaseDiscount(
-                      selectedPurchase?.purchase_discount || '',
-                      t
-                    )}
-                  </span>
-                  <span>
-                    {t('Retail Markup')}:{' '}
-                    {((preview.factor - 1) * 100).toFixed(2)}%
-                  </span>
-                  {selectedOfficial && !exceedsOfficialPrice ? (
-                    <span>{t('Below official price')}</span>
-                  ) : null}
-                  <span className='text-emerald-600 dark:text-emerald-400'>
-                    {t('Selling Factor')}:{' '}
-                    {(Math.ceil(preview.factor * 100) / 100).toFixed(2)}
-                  </span>
-                </div>
-              ) : null}
             </div>
-            {previewPriceDetails}
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'This preview is informational. The backend recalculates exact decimal prices when the draft is saved.'
+          ) : null}
+          {exceedsOfficialPrice ? (
+            <p
+              className='text-destructive text-sm'
+              role='alert'
+              aria-label={t(
+                'Retail price must be lower than the official price.'
               )}
+            >
+              {t('Retail price must be lower than the official price.')}
             </p>
-          </div>
-        ) : null}
-        {exceedsOfficialPrice ? (
-          <p
-            className='text-destructive text-sm'
-            role='alert'
-            aria-label={t(
-              'Retail price must be lower than the official price.'
-            )}
+          ) : null}
+          {officialPriceUnavailable ? (
+            <p className='text-destructive text-sm' role='alert'>
+              {t('Official price unavailable')}
+            </p>
+          ) : null}
+          <Button
+            type='submit'
+            disabled={
+              createMutation.isPending ||
+              preview?.valid === false ||
+              Boolean(exceedsOfficialPrice) ||
+              officialPriceUnavailable ||
+              eligiblePurchaseVersions.length === 0
+            }
           >
-            {t('Retail price must be lower than the official price.')}
-          </p>
-        ) : null}
-        {officialPriceUnavailable ? (
-          <p className='text-destructive text-sm' role='alert'>
-            {t('Official price unavailable')}
-          </p>
-        ) : null}
-        <Button
-          type='submit'
-          disabled={
-            createMutation.isPending ||
-            preview?.valid === false ||
-            Boolean(exceedsOfficialPrice) ||
-            officialPriceUnavailable ||
-            eligiblePurchaseVersions.length === 0
-          }
-        >
-          {t(editVersionId ? 'Update Draft' : 'Save Draft')}
-        </Button>
-      </form>
+            {t(editVersionId ? 'Update Draft' : 'Save Draft')}
+          </Button>
+        </form>
+      ) : null}
 
       <section className='space-y-3'>
         <h3 className='font-medium'>{t('Version History')}</h3>
@@ -584,6 +593,8 @@ export function RetailPricePanel(props: RetailPricePanelProps) {
           }
           onFill={fillFromVersion}
           onEdit={editVersion}
+          canWrite={props.canWrite}
+          canPublish={props.canPublish}
         />
       </section>
       <ChannelPriceVersionDialog

@@ -42,6 +42,12 @@ import {
 } from '@/features/pricing-admin/api'
 import { OfficialPricePanel } from '@/features/pricing-admin/components/official-price-panel'
 import type { OfficialPriceOverview } from '@/features/pricing-admin/types'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { OfficialPriceOverviewTable } from './components/official-price-overview-table'
 
@@ -54,6 +60,17 @@ const emptyOfficialPriceRows: OfficialPriceOverview[] = []
 export function OfficialPricing(props: OfficialPricingProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const canWrite = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.WRITE
+  )
+  const canPublish = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.PUBLISH
+  )
   const [keyword, setKeyword] = useState('')
   const [status, setStatus] = useState('')
   const [currency, setCurrency] = useState('')
@@ -173,21 +190,25 @@ export function OfficialPricing(props: OfficialPricingProps) {
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Official Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <Button
-          disabled={totalDraftCount === 0 || bulkPublishMutation.isPending}
-          onClick={() => setBulkPublishOpen(true)}
-        >
-          <CheckCheck data-icon='inline-start' />
-          {t('Publish Latest')}
-        </Button>
-        <Button
-          variant='outline'
-          disabled={importMutation.isPending}
-          onClick={() => importMutation.mutate()}
-        >
-          <DatabaseZap data-icon='inline-start' />
-          {t('Import Legacy Pricing')}
-        </Button>
+        {canPublish ? (
+          <Button
+            disabled={totalDraftCount === 0 || bulkPublishMutation.isPending}
+            onClick={() => setBulkPublishOpen(true)}
+          >
+            <CheckCheck data-icon='inline-start' />
+            {t('Publish Latest')}
+          </Button>
+        ) : null}
+        {canWrite ? (
+          <Button
+            variant='outline'
+            disabled={importMutation.isPending}
+            onClick={() => importMutation.mutate()}
+          >
+            <DatabaseZap data-icon='inline-start' />
+            {t('Import Legacy Pricing')}
+          </Button>
+        ) : null}
         <ConfirmDialog
           open={bulkPublishOpen}
           onOpenChange={setBulkPublishOpen}
@@ -236,6 +257,8 @@ export function OfficialPricing(props: OfficialPricingProps) {
                   await officialQuery.refetch()
                   await overviewQuery.refetch()
                 }}
+                canWrite={canWrite}
+                canPublish={canPublish}
               />
             </div>
           </div>
@@ -340,6 +363,8 @@ export function OfficialPricing(props: OfficialPricingProps) {
               onManage={setSelectedModelId}
               onDeleteDraft={(id) => deleteMutation.mutate(id)}
               onPublishDraft={(id) => publishMutation.mutate(id)}
+              canWrite={canWrite}
+              canPublish={canPublish}
             />
           </div>
         )}

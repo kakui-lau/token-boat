@@ -46,6 +46,10 @@ export interface Model {
   created_time: number
   updated_time: number
   name_rule: number
+  visibility?: 'public' | 'internal'
+  model_purpose?: string
+  routing_target_model_id?: number | null
+  routing_target_model_name?: string
   // Runtime fields
   bound_channels?: BoundChannel[]
   enable_groups?: string[]
@@ -127,6 +131,17 @@ export interface GetModelResponse {
   success: boolean
   message?: string
   data?: Model
+}
+
+export interface ModelRoutingTarget {
+  id: number
+  model_name: string
+}
+
+export interface GetModelRoutingTargetsResponse {
+  success: boolean
+  message?: string
+  data?: ModelRoutingTarget[]
 }
 
 /**

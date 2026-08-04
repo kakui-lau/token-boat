@@ -41,6 +41,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   confirmPricingSnapshotRefunded,
@@ -87,6 +93,17 @@ const providerCostSourceLabel = {
 export function PricingReconciliationPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const canOperate = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING_GOVERNANCE,
+    ADMIN_PERMISSION_ACTIONS.OPERATE
+  )
+  const canExport = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING_GOVERNANCE,
+    ADMIN_PERMISSION_ACTIONS.EXPORT
+  )
   const [confirmRefundId, setConfirmRefundId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [showAllRecords, setShowAllRecords] = useState(false)
@@ -222,14 +239,16 @@ export function PricingReconciliationPanel() {
           </p>
         </div>
         <div className='flex items-center gap-2'>
-          <Button
-            size='sm'
-            variant='outline'
-            render={<a href={exportUrl} download />}
-          >
-            <Download aria-hidden='true' />
-            {t('Export CSV')}
-          </Button>
+          {canExport ? (
+            <Button
+              size='sm'
+              variant='outline'
+              render={<a href={exportUrl} download />}
+            >
+              <Download aria-hidden='true' />
+              {t('Export CSV')}
+            </Button>
+          ) : null}
           <Button
             size='sm'
             variant='outline'
@@ -644,7 +663,7 @@ export function PricingReconciliationPanel() {
                       >
                         {t('View details')}
                       </Button>
-                      {row.status === 'pending' ? (
+                      {canOperate && row.status === 'pending' ? (
                         <Button
                           size='sm'
                           variant='outline'
@@ -822,6 +841,7 @@ export function PricingReconciliationPanel() {
             </div>
             {(selectedSnapshot.status === 'settled' ||
               selectedSnapshot.status === 'refunded') &&
+            canOperate &&
             !selectedSnapshot.provider_cost_known ? (
               <div className='grid gap-2'>
                 <p className='text-muted-foreground text-xs'>
@@ -916,7 +936,7 @@ export function PricingReconciliationPanel() {
         </div>
       ) : null}
       <ConfirmDialog
-        open={confirmRefundId !== null}
+        open={canOperate && confirmRefundId !== null}
         onOpenChange={(open) => {
           if (!open) {
             setConfirmRefundId(null)

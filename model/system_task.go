@@ -24,6 +24,8 @@ const (
 	SystemTaskTypeDailyUsage       = "channel_daily_usage"
 	SystemTaskTypePricingReconcile = "pricing_reconcile"
 	SystemTaskTypePricingRetention = "pricing_retention"
+	SystemTaskTypeTopUpExpiry      = "topup_expiry"
+	SystemTaskTypeFinanceAlertScan = "finance_alert_scan"
 )
 
 var ErrSystemTaskLockLost = errors.New("system task lock lost")

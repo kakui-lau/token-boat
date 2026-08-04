@@ -57,6 +57,8 @@ type OfficialPricePanelProps = {
   onPublish: (id: number) => void
   onDelete: (id: number) => void
   onCreated: () => Promise<void>
+  canWrite?: boolean
+  canPublish?: boolean
 }
 
 const billingModeOptions = [
@@ -288,7 +290,9 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
 
   return (
     <div className='space-y-6'>
-      {editingDraftId === null && baseVersion === null ? (
+      {props.canWrite !== false &&
+      editingDraftId === null &&
+      baseVersion === null ? (
         <section className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'>
           <div>
             <h3 className='font-medium'>{t('Price Configuration')}</h3>
@@ -394,6 +398,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         <form
           key='configuration-editor'
           ref={formRef}
+          hidden={props.canWrite === false}
           className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
           onSubmit={(event) => {
             event.preventDefault()
@@ -495,6 +500,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         <form
           key='flat-token-editor'
           ref={formRef}
+          hidden={props.canWrite === false}
           className='pricing-form-surface space-y-4 rounded-xl border p-4 sm:p-5'
           onSubmit={form.handleSubmit((value) => saveMutation.mutate(value))}
         >
@@ -614,6 +620,8 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           }
           onEdit={(id) => fillFromVersion(id, true)}
           onFill={(id) => fillFromVersion(id, false)}
+          canWrite={props.canWrite}
+          canPublish={props.canPublish}
         />
       </section>
       <OfficialPriceVersionDialog

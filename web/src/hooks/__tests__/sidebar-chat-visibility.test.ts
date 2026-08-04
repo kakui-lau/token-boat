@@ -8,6 +8,7 @@ import { useSidebarView } from '../use-sidebar-view'
 
 let currentUserRole: number = ROLE.USER
 let sidebarModulesAdmin: string | undefined
+let currentAdminPermissions: Record<string, Record<string, boolean>> = {}
 
 vi.mock('@tanstack/react-router', () => ({
   useLocation: ({
@@ -37,7 +38,9 @@ vi.mock('@/stores/auth-store', () => ({
       auth: {
         user: {
           role: number
-          permissions: Record<string, boolean>
+          permissions: {
+            admin_permissions: Record<string, Record<string, boolean>>
+          }
           sidebar_modules: string
         }
       }
@@ -47,7 +50,7 @@ vi.mock('@/stores/auth-store', () => ({
       auth: {
         user: {
           role: currentUserRole,
-          permissions: {},
+          permissions: { admin_permissions: currentAdminPermissions },
           sidebar_modules: '',
         },
       },
@@ -61,6 +64,7 @@ describe('sidebar chat preset visibility', () => {
   beforeEach(() => {
     currentUserRole = ROLE.USER
     sidebarModulesAdmin = undefined
+    currentAdminPermissions = {}
   })
 
   test('hides configured chat clients from non-admin users', () => {
@@ -117,7 +121,7 @@ describe('sidebar chat preset visibility', () => {
     )
   })
 
-  test('hides root-only pricing entries from ordinary admins', () => {
+  test('hides sensitive admin modules without their read permission', () => {
     currentUserRole = ROLE.ADMIN
 
     const { result } = renderHook(() => useSidebarView())
@@ -129,6 +133,31 @@ describe('sidebar chat preset visibility', () => {
       expect.arrayContaining([
         expect.objectContaining({ url: '/official-pricing' }),
         expect.objectContaining({ url: '/pricing-admin' }),
+        expect.objectContaining({ url: '/finance' }),
+      ])
+    )
+  })
+
+  test('shows sensitive admin modules after read permissions are granted', () => {
+    currentUserRole = ROLE.ADMIN
+    currentAdminPermissions = {
+      pricing: { read: true },
+      pricing_governance: { read: true },
+      finance: { read: true },
+    }
+
+    const { result } = renderHook(() => useSidebarView())
+    const adminGroup = result.current.navGroups.find(
+      (group) => group.id === 'admin'
+    )
+
+    expect(adminGroup?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: '/official-pricing' }),
+        expect.objectContaining({ url: '/pricing-admin' }),
+        expect.objectContaining({ url: '/pricing-reconciliation' }),
+        expect.objectContaining({ url: '/circuit-analysis' }),
+        expect.objectContaining({ url: '/finance' }),
       ])
     )
   })

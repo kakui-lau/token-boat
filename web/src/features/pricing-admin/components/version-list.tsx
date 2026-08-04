@@ -47,10 +47,14 @@ type VersionListProps = {
   onFill?: (id: number) => void
   allowSuspend?: boolean
   showId?: boolean
+  canWrite?: boolean
+  canPublish?: boolean
 }
 
 export function VersionList(props: VersionListProps) {
   const { t } = useTranslation()
+  const canWrite = props.canWrite !== false
+  const canPublish = props.canPublish !== false
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [pendingAction, setPendingAction] = useState<{
     item: VersionListItem
@@ -116,7 +120,7 @@ export function VersionList(props: VersionListProps) {
                   {t('View')}
                 </Button>
               ) : null}
-              {props.onFill ? (
+              {canWrite && props.onFill ? (
                 <Button
                   size='sm'
                   variant='outline'
@@ -125,7 +129,7 @@ export function VersionList(props: VersionListProps) {
                   {t('Duplicate')}
                 </Button>
               ) : null}
-              {item.status === 'draft' && props.onEdit ? (
+              {canWrite && item.status === 'draft' && props.onEdit ? (
                 <Button
                   size='sm'
                   variant='outline'
@@ -134,26 +138,34 @@ export function VersionList(props: VersionListProps) {
                   {t('Edit')}
                 </Button>
               ) : null}
-              {item.status === 'draft' ? (
+              {item.status === 'draft' && (canWrite || canPublish) ? (
                 <>
-                  <Button
-                    size='sm'
-                    variant='ghost'
-                    disabled={props.isDeleting}
-                    onClick={() => setDeleteId(item.id)}
-                  >
-                    {t('Delete')}
-                  </Button>
-                  <Button
-                    size='sm'
-                    disabled={props.isPublishing}
-                    onClick={() => setPendingAction({ item, kind: 'publish' })}
-                  >
-                    {t('Publish')}
-                  </Button>
+                  {canWrite ? (
+                    <Button
+                      size='sm'
+                      variant='ghost'
+                      disabled={props.isDeleting}
+                      onClick={() => setDeleteId(item.id)}
+                    >
+                      {t('Delete')}
+                    </Button>
+                  ) : null}
+                  {canPublish ? (
+                    <Button
+                      size='sm'
+                      disabled={props.isPublishing}
+                      onClick={() =>
+                        setPendingAction({ item, kind: 'publish' })
+                      }
+                    >
+                      {t('Publish')}
+                    </Button>
+                  ) : null}
                 </>
               ) : null}
-              {item.status === 'active' && props.allowSuspend !== false ? (
+              {canPublish &&
+              item.status === 'active' &&
+              props.allowSuspend !== false ? (
                 <Button
                   size='sm'
                   variant='destructive'

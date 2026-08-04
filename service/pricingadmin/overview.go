@@ -194,7 +194,9 @@ func ListModelPriceOverview(keyword string) ([]ModelPriceOverview, error) {
 }
 
 func ListOfficialPriceOverview(keyword string) ([]OfficialPriceOverview, error) {
-	query := model.DB.Model(&model.Model{}).Order("model_name ASC")
+	query := model.DB.Model(&model.Model{}).
+		Where("routing_target_model_id IS NULL").
+		Order("model_name ASC")
 	keyword = strings.TrimSpace(keyword)
 	if keyword != "" {
 		query = query.Where("model_name LIKE ?", "%"+keyword+"%")

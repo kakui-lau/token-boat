@@ -25,12 +25,17 @@ export type AdminCapabilities = AdminPermissionMatrix
 
 export const ADMIN_PERMISSION_RESOURCES = {
   CHANNEL: 'channel',
+  FINANCE: 'finance',
+  PRICING: 'pricing',
+  PRICING_GOVERNANCE: 'pricing_governance',
 } as const
 
 export const ADMIN_PERMISSION_ACTIONS = {
   READ: 'read',
   OPERATE: 'operate',
   WRITE: 'write',
+  PUBLISH: 'publish',
+  EXPORT: 'export',
   SENSITIVE_WRITE: 'sensitive_write',
   SECRET_VIEW: 'secret_view',
 } as const

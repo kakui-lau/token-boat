@@ -25,7 +25,6 @@ import { useIsAdmin } from '@/hooks/use-admin'
 import {
   getUserBillingHistory,
   getAllBillingHistory,
-  completeOrder,
   isApiSuccess,
 } from '../api'
 import type { TopupRecord } from '../types'
@@ -51,7 +50,6 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [keyword, setKeyword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [completing, setCompleting] = useState(false)
 
   /**
    * Fetch billing history
@@ -83,40 +81,6 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
       setLoading(false)
     }
   }, [isAdmin, page, pageSize, keyword])
-
-  /**
-   * Complete a pending order (admin only)
-   */
-  const handleCompleteOrder = useCallback(
-    async (tradeNo: string) => {
-      if (!isAdmin) {
-        toast.error(i18next.t('Admin access required'))
-        return false
-      }
-
-      setCompleting(true)
-      try {
-        const response = await completeOrder({ trade_no: tradeNo })
-        if (isApiSuccess(response)) {
-          toast.success(i18next.t('Order completed successfully'))
-          // Refresh the list
-          await fetchBillingHistory()
-          return true
-        } else {
-          toast.error(response.message || i18next.t('Failed to complete order'))
-          return false
-        }
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to complete order:', error)
-        toast.error(i18next.t('Failed to complete order'))
-        return false
-      } finally {
-        setCompleting(false)
-      }
-    },
-    [isAdmin, fetchBillingHistory]
-  )
 
   /**
    * Change page
@@ -153,12 +117,10 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     pageSize,
     keyword,
     loading,
-    completing,
     isAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
-    handleCompleteOrder,
     refresh: fetchBillingHistory,
   }
 }

@@ -146,6 +146,12 @@ export function SidebarModulesSection({
         title: t('Redeem codes'),
         description: t('Create and review invite or credit codes.'),
       },
+      finance: {
+        title: t('Financial Operations'),
+        description: t(
+          'Review platform balances, payments, redemption exposure, and recharge orders.'
+        ),
+      },
       user: {
         title: t('Users'),
         description: t('Administer user accounts and roles.'),

@@ -20,7 +20,11 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { PricingAdmin } from '@/features/pricing-admin'
-import { ROLE } from '@/lib/roles'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 const pricingAdminSearchSchema = z.object({
@@ -30,7 +34,13 @@ const pricingAdminSearchSchema = z.object({
 export const Route = createFileRoute('/_authenticated/pricing-admin/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role !== ROLE.SUPER_ADMIN) {
+    if (
+      !hasPermission(
+        auth.user,
+        ADMIN_PERMISSION_RESOURCES.PRICING,
+        ADMIN_PERMISSION_ACTIONS.READ
+      )
+    ) {
       throw redirect({ to: '/403' })
     }
   },

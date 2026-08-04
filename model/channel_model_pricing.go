@@ -365,6 +365,9 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 	}
 	modelIdByName := make(map[string]int, len(models))
 	for _, item := range models {
+		if item.RoutingTargetModelId != nil {
+			continue
+		}
 		modelIdByName[item.ModelName] = item.Id
 	}
 

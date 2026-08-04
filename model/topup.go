@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,9 +24,11 @@ type TopUp struct {
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
+	CreateTime      int64   `json:"create_time" gorm:"index:idx_topups_status_created,priority:2"`
 	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Status          string  `json:"status" gorm:"index:idx_topups_status_created,priority:1"`
+	CreditedQuota   int64   `json:"credited_quota" gorm:"-"`
+	OrderType       string  `json:"order_type" gorm:"-"`
 }
 
 const (
@@ -34,6 +37,11 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
+)
+
+const (
+	TopUpOrderTypeWallet       = "wallet"
+	TopUpOrderTypeSubscription = "subscription"
 )
 
 const (
@@ -109,6 +117,23 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 		topUp.Status = targetStatus
 		return tx.Save(topUp).Error
 	})
+}
+
+// ExpirePendingTopUpsBefore atomically expires unpaid recharge orders created
+// on or before cutoff. The status predicate prevents a concurrent successful
+// payment callback from being overwritten after it has completed the order.
+func ExpirePendingTopUpsBefore(ctx context.Context, cutoff int64, expiredAt int64) (int64, error) {
+	if cutoff <= 0 || expiredAt <= 0 {
+		return 0, errors.New("invalid topup expiry timestamps")
+	}
+	result := DB.WithContext(ctx).
+		Model(&TopUp{}).
+		Where("status = ? AND create_time > 0 AND create_time <= ?", common.TopUpStatusPending, cutoff).
+		Updates(map[string]any{
+			"status":        common.TopUpStatusExpired,
+			"complete_time": expiredAt,
+		})
+	return result.RowsAffected, result.Error
 }
 
 func Recharge(referenceId string, customerId string, callerIp string, paidAmountCents int64, paidCurrency string) (err error) {
@@ -212,6 +237,9 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	if err = populateTopUpPresentationFields(topups); err != nil {
+		return nil, 0, err
+	}
 
 	return topups, total, nil
 }
@@ -239,6 +267,9 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 	}
 
 	if err = tx.Commit().Error; err != nil {
+		return nil, 0, err
+	}
+	if err = populateTopUpPresentationFields(topups); err != nil {
 		return nil, 0, err
 	}
 
@@ -286,6 +317,9 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	if err = populateTopUpPresentationFields(topups); err != nil {
+		return nil, 0, err
+	}
 	return topups, total, nil
 }
 
@@ -326,13 +360,20 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	if err = populateTopUpPresentationFields(topups); err != nil {
+		return nil, 0, err
+	}
 	return topups, total, nil
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
-func ManualCompleteTopUp(tradeNo string, callerIp string) error {
+func ManualCompleteTopUp(tradeNo string, reason string, callerIp string) (bool, error) {
 	if tradeNo == "" {
-		return errors.New("未提供订单号")
+		return false, errors.New("未提供订单号")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" || len(reason) > 500 {
+		return false, errors.New("请填写有效的补单原因")
 	}
 
 	refCol := "`trade_no`"
@@ -344,6 +385,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	alreadyCompleted := false
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -354,6 +396,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 		// 幂等处理：已成功直接返回
 		if topUp.Status == common.TopUpStatusSuccess {
+			alreadyCompleted = true
 			return nil
 		}
 
@@ -361,20 +404,11 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return errors.New("订单状态不是待支付，无法补单")
 		}
 
-		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
-		if topUp.PaymentProvider == PaymentProviderStripe {
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
-		} else {
-			dAmount := decimal.NewFromInt(topUp.Amount)
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		computedQuota, err := topUpQuotaToCredit(topUp)
+		if err != nil {
+			return err
 		}
-		if quotaToAdd <= 0 {
-			return errors.New("无效的充值额度")
-		}
+		quotaToAdd = computedQuota
 
 		// 标记完成
 		topUp.CompleteTime = common.GetTimestamp()
@@ -395,11 +429,143 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	})
 
 	if err != nil {
-		return err
+		return false, err
+	}
+	if alreadyCompleted {
+		return false, nil
 	}
 
 	// 事务外记录日志，避免阻塞
-	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f，原因：%s", logger.FormatQuota(quotaToAdd), payMoney, reason), callerIp, paymentMethod, "admin")
+	return true, nil
+}
+
+func topUpQuotaToCredit(topUp *TopUp) (int, error) {
+	if topUp == nil {
+		return 0, errors.New("无效的充值订单")
+	}
+	provider := topUp.PaymentProvider
+	if provider == "" {
+		provider = topUp.PaymentMethod
+	}
+	var quota decimal.Decimal
+	switch provider {
+	case PaymentProviderStripe:
+		quota = decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	case PaymentProviderCreem:
+		quota = decimal.NewFromInt(topUp.Amount)
+	default:
+		quota = decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	quotaToAdd, clamp := common.QuotaFromDecimalChecked(quota)
+	if clamp != nil {
+		return 0, errors.New("充值额度超出系统限制")
+	}
+	if quotaToAdd <= 0 {
+		return 0, errors.New("无效的充值额度")
+	}
+	return quotaToAdd, nil
+}
+
+// RechargeEpay completes an Epay wallet order and credits the user in one
+// transaction. Provider retries are idempotent: an already successful order is
+// acknowledged without crediting quota again.
+func RechargeEpay(tradeNo string, paymentMethod string, callerIP string) error {
+	tradeNo = strings.TrimSpace(tradeNo)
+	if tradeNo == "" {
+		return errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+	var completed bool
+	var topUp TopUp
+	var quotaToAdd int
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		computedQuota, err := topUpQuotaToCredit(&topUp)
+		if err != nil {
+			return err
+		}
+		quotaToAdd = computedQuota
+		if paymentMethod = strings.TrimSpace(paymentMethod); paymentMethod != "" {
+			topUp.PaymentMethod = paymentMethod
+		}
+		topUp.Status = common.TopUpStatusSuccess
+		topUp.CompleteTime = common.GetTimestamp()
+		if err := tx.Save(&topUp).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&User{}).Where("id = ?", topUp.UserId).
+			Update("quota", gorm.Expr("quota + ?", quotaToAdd))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return errors.New("充值用户不存在")
+		}
+		completed = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if completed {
+		RecordTopupLog(
+			topUp.UserId,
+			fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money),
+			callerIP,
+			topUp.PaymentMethod,
+			PaymentProviderEpay,
+		)
+	}
+	return nil
+}
+
+func populateTopUpPresentationFields(topUps []*TopUp) error {
+	tradeNos := make([]string, 0, len(topUps))
+	for _, topUp := range topUps {
+		topUp.OrderType = TopUpOrderTypeWallet
+		if topUp.TradeNo != "" {
+			tradeNos = append(tradeNos, topUp.TradeNo)
+		}
+		quota, err := topUpQuotaToCredit(topUp)
+		if err == nil {
+			topUp.CreditedQuota = int64(quota)
+		}
+	}
+	if len(tradeNos) == 0 {
+		return nil
+	}
+	var subscriptionTradeNos []string
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("trade_no IN ?", tradeNos).
+		Pluck("trade_no", &subscriptionTradeNos).Error; err != nil {
+		return err
+	}
+	subscriptionSet := make(map[string]struct{}, len(subscriptionTradeNos))
+	for _, tradeNo := range subscriptionTradeNos {
+		subscriptionSet[tradeNo] = struct{}{}
+	}
+	for _, topUp := range topUps {
+		if _, ok := subscriptionSet[topUp.TradeNo]; ok {
+			topUp.OrderType = TopUpOrderTypeSubscription
+			topUp.CreditedQuota = 0
+		}
+	}
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {

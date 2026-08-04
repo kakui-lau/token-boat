@@ -17,8 +17,7 @@ function isHigher(
   if (!purchasePrice || !officialPrice) {
     return false
   }
-  const retail =
-    Math.ceil(Number(purchasePrice) * factor * 100_000) / 100_000
+  const retail = Math.ceil(Number(purchasePrice) * factor * 100_000) / 100_000
   const official = Number(officialPrice)
   return (
     Number.isFinite(retail) && Number.isFinite(official) && retail >= official

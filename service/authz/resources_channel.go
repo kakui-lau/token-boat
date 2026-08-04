@@ -2,12 +2,6 @@ package authz
 
 const (
 	ResourceChannel = "channel"
-
-	ActionRead           = "read"
-	ActionOperate        = "operate"
-	ActionWrite          = "write"
-	ActionSensitiveWrite = "sensitive_write"
-	ActionSecretView     = "secret_view"
 )
 
 var (

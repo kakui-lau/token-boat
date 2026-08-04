@@ -143,6 +143,18 @@ func validateV2Activation(db *gorm.DB, channelModelId int) (ActivePriceBundle, e
 	if bundle.ChannelModel.Status == 0 {
 		return ActivePriceBundle{}, errors.New("disabled channel model cannot enable v2 runtime")
 	}
+	var logicalModel model.Model
+	if err := db.Select("id", "routing_target_model_id").First(
+		&logicalModel,
+		bundle.ChannelModel.ModelId,
+	).Error; err != nil {
+		return ActivePriceBundle{}, err
+	}
+	if logicalModel.RoutingTargetModelId != nil {
+		return ActivePriceBundle{}, errors.New(
+			"system model aliases reuse their routing target and cannot enable an independent v2 price chain",
+		)
+	}
 	if bundle.Purchase.Currency != "USD" || bundle.Retail.Currency != "USD" {
 		return ActivePriceBundle{}, errors.New("v2 runtime requires USD purchase and retail prices")
 	}
@@ -283,6 +295,9 @@ func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 			}
 			return err
 		}
+		if logicalModel.RoutingTargetModelId != nil {
+			return errors.New("system model aliases reuse their routing target runtime mode")
+		}
 		query := tx.Model(&model.ChannelModel{}).Where("model_id = ?", logicalModel.Id)
 		if runtimeMode == RuntimeModeV2 {
 			var abilities []model.Ability
@@ -382,8 +397,9 @@ func RefreshCatalog() error {
 				"channels.provider_cost_mode AS provider_cost_mode",
 		).
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("JOIN models ON models.id = channel_models.model_id").
 		Where(
-			"channel_models.runtime_mode = ? AND channel_models.status <> ? AND channels.status = ?",
+			"channel_models.runtime_mode = ? AND channel_models.status <> ? AND channels.status = ? AND models.routing_target_model_id IS NULL",
 			RuntimeModeV2,
 			0,
 			common.ChannelStatusEnabled,
@@ -549,7 +565,7 @@ func GetRuntimeReadiness() (RuntimeReadiness, error) {
 			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
 		).
 		Where(
-			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ?",
+			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ? AND models.routing_target_model_id IS NULL",
 			0,
 			common.ChannelStatusEnabled,
 			true,

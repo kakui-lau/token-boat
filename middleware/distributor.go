@@ -40,6 +40,20 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if modelRequest.Model != "" {
+			resolution, resolveErr := model.ResolveModelRouting(modelRequest.Model)
+			if resolveErr != nil {
+				abortWithOpenAiMessage(
+					c,
+					http.StatusServiceUnavailable,
+					resolveErr.Error(),
+					types.ErrorCodeModelNotFound,
+				)
+				return
+			}
+			common.SetContextKey(c, constant.ContextKeyRequestedModel, resolution.RequestedModelName)
+			modelRequest.Model = resolution.ResolvedModelName
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {

@@ -38,7 +38,9 @@ for (const testFile of collectTests(sourceRoot).sort()) {
 }
 
 if (unknownTests.length > 0) {
-  console.error(`Tests without a recognized runner:\n${unknownTests.join('\n')}`)
+  console.error(
+    `Tests without a recognized runner:\n${unknownTests.join('\n')}`
+  )
   process.exit(1)
 }
 

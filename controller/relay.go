@@ -644,6 +644,11 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["channel_type"] = c.GetInt("channel_type")
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+		requestedModel := common.GetContextKeyString(c, constant.ContextKeyRequestedModel)
+		if requestedModel != "" && requestedModel != modelName {
+			adminInfo["requested_model_name"] = requestedModel
+			adminInfo["resolved_model_name"] = modelName
+		}
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 		if isMultiKey {
 			adminInfo["is_multi_key"] = true

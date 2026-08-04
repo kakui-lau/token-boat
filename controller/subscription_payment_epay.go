@@ -9,6 +9,7 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -121,6 +122,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		// POST 请求：从 POST body 解析参数
 		if err := c.Request.ParseForm(); err != nil {
+			middleware.MarkPaymentCallbackRejected(c, "invalid form payload")
 			_, _ = c.Writer.Write([]byte("fail"))
 			return
 		}
@@ -137,22 +139,30 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	}
 
 	if len(params) == 0 {
+		middleware.MarkPaymentCallbackRejected(c, "empty callback payload")
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
 
 	client := GetEpayClient()
 	if client == nil {
+		middleware.MarkPaymentCallbackUnavailable(c, "payment client is not configured")
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
+		message := "signature verification failed"
+		if err != nil {
+			message = err.Error()
+		}
+		middleware.MarkPaymentCallbackRejected(c, message)
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
 
 	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
+		middleware.MarkPaymentCallbackProcessed(c)
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -161,10 +171,12 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
 	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+		middleware.MarkPaymentCallbackFailed(c, err.Error())
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
 
+	middleware.MarkPaymentCallbackProcessed(c)
 	_, _ = c.Writer.Write([]byte("success"))
 }
 

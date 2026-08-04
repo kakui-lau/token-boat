@@ -86,6 +86,16 @@ func GetModelMeta(c *gin.Context) {
 	common.ApiSuccess(c, &m)
 }
 
+func GetModelRoutingTargets(c *gin.Context) {
+	excludeModelId, _ := strconv.Atoi(c.Query("exclude_model_id"))
+	targets, err := model.ListModelRoutingTargets(excludeModelId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, targets)
+}
+
 // CreateModelMeta 新建模型
 func CreateModelMeta(c *gin.Context) {
 	var m model.Model
@@ -130,7 +140,7 @@ func UpdateModelMeta(c *gin.Context) {
 
 	if statusOnly {
 		// 只更新状态，防止误清空其他字段
-		if err := model.DB.Model(&model.Model{}).Where("id = ?", m.Id).Update("status", m.Status).Error; err != nil {
+		if err := model.UpdateModelStatus(m.Id, m.Status); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -161,7 +171,8 @@ func DeleteModelMeta(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := model.DB.Delete(&model.Model{}, id).Error; err != nil {
+	target := model.Model{Id: id}
+	if err := target.Delete(); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -175,6 +186,36 @@ func enrichModels(models []*model.Model) {
 		return
 	}
 
+	// Resolve alias targets in one query so the admin list can explain where an
+	// internal model is routed without introducing an N+1 lookup.
+	targetIds := make([]int, 0)
+	targetSeen := make(map[int]struct{})
+	targetNameById := make(map[int]string)
+	for _, logicalModel := range models {
+		if logicalModel == nil || logicalModel.RoutingTargetModelId == nil {
+			continue
+		}
+		targetId := *logicalModel.RoutingTargetModelId
+		if _, exists := targetSeen[targetId]; exists {
+			continue
+		}
+		targetSeen[targetId] = struct{}{}
+		targetIds = append(targetIds, targetId)
+	}
+	if len(targetIds) > 0 {
+		var targets []model.Model
+		if err := model.DB.Select("id", "model_name").Where("id IN ?", targetIds).Find(&targets).Error; err == nil {
+			for _, target := range targets {
+				targetNameById[target.Id] = target.ModelName
+			}
+			for _, logicalModel := range models {
+				if logicalModel != nil && logicalModel.RoutingTargetModelId != nil {
+					logicalModel.RoutingTargetModelName = targetNameById[*logicalModel.RoutingTargetModelId]
+				}
+			}
+		}
+	}
+
 	// 1) 拆分精确与规则匹配
 	exactNames := make([]string, 0)
 	exactIdx := make(map[string][]int) // modelName -> indices in models
@@ -184,8 +225,14 @@ func enrichModels(models []*model.Model) {
 			continue
 		}
 		if m.NameRule == model.NameRuleExact {
-			exactNames = append(exactNames, m.ModelName)
-			exactIdx[m.ModelName] = append(exactIdx[m.ModelName], i)
+			effectiveName := m.ModelName
+			if m.RoutingTargetModelId != nil {
+				if targetName := targetNameById[*m.RoutingTargetModelId]; targetName != "" {
+					effectiveName = targetName
+				}
+			}
+			exactNames = append(exactNames, effectiveName)
+			exactIdx[effectiveName] = append(exactIdx[effectiveName], i)
 		} else {
 			ruleIndices = append(ruleIndices, i)
 		}
@@ -200,14 +247,14 @@ func enrichModels(models []*model.Model) {
 		for _, idx := range indices {
 			mm := models[idx]
 			if mm.Endpoints == "" {
-				eps := model.GetModelSupportEndpointTypes(mm.ModelName)
+				eps := model.GetModelSupportEndpointTypes(name)
 				if b, err := json.Marshal(eps); err == nil {
 					mm.Endpoints = string(b)
 				}
 			}
 			mm.BoundChannels = chs
-			mm.EnableGroups = model.GetModelEnableGroups(mm.ModelName)
-			mm.QuotaTypes = model.GetModelQuotaTypes(mm.ModelName)
+			mm.EnableGroups = model.GetModelEnableGroups(name)
+			mm.QuotaTypes = model.GetModelQuotaTypes(name)
 		}
 	}
 

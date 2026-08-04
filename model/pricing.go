@@ -478,13 +478,23 @@ func updatePricing() {
 	}
 
 	publicPricingMap = make([]Pricing, 0, len(pricingMap)+len(allMeta))
-	publicPricingMap = append(publicPricingMap, pricingMap...)
+	for _, pricing := range pricingMap {
+		meta := metaMap[pricing.ModelName]
+		if meta != nil && (meta.Visibility == ModelVisibilityInternal || meta.RoutingTargetModelId != nil) {
+			continue
+		}
+		publicPricingMap = append(publicPricingMap, pricing)
+	}
 	publicModels := make(map[string]struct{}, len(publicPricingMap))
 	for _, pricing := range publicPricingMap {
 		publicModels[pricing.ModelName] = struct{}{}
 	}
 	for _, meta := range allMeta {
-		if meta.Status != 1 || meta.NameRule != NameRuleExact || strings.TrimSpace(meta.ModelName) == "" {
+		if meta.Status != 1 ||
+			meta.NameRule != NameRuleExact ||
+			strings.TrimSpace(meta.ModelName) == "" ||
+			meta.Visibility == ModelVisibilityInternal ||
+			meta.RoutingTargetModelId != nil {
 			continue
 		}
 		if _, exists := publicModels[meta.ModelName]; exists {

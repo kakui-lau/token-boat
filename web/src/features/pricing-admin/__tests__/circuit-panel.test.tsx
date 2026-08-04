@@ -23,6 +23,11 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+vi.mock('@/stores/auth-store', () => ({
+  useAuthStore: (selector: (state: unknown) => unknown) =>
+    selector({ auth: { user: { role: 100 } } }),
+}))
+
 vi.mock('../api', () => ({
   getPricingCircuitEvents: vi.fn().mockResolvedValue({
     success: true,

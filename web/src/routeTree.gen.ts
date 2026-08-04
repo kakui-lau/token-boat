@@ -48,6 +48,7 @@ import { Route as AuthenticatedCircuitAnalysisIndexRouteImport } from './routes/
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedFinanceIndexRouteImport } from './routes/_authenticated/finance/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
@@ -283,6 +284,12 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedFinanceIndexRoute =
+  AuthenticatedFinanceIndexRouteImport.update({
+    id: '/finance/',
+    path: '/finance/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
@@ -521,6 +528,7 @@ export interface FileRoutesByFullPath {
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/circuit-analysis/': typeof AuthenticatedCircuitAnalysisIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/finance/': typeof AuthenticatedFinanceIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
@@ -592,6 +600,7 @@ export interface FileRoutesByTo {
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/circuit-analysis': typeof AuthenticatedCircuitAnalysisIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/finance': typeof AuthenticatedFinanceIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/official-pricing': typeof AuthenticatedOfficialPricingIndexRoute
@@ -667,6 +676,7 @@ export interface FileRoutesById {
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/circuit-analysis/': typeof AuthenticatedCircuitAnalysisIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/finance/': typeof AuthenticatedFinanceIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
@@ -741,6 +751,7 @@ export interface FileRouteTypes {
     | '/channels/'
     | '/circuit-analysis/'
     | '/dashboard/'
+    | '/finance/'
     | '/keys/'
     | '/models/'
     | '/official-pricing/'
@@ -812,6 +823,7 @@ export interface FileRouteTypes {
     | '/channels'
     | '/circuit-analysis'
     | '/dashboard'
+    | '/finance'
     | '/keys'
     | '/models'
     | '/official-pricing'
@@ -886,6 +898,7 @@ export interface FileRouteTypes {
     | '/_authenticated/channels/'
     | '/_authenticated/circuit-analysis/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/finance/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/official-pricing/'
@@ -1219,6 +1232,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/finance/': {
+      id: '/_authenticated/finance/'
+      path: '/finance'
+      fullPath: '/finance/'
+      preLoaderRoute: typeof AuthenticatedFinanceIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/keys/': {
       id: '/_authenticated/keys/'
       path: '/keys'
@@ -1549,6 +1569,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCircuitAnalysisIndexRoute: typeof AuthenticatedCircuitAnalysisIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedFinanceIndexRoute: typeof AuthenticatedFinanceIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedOfficialPricingIndexRoute: typeof AuthenticatedOfficialPricingIndexRoute
@@ -1583,6 +1604,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCircuitAnalysisIndexRoute:
     AuthenticatedCircuitAnalysisIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedFinanceIndexRoute: AuthenticatedFinanceIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedOfficialPricingIndexRoute:

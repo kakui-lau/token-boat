@@ -48,7 +48,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { handleServerError } from '@/lib/handle-server-error'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   exportChannelModelPrices,
@@ -65,6 +71,22 @@ import type { ChannelModel } from './types'
 export function PricingAdmin() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const canWrite = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.WRITE
+  )
+  const canPublish = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.PUBLISH
+  )
+  const canExport = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.EXPORT
+  )
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [channelId, setChannelId] = useState('')
@@ -182,14 +204,16 @@ export function PricingAdmin() {
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <Button
-          variant='outline'
-          disabled={exportMutation.isPending}
-          onClick={() => exportMutation.mutate()}
-        >
-          <Download data-icon='inline-start' />
-          {t('Export filtered CSV')}
-        </Button>
+        {canExport ? (
+          <Button
+            variant='outline'
+            disabled={exportMutation.isPending}
+            onClick={() => exportMutation.mutate()}
+          >
+            <Download data-icon='inline-start' />
+            {t('Export filtered CSV')}
+          </Button>
+        ) : null}
         <Button
           variant='outline'
           render={<Link to='/official-pricing' search={{}} />}
@@ -197,17 +221,21 @@ export function PricingAdmin() {
           <BadgeDollarSign data-icon='inline-start' />
           {t('Official Pricing')}
         </Button>
-        <Button variant='outline' onClick={() => setCreateDialogOpen(true)}>
-          <Plus data-icon='inline-start' />
-          {t('Add Model')}
-        </Button>
-        <Button
-          disabled={syncMutation.isPending}
-          onClick={() => syncMutation.mutate()}
-        >
-          <RefreshCw data-icon='inline-start' />
-          {t('Sync Catalog')}
-        </Button>
+        {canWrite ? (
+          <>
+            <Button variant='outline' onClick={() => setCreateDialogOpen(true)}>
+              <Plus data-icon='inline-start' />
+              {t('Add Model')}
+            </Button>
+            <Button
+              disabled={syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              <RefreshCw data-icon='inline-start' />
+              {t('Sync Catalog')}
+            </Button>
+          </>
+        ) : null}
       </SectionPageLayout.Actions>
       <PricingRuntimeStatus />
       <SectionPageLayout.Content>
@@ -378,7 +406,7 @@ export function PricingAdmin() {
                     </TableCell>
                     <TableCell className='text-right'>
                       <div className='flex justify-end gap-2'>
-                        {row.runtime_mode !== 'v2' ? (
+                        {canWrite && row.runtime_mode !== 'v2' ? (
                           <Button
                             size='sm'
                             disabled={runtimeMutation.isPending}
@@ -389,16 +417,18 @@ export function PricingAdmin() {
                             {t('Enable Model V2')}
                           </Button>
                         ) : null}
-                        <Button
-                          size='sm'
-                          variant='ghost'
-                          onClick={() => {
-                            setEditingChannelModel(row)
-                            setCreateDialogOpen(true)
-                          }}
-                        >
-                          {t('Edit')}
-                        </Button>
+                        {canWrite ? (
+                          <Button
+                            size='sm'
+                            variant='ghost'
+                            onClick={() => {
+                              setEditingChannelModel(row)
+                              setCreateDialogOpen(true)
+                            }}
+                          >
+                            {t('Edit')}
+                          </Button>
+                        ) : null}
                         <Button
                           size='sm'
                           variant='outline'
@@ -454,6 +484,8 @@ export function PricingAdmin() {
           </div>
           <PriceEditorSheet
             channelModel={selectedChannelModel}
+            canWrite={canWrite}
+            canPublish={canPublish}
             onOpenChange={(open) => {
               if (!open) {
                 setSelectedChannelModel(null)
@@ -461,7 +493,7 @@ export function PricingAdmin() {
             }}
           />
           <ChannelModelDialog
-            open={createDialogOpen}
+            open={canWrite && createDialogOpen}
             channelModel={editingChannelModel}
             onOpenChange={(open) => {
               setCreateDialogOpen(open)
@@ -474,7 +506,7 @@ export function PricingAdmin() {
             }}
           />
           <ConfirmDialog
-            open={pendingV2ModelName !== null}
+            open={canWrite && pendingV2ModelName !== null}
             onOpenChange={(open) => {
               if (!open && !runtimeMutation.isPending) {
                 setPendingV2ModelName(null)

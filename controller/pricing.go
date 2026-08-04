@@ -107,6 +107,13 @@ func QuotePricing(c *gin.Context) {
 		common.ApiError(c, errors.New("model_name is required"))
 		return
 	}
+	resolution, err := model.ResolveModelRouting(input.ModelName)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	requestedModelName := resolution.RequestedModelName
+	input.ModelName = resolution.ResolvedModelName
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 	requestedGroup := strings.TrimSpace(input.Group)
 	if requestedGroup == "" {
@@ -152,7 +159,8 @@ func QuotePricing(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"model_name":                 input.ModelName,
+		"model_name":                 requestedModelName,
+		"resolved_model_name":        input.ModelName,
 		"group":                      selectedGroup,
 		"currency":                   quoteRange.Currency,
 		"minimum_retail_amount":      quoteRange.MinimumRetailAmount,

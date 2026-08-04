@@ -24,7 +24,6 @@ For commercial licensing, please contact support@quantumnous.com
 export const DEFAULT_SYSTEM_NAME = 'token boat'
 export const DEFAULT_LOGO = '/logo.png'
 
-
 // LocalStorage Keys
 export const STORAGE_KEYS = {
   SYSTEM_NAME: 'system_name',

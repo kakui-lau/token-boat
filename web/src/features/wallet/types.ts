@@ -248,6 +248,7 @@ export interface UserWalletData {
  * Topup record status
  */
 export type TopupStatus = 'success' | 'pending' | 'failed' | 'expired'
+export type TopupOrderType = 'wallet' | 'subscription'
 
 /**
  * Topup billing record
@@ -259,12 +260,22 @@ export interface TopupRecord {
   user_id: number
   /** Topup amount (quota) */
   amount: number
+  /** Normalized quota credited or expected to be credited */
+  credited_quota?: number
+  /** Wallet recharge or subscription purchase */
+  order_type?: TopupOrderType
   /** Payment amount (actual money paid) */
   money: number
   /** Trade/order number */
   trade_no: string
   /** Payment method type */
   payment_method: string
+  /** Payment gateway responsible for settlement */
+  payment_provider?: string
+  /** Provider-reported amount in minor currency units */
+  pay_amount_cents?: number
+  /** Provider-reported payment currency */
+  pay_currency?: string
   /** Creation timestamp */
   create_time: number
   /** Completion timestamp */
@@ -286,4 +297,5 @@ export interface BillingHistoryResponse {
  */
 export interface CompleteOrderRequest {
   trade_no: string
+  reason: string
 }

@@ -22,29 +22,34 @@ type BoundChannel struct {
 }
 
 type Model struct {
-	Id           int            `json:"id"`
-	ModelName    string         `json:"model_name" gorm:"size:128;not null;uniqueIndex:uk_model_name_delete_at,priority:1"`
-	Description  string         `json:"description,omitempty" gorm:"type:text"`
-	Icon         string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
-	Tags         string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
-	VendorID     int            `json:"vendor_id,omitempty" gorm:"index"`
-	Endpoints    string         `json:"endpoints,omitempty" gorm:"type:text"`
-	Status       int            `json:"status" gorm:"default:1"`
-	SyncOfficial int            `json:"sync_official" gorm:"default:1"`
-	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
-	UpdatedTime  int64          `json:"updated_time" gorm:"bigint"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_model_name_delete_at,priority:2"`
+	Id                   int            `json:"id"`
+	ModelName            string         `json:"model_name" gorm:"size:128;not null;uniqueIndex:uk_model_name_delete_at,priority:1"`
+	Description          string         `json:"description,omitempty" gorm:"type:text"`
+	Icon                 string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
+	Tags                 string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
+	VendorID             int            `json:"vendor_id,omitempty" gorm:"index"`
+	Endpoints            string         `json:"endpoints,omitempty" gorm:"type:text"`
+	Status               int            `json:"status" gorm:"default:1"`
+	SyncOfficial         int            `json:"sync_official" gorm:"default:1"`
+	Visibility           string         `json:"visibility" gorm:"type:varchar(16);index"`
+	ModelPurpose         string         `json:"model_purpose,omitempty" gorm:"type:varchar(32);index"`
+	RoutingTargetModelId *int           `json:"routing_target_model_id,omitempty" gorm:"index"`
+	CreatedTime          int64          `json:"created_time" gorm:"bigint"`
+	UpdatedTime          int64          `json:"updated_time" gorm:"bigint"`
+	DeletedAt            gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_model_name_delete_at,priority:2"`
 
 	BoundChannels []BoundChannel `json:"bound_channels,omitempty" gorm:"-"`
 	EnableGroups  []string       `json:"enable_groups,omitempty" gorm:"-"`
 	QuotaTypes    []int          `json:"quota_types,omitempty" gorm:"-"`
 	NameRule      int            `json:"name_rule" gorm:"default:0"`
 
-	MatchedModels []string `json:"matched_models,omitempty" gorm:"-"`
-	MatchedCount  int      `json:"matched_count,omitempty" gorm:"-"`
+	MatchedModels          []string `json:"matched_models,omitempty" gorm:"-"`
+	MatchedCount           int      `json:"matched_count,omitempty" gorm:"-"`
+	RoutingTargetModelName string   `json:"routing_target_model_name,omitempty" gorm:"-"`
 }
 
 func (mi *Model) Insert() error {
+	mi.NormalizeRoutingConfiguration()
 	now := common.GetTimestamp()
 	mi.CreatedTime = now
 	mi.UpdatedTime = now
@@ -53,18 +58,26 @@ func (mi *Model) Insert() error {
 	originalStatus := mi.Status
 	originalSyncOfficial := mi.SyncOfficial
 
-	// 先创建记录（GORM 会对零值字段应用默认值）
-	if err := DB.Create(mi).Error; err != nil {
-		return err
-	}
-
-	// 使用保存的原始值进行更新，确保零值能正确保存
-	err := DB.Model(&Model{}).Where("id = ?", mi.Id).Updates(map[string]interface{}{
-		"status":        originalStatus,
-		"sync_official": originalSyncOfficial,
-	}).Error
+	// Create and restore explicit zero values atomically. GORM applies the
+	// legacy default tags during Create, while system aliases intentionally set
+	// sync_official to zero.
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := mi.ValidateRoutingConfiguration(tx); err != nil {
+			return err
+		}
+		if err := tx.Create(mi).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Model{}).Where("id = ?", mi.Id).Updates(map[string]interface{}{
+			"status":        originalStatus,
+			"sync_official": originalSyncOfficial,
+		}).Error
+	})
+	mi.Status = originalStatus
+	mi.SyncOfficial = originalSyncOfficial
 	if err == nil {
 		InvalidatePricingCache()
+		InvalidateModelRoutingCache()
 	}
 	return err
 }
@@ -79,21 +92,68 @@ func IsModelNameDuplicated(id int, name string) (bool, error) {
 }
 
 func (mi *Model) Update() error {
+	mi.NormalizeRoutingConfiguration()
 	mi.UpdatedTime = common.GetTimestamp()
-	// 使用 Select 强制更新所有字段，包括零值
-	err := DB.Model(&Model{}).Where("id = ?", mi.Id).
-		Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
-		Updates(mi).Error
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var current Model
+		if err := lockForUpdate(tx).Select("id").First(&current, mi.Id).Error; err != nil {
+			return err
+		}
+		if err := mi.ValidateRoutingConfiguration(tx); err != nil {
+			return err
+		}
+		// 使用 Select 强制更新所有字段，包括零值
+		return tx.Model(&Model{}).Where("id = ?", mi.Id).
+			Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "visibility", "model_purpose", "routing_target_model_id", "name_rule", "updated_time").
+			Updates(mi).Error
+	})
 	if err == nil {
 		InvalidatePricingCache()
+		InvalidateModelRoutingCache()
 	}
 	return err
 }
 
 func (mi *Model) Delete() error {
-	err := DB.Delete(mi).Error
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var current Model
+		if err := lockForUpdate(tx).Select("id").First(&current, mi.Id).Error; err != nil {
+			return err
+		}
+		if err := ValidateModelDeletion(tx, mi.Id); err != nil {
+			return err
+		}
+		return tx.Delete(mi).Error
+	})
 	if err == nil {
 		InvalidatePricingCache()
+		InvalidateModelRoutingCache()
+	}
+	return err
+}
+
+func UpdateModelStatus(modelId int, status int) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var current Model
+		if err := lockForUpdate(tx).First(&current, modelId).Error; err != nil {
+			return err
+		}
+		if status == 0 {
+			if err := ValidateModelStatusChange(tx, modelId, status); err != nil {
+				return err
+			}
+		} else {
+			current.Status = status
+			current.NormalizeRoutingConfiguration()
+			if err := current.ValidateRoutingConfiguration(tx); err != nil {
+				return err
+			}
+		}
+		return tx.Model(&Model{}).Where("id = ?", modelId).Update("status", status).Error
+	})
+	if err == nil {
+		InvalidatePricingCache()
+		InvalidateModelRoutingCache()
 	}
 	return err
 }

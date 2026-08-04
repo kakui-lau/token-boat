@@ -50,7 +50,41 @@ func TestInitSeedsBuiltInRolesAndPoliciesOnce(t *testing.T) {
 	assert.True(t, Can(2, common.RoleAdminUser, ChannelOperate))
 	assert.True(t, Can(2, common.RoleAdminUser, ChannelWrite))
 	assert.False(t, Can(2, common.RoleAdminUser, ChannelSensitiveWrite))
+	assert.False(t, Can(2, common.RoleAdminUser, FinanceRead))
+	assert.False(t, Can(2, common.RoleAdminUser, PricingRead))
+	assert.False(t, Can(2, common.RoleAdminUser, PricingGovernanceRead))
 	assert.False(t, Can(3, common.RoleCommonUser, ChannelRead))
+}
+
+func TestSensitiveAdminModulesCanBeGrantedIndependently(t *testing.T) {
+	db := newAuthzTestDB(t)
+	require.NoError(t, Init(db))
+
+	require.NoError(t, SetUserPermissions(77, PermissionsMap{
+		ResourceFinance: {
+			ActionRead:    true,
+			ActionOperate: false,
+			ActionExport:  true,
+		},
+		ResourcePricing: {
+			ActionRead:    true,
+			ActionWrite:   false,
+			ActionPublish: false,
+			ActionExport:  false,
+		},
+		ResourcePricingGovernance: {
+			ActionRead:    true,
+			ActionOperate: true,
+			ActionExport:  false,
+		},
+	}))
+
+	assert.True(t, Can(77, common.RoleAdminUser, FinanceRead))
+	assert.False(t, Can(77, common.RoleAdminUser, FinanceOperate))
+	assert.True(t, Can(77, common.RoleAdminUser, FinanceExport))
+	assert.True(t, Can(77, common.RoleAdminUser, PricingRead))
+	assert.False(t, Can(77, common.RoleAdminUser, PricingWrite))
+	assert.True(t, Can(77, common.RoleAdminUser, PricingGovernanceOperate))
 }
 
 func TestInitOnSlaveOnlyLoadsPolicies(t *testing.T) {
@@ -129,6 +163,22 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 			ActionSensitiveWrite: true,
 			ActionSecretView:     false,
 		},
+		ResourceFinance: {
+			ActionRead:    false,
+			ActionOperate: false,
+			ActionExport:  false,
+		},
+		ResourcePricing: {
+			ActionRead:    false,
+			ActionWrite:   false,
+			ActionPublish: false,
+			ActionExport:  false,
+		},
+		ResourcePricingGovernance: {
+			ActionRead:    false,
+			ActionOperate: false,
+			ActionExport:  false,
+		},
 	}, ExplicitUserPermissions(42))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
@@ -156,6 +206,22 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 			ActionWrite:          true,
 			ActionSensitiveWrite: false,
 			ActionSecretView:     false,
+		},
+		ResourceFinance: {
+			ActionRead:    false,
+			ActionOperate: false,
+			ActionExport:  false,
+		},
+		ResourcePricing: {
+			ActionRead:    false,
+			ActionWrite:   false,
+			ActionPublish: false,
+			ActionExport:  false,
+		},
+		ResourcePricingGovernance: {
+			ActionRead:    false,
+			ActionOperate: false,
+			ActionExport:  false,
 		},
 	}, ExplicitUserPermissions(42))
 	assert.Empty(t, ExplicitUserOverrides(42))

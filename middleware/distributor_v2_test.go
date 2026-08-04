@@ -52,3 +52,63 @@ func TestDistributorRejectsModelWithoutCompleteV2PriceChain(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), "V2")
 	assert.True(t, context.IsAborted())
 }
+
+func TestDistributorResolvesSystemAliasBeforePricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(
+		&model.Model{},
+		&model.Ability{},
+		&model.ChannelModel{},
+		&model.OfficialModelPriceVersion{},
+		&model.ChannelModelPurchasePriceVersion{},
+		&model.ChannelModelRetailPriceVersion{},
+	))
+	target := model.Model{
+		ModelName:  "openai/gpt-5.6-terra",
+		Status:     1,
+		NameRule:   model.NameRuleExact,
+		Visibility: model.ModelVisibilityPublic,
+	}
+	require.NoError(t, db.Create(&target).Error)
+	require.NoError(t, db.Create(&model.Model{
+		ModelName:            "codex-auto-review",
+		Status:               1,
+		NameRule:             model.NameRuleExact,
+		Visibility:           model.ModelVisibilityInternal,
+		ModelPurpose:         model.ModelPurposeApprovalReview,
+		RoutingTargetModelId: &target.Id,
+	}).Error)
+	model.InvalidateModelRoutingCache()
+	pricingruntime.InvalidateCatalog()
+	t.Cleanup(func() {
+		model.InvalidateModelRoutingCache()
+		pricingruntime.InvalidateCatalog()
+		model.DB = originalDB
+	})
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/responses",
+		strings.NewReader(`{"model":"codex-auto-review","input":"review"}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	context.Set(string(constant.ContextKeyUsingGroup), "default")
+
+	Distribute()(context)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "openai/gpt-5.6-terra")
+	assert.NotContains(t, recorder.Body.String(), "codex-auto-review")
+	assert.Equal(
+		t,
+		"codex-auto-review",
+		context.GetString(string(constant.ContextKeyRequestedModel)),
+	)
+	assert.True(t, context.IsAborted())
+}

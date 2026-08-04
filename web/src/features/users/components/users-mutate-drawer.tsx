@@ -120,8 +120,13 @@ export function UsersMutateDrawer({
 
   const groups = groupsData?.data || []
 
-  // Permission catalog is owned by the backend; fetched once and reused.
-  const { data: permissionCatalog = EMPTY_PERMISSION_CATALOG } = useQuery({
+  // Permission catalog is owned by the backend. Refetch whenever the drawer
+  // opens so a newly deployed permission module is immediately configurable
+  // without waiting for the query cache to expire.
+  const {
+    data: permissionCatalog = EMPTY_PERMISSION_CATALOG,
+    refetch: refetchPermissionCatalog,
+  } = useQuery({
     queryKey: ['admin-permission-catalog'],
     queryFn: getPermissionCatalog,
     staleTime: 5 * 60 * 1000,
@@ -146,6 +151,12 @@ export function UsersMutateDrawer({
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
   }, [open, isUpdate, currentRow, form])
+
+  useEffect(() => {
+    if (open) {
+      refetchPermissionCatalog().catch(() => undefined)
+    }
+  }, [open, refetchPermissionCatalog])
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()

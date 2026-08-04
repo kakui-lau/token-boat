@@ -27,6 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getPricingCircuitEvents,
@@ -69,6 +75,12 @@ function circuitEventLabel(
 export function PricingCircuitPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const canOperate = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING_GOVERNANCE,
+    ADMIN_PERMISSION_ACTIONS.OPERATE
+  )
   const [channelFilter, setChannelFilter] = useState('')
   const [eventFilter, setEventFilter] = useState('')
   const circuitQuery = useQuery({
@@ -215,41 +227,45 @@ export function PricingCircuitPanel() {
                       : '—'}
                   </TableCell>
                   <TableCell className='text-right'>
-                    <AlertDialog>
-                      <AlertDialogTrigger
-                        render={
-                          <Button
-                            size='sm'
-                            variant='outline'
-                            disabled={resetMutation.isPending}
-                          />
-                        }
-                      >
-                        {t('Reset circuit')}
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>
-                            {t('Reset this channel circuit?')}
-                          </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            {t(
-                              'This only clears the circuit state in the current process. The channel will be eligible for routing immediately.'
-                            )}
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() =>
-                              resetMutation.mutate(channel.channel_id)
-                            }
-                          >
-                            {t('Reset')}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    {canOperate ? (
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              disabled={resetMutation.isPending}
+                            />
+                          }
+                        >
+                          {t('Reset circuit')}
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              {t('Reset this channel circuit?')}
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {t(
+                                'This only clears the circuit state in the current process. The channel will be eligible for routing immediately.'
+                              )}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() =>
+                                resetMutation.mutate(channel.channel_id)
+                              }
+                            >
+                              {t('Reset')}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : (
+                      <span className='text-muted-foreground'>—</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

@@ -50,6 +50,8 @@ type PriceKind = 'purchase' | 'retail'
 type PriceEditorSheetProps = {
   channelModel: ChannelModel | null
   onOpenChange: (open: boolean) => void
+  canWrite?: boolean
+  canPublish?: boolean
 }
 
 export function PriceEditorSheet(props: PriceEditorSheetProps) {
@@ -206,6 +208,8 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   onCreated={async () => {
                     await purchaseQuery.refetch()
                   }}
+                  canWrite={props.canWrite}
+                  canPublish={props.canPublish}
                 />
               </TabsContent>
               <TabsContent value='retail'>
@@ -229,6 +233,8 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
                   onCreated={async () => {
                     await retailQuery.refetch()
                   }}
+                  canWrite={props.canWrite}
+                  canPublish={props.canPublish}
                 />
               </TabsContent>
               <TabsContent value='simulation'>

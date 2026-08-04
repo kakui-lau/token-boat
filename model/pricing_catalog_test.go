@@ -33,6 +33,16 @@ func TestPublicPricingIncludesActiveExactModelWithoutAbility(t *testing.T) {
 		Status:    1,
 		NameRule:  NameRulePrefix,
 	}).Error)
+	targetID := 201
+	require.NoError(t, DB.Create(&Model{
+		Id:                   205,
+		ModelName:            "internal-system-alias",
+		Status:               1,
+		NameRule:             NameRuleExact,
+		Visibility:           ModelVisibilityInternal,
+		ModelPurpose:         ModelPurposeApprovalReview,
+		RoutingTargetModelId: &targetID,
+	}).Error)
 
 	catalog := pricingByModelName(GetPublicPricing())
 
@@ -41,6 +51,7 @@ func TestPublicPricingIncludesActiveExactModelWithoutAbility(t *testing.T) {
 	assert.Empty(t, catalog["catalog-only-model"].EnableGroup)
 	assert.NotContains(t, catalog, "disabled-catalog-model")
 	assert.NotContains(t, catalog, "catalog-prefix-")
+	assert.NotContains(t, catalog, "internal-system-alias")
 	assert.NotContains(t, pricingByModelName(GetPricing()), "catalog-only-model")
 }
 

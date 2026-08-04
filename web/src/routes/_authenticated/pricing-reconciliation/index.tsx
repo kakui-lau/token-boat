@@ -19,17 +19,27 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { PricingReconciliationPage } from '@/features/pricing-reconciliation'
-import { ROLE } from '@/lib/roles'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute(
-  '/_authenticated/pricing-reconciliation/'
-)({
-  beforeLoad: () => {
-    const user = useAuthStore.getState().auth.user
-    if (!user || user.role !== ROLE.SUPER_ADMIN) {
-      throw redirect({ to: '/403' })
-    }
-  },
-  component: PricingReconciliationPage,
-})
+export const Route = createFileRoute('/_authenticated/pricing-reconciliation/')(
+  {
+    beforeLoad: () => {
+      const user = useAuthStore.getState().auth.user
+      if (
+        !hasPermission(
+          user,
+          ADMIN_PERMISSION_RESOURCES.PRICING_GOVERNANCE,
+          ADMIN_PERMISSION_ACTIONS.READ
+        )
+      ) {
+        throw redirect({ to: '/403' })
+      }
+    },
+    component: PricingReconciliationPage,
+  }
+)

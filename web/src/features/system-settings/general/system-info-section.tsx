@@ -251,7 +251,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                       <FormLabel>{t('Home Page Content')}</FormLabel>
                       <FormControl>
                         <Textarea
-                        placeholder={t('Welcome to our token boat...')}
+                          placeholder={t('Welcome to our token boat...')}
                           rows={6}
                           {...field}
                         />

@@ -42,6 +42,11 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+vi.mock('@/stores/auth-store', () => ({
+  useAuthStore: (selector: (state: unknown) => unknown) =>
+    selector({ auth: { user: { role: 100 } } }),
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => (
     <a href='/'>{children}</a>

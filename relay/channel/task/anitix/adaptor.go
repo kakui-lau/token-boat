@@ -27,6 +27,15 @@ const upstreamRequestContextKey = "anitix_upstream_request"
 var modelList = []string{
 	"seedance2",
 	"seedance2-fast",
+	"dreamina-seedance-2-0-260128",
+	"dreamina-seedance-2-0-ep",
+	"dreamina-seedance-2-0-hc",
+	"dreamina-seedance-2-0-fast-260128",
+	"dreamina-seedance-2-0-fast-ep",
+	"dreamina-seedance-2-0-fast-hc",
+	"dreamina-seedance-2-0-mini-260615",
+	"dreamina-seedance-2-0-mini-ep",
+	"dreamina-seedance-2-0-mini-hc",
 }
 
 type submitOptions struct {

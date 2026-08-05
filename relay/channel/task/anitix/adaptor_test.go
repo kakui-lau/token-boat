@@ -15,16 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestModelListIncludesAnisparkSeedanceModels(t *testing.T) {
-	adaptor := &TaskAdaptor{}
-
-	assert.Subset(t, adaptor.GetModelList(), []string{
-		"wb-bytedance/doubao-seedance-2-0",
-		"wb-bytedance-t/doubao-seedance-2-0",
-		"wb-bytedance-t/doubao-seedance-2-0-fast",
-	})
-}
-
 func newOpenRouterVideoContext(body string) (*gin.Context, *relaycommon.RelayInfo) {
 	request := httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -474,7 +475,60 @@ func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	return doRequest(c, req, info)
 }
+
+func captureUpstreamRequestBody(req *http.Request) ([]byte, error) {
+	if req == nil || req.Body == nil {
+		return nil, nil
+	}
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		defer body.Close()
+		return io.ReadAll(body)
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	_ = req.Body.Close()
+	restoreBody := func() io.ReadCloser {
+		return io.NopCloser(bytes.NewReader(body))
+	}
+	req.Body = restoreBody()
+	req.GetBody = func() (io.ReadCloser, error) {
+		return restoreBody(), nil
+	}
+	if req.ContentLength <= 0 && len(body) > 0 {
+		req.ContentLength = int64(len(body))
+	}
+	return body, nil
+}
+
+func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, failure string) {
+	method := ""
+	requestURL := ""
+	if req != nil {
+		method = req.Method
+		if req.URL != nil {
+			requestURL = common.SanitizeURLForLog(req.URL.String())
+		}
+	}
+	logger.LogError(c, fmt.Sprintf(
+		"upstream request failed: method=%s url=%q failure=%q body=%s",
+		method,
+		requestURL,
+		failure,
+		string(body),
+	))
+}
+
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	requestBody, bodyErr := captureUpstreamRequestBody(req)
+	if bodyErr != nil {
+		logger.LogError(c, "capture upstream request body failed: "+bodyErr.Error())
+	}
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -512,7 +566,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
+		logFailedUpstreamRequest(c, req, requestBody, err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -528,6 +582,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 			policy.String(),
 			resp.Proto,
 		))
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		logFailedUpstreamRequest(c, req, requestBody, resp.Status)
 	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
@@ -549,9 +606,6 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	applyUpstreamContentLength(req, info)
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(requestBody), nil
-	}
 
 	err = a.BuildRequestHeader(c, req, info)
 	if err != nil {

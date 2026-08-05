@@ -63,8 +63,10 @@ vi.mock('../api', () => ({
     success: true,
     data: {
       settled_count: 0,
+      refunded_count: 2,
       revenue_usd: '0',
       estimated_purchase_usd: '0',
+      refunded_estimated_purchase_usd: '1.25',
       provider_reported_cost_usd: '0',
       cost_variance_usd: '0',
       gross_margin_usd: '0',
@@ -195,6 +197,11 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
       .getAllByText('Estimate-only records')
       .find((element) => element.tagName === 'DIV')?.parentElement
   ).toHaveTextContent('Estimate-only records3')
+  expect(
+    screen
+      .getAllByText('Refunded estimated cost exposure')
+      .find((element) => element.tagName === 'DIV')?.parentElement
+  ).toHaveTextContent('Refunded estimated cost exposure1.25 USD')
   expect(
     screen
       .getAllByText('Pending cost reconciliation')

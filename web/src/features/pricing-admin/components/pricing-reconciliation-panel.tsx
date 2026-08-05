@@ -158,8 +158,14 @@ export function PricingReconciliationPanel() {
       'pricing-admin',
       'request-pricing-snapshots',
       'financial-summary',
+      createdFrom,
+      createdTo,
     ],
-    queryFn: getPricingFinancialSummary,
+    queryFn: () =>
+      getPricingFinancialSummary({
+        created_from: createdFrom ? dayjs(createdFrom).unix() : undefined,
+        created_to: createdTo ? dayjs(createdTo).unix() : undefined,
+      }),
   })
   const confirmRefundMutation = useMutation({
     mutationFn: confirmPricingSnapshotRefunded,
@@ -415,7 +421,7 @@ export function PricingReconciliationPanel() {
                 0) > 0,
           },
           {
-            label: t('Estimated purchase cost'),
+            label: t('Settled estimated purchase cost'),
             value:
               (financialSummaryQuery.data?.data.finalized_count ?? 0)
                 ? (financialSummaryQuery.data?.data.estimated_purchase_usd ??
@@ -423,6 +429,16 @@ export function PricingReconciliationPanel() {
                 : '—',
             isCurrency:
               (financialSummaryQuery.data?.data.finalized_count ?? 0) > 0,
+          },
+          {
+            label: t('Refunded estimated cost exposure'),
+            value:
+              (financialSummaryQuery.data?.data.refunded_count ?? 0) > 0
+                ? (financialSummaryQuery.data?.data
+                    .refunded_estimated_purchase_usd ?? '0')
+                : '—',
+            isCurrency:
+              (financialSummaryQuery.data?.data.refunded_count ?? 0) > 0,
           },
           {
             label: t('Confirmed provider cost'),

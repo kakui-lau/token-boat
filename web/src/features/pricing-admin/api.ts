@@ -154,11 +154,13 @@ export async function getPricingReconciliationSummary(): Promise<
   return requirePricingSuccess(response.data)
 }
 
-export async function getPricingFinancialSummary(): Promise<
-  PriceVersionResponse<PricingFinancialSummary>
-> {
+export async function getPricingFinancialSummary(params?: {
+  created_from?: number
+  created_to?: number
+}): Promise<PriceVersionResponse<PricingFinancialSummary>> {
   const response = await api.get(
-    '/api/pricing-admin/request-pricing-snapshots/financial-summary'
+    '/api/pricing-admin/request-pricing-snapshots/financial-summary',
+    { params }
   )
   return requirePricingSuccess(response.data)
 }

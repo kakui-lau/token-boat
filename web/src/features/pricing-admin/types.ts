@@ -194,6 +194,7 @@ export type PricingFinancialSummary = {
   revenue_usd: string
   billed_amount_usd?: string
   estimated_purchase_usd: string
+  refunded_estimated_purchase_usd?: string
   provider_reported_cost_usd: string
   cost_variance_usd: string
   gross_margin_usd: string

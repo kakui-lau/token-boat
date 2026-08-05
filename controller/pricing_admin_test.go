@@ -1178,6 +1178,8 @@ func TestAdminFinancialSummaryIncludesRefundedProviderLoss(t *testing.T) {
 			RefundedCount           int    `json:"refunded_count"`
 			FinalizedCount          int    `json:"finalized_count"`
 			RevenueUSD              string `json:"revenue_usd"`
+			EstimatedPurchaseUSD    string `json:"estimated_purchase_usd"`
+			RefundedEstimatedUSD    string `json:"refunded_estimated_purchase_usd"`
 			ProviderReportedCostUSD string `json:"provider_reported_cost_usd"`
 			GrossMarginUSD          string `json:"gross_margin_usd"`
 		} `json:"data"`
@@ -1188,8 +1190,47 @@ func TestAdminFinancialSummaryIncludesRefundedProviderLoss(t *testing.T) {
 	assert.Equal(t, 1, response.Data.RefundedCount)
 	assert.Equal(t, 1, response.Data.FinalizedCount)
 	assert.Equal(t, "0", response.Data.RevenueUSD)
+	assert.Equal(t, "0", response.Data.EstimatedPurchaseUSD)
+	assert.Equal(t, "0.4", response.Data.RefundedEstimatedUSD)
 	assert.Equal(t, "0.3", response.Data.ProviderReportedCostUSD)
 	assert.Equal(t, "-0.3", response.Data.GrossMarginUSD)
+}
+
+func TestAdminFinancialSummaryDoesNotFlagZeroChargeAsMarginBreach(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	records := []model.RequestPricingSnapshot{
+		{
+			RequestId: "zero-charge", UserId: 7, ModelId: 1, ChannelModelId: 1,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0", RetailAmount: "0", CustomerCharge: common.GetPointer("0"),
+			NetMarginRate: "0", MinimumMarginRate: "0.03", MarginCompliant: false,
+			Currency: "USD", Status: pricingruntime.PricingSnapshotStatusSettled,
+		},
+		{
+			RequestId: "paid-breach", UserId: 7, ModelId: 1, ChannelModelId: 1,
+			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.9", RetailAmount: "1", CustomerCharge: common.GetPointer("1"),
+			NetMarginRate: "0.01", MinimumMarginRate: "0.03", MarginCompliant: false,
+			Currency: "USD", Status: pricingruntime.PricingSnapshotStatusSettled,
+		},
+	}
+	require.NoError(t, model.DB.Create(&records).Error)
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/financial-summary",
+		nil,
+	)
+
+	AdminGetPricingFinancialSummary(context)
+
+	var response struct {
+		Data struct {
+			MarginBreachCount int `json:"margin_breach_count"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, 1, response.Data.MarginBreachCount)
 }
 
 func TestAdminFinancialSummaryExcludesSubscriptionUsageFromGrossMargin(t *testing.T) {

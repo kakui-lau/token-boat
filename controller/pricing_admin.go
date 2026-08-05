@@ -816,6 +816,24 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	type estimatedCostTotal struct {
+		EstimatedCost string `gorm:"column:estimated_cost"`
+	}
+	var settledEstimatedCost estimatedCostTotal
+	if err := settledQuery.Session(&gorm.Session{}).
+		Select("COALESCE(SUM(purchase_cost), 0) AS estimated_cost").
+		Scan(&settledEstimatedCost).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var refundedEstimatedCost estimatedCostTotal
+	if err := baseQuery.Session(&gorm.Session{}).
+		Where("status = ?", pricingruntime.PricingSnapshotStatusRefunded).
+		Select("COALESCE(SUM(purchase_cost), 0) AS estimated_cost").
+		Scan(&refundedEstimatedCost).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	type providerCostTotals struct {
 		Count        int64  `gorm:"column:record_count"`
 		ProviderCost string `gorm:"column:provider_cost"`
@@ -875,18 +893,21 @@ func AdminGetPricingFinancialSummary(c *gin.Context) {
 	}
 	var marginBreachCount int64
 	if err := settledQuery.Session(&gorm.Session{}).
-		Where("net_margin_rate IS NOT NULL AND margin_compliant = ?", false).
+		Where("net_margin_rate IS NOT NULL AND margin_compliant = ? AND customer_charge > ?", false, 0).
 		Count(&marginBreachCount).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, gin.H{
-		"settled_count":                  settledCount,
-		"refunded_count":                 refundedCount,
-		"finalized_count":                totals.Count,
-		"billed_amount_usd":              normalizePricingAmount(totals.Revenue),
-		"revenue_usd":                    normalizePricingAmount(totals.Revenue),
-		"estimated_purchase_usd":         normalizePricingAmount(totals.EstimatedCost),
+		"settled_count":          settledCount,
+		"refunded_count":         refundedCount,
+		"finalized_count":        totals.Count,
+		"billed_amount_usd":      normalizePricingAmount(totals.Revenue),
+		"revenue_usd":            normalizePricingAmount(totals.Revenue),
+		"estimated_purchase_usd": normalizePricingAmount(settledEstimatedCost.EstimatedCost),
+		"refunded_estimated_purchase_usd": normalizePricingAmount(
+			refundedEstimatedCost.EstimatedCost,
+		),
 		"provider_reported_cost_usd":     normalizePricingAmount(providerTotals.ProviderCost),
 		"cost_variance_usd":              normalizePricingAmount(providerTotals.CostVariance),
 		"gross_margin_usd":               normalizePricingAmount(marginTotals.GrossMargin),

@@ -14,6 +14,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -506,7 +507,7 @@ func captureUpstreamRequestBody(req *http.Request) ([]byte, error) {
 	return body, nil
 }
 
-func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, failure string) {
+func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, failure string, info *common.RelayInfo) {
 	method := ""
 	requestURL := ""
 	if req != nil {
@@ -522,6 +523,13 @@ func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, fa
 		failure,
 		string(body),
 	))
+	if info != nil && info.PersistedTaskID > 0 {
+		if err := model.SaveTaskUpstreamRequest(info.PersistedTaskID, model.TaskUpstreamRequest{
+			Method: method, URL: requestURL, Body: string(body), Failure: failure,
+		}); err != nil {
+			logger.LogError(c, "save failed upstream request to task: "+err.Error())
+		}
+	}
 }
 
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
@@ -566,7 +574,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logFailedUpstreamRequest(c, req, requestBody, err.Error())
+		logFailedUpstreamRequest(c, req, requestBody, err.Error(), info)
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -584,7 +592,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		))
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		logFailedUpstreamRequest(c, req, requestBody, resp.Status)
+		logFailedUpstreamRequest(c, req, requestBody, resp.Status, info)
 	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {

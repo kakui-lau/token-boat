@@ -82,7 +82,15 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 				task.Username = user.Username
 			}
 		}
-		result[i] = relay.TaskModel2Dto(task)
+		result[i] = taskToDto(task, fillUser)
+	}
+	return result
+}
+
+func taskToDto(task *model.Task, includeAdminFields bool) *dto.TaskDto {
+	result := relay.TaskModel2Dto(task)
+	if includeAdminFields {
+		result.AdminUpstreamRequest = task.PrivateData.AdminUpstreamRequest
 	}
 	return result
 }

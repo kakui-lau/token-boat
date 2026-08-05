@@ -130,18 +130,42 @@ type TaskPrivateData struct {
 	ResultURL      string   `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	ResultURLs     []string `json:"result_urls,omitempty"`      // 多结果视频 URL，顺序对应公开 content index
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
-	BillingSource       string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
-	SubscriptionId      int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
-	TokenId             int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
-	NodeName            string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
-	BillingContext      *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
-	ProviderCost        float64             `json:"provider_cost,omitempty"`   // 上游实际成本，仅用于内部成本核算
-	ProviderCostKnown   bool                `json:"provider_cost_known,omitempty"`
-	ProviderIsByok      bool                `json:"provider_is_byok,omitempty"`
-	CallbackURL         string              `json:"callback_url,omitempty"`
-	CallbackAttempts    int                 `json:"callback_attempts,omitempty"`
-	CallbackLastError   string              `json:"callback_last_error,omitempty"`
-	CallbackDeliveredAt int64               `json:"callback_delivered_at,omitempty"`
+	BillingSource        string               `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
+	SubscriptionId       int                  `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
+	TokenId              int                  `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
+	NodeName             string               `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
+	BillingContext       *TaskBillingContext  `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	ProviderCost         float64              `json:"provider_cost,omitempty"`   // 上游实际成本，仅用于内部成本核算
+	ProviderCostKnown    bool                 `json:"provider_cost_known,omitempty"`
+	ProviderIsByok       bool                 `json:"provider_is_byok,omitempty"`
+	CallbackURL          string               `json:"callback_url,omitempty"`
+	CallbackAttempts     int                  `json:"callback_attempts,omitempty"`
+	CallbackLastError    string               `json:"callback_last_error,omitempty"`
+	CallbackDeliveredAt  int64                `json:"callback_delivered_at,omitempty"`
+	AdminUpstreamRequest *TaskUpstreamRequest `json:"admin_upstream_request,omitempty"`
+}
+
+// TaskUpstreamRequest is retained only for failed upstream calls and is never
+// included in user-facing task responses.
+type TaskUpstreamRequest struct {
+	Method  string `json:"method"`
+	URL     string `json:"url"`
+	Body    string `json:"body"`
+	Failure string `json:"failure"`
+}
+
+func SaveTaskUpstreamRequest(id int64, request TaskUpstreamRequest) error {
+	if id <= 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var task Task
+		if err := lockForUpdate(tx).Select("id", "private_data").First(&task, id).Error; err != nil {
+			return err
+		}
+		task.PrivateData.AdminUpstreamRequest = &request
+		return tx.Model(&Task{}).Where("id = ?", id).Update("private_data", task.PrivateData).Error
+	})
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。

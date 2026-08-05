@@ -25,6 +25,9 @@ import (
 const upstreamRequestContextKey = "anitix_upstream_request"
 
 var modelList = []string{
+	"wb-bytedance/doubao-seedance-2-0",
+	"wb-bytedance-t/doubao-seedance-2-0",
+	"wb-bytedance-t/doubao-seedance-2-0-fast",
 	"seedance2",
 	"seedance2-fast",
 	"dreamina-seedance-2-0-260128",

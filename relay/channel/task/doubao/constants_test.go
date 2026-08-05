@@ -9,39 +9,41 @@ import (
 
 func TestModelListIncludesAnisparkSeedanceModels(t *testing.T) {
 	assert.Subset(t, ModelList, []string{
+		"bytedance/seedance-2.0-upscale",
+		"bytedance/seedance-2.0-fast-upscale",
 		"wb-bytedance/doubao-seedance-2-0",
 		"wb-bytedance-t/doubao-seedance-2-0",
 		"wb-bytedance-t/doubao-seedance-2-0-fast",
 	})
 }
 
-func TestAnisparkSupersamplingModelsUseSeventyPercentOfficialPrice(t *testing.T) {
+func TestAnisparkUpscaleModelsUseCorrespondingOfficialBasePrice(t *testing.T) {
 	tests := []struct {
-		name     string
-		official string
-		discount string
+		name    string
+		base    string
+		upscale string
 	}{
 		{
-			name:     "standard",
-			official: "wb-bytedance/doubao-seedance-2-0",
-			discount: "wb-bytedance-t/doubao-seedance-2-0",
+			name:    "standard",
+			base:    "wb-bytedance/doubao-seedance-2-0",
+			upscale: "bytedance/seedance-2.0-upscale",
 		},
 		{
-			name:     "fast",
-			official: "doubao-seedance-2-0-fast-260128",
-			discount: "wb-bytedance-t/doubao-seedance-2-0-fast",
+			name:    "fast",
+			base:    "doubao-seedance-2-0-fast-260128",
+			upscale: "bytedance/seedance-2.0-fast-upscale",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			official, ok := videoPriceTable[tt.official]
+			base, ok := videoPriceTable[tt.base]
 			require.True(t, ok)
-			discount, ok := videoPriceTable[tt.discount]
+			upscale, ok := videoPriceTable[tt.upscale]
 			require.True(t, ok)
-			require.Len(t, discount, len(official))
-			for sku, officialPrice := range official {
-				assert.InDelta(t, officialPrice*0.7, discount[sku], 1e-9)
+			require.Len(t, upscale, len(base))
+			for sku, basePrice := range base {
+				assert.Equal(t, basePrice, upscale[sku])
 			}
 		})
 	}

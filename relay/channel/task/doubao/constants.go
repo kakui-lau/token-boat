@@ -9,6 +9,8 @@ var ModelList = []string{
 	"doubao-seedance-1-5-pro-251215",
 	"doubao-seedance-2-0-260128",
 	"doubao-seedance-2-0-fast-260128",
+	"bytedance/seedance-2.0-upscale",
+	"bytedance/seedance-2.0-fast-upscale",
 	"wb-bytedance/doubao-seedance-2-0",
 	"wb-bytedance-t/doubao-seedance-2-0",
 	"wb-bytedance-t/doubao-seedance-2-0-fast",
@@ -47,17 +49,17 @@ var videoPriceTable = map[string]map[videoPriceKey]float64{
 		{is4k: true, hasVideo: false}:    26.0,
 		{is4k: true, hasVideo: true}:     16.0,
 	},
-	"wb-bytedance-t/doubao-seedance-2-0": {
-		{hasVideo: false}:                32.2,
-		{hasVideo: true}:                 19.6,
-		{is1080p: true, hasVideo: false}: 35.7,
-		{is1080p: true, hasVideo: true}:  21.7,
-		{is4k: true, hasVideo: false}:    18.2,
-		{is4k: true, hasVideo: true}:     11.2,
+	"bytedance/seedance-2.0-upscale": {
+		{hasVideo: false}:                46.0,
+		{hasVideo: true}:                 28.0,
+		{is1080p: true, hasVideo: false}: 51.0,
+		{is1080p: true, hasVideo: true}:  31.0,
+		{is4k: true, hasVideo: false}:    26.0,
+		{is4k: true, hasVideo: true}:     16.0,
 	},
-	"wb-bytedance-t/doubao-seedance-2-0-fast": {
-		{hasVideo: false}: 25.9,
-		{hasVideo: true}:  15.4,
+	"bytedance/seedance-2.0-fast-upscale": {
+		{hasVideo: false}: 37.0,
+		{hasVideo: true}:  22.0,
 	},
 }
 

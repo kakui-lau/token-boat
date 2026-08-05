@@ -213,6 +213,8 @@ billing_setting.billing_expr
 ```text
 bytedance/seedance-2.0
 bytedance/seedance-2.0-fast
+bytedance/seedance-2.0-upscale
+bytedance/seedance-2.0-fast-upscale
 deepseek/deepseek-v4-flash
 deepseek/deepseek-v4-pro
 openai/gpt-5.4

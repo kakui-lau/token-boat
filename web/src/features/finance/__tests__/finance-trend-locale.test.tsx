@@ -18,7 +18,28 @@ vi.mock('@/context/theme-provider', () => ({
 }))
 
 vi.mock('@visactor/react-vchart', () => ({
-  VChart: () => <div data-testid='finance-trend-chart' />,
+  VChart: (props: {
+    spec: {
+      yField?: string
+      tooltip?: {
+        dimension?: {
+          content?: Array<{
+            value?: (datum: Record<string, unknown>) => string
+          }>
+        }
+      }
+    }
+  }) => {
+    const tooltipValue =
+      props.spec.yField === 'consumedQuota'
+        ? props.spec.tooltip?.dimension?.content?.[0]?.value?.({
+            consumedQuota: 500000,
+          })
+        : undefined
+    return (
+      <div data-testid='finance-trend-chart' data-tooltip-value={tooltipValue} />
+    )
+  },
 }))
 
 vi.mock('../api', () => ({
@@ -64,5 +85,10 @@ describe('finance trend locale formatting', () => {
     expect(screen.getByText('100%')).toBeVisible()
     expect(screen.getByText('Total consumption')).toBeVisible()
     expect(screen.getAllByTestId('finance-trend-chart')).toHaveLength(3)
+    expect(
+      screen
+        .getAllByTestId('finance-trend-chart')
+        .find((chart) => chart.dataset.tooltipValue)
+    ).toHaveAttribute('data-tooltip-value', '$1')
   })
 })

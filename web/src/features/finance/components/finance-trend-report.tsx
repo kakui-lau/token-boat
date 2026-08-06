@@ -141,6 +141,23 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
     theme: chartTheme,
     background: 'transparent',
   }
+  const consumptionTooltipContent = [
+    {
+      key: t('Consumption'),
+      value: (datum: Record<string, unknown>) =>
+        formatQuota(Number(datum.consumedQuota)),
+    },
+    {
+      key: t('Requests'),
+      value: (datum: Record<string, unknown>) =>
+        formatNumber(Number(datum.requests)),
+    },
+    {
+      key: t('Tokens'),
+      value: (datum: Record<string, unknown>) =>
+        formatNumber(Number(datum.tokens)),
+    },
+  ]
   const consumptionSpec = {
     type: 'line' as const,
     data: [{ id: 'consumption', values: chartData }],
@@ -160,23 +177,10 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
     ],
     tooltip: {
       mark: {
-        content: [
-          {
-            key: t('Consumption'),
-            value: (datum: Record<string, unknown>) =>
-              formatQuota(Number(datum.consumedQuota)),
-          },
-          {
-            key: t('Requests'),
-            value: (datum: Record<string, unknown>) =>
-              formatNumber(Number(datum.requests)),
-          },
-          {
-            key: t('Tokens'),
-            value: (datum: Record<string, unknown>) =>
-              formatNumber(Number(datum.tokens)),
-          },
-        ],
+        content: consumptionTooltipContent,
+      },
+      dimension: {
+        content: consumptionTooltipContent,
       },
     },
     theme: chartTheme,

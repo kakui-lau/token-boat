@@ -37,6 +37,9 @@ vi.mock('../api', () => ({
           failed_orders: 0,
           expired_orders: 0,
           success_amount: 10,
+          consumed_quota: 500000,
+          request_count: 3,
+          token_count: 120,
         },
       ],
     },
@@ -59,6 +62,7 @@ describe('finance trend locale formatting', () => {
 
     expect(await screen.findByText('Payment success rate')).toBeVisible()
     expect(screen.getByText('100%')).toBeVisible()
-    expect(screen.getAllByTestId('finance-trend-chart')).toHaveLength(2)
+    expect(screen.getByText('Total consumption')).toBeVisible()
+    expect(screen.getAllByTestId('finance-trend-chart')).toHaveLength(3)
   })
 })

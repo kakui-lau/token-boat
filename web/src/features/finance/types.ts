@@ -97,6 +97,9 @@ export type FinanceTrendPoint = {
   failed_orders: number
   expired_orders: number
   success_amount: number
+  consumed_quota: number
+  request_count: number
+  token_count: number
 }
 
 export type FinanceTrendReport = {

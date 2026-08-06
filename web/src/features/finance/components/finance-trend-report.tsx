@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import type { ISpec } from '@visactor/vchart'
-import { ChartNoAxesCombined, CircleDollarSign } from 'lucide-react'
+import {
+  ChartNoAxesCombined,
+  CircleDollarSign,
+  HandCoins,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -17,7 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useTheme } from '@/context/theme-provider'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
+import { formatNumber, formatQuota } from '@/lib/format'
 import { VCHART_OPTION } from '@/lib/vchart'
 
 import { getFinanceTrend } from '../api'
@@ -55,6 +59,9 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
       failed: point.failed_orders,
       expired: point.expired_orders,
       pending: point.pending_orders,
+      consumedQuota: point.consumed_quota,
+      requests: point.request_count,
+      tokens: point.token_count,
     }))
   }, [i18n.language, i18n.resolvedLanguage, trendQuery.data?.points])
 
@@ -77,8 +84,18 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
           completed: result.completed + point.completed,
           settled:
             result.settled + point.completed + point.failed + point.expired,
+          consumedQuota: result.consumedQuota + point.consumedQuota,
+          requests: result.requests + point.requests,
+          tokens: result.tokens + point.tokens,
         }),
-        { revenue: 0, completed: 0, settled: 0 }
+        {
+          revenue: 0,
+          completed: 0,
+          settled: 0,
+          consumedQuota: 0,
+          requests: 0,
+          tokens: 0,
+        }
       ),
     [chartData]
   )
@@ -124,10 +141,59 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
     theme: chartTheme,
     background: 'transparent',
   }
+  const consumptionSpec = {
+    type: 'line' as const,
+    data: [{ id: 'consumption', values: chartData }],
+    xField: 'date',
+    yField: 'consumedQuota',
+    point: { visible: false },
+    line: { style: { lineWidth: 2 } },
+    axes: [
+      { orient: 'bottom' },
+      {
+        orient: 'left',
+        label: {
+          formatMethod: (value: number | string) =>
+            formatQuota(Number(value)),
+        },
+      },
+    ],
+    tooltip: {
+      mark: {
+        content: [
+          {
+            key: t('Consumption'),
+            value: (datum: Record<string, unknown>) =>
+              formatQuota(Number(datum.consumedQuota)),
+          },
+          {
+            key: t('Requests'),
+            value: (datum: Record<string, unknown>) =>
+              formatNumber(Number(datum.requests)),
+          },
+          {
+            key: t('Tokens'),
+            value: (datum: Record<string, unknown>) =>
+              formatNumber(Number(datum.tokens)),
+          },
+        ],
+      },
+    },
+    theme: chartTheme,
+    background: 'transparent',
+  }
 
   return (
     <div className='space-y-4'>
-      <div className='grid gap-3 sm:grid-cols-3'>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+        <TrendMetric
+          label={t('Total consumption')}
+          value={formatQuota(totals.consumedQuota)}
+        />
+        <TrendMetric
+          label={t('Usage requests')}
+          value={formatNumber(totals.requests)}
+        />
         <TrendMetric
           label={t('Payment volume')}
           value={formatCurrencyFromUSD(totals.revenue, { abbreviate: false })}
@@ -154,6 +220,20 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
         </div>
       ) : (
         <div className='grid gap-4 xl:grid-cols-2'>
+          <Card className='xl:col-span-2'>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2 text-base'>
+                <HandCoins className='size-4' aria-hidden='true' />
+                {t('Total consumption trend')}
+              </CardTitle>
+              <CardDescription>
+                {t('Daily net consumption after refunds across all users.')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='h-80'>
+              <VChart spec={consumptionSpec as ISpec} option={VCHART_OPTION} />
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className='flex items-center gap-2 text-base'>

@@ -16,6 +16,9 @@ type FinanceTrendPoint struct {
 	FailedOrders  int64   `json:"failed_orders"`
 	ExpiredOrders int64   `json:"expired_orders"`
 	SuccessAmount float64 `json:"success_amount"`
+	ConsumedQuota int64   `json:"consumed_quota"`
+	RequestCount  int64   `json:"request_count"`
+	TokenCount    int64   `json:"token_count"`
 }
 
 type FinanceTrendReport struct {
@@ -71,8 +74,19 @@ func GetFinanceTrend(startAt int64, endAt int64) (*FinanceTrendReport, error) {
 		return nil, errors.New("invalid finance trend time range")
 	}
 	if startAt == 0 {
-		if err := DB.Model(&TopUp{}).Select("COALESCE(MIN(create_time), 0)").Scan(&startAt).Error; err != nil {
+		var firstTopUpAt int64
+		if err := DB.Model(&TopUp{}).Select("COALESCE(MIN(create_time), 0)").Scan(&firstTopUpAt).Error; err != nil {
 			return nil, err
+		}
+		var firstUsageAt int64
+		if err := LOG_DB.Model(&Log{}).
+			Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+			Select("COALESCE(MIN(created_at), 0)").Scan(&firstUsageAt).Error; err != nil {
+			return nil, err
+		}
+		startAt = firstTopUpAt
+		if startAt == 0 || (firstUsageAt > 0 && firstUsageAt < startAt) {
+			startAt = firstUsageAt
 		}
 		if startAt == 0 {
 			startAt = endAt
@@ -115,13 +129,36 @@ func GetFinanceTrend(startAt int64, endAt int64) (*FinanceTrendReport, error) {
 		return nil, err
 	}
 
+	type usageTrendRow struct {
+		BucketDay     int64
+		ConsumedQuota int64
+		RequestCount  int64
+		TokenCount    int64
+	}
+	var usageRows []usageTrendRow
+	if err := LOG_DB.Model(&Log{}).
+		Where("created_at >= ? AND created_at <= ? AND type IN ?", startAt, endAt, []int{LogTypeConsume, LogTypeRefund}).
+		Select(`FLOOR(created_at / 86400) AS bucket_day,
+			COALESCE(SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END), 0) AS consumed_quota,
+			COALESCE(SUM(CASE WHEN type = ? THEN 1 ELSE 0 END), 0) AS request_count,
+			COALESCE(SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END), 0) AS token_count`,
+			LogTypeConsume, LogTypeRefund, LogTypeConsume, LogTypeConsume).
+		Group("FLOOR(created_at / 86400)").Order("bucket_day ASC").Scan(&usageRows).Error; err != nil {
+		return nil, err
+	}
+
 	byBucket := make(map[int64]trendRow, len(rows))
 	for _, row := range rows {
 		byBucket[row.BucketDay*daySeconds] = row
 	}
+	usageByBucket := make(map[int64]usageTrendRow, len(usageRows))
+	for _, row := range usageRows {
+		usageByBucket[row.BucketDay*daySeconds] = row
+	}
 	points := make([]FinanceTrendPoint, 0, int((endBucket-startBucket)/daySeconds)+1)
 	for bucket := startBucket; bucket <= endBucket; bucket += daySeconds {
 		row := byBucket[bucket]
+		usage := usageByBucket[bucket]
 		points = append(points, FinanceTrendPoint{
 			BucketStart:   bucket,
 			TotalOrders:   row.TotalOrders,
@@ -130,6 +167,9 @@ func GetFinanceTrend(startAt int64, endAt int64) (*FinanceTrendReport, error) {
 			FailedOrders:  row.FailedOrders,
 			ExpiredOrders: row.ExpiredOrders,
 			SuccessAmount: row.SuccessAmount,
+			ConsumedQuota: usage.ConsumedQuota,
+			RequestCount:  usage.RequestCount,
+			TokenCount:    usage.TokenCount,
 		})
 	}
 	return &FinanceTrendReport{

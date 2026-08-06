@@ -163,13 +163,22 @@ func TestFinanceTrendAndUserFundsUseExternalRevenueAndCurrentBalances(t *testing
 		Quota:      500,
 		UsedUserId: user.Id,
 	}).Error)
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{UserId: user.Id, CreatedAt: start + 300, Type: LogTypeConsume, Quota: 120, PromptTokens: 10, CompletionTokens: 20},
+		{UserId: user.Id, CreatedAt: start + 400, Type: LogTypeRefund, Quota: 20},
+		{UserId: user.Id, CreatedAt: start + daySeconds + 300, Type: LogTypeConsume, Quota: 50, PromptTokens: 5, CompletionTokens: 7},
+	}).Error)
 
 	report, err := GetFinanceTrend(start, start+2*daySeconds)
 	require.NoError(t, err)
 	require.Len(t, report.Points, 3)
 	assert.Equal(t, int64(2), report.Points[0].SuccessOrders)
 	assert.Equal(t, float64(2), report.Points[0].SuccessAmount)
+	assert.Equal(t, int64(100), report.Points[0].ConsumedQuota)
+	assert.Equal(t, int64(1), report.Points[0].RequestCount)
+	assert.Equal(t, int64(30), report.Points[0].TokenCount)
 	assert.Equal(t, int64(1), report.Points[1].PendingOrders)
+	assert.Equal(t, int64(50), report.Points[1].ConsumedQuota)
 
 	detail, err := GetFinanceUserDetail(user.Id)
 	require.NoError(t, err)

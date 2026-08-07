@@ -188,11 +188,15 @@ export function applyChatCompletionChoice(
   message: Message,
   choice: ChatCompletionChoice
 ): Message {
+  const images = choice.message?.images
+    ?.map((image) => image.image_url?.url)
+    .filter((url): url is string => Boolean(url))
   return completeAssistantTiming({
     ...finalizeMessage(
       updateCurrentVersionContent(message, choice.message?.content || ''),
       choice.message?.reasoning_content
     ),
+    images,
     status: MESSAGE_STATUS.COMPLETE,
   })
 }

@@ -86,6 +86,8 @@ const messageSchema = z.object({
   isContentComplete: z.boolean().optional(),
   status: messageStatusSchema.optional(),
   errorCode: z.string().nullable().optional(),
+  images: z.array(z.string()).optional(),
+  videos: z.array(z.string()).optional(),
 })
 
 export const messagesSchema = z.array(messageSchema)

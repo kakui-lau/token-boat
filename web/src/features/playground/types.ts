@@ -49,6 +49,8 @@ export interface Message {
   isContentComplete?: boolean
   status?: MessageStatus
   errorCode?: string | null
+  images?: string[]
+  videos?: string[]
 }
 
 // API payload types
@@ -76,6 +78,7 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+  modalities?: Array<'text' | 'image'>
 }
 
 export interface ChatCompletionChunk {
@@ -103,8 +106,9 @@ export interface ChatCompletionResponse {
     index: number
     message: {
       role: MessageRole
-      content: string
+      content: string | null
       reasoning_content?: string
+      images?: Array<{ image_url: { url: string } }>
     }
     finish_reason: string
   }>
@@ -113,6 +117,30 @@ export interface ChatCompletionResponse {
     completion_tokens: number
     total_tokens: number
   }
+}
+
+export interface VideoGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  duration?: number
+  resolution?: string
+  aspect_ratio?: string
+  generate_audio?: boolean
+}
+
+export interface VideoGenerationResponse {
+  id: string
+  polling_url: string
+  status:
+    | 'pending'
+    | 'in_progress'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'expired'
+  error?: string
+  unsigned_urls?: string[]
 }
 
 // Configuration types

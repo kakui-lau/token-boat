@@ -44,6 +44,11 @@ export function buildChatCompletionPayload(
     stream: config.stream,
   }
 
+  if (isImageGenerationModel(config.model)) {
+    payload.modalities = ['text', 'image']
+    payload.stream = false
+  }
+
   if (parameterEnabled.temperature) {
     payload.temperature = config.temperature
   }
@@ -69,4 +74,16 @@ export function buildChatCompletionPayload(
   }
 
   return payload
+}
+
+export function isImageGenerationModel(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return normalized.includes('image') || normalized.includes('nano-banana')
+}
+
+export function isVideoGenerationModel(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return ['seedance', 'sora', 'veo', 'kling', 'video'].some((part) =>
+    normalized.includes(part)
+  )
 }

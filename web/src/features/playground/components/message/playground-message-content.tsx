@@ -162,6 +162,40 @@ export function PlaygroundMessageContent({
           {actions}
         </>
       )}
+
+      {!isError && message.images && message.images.length > 0 && (
+        <div className='grid max-w-3xl gap-3 sm:grid-cols-2'>
+          {message.images.map((src, index) => (
+            <a
+              href={src}
+              download={`playground-image-${index + 1}.jpg`}
+              key={src}
+            >
+              <img
+                alt={t('Generated image')}
+                className='border-border bg-muted max-h-[32rem] w-full rounded-xl border object-contain'
+                loading='lazy'
+                src={src}
+              />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {!isError && message.videos && message.videos.length > 0 && (
+        <div className='grid max-w-3xl gap-3'>
+          {message.videos.map((src) => (
+            <video
+              aria-label={t('Generated video')}
+              className='border-border w-full rounded-xl border bg-black'
+              controls
+              key={src}
+              preload='metadata'
+              src={src}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

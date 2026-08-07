@@ -20,7 +20,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { sendChatCompletion } from '../api'
+import {
+  createVideoGeneration,
+  getVideoGeneration,
+  sendChatCompletion,
+} from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
   applyStreamingChunk,
@@ -33,6 +37,8 @@ import {
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   isAssistantMessagePending,
+  isImageGenerationModel,
+  isVideoGenerationModel,
 } from '../lib'
 import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
 import { useStreamRequest } from './use-stream-request'
@@ -345,16 +351,92 @@ export function useChatHandler({
     ]
   )
 
+  const sendVideo = useCallback(
+    async (messages: Message[]) => {
+      const generation = requestGenerationRef.current + 1
+      const abortController = new AbortController()
+      requestGenerationRef.current = generation
+      stopStream()
+      discardPendingStreamUpdates(generation)
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = abortController
+      const prompt = messages.at(-1)?.versions[0]?.content ?? ''
+
+      try {
+        setIsRequesting(true)
+        let task = await createVideoGeneration(
+          {
+            model: config.model,
+            group: config.group,
+            prompt,
+            duration: 10,
+            resolution: '720p',
+            aspect_ratio: '16:9',
+            generate_audio: true,
+          },
+          abortController.signal
+        )
+        while (task.status === 'pending' || task.status === 'in_progress') {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 2000))
+          if (abortController.signal.aborted) return
+          task = await getVideoGeneration(task.id, abortController.signal)
+        }
+        if (task.status !== 'completed' || !task.unsigned_urls?.length) {
+          handleStreamError(
+            generation,
+            task.error || t('Video generation failed')
+          )
+          return
+        }
+        onMessageUpdate((prev) =>
+          updateLastAssistantMessage(prev, (message) =>
+            completeAssistantMessage({
+              ...message,
+              videos: task.unsigned_urls,
+            })
+          )
+        )
+      } catch (error: unknown) {
+        if (!abortController.signal.aborted) {
+          const details = parseRequestErrorDetails(error)
+          handleStreamError(generation, details.errorMessage, details.errorCode)
+        }
+      } finally {
+        if (requestGenerationRef.current === generation) {
+          abortControllerRef.current = null
+          setIsRequesting(false)
+        }
+      }
+    },
+    [
+      config.group,
+      config.model,
+      discardPendingStreamUpdates,
+      handleStreamError,
+      onMessageUpdate,
+      stopStream,
+      t,
+    ]
+  )
+
   // Send chat request (stream or non-stream based on config)
   const sendChat = useCallback(
     (messages: Message[]) => {
-      if (config.stream) {
+      if (isVideoGenerationModel(config.model)) {
+        void sendVideo(messages)
+      } else if (config.stream && !isImageGenerationModel(config.model)) {
         sendStreamingChat(messages)
       } else {
         sendNonStreamingChat(messages)
       }
     },
-    [config.stream, sendStreamingChat, sendNonStreamingChat]
+    [
+      config.model,
+      config.stream,
+      sendStreamingChat,
+      sendNonStreamingChat,
+      sendVideo,
+    ]
   )
 
   // Stop generation

@@ -317,15 +317,16 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 	}
 	tokenMeta := request.GetTokenCountMeta()
+	const estimatedPromptTokens = 1
 	priceData, usesV2Pricing, err := pricingruntime.PrepareRelayPricing(
 		info,
 		info.UsingGroup,
 		channel.Id,
-		0,
+		estimatedPromptTokens,
 		tokenMeta.MaxTokens,
 		helper.HandleGroupRatio(c, info),
 		requestInput,
-		estimatedPricingUsage(request, info, 0),
+		estimatedPricingUsage(request, info, estimatedPromptTokens),
 	)
 	if err == nil && !usesV2Pricing {
 		priceData, err = helper.ModelPriceHelper(c, info, 0, tokenMeta)

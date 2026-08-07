@@ -50,6 +50,10 @@ func isAsyncVideoTestModel(channelType int, modelName string) bool {
 	return channelType == constant.ChannelTypeOpenRouter && strings.HasPrefix(modelName, "bytedance/seedance-")
 }
 
+func isOpenAIImageTestModel(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "gpt-image")
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -149,7 +153,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 
 		// VolcEngine 图像生成模型
-		if channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream") {
+		if isOpenAIImageTestModel(testModel) ||
+			(channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream")) {
 			requestPath = "/v1/images/generations"
 		}
 
@@ -812,6 +817,15 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		return &dto.EmbeddingRequest{
 			Model: model,
 			Input: []any{"hello world"},
+		}
+	}
+
+	if isOpenAIImageTestModel(model) {
+		return &dto.ImageRequest{
+			Model:  model,
+			Prompt: "a cute cat",
+			N:      lo.ToPtr(uint(1)),
+			Size:   "1024x1024",
 		}
 	}
 

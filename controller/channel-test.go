@@ -26,6 +26,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
@@ -307,7 +308,28 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	//logInfo.ApiKey = ""
 	common.SysLog(fmt.Sprintf("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
 
-	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+	requestInput, err := helper.ResolveIncomingBillingExprRequestInput(c, info)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+		}
+	}
+	tokenMeta := request.GetTokenCountMeta()
+	priceData, usesV2Pricing, err := pricingruntime.PrepareRelayPricing(
+		info,
+		info.UsingGroup,
+		channel.Id,
+		0,
+		tokenMeta.MaxTokens,
+		helper.HandleGroupRatio(c, info),
+		requestInput,
+		estimatedPricingUsage(request, info, 0),
+	)
+	if err == nil && !usesV2Pricing {
+		priceData, err = helper.ModelPriceHelper(c, info, 0, tokenMeta)
+	}
 	if err != nil {
 		return testResult{
 			context:     c,

@@ -1,0 +1,7 @@
+# Production ingress overrides for long-running AI generation requests.
+# Apply these values together with the base token-boat Helm values.
+ingress:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"

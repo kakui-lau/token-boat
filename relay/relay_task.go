@@ -212,7 +212,15 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	v2CandidateSelected := info.DynamicPricingSnapshot != nil
 	if !v2CandidateSelected {
-		if !pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) {
+		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
+			if bundle.ChannelModel.ChannelId == info.ChannelId {
+				v2CandidateSelected = true
+				break
+			}
+		}
+		if v2CandidateSelected &&
+			!pricingruntime.SupportsFixedVideoTaskPricing(info.UsingGroup, info.OriginModelName) &&
+			!hasSafePreSubmitTaskUsage(info) {
 			return nil, service.TaskErrorWrapper(
 				fmt.Errorf(
 					"model %s v2 price requires usage unavailable before task submission",
@@ -221,12 +229,6 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 				"model_price_error",
 				http.StatusBadRequest,
 			)
-		}
-		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
-			if bundle.ChannelModel.ChannelId == info.ChannelId {
-				v2CandidateSelected = true
-				break
-			}
 		}
 	}
 	if !v2CandidateSelected {
@@ -299,7 +301,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 				}
 			}
 		}
-		if seconds > 0 {
+		if seconds > 0 || hasSafePreSubmitTaskUsage(info) {
 			if seconds > relaycommon.MaxTaskDurationSeconds {
 				return nil, service.TaskErrorWrapperLocal(
 					fmt.Errorf("video duration exceeds %d seconds", relaycommon.MaxTaskDurationSeconds),
@@ -315,7 +317,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 				info,
 				info.UsingGroup,
 				info.ChannelId,
-				0,
+				info.TaskPreConsumeTokens,
 				0,
 				helper.HandleGroupRatio(c, info),
 				requestInput,
@@ -464,6 +466,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+func hasSafePreSubmitTaskUsage(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.TaskTieredEstimateReady && info.TaskPreConsumeTokens > 0
 }
 
 func persistOpenRouterTaskBeforeSubmit(info *relaycommon.RelayInfo, platform constant.TaskPlatform) error {

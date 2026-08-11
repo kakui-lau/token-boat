@@ -107,3 +107,43 @@ func TestParseOpenRouterVideoRequestRejectsNonHTTPSCallback(t *testing.T) {
 	require.NotNil(t, taskErr)
 	assert.Equal(t, "invalid_callback_url", taskErr.Code)
 }
+
+func TestSeedance25IgnoresUnsupportedGeneratedAudio(t *testing.T) {
+	context, info := openRouterVideoTestContext(`{
+		"model":"bytedance/seedance-2.5-upscale",
+		"prompt":"test",
+		"generate_audio":true
+	}`)
+	info.ChannelMeta = &ChannelMeta{
+		ChannelType:       constant.ChannelTypeDoubaoVideo,
+		UpstreamModelName: "wb-bytedance-t/doubao-seedance-2-5",
+	}
+
+	require.Nil(t, ValidateBasicTaskRequest(context, info, constant.TaskActionTextGenerate))
+	require.Nil(t, ValidateOpenRouterVideoChannelSupport(context, info))
+
+	request, ok := GetOpenRouterVideoRequest(context)
+	require.True(t, ok)
+	assert.Nil(t, request.GenerateAudio)
+	legacyRequest, err := GetTaskRequest(context)
+	require.NoError(t, err)
+	assert.Nil(t, legacyRequest.GenerateAudio)
+}
+
+func TestSeedance25SupportsMixedReferences(t *testing.T) {
+	context, info := openRouterVideoTestContext(`{
+		"model":"bytedance/seedance-2.5-upscale",
+		"prompt":"test",
+		"input_references":[{
+			"type":"video_url",
+			"video_url":{"url":"https://example.com/reference.mp4"}
+		}]
+	}`)
+	info.ChannelMeta = &ChannelMeta{
+		ChannelType:       constant.ChannelTypeDoubaoVideo,
+		UpstreamModelName: "wb-bytedance-t/doubao-seedance-2-5",
+	}
+
+	require.Nil(t, ValidateBasicTaskRequest(context, info, constant.TaskActionTextGenerate))
+	require.Nil(t, ValidateOpenRouterVideoChannelSupport(context, info))
+}

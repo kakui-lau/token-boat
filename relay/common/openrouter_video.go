@@ -188,12 +188,14 @@ func ValidateOpenRouterVideoChannelSupport(c *gin.Context, info *RelayInfo) *dto
 	}
 	modelName := strings.ToLower(info.UpstreamModelName)
 	isSeedance20 := strings.Contains(modelName, "seedance-2.0") || strings.Contains(modelName, "seedance-2-0") || strings.Contains(modelName, "seedance2")
+	isSeedance25 := strings.Contains(modelName, "seedance-2.5") || strings.Contains(modelName, "seedance-2-5")
+	isSeedance2 := isSeedance20 || isSeedance25
 	supportsReferences := info.ChannelType == constant.ChannelTypeOpenRouter ||
 		info.ChannelType == constant.ChannelTypeAnitix ||
-		((info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) && isSeedance20) ||
+		((info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) && isSeedance2) ||
 		info.ChannelType == constant.ChannelTypeVidu
 	supportsRichReferences := info.ChannelType == constant.ChannelTypeOpenRouter ||
-		((info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) && isSeedance20)
+		((info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) && isSeedance2)
 	supportsLastFrame := supportsRichReferences || info.ChannelType == constant.ChannelTypeVidu ||
 		info.ChannelType == constant.ChannelTypeAnitix ||
 		info.ChannelType == constant.ChannelTypeAli || info.ChannelType == constant.ChannelTypeJimeng ||
@@ -201,6 +203,18 @@ func ValidateOpenRouterVideoChannelSupport(c *gin.Context, info *RelayInfo) *dto
 	supportsGenerateAudio := supportsRichReferences || info.ChannelType == constant.ChannelTypeAli ||
 		info.ChannelType == constant.ChannelTypeAnitix ||
 		info.ChannelType == constant.ChannelTypeGemini || info.ChannelType == constant.ChannelTypeVertexAi
+	if isSeedance25 && (info.ChannelType == constant.ChannelTypeDoubaoVideo || info.ChannelType == constant.ChannelTypeVolcEngine) {
+		supportsGenerateAudio = false
+		if request.GenerateAudio != nil && *request.GenerateAudio {
+			request.GenerateAudio = nil
+			c.Set(openRouterVideoRequestContextKey, request)
+			legacyRequest, err := GetTaskRequest(c)
+			if err == nil {
+				legacyRequest.GenerateAudio = nil
+				c.Set("task_request", legacyRequest)
+			}
+		}
+	}
 	supportsSeed := supportsRichReferences || info.ChannelType == constant.ChannelTypeVidu ||
 		info.ChannelType == constant.ChannelTypeAnitix ||
 		info.ChannelType == constant.ChannelTypeAli || info.ChannelType == constant.ChannelTypeJimeng ||

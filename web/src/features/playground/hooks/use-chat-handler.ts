@@ -39,6 +39,7 @@ import {
   isAssistantMessagePending,
   isImageGenerationModel,
   isVideoGenerationModel,
+  supportsGeneratedAudio,
 } from '../lib'
 import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
 import { useStreamRequest } from './use-stream-request'
@@ -375,7 +376,7 @@ export function useChatHandler({
             duration: 10,
             resolution: '720p',
             aspect_ratio: '16:9',
-            generate_audio: true,
+            generate_audio: supportsGeneratedAudio(config.model),
           },
           abortController.signal
         )

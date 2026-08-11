@@ -6,6 +6,7 @@ import {
   buildChatCompletionPayload,
   isImageGenerationModel,
   isVideoGenerationModel,
+  supportsGeneratedAudio,
 } from '../payload-builder'
 
 const messages: Message[] = [
@@ -36,6 +37,14 @@ describe('playground media payload', () => {
     expect(isImageGenerationModel('google/gemini-2.5-flash-image')).toBe(true)
     expect(isVideoGenerationModel('bytedance/seedance-2.0')).toBe(true)
     expect(isVideoGenerationModel('openai/gpt-5.4')).toBe(false)
+  })
+
+  it('does not request generated audio from Seedance 2.5', () => {
+    expect(supportsGeneratedAudio('bytedance/seedance-2.5-upscale')).toBe(false)
+    expect(supportsGeneratedAudio('wb-bytedance-t/doubao-seedance-2-5')).toBe(
+      false
+    )
+    expect(supportsGeneratedAudio('bytedance/seedance-2.0-upscale')).toBe(true)
   })
 
   it('omits the channel for automatic routing and sends an explicit selection', () => {

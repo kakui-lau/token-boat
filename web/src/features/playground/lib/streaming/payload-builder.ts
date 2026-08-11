@@ -91,3 +91,10 @@ export function isVideoGenerationModel(model: string): boolean {
     normalized.includes(part)
   )
 }
+
+export function supportsGeneratedAudio(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return !(
+    normalized.includes('seedance-2.5') || normalized.includes('seedance-2-5')
+  )
+}

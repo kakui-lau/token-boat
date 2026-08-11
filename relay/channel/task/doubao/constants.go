@@ -11,9 +11,11 @@ var ModelList = []string{
 	"doubao-seedance-2-0-fast-260128",
 	"bytedance/seedance-2.0-upscale",
 	"bytedance/seedance-2.0-fast-upscale",
+	"bytedance/seedance-2.5-upscale",
 	"wb-bytedance/doubao-seedance-2-0",
 	"wb-bytedance-t/doubao-seedance-2-0",
 	"wb-bytedance-t/doubao-seedance-2-0-fast",
+	"wb-bytedance-t/doubao-seedance-2-5",
 }
 
 var ChannelName = "doubao-video"
@@ -60,6 +62,10 @@ var videoPriceTable = map[string]map[videoPriceKey]float64{
 	"bytedance/seedance-2.0-fast-upscale": {
 		{hasVideo: false}: 37.0,
 		{hasVideo: true}:  22.0,
+	},
+	"bytedance/seedance-2.5-upscale": {
+		{hasVideo: false}: 70.0,
+		{hasVideo: true}:  42.0,
 	},
 }
 

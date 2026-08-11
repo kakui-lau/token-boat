@@ -70,6 +70,7 @@ export interface ContentPart {
 export interface ChatCompletionRequest {
   model: string
   group?: string
+  channel_id?: number
   messages: ChatCompletionMessage[]
   stream: boolean
   temperature?: number
@@ -122,6 +123,7 @@ export interface ChatCompletionResponse {
 export interface VideoGenerationRequest {
   model: string
   group?: string
+  channel_id?: number
   prompt: string
   duration?: number
   resolution?: string
@@ -147,6 +149,7 @@ export interface VideoGenerationResponse {
 export interface PlaygroundConfig {
   model: string
   group: string
+  channel_id: number | null
   temperature: number
   top_p: number
   max_tokens: number
@@ -176,4 +179,9 @@ export interface GroupOption {
   value: string
   ratio: number
   desc?: string
+}
+
+export interface ChannelOption {
+  label: string
+  value: number
 }

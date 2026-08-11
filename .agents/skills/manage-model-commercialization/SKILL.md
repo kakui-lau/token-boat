@@ -46,6 +46,7 @@ Use the project command `go run ./cmd/model-commercialization` for deterministic
     ```
 
 11. Check the public pricing API and, when a gateway test token is available, confirm the request pricing snapshot. Distinguish a direct channel probe from normal multi-channel routing: a normal gateway request may choose another eligible channel.
+12. End every use with a concise operation report, including read-only or blocked runs. Report the target environment, channel and model mapping, authoritative pricing region/source, official/purchase/retail prices and currencies, margins/rates, IDs created or reused, runtime/routing state, verification and probe results, files changed, and any remaining blockers. Never include secrets.
 
 ## Safety rules
 
@@ -60,6 +61,17 @@ Use the project command `go run ./cmd/model-commercialization` for deterministic
 - Keep `minimum_margin` at or below `target_margin`; default it to the target when the user gives no separate floor.
 - Confirm every enabled channel for the logical model has a complete price chain before activating V2 runtime.
 - Report model ID, channel-model ID, price-version IDs, exact prices, source URLs, probe status, and verification scope without secrets.
+- Match the authoritative price region to the upstream procurement region. For providers with separate domestic and international catalogs, explicitly identify the selected region and do not mix prices or currencies across regions.
+
+## Operation report
+
+Use a compact report with these headings:
+
+- `Scope`: environment, channel ID, logical model, upstream model.
+- `Pricing`: region and source URL; official, purchase, and retail values with currencies; discount, variable-cost rate, tax rate, and target/minimum margins.
+- `Database`: model, channel-model, official, purchase, and retail version IDs; state whether each was created, updated, or reused.
+- `Verification`: mapping, ability, runtime, price-chain, public pricing API, gateway snapshot, and upstream probe status. Mark unrun checks explicitly.
+- `Changes and blockers`: changed files/data and any unresolved issue.
 
 ## Command behavior
 

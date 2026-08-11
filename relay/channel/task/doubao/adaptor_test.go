@@ -78,6 +78,47 @@ func TestEstimateMaxBillingTokensValidatesBoundsAndSupports480p(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported resolution")
 }
 
+func TestEstimateMaxBillingTokensAllowsSeedance25DurationUpTo30Seconds(t *testing.T) {
+	_, err := estimateMaxBillingTokens(relaycommon.TaskSubmitReq{
+		Model:      "bytedance/seedance-2.5-upscale",
+		Duration:   30,
+		Resolution: "720p",
+	})
+	require.NoError(t, err)
+
+	_, err = estimateMaxBillingTokens(relaycommon.TaskSubmitReq{
+		Model:    "bytedance/seedance-2.5-upscale",
+		Duration: 31,
+	})
+	require.ErrorContains(t, err, "between 1 and 30")
+}
+
+func TestValidateSeedance25RejectsMoreThan50MixedMediaInputs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	content := make([]map[string]interface{}, 51)
+	for index := range content {
+		content[index] = map[string]interface{}{
+			"type":      "image_url",
+			"image_url": map[string]interface{}{"url": "https://example.com/reference.png"},
+		}
+	}
+	body, err := common.Marshal(map[string]interface{}{
+		"model":  "bytedance/seedance-2.5-upscale",
+		"prompt": "test",
+		"metadata": map[string]interface{}{
+			"content": content,
+		},
+	})
+	require.NoError(t, err)
+
+	context, info := newDoubaoVideoTestContext(string(body))
+	taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(context, info)
+
+	require.NotNil(t, taskErr)
+	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+	assert.Equal(t, "invalid_media_count", taskErr.Code)
+}
+
 func TestConvertToRequestPayloadCarriesTopLevelVideoOptions(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 	payload, err := adaptor.convertToRequestPayload(&relaycommon.TaskSubmitReq{
@@ -163,7 +204,7 @@ func TestValidateRejectsSeedance20Mini480pBeforeBilling(t *testing.T) {
 	assert.Nil(t, info.Billing)
 }
 
-func TestIsSeedance20ModelRecognizesPublicAndUpstreamNames(t *testing.T) {
+func TestIsSupportedSeedanceModelRecognizesPublicAndUpstreamNames(t *testing.T) {
 	tests := []struct {
 		name      string
 		modelName string
@@ -175,13 +216,15 @@ func TestIsSeedance20ModelRecognizesPublicAndUpstreamNames(t *testing.T) {
 		{name: "official mini model", modelName: "dreamina-seedance-2-0-mini-260615", expected: true},
 		{name: "upstream alias", modelName: "seedance2", expected: true},
 		{name: "upstream fast alias", modelName: "seedance2-fast", expected: true},
+		{name: "seedance 2.5 public model", modelName: "bytedance/seedance-2.5-upscale", expected: true},
+		{name: "seedance 2.5 upstream model", modelName: "wb-bytedance-t/doubao-seedance-2-5", expected: true},
 		{name: "older seedance", modelName: "seedance-1.5-pro", expected: false},
 		{name: "unrelated model", modelName: "gpt-5.4", expected: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, isSeedance20Model(tt.modelName))
+			assert.Equal(t, tt.expected, isSupportedSeedanceModel(tt.modelName))
 		})
 	}
 }

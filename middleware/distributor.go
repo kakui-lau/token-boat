@@ -34,6 +34,9 @@ type ModelRequest struct {
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
+		if !applyPlaygroundChannelSelection(c) {
+			return
+		}
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
@@ -278,6 +281,32 @@ func Distribute() func(c *gin.Context) {
 			)
 		}
 	}
+}
+
+func applyPlaygroundChannelSelection(c *gin.Context) bool {
+	if c.Request.Method != http.MethodPost || !strings.HasPrefix(c.Request.URL.Path, "/pg/") {
+		return true
+	}
+
+	playgroundRequest := &dto.PlayGroundRequest{}
+	if err := common.UnmarshalBodyReusable(c, playgroundRequest); err != nil {
+		abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
+		return false
+	}
+	if playgroundRequest.ChannelId == nil {
+		return true
+	}
+	if c.GetInt("role") < common.RoleAdminUser {
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorPlaygroundChannelAdmin))
+		return false
+	}
+	if *playgroundRequest.ChannelId <= 0 {
+		abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
+		return false
+	}
+
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(*playgroundRequest.ChannelId))
+	return true
 }
 
 // ChannelSupportsRequestPath reports whether a channel can serve the request path.

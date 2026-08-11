@@ -1,11 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import type { ISpec } from '@visactor/vchart'
-import {
-  ChartNoAxesCombined,
-  CircleDollarSign,
-  HandCoins,
-} from 'lucide-react'
+import { ChartNoAxesCombined, CircleDollarSign, HandCoins } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -170,8 +166,7 @@ export function FinanceTrendReport(props: FinanceTrendReportProps) {
       {
         orient: 'left',
         label: {
-          formatMethod: (value: number | string) =>
-            formatQuota(Number(value)),
+          formatMethod: (value: number | string) => formatQuota(Number(value)),
         },
       },
     ],

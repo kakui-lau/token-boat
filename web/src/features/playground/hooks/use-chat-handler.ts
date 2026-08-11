@@ -368,6 +368,9 @@ export function useChatHandler({
           {
             model: config.model,
             group: config.group,
+            ...(config.channel_id === null
+              ? {}
+              : { channel_id: config.channel_id }),
             prompt,
             duration: 10,
             resolution: '720p',
@@ -410,6 +413,7 @@ export function useChatHandler({
     },
     [
       config.group,
+      config.channel_id,
       config.model,
       discardPendingStreamUpdates,
       handleStreamError,

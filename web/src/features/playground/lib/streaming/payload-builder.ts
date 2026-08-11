@@ -44,6 +44,10 @@ export function buildChatCompletionPayload(
     stream: config.stream,
   }
 
+  if (config.channel_id !== null) {
+    payload.channel_id = config.channel_id
+  }
+
   if (isImageGenerationModel(config.model)) {
     payload.modalities = ['text', 'image']
     payload.stream = false

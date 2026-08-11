@@ -143,12 +143,25 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			http.StatusBadRequest,
 		)
 	}
+	if isSeedance25Model(req.Model, info.UpstreamModelName) {
+		payload, err := a.convertToRequestPayload(&req)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+		if len(payload.Content) > 50 {
+			return service.TaskErrorWrapperLocal(
+				fmt.Errorf("Seedance 2.5 supports at most 50 mixed image, video, and audio inputs"),
+				"invalid_media_count",
+				http.StatusBadRequest,
+			)
+		}
+	}
 	if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
 		return nil
 	}
-	if !isSeedance20Model(req.Model) {
+	if !isSupportedSeedanceModel(req.Model) {
 		return service.TaskErrorWrapperLocal(
-			fmt.Errorf("tiered expression billing is only supported for Seedance 2.0 on DoubaoVideo"),
+			fmt.Errorf("tiered expression billing is only supported for Seedance 2.0 and 2.5 on DoubaoVideo"),
 			"unsupported_tiered_billing",
 			http.StatusBadRequest,
 		)
@@ -203,11 +216,23 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	return nil
 }
 
-func isSeedance20Model(modelName string) bool {
+func isSupportedSeedanceModel(modelName string) bool {
 	normalized := strings.ToLower(modelName)
 	return strings.Contains(normalized, "seedance-2.0") ||
 		strings.Contains(normalized, "seedance-2-0") ||
-		strings.Contains(normalized, "seedance2")
+		strings.Contains(normalized, "seedance2") ||
+		strings.Contains(normalized, "seedance-2.5") ||
+		strings.Contains(normalized, "seedance-2-5")
+}
+
+func isSeedance25Model(modelNames ...string) bool {
+	for _, modelName := range modelNames {
+		normalized := strings.ToLower(strings.TrimSpace(modelName))
+		if strings.Contains(normalized, "seedance-2.5") || strings.Contains(normalized, "seedance-2-5") {
+			return true
+		}
+	}
+	return false
 }
 
 func isSeedance20MiniModel(modelNames ...string) bool {
@@ -234,8 +259,12 @@ func estimateMaxBillingTokens(req relaycommon.TaskSubmitReq) (int, error) {
 	if duration == 0 {
 		duration = 15
 	}
-	if duration < 1 || duration > 15 {
-		return 0, fmt.Errorf("duration must be between 1 and 15 seconds")
+	maxDuration := 15
+	if isSeedance25Model(req.Model) {
+		maxDuration = 30
+	}
+	if duration < 1 || duration > maxDuration {
+		return 0, fmt.Errorf("duration must be between 1 and %d seconds", maxDuration)
 	}
 
 	resolution := req.Resolution
@@ -258,9 +287,9 @@ func estimateMaxBillingTokens(req relaycommon.TaskSubmitReq) (int, error) {
 
 	billableSeconds := duration
 	if hasVideoInMetadata(req.Metadata) {
-		// The provider limits input video to 15 seconds. Reserve that maximum
-		// because a remote URL's media duration is not known before submission.
-		billableSeconds += 15
+		// Reserve the model's maximum input video duration because a remote
+		// URL's media duration is not known before submission.
+		billableSeconds += maxDuration
 	}
 	// Reserve the highest supported output frame rate. Actual usage returned by
 	// the provider replaces this hold at completion.

@@ -11,9 +11,11 @@ func TestModelListIncludesAnisparkSeedanceModels(t *testing.T) {
 	assert.Subset(t, ModelList, []string{
 		"bytedance/seedance-2.0-upscale",
 		"bytedance/seedance-2.0-fast-upscale",
+		"bytedance/seedance-2.5-upscale",
 		"wb-bytedance/doubao-seedance-2-0",
 		"wb-bytedance-t/doubao-seedance-2-0",
 		"wb-bytedance-t/doubao-seedance-2-0-fast",
+		"wb-bytedance-t/doubao-seedance-2-5",
 	})
 }
 
@@ -47,4 +49,14 @@ func TestAnisparkUpscaleModelsUseCorrespondingOfficialBasePrice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSeedance25UsesOfficialVideoInputDiscount(t *testing.T) {
+	withoutVideo, ok := GetVideoInputRatio("bytedance/seedance-2.5-upscale", "720p", false)
+	require.True(t, ok)
+	assert.Equal(t, 1.0, withoutVideo)
+
+	withVideo, ok := GetVideoInputRatio("bytedance/seedance-2.5-upscale", "720p", true)
+	require.True(t, ok)
+	assert.Equal(t, 0.6, withVideo)
 }

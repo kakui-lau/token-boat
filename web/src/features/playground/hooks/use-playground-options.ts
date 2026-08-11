@@ -39,20 +39,30 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { getUserGroups, getUserModels } from '../api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
+import { getPlaygroundChannels, getUserGroups, getUserModels } from '../api'
 import {
   getGroupFallback,
   getModelFallback,
   getOptionLoadErrorMessage,
   shouldClearModelForGroup,
 } from '../lib'
-import type { GroupOption, ModelOption, PlaygroundConfig } from '../types'
+import type {
+  ChannelOption,
+  GroupOption,
+  ModelOption,
+  PlaygroundConfig,
+} from '../types'
 
 type UsePlaygroundOptionsParams = {
   currentGroup: string
   currentModel: string
+  currentChannel: number | null
   setGroups: (groups: GroupOption[]) => void
   setModels: (models: ModelOption[]) => void
+  setChannels: (channels: ChannelOption[]) => void
   updateConfig: <K extends keyof PlaygroundConfig>(
     key: K,
     value: PlaygroundConfig[K]
@@ -62,11 +72,16 @@ type UsePlaygroundOptionsParams = {
 export function usePlaygroundOptions({
   currentGroup,
   currentModel,
+  currentChannel,
   setGroups,
   setModels,
+  setChannels,
   updateConfig,
 }: UsePlaygroundOptionsParams) {
   const { t } = useTranslation()
+  const isAdmin = useAuthStore(
+    (state) => (state.auth.user?.role ?? 0) >= ROLE.ADMIN
+  )
 
   const {
     data: modelsData,
@@ -78,6 +93,23 @@ export function usePlaygroundOptions({
     queryFn: () => getUserModels(currentGroup),
     enabled: currentGroup !== '',
   })
+
+  const { data: channelsData, isLoading: isLoadingChannels } = useQuery({
+    queryKey: ['playground-channels', currentModel, currentGroup],
+    queryFn: () => getPlaygroundChannels(currentModel, currentGroup),
+    enabled: isAdmin && currentModel !== '' && currentGroup !== '',
+  })
+
+  useEffect(() => {
+    setChannels(channelsData ?? [])
+    if (
+      currentChannel !== null &&
+      channelsData &&
+      !channelsData.some((channel) => channel.value === currentChannel)
+    ) {
+      updateConfig('channel_id', null)
+    }
+  }, [channelsData, currentChannel, setChannels, updateConfig])
 
   const {
     data: groupsData,
@@ -139,5 +171,7 @@ export function usePlaygroundOptions({
 
   return {
     isLoadingModels,
+    isLoadingChannels,
+    isAdmin,
   }
 }

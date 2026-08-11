@@ -37,7 +37,10 @@ vi.mock('@visactor/react-vchart', () => ({
           })
         : undefined
     return (
-      <div data-testid='finance-trend-chart' data-tooltip-value={tooltipValue} />
+      <div
+        data-testid='finance-trend-chart'
+        data-tooltip-value={tooltipValue}
+      />
     )
   },
 }))

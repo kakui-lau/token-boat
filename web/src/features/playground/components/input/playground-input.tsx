@@ -29,6 +29,7 @@ import {
 import { getSubmittableInputText } from '../../lib'
 import type {
   ModelOption,
+  ChannelOption,
   GroupOption,
   ParameterEnabled,
   PlaygroundConfig,
@@ -47,6 +48,11 @@ interface PlaygroundInputProps {
   onModelChange: (value: string) => void
   isModelLoading?: boolean
   groups: GroupOption[]
+  channels: ChannelOption[]
+  channelValue: number | null
+  onChannelChange: (value: number | null) => void
+  isAdmin: boolean
+  isChannelLoading?: boolean
   groupValue: string
   onGroupChange: (value: string) => void
   hasMessages?: boolean
@@ -73,6 +79,11 @@ export function PlaygroundInput({
   onModelChange,
   isModelLoading = false,
   groups,
+  channels,
+  channelValue,
+  onChannelChange,
+  isAdmin,
+  isChannelLoading = false,
   groupValue,
   onGroupChange,
   hasMessages = false,
@@ -115,6 +126,11 @@ export function PlaygroundInput({
           <PlaygroundInputControls
             disabled={disabled}
             groups={groups}
+            channels={channels}
+            channelValue={channelValue}
+            onChannelChange={onChannelChange}
+            isAdmin={isAdmin}
+            isChannelLoading={isChannelLoading}
             groupValue={groupValue}
             isGenerating={isGenerating}
             isModelLoading={isModelLoading}

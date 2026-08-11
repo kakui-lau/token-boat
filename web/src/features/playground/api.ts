@@ -26,6 +26,7 @@ import type {
   GroupOption,
   VideoGenerationRequest,
   VideoGenerationResponse,
+  ChannelOption,
 } from './types'
 
 /**
@@ -102,5 +103,21 @@ export async function getUserGroups(): Promise<GroupOption[]> {
     value: group,
     ratio: info.ratio,
     desc: info.desc,
+  }))
+}
+
+export async function getPlaygroundChannels(
+  model: string,
+  group: string
+): Promise<ChannelOption[]> {
+  const res = await api.get('/api/channel/search', {
+    params: { model, group, status: 'enabled', p: 0, page_size: 100 },
+  })
+  const items = res.data?.data?.items
+  if (!res.data?.success || !Array.isArray(items)) return []
+
+  return items.map((channel: { id: number; name: string }) => ({
+    label: `${channel.name} · #${channel.id}`,
+    value: channel.id,
   }))
 }

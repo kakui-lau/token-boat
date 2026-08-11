@@ -22,13 +22,25 @@ import { useTranslation } from 'react-i18next'
 
 import { PromptInputButton } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { getInputControlState } from '../../lib'
-import type { GroupOption, ModelOption } from '../../types'
+import type { ChannelOption, GroupOption, ModelOption } from '../../types'
 
 type PlaygroundInputControlsProps = {
   disabled?: boolean
   groups: GroupOption[]
+  channels: ChannelOption[]
+  channelValue: number | null
+  onChannelChange: (value: number | null) => void
+  isAdmin: boolean
+  isChannelLoading?: boolean
   groupValue: string
   isGenerating?: boolean
   isModelLoading?: boolean
@@ -44,6 +56,11 @@ type PlaygroundInputControlsProps = {
 export function PlaygroundInputControls({
   disabled,
   groups,
+  channels,
+  channelValue,
+  onChannelChange,
+  isAdmin,
+  isChannelLoading = false,
   groupValue,
   isGenerating,
   isModelLoading = false,
@@ -68,15 +85,46 @@ export function PlaygroundInputControls({
     })
 
   const renderSelector = () => (
-    <ModelGroupSelector
-      selectedModel={modelValue}
-      models={models}
-      onModelChange={onModelChange}
-      selectedGroup={groupValue}
-      groups={groups}
-      onGroupChange={onGroupChange}
-      disabled={isSelectorDisabled}
-    />
+    <div className='flex min-w-0 items-center gap-2'>
+      {isAdmin ? (
+        <Select
+          value={channelValue === null ? 'auto' : String(channelValue)}
+          onValueChange={(value) =>
+            onChannelChange(value === 'auto' ? null : Number(value))
+          }
+          disabled={isSelectorDisabled || isChannelLoading}
+        >
+          <SelectTrigger
+            aria-label={t('Routing channel')}
+            className='bg-background/70 max-w-52 border-dashed'
+          >
+            <SelectValue>
+              {channelValue === null
+                ? t('Automatic routing')
+                : (channels.find((channel) => channel.value === channelValue)
+                    ?.label ?? `#${channelValue}`)}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent align='start'>
+            <SelectItem value='auto'>{t('Automatic routing')}</SelectItem>
+            {channels.map((channel) => (
+              <SelectItem key={channel.value} value={String(channel.value)}>
+                {channel.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+      <ModelGroupSelector
+        selectedModel={modelValue}
+        models={models}
+        onModelChange={onModelChange}
+        selectedGroup={groupValue}
+        groups={groups}
+        onGroupChange={onGroupChange}
+        disabled={isSelectorDisabled}
+      />
+    </div>
   )
 
   const renderSubmitButton = () =>

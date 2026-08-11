@@ -37,4 +37,20 @@ describe('playground media payload', () => {
     expect(isVideoGenerationModel('bytedance/seedance-2.0')).toBe(true)
     expect(isVideoGenerationModel('openai/gpt-5.4')).toBe(false)
   })
+
+  it('omits the channel for automatic routing and sends an explicit selection', () => {
+    const automaticPayload = buildChatCompletionPayload(
+      messages,
+      DEFAULT_CONFIG,
+      DEFAULT_PARAMETER_ENABLED
+    )
+    const selectedPayload = buildChatCompletionPayload(
+      messages,
+      { ...DEFAULT_CONFIG, channel_id: 14 },
+      DEFAULT_PARAMETER_ENABLED
+    )
+
+    expect(automaticPayload).not.toHaveProperty('channel_id')
+    expect(selectedPayload.channel_id).toBe(14)
+  })
 })

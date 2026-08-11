@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Type definitions for usage logs
  */
-import type { UsageLog } from "./data/schema";
+import type { UsageLog } from './data/schema'
 
 // ============================================================================
 // Log Category Types
@@ -28,7 +28,7 @@ import type { UsageLog } from "./data/schema";
 /**
  * Log category for different log types
  */
-export type LogCategory = "common" | "drawing" | "task";
+export type LogCategory = 'common' | 'drawing' | 'task'
 
 // ============================================================================
 // Filter Types
@@ -38,41 +38,41 @@ export type LogCategory = "common" | "drawing" | "task";
  * Common filters (shared across all log types)
  */
 export interface CommonFilters {
-  startTime?: Date;
-  endTime?: Date;
-  channel?: string;
+  startTime?: Date
+  endTime?: Date
+  channel?: string
 }
 
 /**
  * Common logs specific filters
  */
 export interface CommonLogFilters extends CommonFilters {
-  model?: string;
-  token?: string;
-  group?: string;
-  username?: string;
-  requestId?: string;
-  upstreamRequestId?: string;
+  model?: string
+  token?: string
+  group?: string
+  username?: string
+  requestId?: string
+  upstreamRequestId?: string
 }
 
 /**
  * Drawing logs specific filters
  */
 export interface DrawingLogFilters extends CommonFilters {
-  mjId?: string;
+  mjId?: string
 }
 
 /**
  * Task logs specific filters
  */
 export interface TaskLogFilters extends CommonFilters {
-  taskId?: string;
+  taskId?: string
 }
 
 /**
  * Union type for all log filters
  */
-export type LogFilters = CommonLogFilters | DrawingLogFilters | TaskLogFilters;
+export type LogFilters = CommonLogFilters | DrawingLogFilters | TaskLogFilters
 
 // ============================================================================
 // Common Logs Additional Types
@@ -82,193 +82,192 @@ export type LogFilters = CommonLogFilters | DrawingLogFilters | TaskLogFilters;
  * Parsed data from the 'other' field in usage logs
  */
 export interface ChannelAffinityInfo {
-  rule_name?: string;
-  selected_group?: string;
-  key_source?: string;
-  key_path?: string;
-  key_key?: string;
-  key_hint?: string;
-  key_fp?: string;
-  using_group?: string;
+  rule_name?: string
+  selected_group?: string
+  key_source?: string
+  key_path?: string
+  key_key?: string
+  key_hint?: string
+  key_fp?: string
+  using_group?: string
 }
 
 export const USAGE_BILLING_PATH = {
-  LOCAL: "local",
-  UPSTREAM: "upstream",
-  OPENAI: "billing-usage-openai",
-  OPENAI_ESTIMATED: "billing-usage-openai-estimated",
-  ANTHROPIC: "billing-usage-anthropic",
-  ANTHROPIC_ESTIMATED: "billing-usage-anthropic-estimated",
-  GEMINI: "billing-usage-gemini",
-  GEMINI_ESTIMATED: "billing-usage-gemini-estimated",
-} as const;
+  LOCAL: 'local',
+  UPSTREAM: 'upstream',
+  OPENAI: 'billing-usage-openai',
+  OPENAI_ESTIMATED: 'billing-usage-openai-estimated',
+  ANTHROPIC: 'billing-usage-anthropic',
+  ANTHROPIC_ESTIMATED: 'billing-usage-anthropic-estimated',
+  GEMINI: 'billing-usage-gemini',
+  GEMINI_ESTIMATED: 'billing-usage-gemini-estimated',
+} as const
 
 export type UsageBillingPath =
-  (typeof USAGE_BILLING_PATH)[keyof typeof USAGE_BILLING_PATH];
+  (typeof USAGE_BILLING_PATH)[keyof typeof USAGE_BILLING_PATH]
 
 export interface ToolSurchargeItem {
-  name: string;
-  count: number;
-  price: number;
+  name: string
+  count: number
+  price: number
 }
 
 export interface LogOtherData {
   admin_info?: {
-    is_multi_key?: boolean;
-    multi_key_index?: number;
-    use_channel?: number[];
-    local_count_tokens?: boolean;
-    usage_billing_path?: UsageBillingPath | string;
-    channel_affinity?: ChannelAffinityInfo;
+    is_multi_key?: boolean
+    multi_key_index?: number
+    use_channel?: number[]
+    local_count_tokens?: boolean
+    usage_billing_path?: UsageBillingPath | string
+    channel_affinity?: ChannelAffinityInfo
     // Top-up audit fields (type=1, admin only)
-    payment_method?: string;
-    callback_payment_method?: string;
-    caller_ip?: string;
-    server_ip?: string;
-    version?: string;
-    node_name?: string;
+    payment_method?: string
+    callback_payment_method?: string
+    caller_ip?: string
+    server_ip?: string
+    version?: string
+    node_name?: string
     // Operator identity for audit logs (type=3, admin only)
-    admin_username?: string;
-    admin_id?: number | string;
-    admin_role?: number;
-    auth_method?: "session" | "access_token" | string;
+    admin_username?: string
+    admin_id?: number | string
+    admin_role?: number
+    auth_method?: 'session' | 'access_token' | string
     // Quota saturation marker: set when a quota conversion clamped at the
     // int32 bound (overflow/underflow) or hit a NaN fallback while computing
     // this request's charge. Admin-only (nested under admin_info).
     quota_saturation?: {
-      op: string;
-      kind: "overflow" | "underflow" | "nan";
-      original: number;
-      clamped: number;
-    };
-    provider_cost_usd?: number;
-    provider_cost_known?: boolean;
-    provider_is_byok?: boolean;
-    provider_cost_scope?: "platform_fee_only" | string;
-    gross_margin_basis?:
-      "customer_charge" | "subscription_quota_value" | string;
-    gross_margin_known?: boolean;
-    gross_margin_usd?: number;
-    settlement_error?: string;
-  };
+      op: string
+      kind: 'overflow' | 'underflow' | 'nan'
+      original: number
+      clamped: number
+    }
+    provider_cost_usd?: number
+    provider_cost_known?: boolean
+    provider_is_byok?: boolean
+    provider_cost_scope?: 'platform_fee_only' | string
+    gross_margin_basis?: 'customer_charge' | 'subscription_quota_value' | string
+    gross_margin_known?: boolean
+    gross_margin_usd?: number
+    settlement_error?: string
+  }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
   op?: {
-    action?: string;
-    params?: Record<string, string | number | boolean | string[]>;
-  };
+    action?: string
+    params?: Record<string, string | number | boolean | string[]>
+  }
   // Operation audit details written by the admin-audit fallback in authHelper (type=3, admin only)
   audit_info?: {
-    method?: string;
-    route?: string;
-    path?: string;
-    status?: number;
-    success?: boolean;
-    params?: Record<string, string>;
-  };
+    method?: string
+    route?: string
+    path?: string
+    status?: number
+    success?: boolean
+    params?: Record<string, string>
+  }
   // Login audit fields (type=7); visible to the log owner
-  login_method?: string;
-  user_agent?: string;
-  request_path?: string;
-  request_conversion?: string[];
-  ws?: boolean;
-  audio?: boolean;
-  audio_input?: number;
-  audio_output?: number;
-  text_input?: number;
-  text_output?: number;
-  cache_tokens?: number;
-  cache_creation_tokens?: number;
-  cache_creation_tokens_5m?: number;
-  cache_creation_tokens_1h?: number;
-  claude?: boolean;
-  model_ratio?: number;
-  completion_ratio?: number;
-  model_price?: number;
-  group_ratio?: number;
-  user_group_ratio?: number;
-  cache_ratio?: number;
-  cache_creation_ratio?: number;
-  cache_creation_ratio_5m?: number;
-  cache_creation_ratio_1h?: number;
-  is_model_mapped?: boolean;
-  upstream_model_name?: string;
-  audio_ratio?: number;
-  audio_completion_ratio?: number;
-  frt?: number;
+  login_method?: string
+  user_agent?: string
+  request_path?: string
+  request_conversion?: string[]
+  ws?: boolean
+  audio?: boolean
+  audio_input?: number
+  audio_output?: number
+  text_input?: number
+  text_output?: number
+  cache_tokens?: number
+  cache_creation_tokens?: number
+  cache_creation_tokens_5m?: number
+  cache_creation_tokens_1h?: number
+  claude?: boolean
+  model_ratio?: number
+  completion_ratio?: number
+  model_price?: number
+  group_ratio?: number
+  user_group_ratio?: number
+  cache_ratio?: number
+  cache_creation_ratio?: number
+  cache_creation_ratio_5m?: number
+  cache_creation_ratio_1h?: number
+  is_model_mapped?: boolean
+  upstream_model_name?: string
+  audio_ratio?: number
+  audio_completion_ratio?: number
+  frt?: number
   // Tiered (expression-based) billing fields, set by backend when
   // billing_mode === 'tiered_expr'. expr_b64 is the base64-encoded billing
   // expression and matched_tier is the label of the tier that fired.
-  billing_mode?: string;
-  expr_b64?: string;
-  matched_tier?: string;
-  reasoning_effort?: string;
-  image?: boolean;
-  image_ratio?: number;
-  image_output?: number;
-  web_search?: boolean;
-  web_search_call_count?: number;
-  web_search_price?: number;
-  file_search?: boolean;
-  file_search_call_count?: number;
-  file_search_price?: number;
-  tool_surcharges?: ToolSurchargeItem[];
-  audio_input_seperate_price?: boolean;
-  audio_input_token_count?: number;
-  audio_input_price?: number;
-  image_generation_call?: boolean;
-  image_generation_call_price?: number;
-  image_generation_call_count?: number;
-  is_system_prompt_overwritten?: boolean;
-  po?: string[];
-  billing_source?: string;
-  group?: string;
+  billing_mode?: string
+  expr_b64?: string
+  matched_tier?: string
+  reasoning_effort?: string
+  image?: boolean
+  image_ratio?: number
+  image_output?: number
+  web_search?: boolean
+  web_search_call_count?: number
+  web_search_price?: number
+  file_search?: boolean
+  file_search_call_count?: number
+  file_search_price?: number
+  tool_surcharges?: ToolSurchargeItem[]
+  audio_input_seperate_price?: boolean
+  audio_input_token_count?: number
+  audio_input_price?: number
+  image_generation_call?: boolean
+  image_generation_call_price?: number
+  image_generation_call_count?: number
+  is_system_prompt_overwritten?: boolean
+  po?: string[]
+  billing_source?: string
+  group?: string
   stream_status?: {
-    status?: string;
-    end_reason?: string;
-    error_count?: number;
-    end_error?: string;
-    errors?: string[];
-  };
+    status?: string
+    end_reason?: string
+    error_count?: number
+    end_error?: string
+    errors?: string[]
+  }
   // Violation fee fields
-  violation_fee?: boolean;
-  violation_fee_code?: string;
-  violation_fee_marker?: string;
-  fee_quota?: number;
+  violation_fee?: boolean
+  violation_fee_code?: string
+  violation_fee_marker?: string
+  fee_quota?: number
   // Reject / intercept reason (admin)
-  reject_reason?: string;
+  reject_reason?: string
   // Task-related fields (for refund logs, type=6)
-  is_task?: boolean;
-  task_id?: string;
-  billing_stage?: "submitted" | "completed" | string;
-  task_status?: string;
-  local_estimated_quota?: number;
-  actual_pre_consumed_quota?: number;
-  customer_final_quota?: number;
-  refunded_quota?: number;
-  adjustment_quota?: number;
-  outstanding_quota?: number;
-  seconds?: number;
-  resolution?: number;
-  reason?: string;
+  is_task?: boolean
+  task_id?: string
+  billing_stage?: 'submitted' | 'completed' | string
+  task_status?: string
+  local_estimated_quota?: number
+  actual_pre_consumed_quota?: number
+  customer_final_quota?: number
+  refunded_quota?: number
+  adjustment_quota?: number
+  outstanding_quota?: number
+  seconds?: number
+  resolution?: number
+  reason?: string
   // Subscription billing fields
-  subscription_plan_id?: string;
-  subscription_plan_title?: string;
-  subscription_id?: string;
-  subscription_pre_consumed?: number;
-  subscription_post_delta?: number;
-  subscription_consumed?: number;
-  subscription_remain?: number;
-  subscription_total?: number;
+  subscription_plan_id?: string
+  subscription_plan_title?: string
+  subscription_id?: string
+  subscription_pre_consumed?: number
+  subscription_post_delta?: number
+  subscription_consumed?: number
+  subscription_remain?: number
+  subscription_total?: number
 }
 
 /**
  * Log statistics data
  */
 export interface LogStatistics {
-  quota: number;
-  rpm: number;
-  tpm: number;
+  quota: number
+  rpm: number
+  tpm: number
 }
 
 // ============================================================================
@@ -276,27 +275,27 @@ export interface LogStatistics {
 // ============================================================================
 
 export interface MidjourneyLog {
-  id: number;
-  user_id: number;
-  channel_id: number;
-  code: number;
-  mj_id: string;
-  action: string; // IMAGINE, UPSCALE, VARIATION, etc. (backend field name)
-  submit_time: number; // milliseconds
-  finish_time?: number; // milliseconds
-  start_time?: number; // milliseconds
-  fail_reason?: string;
-  progress: string;
-  prompt: string;
-  prompt_en?: string;
-  description?: string;
-  buttons?: string;
-  properties?: string;
-  image_url?: string;
-  status: string; // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, MODAL
-  other?: string;
-  created_at?: number;
-  updated_at?: number;
+  id: number
+  user_id: number
+  channel_id: number
+  code: number
+  mj_id: string
+  action: string // IMAGINE, UPSCALE, VARIATION, etc. (backend field name)
+  submit_time: number // milliseconds
+  finish_time?: number // milliseconds
+  start_time?: number // milliseconds
+  fail_reason?: string
+  progress: string
+  prompt: string
+  prompt_en?: string
+  description?: string
+  buttons?: string
+  properties?: string
+  image_url?: string
+  status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, MODAL
+  other?: string
+  created_at?: number
+  updated_at?: number
 }
 
 // ============================================================================
@@ -304,31 +303,31 @@ export interface MidjourneyLog {
 // ============================================================================
 
 export interface TaskLog {
-  id: number;
-  user_id: number;
-  username?: string;
-  platform: string; // suno, kling, runway, etc.
-  task_id: string;
-  action: string; // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
-  channel_id: number;
-  submit_time: number; // seconds
-  finish_time?: number; // seconds
-  progress?: string;
-  progress_message_en?: string;
-  data?: string; // JSON string
-  fail_reason?: string;
-  status: string; // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
-  other?: string;
-  created_at?: number;
-  updated_at?: number;
-  admin_upstream_request?: TaskUpstreamRequest;
+  id: number
+  user_id: number
+  username?: string
+  platform: string // suno, kling, runway, etc.
+  task_id: string
+  action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
+  channel_id: number
+  submit_time: number // seconds
+  finish_time?: number // seconds
+  progress?: string
+  progress_message_en?: string
+  data?: string // JSON string
+  fail_reason?: string
+  status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
+  other?: string
+  created_at?: number
+  updated_at?: number
+  admin_upstream_request?: TaskUpstreamRequest
 }
 
 export interface TaskUpstreamRequest {
-  method: string;
-  url: string;
-  body: string;
-  failure: string;
+  method: string
+  url: string
+  body: string
+  failure: string
 }
 
 // ============================================================================
@@ -336,48 +335,48 @@ export interface TaskUpstreamRequest {
 // ============================================================================
 
 export interface GetLogsParams {
-  p?: number;
-  page_size?: number;
-  type?: number;
-  username?: string;
-  token_name?: string;
-  model_name?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
-  channel?: number;
-  group?: string;
-  request_id?: string;
-  upstream_request_id?: string;
+  p?: number
+  page_size?: number
+  type?: number
+  username?: string
+  token_name?: string
+  model_name?: string
+  start_timestamp?: number
+  end_timestamp?: number
+  channel?: number
+  group?: string
+  request_id?: string
+  upstream_request_id?: string
 }
 
 export interface GetLogsResponse {
-  success: boolean;
-  message?: string;
+  success: boolean
+  message?: string
   data?: {
-    items: UsageLog[] | MidjourneyLog[] | TaskLog[];
-    total: number;
-    page: number;
-    page_size: number;
-  };
+    items: UsageLog[] | MidjourneyLog[] | TaskLog[]
+    total: number
+    page: number
+    page_size: number
+  }
 }
 
 export interface GetLogStatsParams {
-  type?: number;
-  username?: string;
-  token_name?: string;
-  model_name?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
-  channel?: number;
-  group?: string;
-  request_id?: string;
-  upstream_request_id?: string;
+  type?: number
+  username?: string
+  token_name?: string
+  model_name?: string
+  start_timestamp?: number
+  end_timestamp?: number
+  channel?: number
+  group?: string
+  request_id?: string
+  upstream_request_id?: string
 }
 
 export interface GetLogStatsResponse {
-  success: boolean;
-  message?: string;
-  data?: LogStatistics;
+  success: boolean
+  message?: string
+  data?: LogStatistics
 }
 
 // ============================================================================
@@ -385,12 +384,12 @@ export interface GetLogStatsResponse {
 // ============================================================================
 
 export interface GetMidjourneyLogsParams {
-  p?: number;
-  page_size?: number;
-  channel_id?: string;
-  mj_id?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
+  p?: number
+  page_size?: number
+  channel_id?: string
+  mj_id?: string
+  start_timestamp?: number
+  end_timestamp?: number
 }
 
 // ============================================================================
@@ -398,12 +397,12 @@ export interface GetMidjourneyLogsParams {
 // ============================================================================
 
 export interface GetTaskLogsParams {
-  p?: number;
-  page_size?: number;
-  channel_id?: string;
-  task_id?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
+  p?: number
+  page_size?: number
+  channel_id?: string
+  task_id?: string
+  start_timestamp?: number
+  end_timestamp?: number
 }
 
 // ============================================================================
@@ -414,12 +413,12 @@ export interface GetTaskLogsParams {
  * Configuration for fetching logs by category
  */
 export interface FetchLogsConfig {
-  logCategory: LogCategory;
-  isAdmin: boolean;
-  page: number;
-  pageSize: number;
-  searchParams: Record<string, unknown>;
-  columnFilters: Array<{ id: string; value: unknown }>;
+  logCategory: LogCategory
+  isAdmin: boolean
+  page: number
+  pageSize: number
+  searchParams: Record<string, unknown>
+  columnFilters: Array<{ id: string; value: unknown }>
 }
 
 // ============================================================================
@@ -427,15 +426,15 @@ export interface FetchLogsConfig {
 // ============================================================================
 
 export interface UserInfo {
-  id: number;
-  username: string;
-  display_name?: string;
-  quota: number;
-  used_quota: number;
-  request_count: number;
-  group?: string;
-  aff_code?: string;
-  aff_count?: number;
-  aff_quota?: number;
-  remark?: string;
+  id: number
+  username: string
+  display_name?: string
+  quota: number
+  used_quota: number
+  request_count: number
+  group?: string
+  aff_code?: string
+  aff_count?: number
+  aff_quota?: number
+  remark?: string
 }

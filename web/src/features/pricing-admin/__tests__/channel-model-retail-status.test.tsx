@@ -148,6 +148,7 @@ describe('channel model retail publication status', () => {
             currency: 'USD',
             upstream_model_name: 'published-provider-model',
             status: 1,
+            routing_enabled: true,
             priority: 0,
             weight: 0,
             region: '',
@@ -164,6 +165,7 @@ describe('channel model retail publication status', () => {
             currency: 'USD',
             upstream_model_name: 'unpublished-provider-model',
             status: 1,
+            routing_enabled: false,
             priority: 0,
             weight: 0,
             region: '',
@@ -197,8 +199,12 @@ describe('channel model retail publication status', () => {
       throw new Error('expected both channel model rows')
     }
     expect(within(publishedRow).getByText('Published')).toBeVisible()
+    expect(within(publishedRow).getByText('Available')).toBeVisible()
     expect(within(publishedRow).getByText('v3')).toBeVisible()
     expect(within(unpublishedRow).getByText('Not Published')).toBeVisible()
+    expect(
+      within(unpublishedRow).getByText('Removed from channel')
+    ).toBeVisible()
 
     fireEvent.change(screen.getByLabelText('Retail Status'), {
       target: { value: 'published' },

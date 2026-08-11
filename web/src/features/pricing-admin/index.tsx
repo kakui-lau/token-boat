@@ -361,6 +361,7 @@ export function PricingAdmin() {
                   <TableHead>{t('Model')}</TableHead>
                   <TableHead>{t('Provider Model')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
+                  <TableHead>{t('Routing')}</TableHead>
                   <TableHead>{t('Priority')}</TableHead>
                   <TableHead>{t('Weight')}</TableHead>
                   <TableHead>{t('Runtime')}</TableHead>
@@ -374,6 +375,17 @@ export function PricingAdmin() {
                     <TableCell>{row.channel_name}</TableCell>
                     <TableCell className='font-medium'>
                       {row.model_name}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          row.routing_enabled ? 'default' : 'destructive'
+                        }
+                      >
+                        {row.routing_enabled
+                          ? t('Available')
+                          : t('Removed from channel')}
+                      </Badge>
                     </TableCell>
                     <TableCell>{row.upstream_model_name}</TableCell>
                     <TableCell>
@@ -443,7 +455,7 @@ export function PricingAdmin() {
                 {!channelModelsQuery.isLoading && rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className='text-muted-foreground h-24 text-center'
                     >
                       {t('No channel models found')}

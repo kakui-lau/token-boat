@@ -25,6 +25,7 @@ export type ChannelModel = {
   currency: string
   upstream_model_name: string
   status: number
+  routing_enabled: boolean
   priority: number
   weight: number
   region: string

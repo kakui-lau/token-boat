@@ -87,6 +87,7 @@ const channelModel: ChannelModel = {
   currency: 'USD',
   upstream_model_name: 'provider-gpt-test',
   status: 1,
+  routing_enabled: true,
   priority: 0,
   weight: 0,
   region: '',

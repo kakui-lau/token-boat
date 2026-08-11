@@ -23,6 +23,7 @@ type channelModelAdminRow struct {
 	model.ChannelModel
 	ChannelName                string `json:"channel_name"`
 	ModelName                  string `json:"model_name"`
+	RoutingEnabled             bool   `json:"routing_enabled"`
 	ActiveRetailPriceVersionId int    `json:"active_retail_price_version_id"`
 	ActiveRetailPriceVersion   int64  `json:"active_retail_price_version"`
 }
@@ -368,9 +369,11 @@ func AdminListChannelModels(c *gin.Context) {
 		return
 	}
 	query = query.Select(
-		"channel_models.*, channels.name AS channel_name, models.model_name AS model_name, " +
-			"COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id, " +
+		"channel_models.*, channels.name AS channel_name, models.model_name AS model_name, "+
+			"CASE WHEN EXISTS (SELECT 1 FROM abilities WHERE abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name AND abilities.enabled = ?) THEN 1 ELSE 0 END AS routing_enabled, "+
+			"COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id, "+
 			"COALESCE(active_retail.active_retail_price_version, 0) AS active_retail_price_version",
+		true,
 	)
 
 	var total int64

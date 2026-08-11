@@ -38,6 +38,7 @@ func setupPricingAdminControllerTestDB(t *testing.T) {
 		&model.User{},
 		&model.Log{},
 		&model.Channel{},
+		&model.Ability{},
 		&model.Model{},
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
@@ -284,6 +285,9 @@ func TestAdminListChannelModelsReturnsAndFiltersActiveRetailPriceStatus(t *testi
 			Status: 1, RuntimeMode: "legacy",
 		},
 	}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "published-retail-model", ChannelId: 91, Enabled: true,
+	}).Error)
 	require.NoError(t, model.DB.Create([]model.ChannelModelRetailPriceVersion{
 		{
 			Id: 96, ChannelModelId: 94, PurchasePriceVersionId: 1,
@@ -321,6 +325,8 @@ func TestAdminListChannelModelsReturnsAndFiltersActiveRetailPriceStatus(t *testi
 	assert.EqualValues(t, 3, allRows[1].ActiveRetailPriceVersion)
 	assert.Zero(t, allRows[0].ActiveRetailPriceVersionId)
 	assert.Zero(t, allRows[0].ActiveRetailPriceVersion)
+	assert.False(t, allRows[0].RoutingEnabled)
+	assert.True(t, allRows[1].RoutingEnabled)
 
 	publishedRows := list("/api/pricing-admin/channel-models?retail_status=published")
 	require.Len(t, publishedRows, 1)

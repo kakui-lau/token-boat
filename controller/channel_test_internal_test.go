@@ -331,6 +331,37 @@ func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T
 	require.Equal(t, 2, selected[1].Id)
 }
 
+func TestSelectModelProbeTargetsUsesOneTextChannelPerModelAndSkipsMedia(t *testing.T) {
+	channels := []*model.Channel{
+		{
+			Id:     1,
+			Type:   constant.ChannelTypeOpenAI,
+			Status: common.ChannelStatusEnabled,
+			Models: "gpt-4o-mini,gpt-image-1",
+		},
+		{
+			Id:     2,
+			Type:   constant.ChannelTypeOpenAI,
+			Status: common.ChannelStatusEnabled,
+			Models: "gpt-4o-mini,claude-compatible",
+		},
+		{
+			Id:     3,
+			Type:   constant.ChannelTypeOpenRouter,
+			Status: common.ChannelStatusEnabled,
+			Models: "bytedance/seedance-2.0",
+		},
+	}
+
+	targets, skipped := selectModelProbeTargets(channels)
+
+	require.Len(t, targets, 2)
+	assert.Equal(t, "gpt-4o-mini", targets[0].modelName)
+	assert.Equal(t, 1, targets[0].channel.Id)
+	assert.Equal(t, "claude-compatible", targets[1].modelName)
+	assert.Equal(t, 2, skipped)
+}
+
 func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))

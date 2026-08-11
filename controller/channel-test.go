@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -1066,6 +1067,121 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
 		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
+	}
+	return summary, nil
+}
+
+type modelProbeTarget struct {
+	channel      *model.Channel
+	modelName    string
+	endpointType constant.EndpointType
+}
+
+type modelActiveProbeSummary struct {
+	Tested    int `json:"tested"`
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
+}
+
+func selectModelProbeTargets(channels []*model.Channel) ([]modelProbeTarget, int) {
+	targets := make([]modelProbeTarget, 0)
+	seen := make(map[string]struct{})
+	skipped := 0
+	for _, channel := range channels {
+		if channel == nil || channel.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		for _, modelName := range channel.GetModels() {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			if _, ok := seen[modelName]; ok {
+				continue
+			}
+			seen[modelName] = struct{}{}
+			endpoints := common.GetEndpointTypesByChannelType(channel.Type, modelName)
+			if len(endpoints) == 0 || !isTextProbeEndpoint(endpoints[0]) {
+				skipped++
+				continue
+			}
+			targets = append(targets, modelProbeTarget{
+				channel:      channel,
+				modelName:    modelName,
+				endpointType: endpoints[0],
+			})
+		}
+	}
+	return targets, skipped
+}
+
+func isTextProbeEndpoint(endpoint constant.EndpointType) bool {
+	switch endpoint {
+	case constant.EndpointTypeOpenAI,
+		constant.EndpointTypeOpenAIResponse,
+		constant.EndpointTypeOpenAIResponseCompact,
+		constant.EndpointTypeAnthropic,
+		constant.EndpointTypeGemini:
+		return true
+	default:
+		return false
+	}
+}
+
+func runModelActiveProbeTask(ctx context.Context, report func(processed, total int)) (modelActiveProbeSummary, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	testUserID, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		return modelActiveProbeSummary{}, err
+	}
+	channels, err := model.GetAllChannels(0, 0, true, false)
+	if err != nil {
+		return modelActiveProbeSummary{}, err
+	}
+	targets, skipped := selectModelProbeTargets(channels)
+	summary := modelActiveProbeSummary{Skipped: skipped}
+	for index, target := range targets {
+		if ctx.Err() != nil {
+			return summary, ctx.Err()
+		}
+		if report != nil {
+			report(index, len(targets))
+		}
+		startedAt := time.Now()
+		result := testChannel(
+			ctx,
+			target.channel,
+			testUserID,
+			target.modelName,
+			string(target.endpointType),
+			shouldUseStreamForAutomaticChannelTest(target.channel),
+		)
+		success := result.localErr == nil && result.newAPIError == nil
+		perfmetrics.Record(perfmetrics.Sample{
+			Model:     target.modelName,
+			Group:     "auto",
+			LatencyMs: time.Since(startedAt).Milliseconds(),
+			Success:   success,
+		})
+		summary.Tested++
+		if success {
+			summary.Succeeded++
+		} else {
+			summary.Failed++
+		}
+		if common.RequestInterval > 0 {
+			select {
+			case <-ctx.Done():
+				return summary, ctx.Err()
+			case <-time.After(common.RequestInterval):
+			}
+		}
+	}
+	if report != nil {
+		report(len(targets), len(targets))
 	}
 	return summary, nil
 }

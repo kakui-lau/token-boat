@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 )
 
 // RegisterScheduledSystemTasks wires the periodic channel test, upstream model
@@ -25,6 +26,31 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 	service.RegisterSystemTaskHandler(pricingReconciliationHandler{})
 	service.RegisterSystemTaskHandler(pricingRetentionHandler{})
+	service.RegisterSystemTaskHandler(modelActiveProbeHandler{})
+}
+
+type modelActiveProbeHandler struct{}
+
+func (modelActiveProbeHandler) Type() string { return model.SystemTaskTypeModelActiveProbe }
+
+func (modelActiveProbeHandler) Enabled() bool {
+	setting := perf_metrics_setting.GetSetting()
+	return setting.Enabled && setting.ActiveProbeEnabled
+}
+
+func (modelActiveProbeHandler) Interval() time.Duration {
+	return time.Duration(perf_metrics_setting.GetActiveProbeInterval()) * time.Minute
+}
+
+func (modelActiveProbeHandler) NewPayload() any { return nil }
+
+func (modelActiveProbeHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := runModelActiveProbeTask(ctx, service.NewSystemTaskProgressReporter(task, runnerID))
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 
 type pricingReconciliationHandler struct{}

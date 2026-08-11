@@ -67,6 +67,8 @@ const monitoringSchema = z.object({
     flush_interval: z.coerce.number().min(1),
     bucket_time: z.enum(['minute', '5min', 'hour']),
     retention_days: z.coerce.number().min(0),
+    active_probe_enabled: z.boolean(),
+    active_probe_interval_minutes: z.coerce.number().min(5).max(1440),
   }),
 })
 
@@ -79,6 +81,8 @@ type FlatMonitoringDefaults = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
   'perf_metrics_setting.retention_days': number
+  'perf_metrics_setting.active_probe_enabled': boolean
+  'perf_metrics_setting.active_probe_interval_minutes': number
 }
 
 type MonitoringSettingsSectionProps = {
@@ -94,6 +98,9 @@ const buildFormDefaults = (
     flush_interval: defaults['perf_metrics_setting.flush_interval'],
     bucket_time: defaults['perf_metrics_setting.bucket_time'],
     retention_days: defaults['perf_metrics_setting.retention_days'],
+    active_probe_enabled: defaults['perf_metrics_setting.active_probe_enabled'],
+    active_probe_interval_minutes:
+      defaults['perf_metrics_setting.active_probe_interval_minutes'],
   },
 })
 
@@ -108,6 +115,10 @@ const normalizeDefaults = (
     defaults['perf_metrics_setting.bucket_time'],
   'perf_metrics_setting.retention_days':
     defaults['perf_metrics_setting.retention_days'],
+  'perf_metrics_setting.active_probe_enabled':
+    defaults['perf_metrics_setting.active_probe_enabled'],
+  'perf_metrics_setting.active_probe_interval_minutes':
+    defaults['perf_metrics_setting.active_probe_interval_minutes'],
 })
 
 const normalizeFormValues = (
@@ -120,6 +131,10 @@ const normalizeFormValues = (
   'perf_metrics_setting.bucket_time': values.perf_metrics_setting.bucket_time,
   'perf_metrics_setting.retention_days':
     values.perf_metrics_setting.retention_days,
+  'perf_metrics_setting.active_probe_enabled':
+    values.perf_metrics_setting.active_probe_enabled,
+  'perf_metrics_setting.active_probe_interval_minutes':
+    values.perf_metrics_setting.active_probe_interval_minutes,
 })
 
 export function MonitoringSettingsSection({
@@ -155,6 +170,9 @@ export function MonitoringSettingsSection({
   }, [defaultValues])
 
   const perfMetricsEnabled = form.watch('perf_metrics_setting.enabled')
+  const activeProbeEnabled = form.watch(
+    'perf_metrics_setting.active_probe_enabled'
+  )
 
   const onSubmit = async (values: MonitoringFormValues) => {
     const normalized = normalizeFormValues(values)
@@ -307,6 +325,59 @@ export function MonitoringSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t('0 means data is kept permanently')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div>
+            <h4 className='font-medium'>{t('Active model probes')}</h4>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t(
+                'Send minimal requests to text models on a configurable schedule. Image and video generation models are skipped.'
+              )}
+            </p>
+          </div>
+
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.active_probe_enabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Enable active model probes')}</FormLabel>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.active_probe_interval_minutes'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Probe interval (minutes)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={5}
+                      max={1440}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!perfMetricsEnabled || !activeProbeEnabled}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Recommended initial interval: 60 minutes')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

@@ -26,6 +26,7 @@ const (
 	SystemTaskTypePricingRetention = "pricing_retention"
 	SystemTaskTypeTopUpExpiry      = "topup_expiry"
 	SystemTaskTypeFinanceAlertScan = "finance_alert_scan"
+	SystemTaskTypeModelActiveProbe = "model_active_probe"
 )
 
 var ErrSystemTaskLockLost = errors.New("system task lock lost")

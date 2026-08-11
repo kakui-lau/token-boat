@@ -56,6 +56,8 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'perf_metrics_setting.active_probe_enabled': false,
+  'perf_metrics_setting.active_probe_interval_minutes': 60,
 }
 
 export function OperationsSettings() {

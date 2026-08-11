@@ -31,6 +31,7 @@ import {
   PricingToolbar,
   ModelCardGrid,
   ModelDetailsDrawer,
+  ModelAvailabilityOverview,
 } from './components'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
@@ -103,6 +104,10 @@ export function Pricing() {
         (g) => !EXCLUDED_GROUPS.includes(g)
       ),
     [usableGroup]
+  )
+  const modelNames = useMemo(
+    () => (models || []).map((model) => model.model_name),
+    [models]
   )
 
   const handleClearAll = useCallback(() => {
@@ -259,6 +264,8 @@ export function Pricing() {
               {renderPricingContent()}
             </main>
           </div>
+
+          <ModelAvailabilityOverview modelNames={modelNames} />
 
           {selectedModel && (
             <ModelDetailsDrawer

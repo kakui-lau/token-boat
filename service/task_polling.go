@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -641,6 +642,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure ||
 		task.Status == model.TaskStatusCancelled || task.Status == model.TaskStatusExpired
+	terminalTransitionPersisted := false
 	if isDone && snap.Status != task.Status {
 		won, err := task.UpdateWithStatus(snap.Status)
 		if err != nil {
@@ -651,6 +653,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			logger.LogWarn(ctx, fmt.Sprintf("Task %s CAS lost or no-op update, skip billing", task.TaskID))
 			shouldRefund = false
 			shouldSettle = false
+		} else {
+			terminalTransitionPersisted = true
 		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
@@ -677,11 +681,46 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)
 	}
+	if terminalTransitionPersisted {
+		perfmetrics.Record(buildTerminalTaskPerfSample(task, time.Now().Unix()))
+	}
 	if isDone && snap.Status != task.Status && task.PrivateData.CallbackURL != "" {
 		scheduleOpenRouterVideoCallback(task.ID)
 	}
 
 	return nil
+}
+
+func buildTerminalTaskPerfSample(task *model.Task, now int64) perfmetrics.Sample {
+	modelName := task.Properties.OriginModelName
+	if modelName == "" {
+		modelName = task.Properties.UpstreamModelName
+	}
+	group := task.Group
+	if group == "" {
+		group = "auto"
+	}
+	startedAt := task.StartTime
+	if startedAt == 0 {
+		startedAt = task.SubmitTime
+	}
+	if startedAt == 0 {
+		startedAt = task.CreatedAt
+	}
+	finishedAt := task.FinishTime
+	if finishedAt == 0 {
+		finishedAt = now
+	}
+	latencyMs := int64(0)
+	if startedAt > 0 {
+		latencyMs = max(int64(0), finishedAt-startedAt) * 1000
+	}
+	return perfmetrics.Sample{
+		Model:     modelName,
+		Group:     group,
+		LatencyMs: latencyMs,
+		Success:   task.Status == model.TaskStatusSuccess,
+	}
 }
 
 func truncatePollingError(body []byte) string {

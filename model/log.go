@@ -501,10 +501,9 @@ func UpdateTaskConsumeLogDetails(taskID string, fields, adminFields map[string]i
 	}
 	var log Log
 	if err := LOG_DB.Where(
-		"task_id = ? AND type = ? AND other LIKE ?",
+		"task_id = ? AND type = ?",
 		taskID,
 		LogTypeConsume,
-		`%"billing_stage":"submitted"%`,
 	).
 		Order("created_at, request_id").
 		First(&log).Error; err != nil {

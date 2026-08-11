@@ -88,6 +88,36 @@ func TestUpdateTaskConsumeLogDetailsMergesPublicAndAdminBillingFields(t *testing
 	require.Equal(t, float64(500), userOther["customer_final_quota"])
 }
 
+func TestUpdateTaskConsumeLogDetailsCanRetryCompletedAudit(t *testing.T) {
+	truncateTables(t)
+	log := &Log{
+		UserId: 1,
+		Type:   LogTypeConsume,
+		TaskId: "task_billing_audit_retry",
+		Other: common.MapToJsonStr(map[string]interface{}{
+			"billing_stage":        "completed",
+			"customer_final_quota": 500,
+		}),
+	}
+	require.NoError(t, LOG_DB.Create(log).Error)
+
+	require.NoError(t, UpdateTaskConsumeLogDetails(
+		log.TaskId,
+		map[string]interface{}{"task_status": "SUCCESS"},
+		map[string]interface{}{"provider_cost_status": "estimated"},
+	))
+
+	var updated Log
+	require.NoError(t, LOG_DB.First(&updated, log.Id).Error)
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(updated.Other, &other))
+	require.Equal(t, "completed", other["billing_stage"])
+	require.Equal(t, "SUCCESS", other["task_status"])
+	adminInfo, ok := other["admin_info"].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "estimated", adminInfo["provider_cost_status"])
+}
+
 func TestSumUsedQuotaSubtractsRefunds(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, createLog(&Log{

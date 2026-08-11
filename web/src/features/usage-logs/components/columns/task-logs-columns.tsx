@@ -44,6 +44,53 @@ import {
   createProgressColumn,
 } from './column-helpers'
 
+type BillingDisplayState = {
+  audit: string
+  auditVariant: 'danger' | 'success' | 'warning'
+  notApplicable: boolean
+  settlement: string
+}
+
+export function getTaskBillingDisplayState(log: TaskLog): BillingDisplayState {
+  const billing = log.admin_billing
+  if (!billing) {
+    return {
+      audit: '',
+      auditVariant: 'warning',
+      notApplicable: true,
+      settlement: '',
+    }
+  }
+
+  const notApplicable =
+    billing.quota === 0 &&
+    !billing.settlement_status &&
+    !billing.billing_audit_status
+  if (notApplicable) {
+    return {
+      audit: '',
+      auditVariant: 'success',
+      notApplicable: true,
+      settlement: '',
+    }
+  }
+
+  const audit = billing.billing_audit_status || 'pending'
+  const hasIssue = Boolean(
+    billing.settlement_error || billing.billing_audit_error
+  )
+  let auditVariant: BillingDisplayState['auditVariant'] = 'warning'
+  if (hasIssue) auditVariant = 'danger'
+  else if (audit === 'completed') auditVariant = 'success'
+
+  return {
+    audit,
+    auditVariant,
+    notApplicable: false,
+    settlement: billing.settlement_status || 'pending',
+  }
+}
+
 function parseTaskData(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
   if (typeof data === 'string') {
@@ -197,17 +244,10 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         header: t('Billing'),
         accessorFn: (row) => row.admin_billing?.quota || 0,
         cell: ({ row }) => {
-          const billing = row.original.admin_billing
+          const log = row.original
+          const billing = log.admin_billing
           if (!billing) return <span className='text-muted-foreground'>-</span>
-
-          const settlement = billing.settlement_status || 'pending'
-          const audit = billing.billing_audit_status || 'pending'
-          const hasIssue = Boolean(
-            billing.settlement_error || billing.billing_audit_error
-          )
-          let auditVariant: 'danger' | 'success' | 'warning' = 'warning'
-          if (hasIssue) auditVariant = 'danger'
-          else if (audit === 'completed') auditVariant = 'success'
+          const display = getTaskBillingDisplayState(log)
 
           return (
             <div className='flex min-w-[170px] flex-col gap-1'>
@@ -222,18 +262,33 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
                 ) : null}
               </div>
               <div className='flex flex-wrap gap-1'>
-                <StatusBadge
-                  label={`${t('Settlement Status')}: ${t(settlement === 'completed' ? 'Completed' : 'Pending')}`}
-                  variant={settlement === 'completed' ? 'success' : 'warning'}
-                  size='sm'
-                  copyable={false}
-                />
-                <StatusBadge
-                  label={`${t('Billing')}: ${t(audit === 'completed' ? 'Completed' : 'Pending')}`}
-                  variant={auditVariant}
-                  size='sm'
-                  copyable={false}
-                />
+                {display.notApplicable ? (
+                  <StatusBadge
+                    label={t('Not applicable')}
+                    variant='neutral'
+                    size='sm'
+                    copyable={false}
+                  />
+                ) : (
+                  <>
+                    <StatusBadge
+                      label={`${t('Settlement Status')}: ${t(display.settlement === 'completed' ? 'Completed' : 'Pending')}`}
+                      variant={
+                        display.settlement === 'completed'
+                          ? 'success'
+                          : 'warning'
+                      }
+                      size='sm'
+                      copyable={false}
+                    />
+                    <StatusBadge
+                      label={`${t('Billing')}: ${t(display.audit === 'completed' ? 'Completed' : 'Pending')}`}
+                      variant={display.auditVariant}
+                      size='sm'
+                      copyable={false}
+                    />
+                  </>
+                )}
               </div>
             </div>
           )

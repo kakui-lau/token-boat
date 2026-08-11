@@ -81,6 +81,115 @@ type Log struct {
 	Other             string `json:"other"`
 }
 
+type UserModelUsageQuery struct {
+	StartTimestamp int64
+	EndTimestamp   int64
+	Username       string
+	ModelName      string
+}
+
+type UserModelUsage struct {
+	Username         string `json:"username"`
+	UserID           int    `json:"user_id"`
+	ModelName        string `json:"model_name"`
+	RequestCount     int64  `json:"request_count"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+	Quota            int64  `json:"quota"`
+	AverageUseTime   int64  `json:"average_use_time"`
+}
+
+type UserModelUsageSummary struct {
+	UserCount        int64 `json:"user_count"`
+	ModelCount       int64 `json:"model_count"`
+	RequestCount     int64 `json:"request_count"`
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+	TotalTokens      int64 `json:"total_tokens"`
+	Quota            int64 `json:"quota"`
+}
+
+func QueryUserModelUsage(query UserModelUsageQuery, offset, limit int) ([]UserModelUsage, int64, UserModelUsageSummary, error) {
+	base := LOG_DB.Model(&Log{}).
+		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("created_at >= ? AND created_at <= ?", query.StartTimestamp, query.EndTimestamp)
+	if query.Username != "" {
+		base = base.Where("username = ?", query.Username)
+	}
+	if query.ModelName != "" {
+		base = base.Where("model_name = ?", query.ModelName)
+	}
+
+	var rows []UserModelUsage
+	err := base.Session(&gorm.Session{}).Select(`
+		username,
+		user_id,
+		model_name,
+		SUM(CASE WHEN type = ? THEN 1 ELSE 0 END) AS request_count,
+		SUM(CASE WHEN type = ? THEN prompt_tokens ELSE 0 END) AS prompt_tokens,
+		SUM(CASE WHEN type = ? THEN completion_tokens ELSE 0 END) AS completion_tokens,
+		SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END) AS total_tokens,
+		SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END) AS quota,
+		COALESCE(AVG(CASE WHEN type = ? THEN use_time END), 0) AS average_use_time`,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeRefund,
+		LogTypeConsume,
+	).
+		Where("model_name != ?", "").
+		Group("username, user_id, model_name").
+		Order("quota DESC, request_count DESC, model_name ASC").
+		Offset(offset).
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, UserModelUsageSummary{}, err
+	}
+
+	var groupKeys []struct {
+		UserID    int
+		Username  string
+		ModelName string
+	}
+	if err := base.Session(&gorm.Session{}).
+		Select("username, user_id, model_name").
+		Where("model_name != ?", "").
+		Group("username, user_id, model_name").
+		Scan(&groupKeys).Error; err != nil {
+		return nil, 0, UserModelUsageSummary{}, err
+	}
+
+	users := make(map[int]struct{})
+	models := make(map[string]struct{})
+	summary := UserModelUsageSummary{}
+	for _, key := range groupKeys {
+		users[key.UserID] = struct{}{}
+		models[key.ModelName] = struct{}{}
+	}
+	if err := base.Session(&gorm.Session{}).Select(`
+		SUM(CASE WHEN type = ? THEN 1 ELSE 0 END) AS request_count,
+		SUM(CASE WHEN type = ? THEN prompt_tokens ELSE 0 END) AS prompt_tokens,
+		SUM(CASE WHEN type = ? THEN completion_tokens ELSE 0 END) AS completion_tokens,
+		SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END) AS total_tokens,
+		SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END) AS quota`,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeRefund,
+	).Where("model_name != ?", "").Scan(&summary).Error; err != nil {
+		return nil, 0, UserModelUsageSummary{}, err
+	}
+	summary.UserCount = int64(len(users))
+	summary.ModelCount = int64(len(models))
+	return rows, int64(len(groupKeys)), summary, nil
+}
+
 // don't use iota, avoid change log type value
 const (
 	LogTypeUnknown = 0

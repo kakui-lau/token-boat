@@ -38,6 +38,7 @@ import {
   Ticket,
   User,
   Users,
+  UserRoundSearch,
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -195,6 +196,11 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('User model usage'),
+            url: '/user-model-usage',
+            icon: UserRoundSearch,
           },
           {
             title: t('Financial Operations'),

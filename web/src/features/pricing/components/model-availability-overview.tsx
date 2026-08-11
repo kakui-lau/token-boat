@@ -86,7 +86,9 @@ export function ModelAvailabilityOverview(
       <div className='grid gap-4 lg:grid-cols-2'>
         <MetricList
           title={t('Fastest models')}
-          description={t('Measured throughput over the past 24 hours')}
+          description={t(
+            'Past 24 hours: output speed = total output tokens / total generation time'
+          )}
           models={fastestModels}
           loading={loading}
           renderMetric={(model) => (
@@ -94,8 +96,12 @@ export function ModelAvailabilityOverview(
               <div className='font-mono text-sm font-semibold tabular-nums'>
                 {formatThroughput(model.avg_tps)}
               </div>
+              <div className='text-muted-foreground text-[11px]'>
+                {t('Output speed')}
+              </div>
               <div className='text-muted-foreground text-xs'>
-                {formatLatency(model.avg_latency_ms)}
+                {formatLatency(model.avg_latency_ms)} ·{' '}
+                {t('Average full response time')}
               </div>
             </div>
           )}

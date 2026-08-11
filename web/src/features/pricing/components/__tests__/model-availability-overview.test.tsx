@@ -69,6 +69,8 @@ describe('model availability overview', () => {
       'listitem'
     )
     expect(fastestRows[0]).toHaveTextContent('fast-model')
+    expect(fastestRows[0]).toHaveTextContent('Output speed')
+    expect(fastestRows[0]).toHaveTextContent('Average full response time')
     expect(fastestRows[1]).toHaveTextContent('steady-model')
     expect(screen.queryByText('low-sample-model')).not.toBeInTheDocument()
   })

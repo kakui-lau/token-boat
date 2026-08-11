@@ -154,7 +154,7 @@ func TestConvertToRequestPayloadMarksInputImagesAsReferences(t *testing.T) {
 	assert.Equal(t, "https://example.com/reference.png", payload.Content[0].ImageURL.URL)
 }
 
-func TestValidateOnlyAppliesStrictEstimatorToTieredSeedance20(t *testing.T) {
+func TestValidateProvidesSafeEstimateForSeedance2(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	saved := map[string]string{}
 	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
@@ -186,6 +186,14 @@ func TestValidateOnlyAppliesStrictEstimatorToTieredSeedance20(t *testing.T) {
 	normalizedBody := string(tieredInfo.BillingRequestInput.Body)
 	assert.NotContains(t, normalizedBody, "https://example.com/in.mp4")
 	assert.Contains(t, normalizedBody, "video_url")
+
+	seedance25Context, seedance25Info := newDoubaoVideoTestContext(
+		`{"model":"bytedance/seedance-2.5-upscale","prompt":"test","duration":30,"resolution":"720p"}`,
+	)
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(seedance25Context, seedance25Info))
+	assert.True(t, seedance25Info.TaskTieredEstimateReady)
+	assert.Positive(t, seedance25Info.TaskPreConsumeTokens)
+	require.NotNil(t, seedance25Info.BillingRequestInput)
 }
 
 func TestValidateRejectsSeedance20Mini480pBeforeBilling(t *testing.T) {

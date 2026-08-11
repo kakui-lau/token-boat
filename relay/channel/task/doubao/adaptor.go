@@ -156,10 +156,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			)
 		}
 	}
-	if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
-		return nil
-	}
 	if !isSupportedSeedanceModel(req.Model) {
+		if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
+			return nil
+		}
 		return service.TaskErrorWrapperLocal(
 			fmt.Errorf("tiered expression billing is only supported for Seedance 2.0 and 2.5 on DoubaoVideo"),
 			"unsupported_tiered_billing",

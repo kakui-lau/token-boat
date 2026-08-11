@@ -592,6 +592,14 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
+	// A caller that explicitly selects a channel expects both the upstream
+	// request and its frozen V2 pricing snapshot to stay on that channel.
+	// Channel-scoped errors are normally retried, so this guard must run before
+	// IsChannelError or a failed specified channel can silently fall through to
+	// another V2 candidate.
+	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
+		return false
+	}
 	if types.IsChannelError(openaiErr) {
 		return true
 	}
@@ -599,9 +607,6 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return false
 	}
 	if retryTimes <= 0 {
-		return false
-	}
-	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
 	code := openaiErr.StatusCode

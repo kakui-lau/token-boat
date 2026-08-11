@@ -1,0 +1,4 @@
+interface:
+  display_name: "模型商业化管理"
+  short_description: "安全配置渠道模型、定价版本、利润规则和生产验证流程"
+  default_prompt: "Use $manage-model-commercialization to onboard a model, calculate its pricing chain, and verify routing safely."

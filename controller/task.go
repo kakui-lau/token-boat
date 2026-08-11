@@ -91,6 +91,16 @@ func taskToDto(task *model.Task, includeAdminFields bool) *dto.TaskDto {
 	result := relay.TaskModel2Dto(task)
 	if includeAdminFields {
 		result.AdminUpstreamRequest = task.PrivateData.AdminUpstreamRequest
+		result.AdminBilling = &dto.TaskAdminBilling{
+			Quota:                 task.Quota,
+			RefundStatus:          task.RefundStatus,
+			RefundQuota:           task.RefundQuota,
+			SettlementStatus:      task.SettlementStatus,
+			SettlementTargetQuota: task.SettlementTargetQuota,
+			SettlementError:       task.SettlementError,
+			BillingAuditStatus:    task.BillingAuditStatus,
+			BillingAuditError:     task.BillingAuditError,
+		}
 	}
 	return result
 }

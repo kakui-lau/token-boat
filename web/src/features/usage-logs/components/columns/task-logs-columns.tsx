@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
@@ -121,46 +121,126 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
   ]
 
   if (isAdmin) {
-    columns.push(createChannelColumn<TaskLog>({ headerLabel: t('Channel') }), {
-      id: 'user',
-      header: t('User'),
-      accessorFn: (row) => row.username || row.user_id,
-      cell: function UserCell({ row }) {
-        const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-          useUsageLogsContext()
-        const log = row.original
-        const displayName = log.username || String(log.user_id || '?')
+    columns.push(
+      createChannelColumn<TaskLog>({ headerLabel: t('Channel') }),
+      {
+        id: 'user',
+        header: t('User'),
+        accessorFn: (row) => row.username || row.user_id,
+        cell: function UserCell({ row }) {
+          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
+            useUsageLogsContext()
+          const log = row.original
+          const displayName = log.username || String(log.user_id || '?')
 
-        return (
-          <button
-            type='button'
-            className='flex items-center gap-1.5 text-left'
-            onClick={(e) => {
-              e.stopPropagation()
-              setSelectedUserId(log.user_id)
-              setUserInfoDialogOpen(true)
-            }}
-          >
-            <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
-              <AvatarFallback
-                className={cn(
-                  'text-[11px] font-semibold',
-                  !sensitiveVisible && 'bg-muted text-muted-foreground'
-                )}
-                style={
-                  sensitiveVisible ? getUserAvatarStyle(displayName) : undefined
-                }
-              >
-                {sensitiveVisible ? getUserAvatarFallback(displayName) : '•'}
-              </AvatarFallback>
-            </Avatar>
-            <span className='text-muted-foreground truncate text-sm hover:underline'>
-              {sensitiveVisible ? displayName : '••••'}
-            </span>
-          </button>
-        )
+          return (
+            <button
+              type='button'
+              className='flex items-center gap-1.5 text-left'
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedUserId(log.user_id)
+                setUserInfoDialogOpen(true)
+              }}
+            >
+              <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
+                <AvatarFallback
+                  className={cn(
+                    'text-[11px] font-semibold',
+                    !sensitiveVisible && 'bg-muted text-muted-foreground'
+                  )}
+                  style={
+                    sensitiveVisible
+                      ? getUserAvatarStyle(displayName)
+                      : undefined
+                  }
+                >
+                  {sensitiveVisible ? getUserAvatarFallback(displayName) : '•'}
+                </AvatarFallback>
+              </Avatar>
+              <span className='text-muted-foreground truncate text-sm hover:underline'>
+                {sensitiveVisible ? displayName : '••••'}
+              </span>
+            </button>
+          )
+        },
       },
-    })
+      {
+        id: 'model',
+        header: t('Model'),
+        accessorFn: (row) => row.properties?.origin_model_name || '',
+        cell: ({ row }) => {
+          const properties = row.original.properties
+          const model = properties?.origin_model_name
+          const upstreamModel = properties?.upstream_model_name
+
+          return (
+            <div className='flex max-w-[220px] flex-col gap-0.5'>
+              <span className='truncate font-medium' title={model}>
+                {model || '-'}
+              </span>
+              {upstreamModel && upstreamModel !== model ? (
+                <span
+                  className='text-muted-foreground truncate font-mono text-[11px]'
+                  title={upstreamModel}
+                >
+                  {t('Upstream Model')}: {upstreamModel}
+                </span>
+              ) : null}
+            </div>
+          )
+        },
+        size: 220,
+      },
+      {
+        id: 'billing',
+        header: t('Billing'),
+        accessorFn: (row) => row.admin_billing?.quota || 0,
+        cell: ({ row }) => {
+          const billing = row.original.admin_billing
+          if (!billing) return <span className='text-muted-foreground'>-</span>
+
+          const settlement = billing.settlement_status || 'pending'
+          const audit = billing.billing_audit_status || 'pending'
+          const hasIssue = Boolean(
+            billing.settlement_error || billing.billing_audit_error
+          )
+          let auditVariant: 'danger' | 'success' | 'warning' = 'warning'
+          if (hasIssue) auditVariant = 'danger'
+          else if (audit === 'completed') auditVariant = 'success'
+
+          return (
+            <div className='flex min-w-[170px] flex-col gap-1'>
+              <div className='flex items-center gap-1.5'>
+                <span className='font-mono text-xs font-semibold tabular-nums'>
+                  {formatLogQuota(billing.quota)}
+                </span>
+                {billing.refund_quota ? (
+                  <span className='text-muted-foreground text-[11px]'>
+                    {t('Refund')} {formatLogQuota(billing.refund_quota)}
+                  </span>
+                ) : null}
+              </div>
+              <div className='flex flex-wrap gap-1'>
+                <StatusBadge
+                  label={`${t('Settlement Status')}: ${t(settlement === 'completed' ? 'Completed' : 'Pending')}`}
+                  variant={settlement === 'completed' ? 'success' : 'warning'}
+                  size='sm'
+                  copyable={false}
+                />
+                <StatusBadge
+                  label={`${t('Billing')}: ${t(audit === 'completed' ? 'Completed' : 'Pending')}`}
+                  variant={auditVariant}
+                  size='sm'
+                  copyable={false}
+                />
+              </div>
+            </div>
+          )
+        },
+        size: 190,
+      }
+    )
   }
 
   columns.push(

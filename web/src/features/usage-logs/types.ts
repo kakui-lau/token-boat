@@ -321,6 +321,23 @@ export interface TaskLog {
   created_at?: number
   updated_at?: number
   admin_upstream_request?: TaskUpstreamRequest
+  admin_billing?: TaskAdminBilling
+  properties?: {
+    origin_model_name?: string
+    upstream_model_name?: string
+    generation_id?: string
+  }
+}
+
+export interface TaskAdminBilling {
+  quota: number
+  refund_status?: string
+  refund_quota?: number
+  settlement_status?: string
+  settlement_target_quota?: number
+  settlement_error?: string
+  billing_audit_status?: string
+  billing_audit_error?: string
 }
 
 export interface TaskUpstreamRequest {

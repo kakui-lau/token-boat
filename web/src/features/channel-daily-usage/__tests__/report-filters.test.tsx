@@ -140,6 +140,10 @@ describe('Channel daily usage report filters', () => {
     expect(
       screen.getByRole('option', { name: /Primary Channel/ })
     ).toBeVisible()
+    expect(
+      screen.getByRole('option', { name: /Primary Channel/ }).parentElement
+        ?.parentElement
+    ).toHaveClass('w-max', 'max-w-[min(32rem,calc(100vw-2rem))]')
     fireEvent.keyDown(channel, { key: 'Escape' })
 
     const platformModel = screen.getByRole('combobox', {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,7 +22,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const authIdentityContextKey = "auth_identity"
+const (
+	authIdentityContextKey = "auth_identity"
+	specificChannelHeader  = "X-Channel-Id"
+)
 
 type dashboardCredentialKind int
 
@@ -512,14 +516,27 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, autoGroups)
 		}
 	}
-	if len(parts) > 1 {
-		if model.IsAdmin(token.UserId) {
-			c.Set("specific_channel_id", parts[1])
-		} else {
-			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
-			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")
-			return fmt.Errorf("普通用户不支持指定渠道")
-		}
+	channelID := ""
+	if c.Request != nil {
+		channelID = strings.TrimSpace(c.GetHeader(specificChannelHeader))
+		c.Request.Header.Del(specificChannelHeader)
 	}
+	if channelID == "" && len(parts) > 1 {
+		channelID = parts[1]
+	}
+	if channelID == "" {
+		return nil
+	}
+	if !model.IsAdmin(token.UserId) {
+		c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
+		abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")
+		return fmt.Errorf("普通用户不支持指定渠道")
+	}
+	parsedChannelID, err := strconv.Atoi(channelID)
+	if err != nil || parsedChannelID <= 0 {
+		abortWithOpenAiMessage(c, http.StatusBadRequest, "无效的渠道 ID")
+		return fmt.Errorf("无效的渠道 ID")
+	}
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(parsedChannelID))
 	return nil
 }

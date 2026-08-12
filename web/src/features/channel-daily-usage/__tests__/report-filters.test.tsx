@@ -5,6 +5,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelDailyUsagePage } from '../index'
 
+let usageRows: Array<Record<string, unknown>> = []
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
@@ -47,7 +49,10 @@ vi.mock('@tanstack/react-query', () => ({
       }
     }
     if (queryName === 'channel-daily-usages') {
-      return { data: { data: { items: [], total: 0 } }, isLoading: false }
+      return {
+        data: { data: { items: usageRows, total: usageRows.length } },
+        isLoading: false,
+      }
     }
     if (queryName === 'channel-daily-usages-summary') {
       return {
@@ -89,7 +94,36 @@ vi.mock('@/components/confirm-dialog', () => ({
 }))
 
 describe('Channel daily usage report filters', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    usageRows = []
+    cleanup()
+  })
+
+  test('marks the current UTC day as live usage', () => {
+    usageRows = [
+      {
+        id: 1,
+        usage_date: new Date().toISOString().slice(0, 10),
+        channel_id: 7,
+        channel_name: 'Primary Channel',
+        model_name: 'openai/gpt-test',
+        upstream_model: 'vendor/gpt-test',
+        billed_request_count: 1,
+        prompt_tokens: 10,
+        cache_read_tokens: 0,
+        completion_tokens: 2,
+        total_tokens: 12,
+        customer_revenue_usd: '0.01',
+        missing_usage_count: 0,
+        pending_task_count: 0,
+        manual_review_count: 0,
+      },
+    ]
+
+    render(<ChannelDailyUsagePage />)
+
+    expect(screen.getByText('Live usage')).toBeVisible()
+  })
 
   test('offers channels and model names as report filter choices', () => {
     render(<ChannelDailyUsagePage />)

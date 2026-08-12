@@ -299,7 +299,7 @@ func RecalculateRecentChannelDailyUsage(ctx context.Context, days int, now time.
 		return errors.New("days must be between 1 and 31")
 	}
 	today := now.UTC().Truncate(24 * time.Hour)
-	for daysAgo := days; daysAgo >= 1; daysAgo-- {
+	for daysAgo := days - 1; daysAgo >= 0; daysAgo-- {
 		if err := RecalculateChannelDailyUsage(ctx, today.AddDate(0, 0, -daysAgo)); err != nil {
 			return fmt.Errorf("recalculate UTC day %s: %w", today.AddDate(0, 0, -daysAgo).Format("2006-01-02"), err)
 		}

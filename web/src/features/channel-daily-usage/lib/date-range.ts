@@ -22,14 +22,14 @@ export function getDefaultUtcWeekRange(now = new Date()): {
 
   if (daysSinceMonday === 0) {
     return {
-      start_date: getUtcDate(-7, now),
-      end_date: getUtcDate(-1, now),
+      start_date: getUtcDate(0, now),
+      end_date: getUtcDate(0, now),
     }
   }
 
   return {
     start_date: getUtcDate(-daysSinceMonday, now),
-    end_date: getUtcDate(-1, now),
+    end_date: getUtcDate(0, now),
   }
 }
 

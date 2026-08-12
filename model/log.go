@@ -89,15 +89,15 @@ type UserModelUsageQuery struct {
 }
 
 type UserModelUsage struct {
-	Username         string `json:"username"`
-	UserID           int    `json:"user_id"`
-	ModelName        string `json:"model_name"`
-	RequestCount     int64  `json:"request_count"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
-	TotalTokens      int64  `json:"total_tokens"`
-	Quota            int64  `json:"quota"`
-	AverageUseTime   int64  `json:"average_use_time"`
+	Username         string  `json:"username"`
+	UserID           int     `json:"user_id"`
+	ModelName        string  `json:"model_name"`
+	RequestCount     int64   `json:"request_count"`
+	PromptTokens     int64   `json:"prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens"`
+	TotalTokens      int64   `json:"total_tokens"`
+	Quota            int64   `json:"quota"`
+	AverageUseTime   float64 `json:"average_use_time"`
 }
 
 type UserModelUsageSummary struct {

@@ -13,7 +13,8 @@ func TestQueryUserModelUsageAggregatesConsumptionAndRefunds(t *testing.T) {
 		{UserId: 1, Username: "alice", ModelName: "model-a", Type: LogTypeConsume, CreatedAt: 100, Quota: 500, PromptTokens: 20, CompletionTokens: 10, UseTime: 1200},
 		{UserId: 1, Username: "alice", ModelName: "model-a", Type: LogTypeConsume, CreatedAt: 110, Quota: 300, PromptTokens: 10, CompletionTokens: 5, UseTime: 800},
 		{UserId: 1, Username: "alice", ModelName: "model-a", Type: LogTypeRefund, CreatedAt: 120, Quota: 200},
-		{UserId: 1, Username: "alice", ModelName: "model-b", Type: LogTypeConsume, CreatedAt: 130, Quota: 100, PromptTokens: 4, CompletionTokens: 2, UseTime: 500},
+		{UserId: 1, Username: "alice", ModelName: "model-b", Type: LogTypeConsume, CreatedAt: 130, Quota: 100, PromptTokens: 4, CompletionTokens: 2, UseTime: 501},
+		{UserId: 1, Username: "alice", ModelName: "model-b", Type: LogTypeConsume, CreatedAt: 131, Quota: 100, PromptTokens: 4, CompletionTokens: 2, UseTime: 500},
 		{UserId: 2, Username: "bob", ModelName: "model-a", Type: LogTypeConsume, CreatedAt: 140, Quota: 900},
 	}
 	for _, log := range logs {
@@ -35,11 +36,12 @@ func TestQueryUserModelUsageAggregatesConsumptionAndRefunds(t *testing.T) {
 	assert.Equal(t, int64(30), rows[0].PromptTokens)
 	assert.Equal(t, int64(15), rows[0].CompletionTokens)
 	assert.Equal(t, int64(45), rows[0].TotalTokens)
-	assert.Equal(t, int64(1000), rows[0].AverageUseTime)
+	assert.Equal(t, 1000.0, rows[0].AverageUseTime)
+	assert.Equal(t, 500.5, rows[1].AverageUseTime)
 	assert.Equal(t, int64(1), summary.UserCount)
 	assert.Equal(t, int64(2), summary.ModelCount)
-	assert.Equal(t, int64(3), summary.RequestCount)
-	assert.Equal(t, int64(700), summary.Quota)
+	assert.Equal(t, int64(4), summary.RequestCount)
+	assert.Equal(t, int64(800), summary.Quota)
 }
 
 func TestQueryUserModelUsagePaginatesGroupedRows(t *testing.T) {

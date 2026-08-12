@@ -105,6 +105,7 @@ export function ChannelDailyUsagePage() {
   const [page, setPage] = useState(1)
   const startMonth = startDate.slice(0, 7)
   const endMonth = endDate.slice(0, 7)
+  const currentUtcDate = new Date().toISOString().slice(0, 10)
 
   const filters = useMemo<ChannelDailyUsageFilters>(
     () => ({
@@ -639,7 +640,17 @@ export function ChannelDailyUsagePage() {
                             : row.id
                         }
                       >
-                        <TableCell>{row.usage_date}</TableCell>
+                        <TableCell>
+                          <div className='flex items-center gap-2'>
+                            <span>{row.usage_date}</span>
+                            {granularity === 'day' &&
+                              row.usage_date === currentUtcDate && (
+                                <Badge variant='secondary'>
+                                  {t('Live usage')}
+                                </Badge>
+                              )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           {row.channel_name || `#${row.channel_id}`}
                         </TableCell>

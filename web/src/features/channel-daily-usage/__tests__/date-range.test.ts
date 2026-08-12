@@ -27,21 +27,21 @@ describe('UTC usage date ranges', () => {
     })
   })
 
-  it('defaults to Monday through yesterday during the UTC week', () => {
+  it('defaults to Monday through today during the UTC week', () => {
     expect(
       getDefaultUtcWeekRange(new Date('2026-07-23T18:30:00.000Z'))
     ).toEqual({
       start_date: '2026-07-20',
-      end_date: '2026-07-22',
+      end_date: '2026-07-23',
     })
   })
 
-  it('defaults to the previous complete UTC week on Monday', () => {
+  it('defaults to today on Monday', () => {
     expect(
       getDefaultUtcWeekRange(new Date('2026-07-27T00:30:00.000Z'))
     ).toEqual({
-      start_date: '2026-07-20',
-      end_date: '2026-07-26',
+      start_date: '2026-07-27',
+      end_date: '2026-07-27',
     })
   })
 
@@ -50,7 +50,7 @@ describe('UTC usage date ranges', () => {
       getDefaultUtcWeekRange(new Date('2026-07-26T23:30:00.000Z'))
     ).toEqual({
       start_date: '2026-07-20',
-      end_date: '2026-07-25',
+      end_date: '2026-07-26',
     })
   })
 })

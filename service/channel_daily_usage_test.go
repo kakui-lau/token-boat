@@ -88,6 +88,26 @@ func TestRecalculateChannelDailyUsageUsesUTCHalfOpenBoundaryAndIsIdempotent(t *t
 	assert.Equal(t, int64(190), summary.TotalTokens)
 }
 
+func TestRecalculateRecentChannelDailyUsageIncludesCurrentUTCDay(t *testing.T) {
+	setupChannelDailyUsageTestDB(t)
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{
+		CreatedAt: now.Unix(), Type: model.LogTypeConsume, ChannelId: 15,
+		ModelName: "live-model", Quota: 100, RequestId: "current-day",
+	}).Error)
+
+	require.NoError(t, RecalculateRecentChannelDailyUsage(context.Background(), 3, now))
+
+	rows, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-25", EndDate: "2026-07-25",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "live-model", rows[0].ModelName)
+	assert.Equal(t, model.ChannelDailyUsageStatusOpen, rows[0].Status)
+}
+
 func TestRecalculateChannelDailyUsageScansMultipleLogBatches(t *testing.T) {
 	setupChannelDailyUsageTestDB(t)
 	start := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)

@@ -11,7 +11,7 @@ type channelDailyUsageHandler struct{}
 
 func (channelDailyUsageHandler) Type() string            { return model.SystemTaskTypeDailyUsage }
 func (channelDailyUsageHandler) Enabled() bool           { return true }
-func (channelDailyUsageHandler) Interval() time.Duration { return 24 * time.Hour }
+func (channelDailyUsageHandler) Interval() time.Duration { return time.Hour }
 func (channelDailyUsageHandler) NewPayload() any         { return nil }
 
 func (channelDailyUsageHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
@@ -19,7 +19,7 @@ func (channelDailyUsageHandler) Run(ctx context.Context, task *model.SystemTask,
 		failSystemTask(task, runnerID, err)
 		return
 	}
-	result := map[string]any{"days_recalculated": 3, "timezone": "UTC"}
+	result := map[string]any{"days_recalculated": 3, "includes_current_day": true, "timezone": "UTC"}
 	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, result, ""); err != nil {
 		logSystemTaskLockError(ctx, task, err)
 	}

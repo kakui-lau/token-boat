@@ -86,6 +86,8 @@ func main() {
 	variableCostRate := flags.String("variable-cost-rate", "", "retail variable cost rate")
 	taxRate := flags.String("tax-rate", "", "retail effective tax rate")
 	targetMargin := flags.String("target-margin", "", "retail target and minimum margin")
+	upscaleDiscount := flags.String("upscale-discount", "", "purchase discount for models ending in -upscale")
+	standardDiscount := flags.String("standard-discount", "", "purchase discount for other models")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		exitWithError(err)
 	}
@@ -99,6 +101,24 @@ func main() {
 				"openai": *openAIDiscount, "google": *googleDiscount, "z-ai": *zAIDiscount,
 				"anthropic": *anthropicDiscount, "moonshotai": *moonshotDiscount,
 			},
+			VariableCostRate: *variableCostRate, TaxRate: *taxRate, TargetMargin: *targetMargin,
+		}
+		if err := validateChannelPricingParams(params); err != nil {
+			exitWithError(err)
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(priceChannel(params))
+		return
+	}
+	if command == "price-video-channel" {
+		if !*yes {
+			exitWithError(errors.New("price-video-channel requires --yes"))
+		}
+		params := channelPricingParams{
+			ChannelID: *channelID, StagingGroup: strings.TrimSpace(*stagingGroup),
+			UpscaleDiscount: *upscaleDiscount, StandardDiscount: *standardDiscount,
 			VariableCostRate: *variableCostRate, TaxRate: *taxRate, TargetMargin: *targetMargin,
 		}
 		if err := validateChannelPricingParams(params); err != nil {
@@ -321,6 +341,21 @@ func inspectChannel(channelID int) error {
 	}
 	for _, item := range channelModels {
 		fmt.Printf("channel_model id=%d logical=%q upstream=%q status=%d runtime=%q\n", item.ID, item.ModelName, item.UpstreamModelName, item.Status, item.RuntimeMode)
+		var official struct {
+			ID            int    `gorm:"column:id"`
+			Status        string `gorm:"column:status"`
+			Source        string `gorm:"column:source"`
+			SourceVersion string `gorm:"column:source_version"`
+			Remark        string `gorm:"column:remark"`
+		}
+		if err := model.DB.Table("official_model_price_versions").
+			Select("official_model_price_versions.id, official_model_price_versions.status, official_model_price_versions.source, official_model_price_versions.source_version, official_model_price_versions.remark").
+			Joins("JOIN model_official_prices ON model_official_prices.current_revision_id = official_model_price_versions.id").
+			Joins("JOIN models ON models.id = model_official_prices.model_id").
+			Where("models.model_name = ?", item.ModelName).Scan(&official).Error; err != nil {
+			return err
+		}
+		fmt.Printf("official id=%d status=%q source=%q source_version=%q remark=%q\n", official.ID, official.Status, official.Source, official.SourceVersion, official.Remark)
 		var purchase model.ChannelModelPurchasePriceVersion
 		purchaseErr := model.DB.Where("channel_model_id = ? AND status = ?", item.ID, model.PricingVersionStatusActive).First(&purchase).Error
 		var retail model.ChannelModelRetailPriceVersion
@@ -348,6 +383,8 @@ type channelPricingParams struct {
 	VariableCostRate string
 	TaxRate          string
 	TargetMargin     string
+	UpscaleDiscount  string
+	StandardDiscount string
 }
 
 type channelPricingTarget struct {
@@ -370,6 +407,14 @@ func validateChannelPricingParams(params channelPricingParams) error {
 			return fmt.Errorf("%s discount is required", family)
 		}
 		if err := validateUnitRate(family+" discount", value, true); err != nil {
+			return err
+		}
+	}
+	if params.UpscaleDiscount != "" || params.StandardDiscount != "" {
+		if err := validateUnitRate("upscale discount", params.UpscaleDiscount, true); err != nil {
+			return err
+		}
+		if err := validateUnitRate("standard discount", params.StandardDiscount, true); err != nil {
 			return err
 		}
 	}
@@ -421,11 +466,26 @@ func priceChannel(params channelPricingParams) error {
 
 	targets := make([]channelPricingTarget, 0, len(rows))
 	for _, row := range rows {
-		family := strings.SplitN(row.ModelName, "/", 2)[0]
-		discount, exists := params.Discounts[family]
-		if !exists {
-			return fmt.Errorf("model %s has no explicit family discount", row.ModelName)
+		discount := ""
+		if params.UpscaleDiscount != "" || params.StandardDiscount != "" {
+			if strings.HasSuffix(strings.ToLower(row.ModelName), "-upscale") {
+				discount = params.UpscaleDiscount
+			} else {
+				discount = params.StandardDiscount
+			}
+		} else {
+			family := strings.SplitN(row.ModelName, "/", 2)[0]
+			var exists bool
+			discount, exists = params.Discounts[family]
+			if !exists {
+				return fmt.Errorf("model %s has no explicit family discount", row.ModelName)
+			}
 		}
+		normalizedDiscount, err := decimal.NewFromString(discount)
+		if err != nil {
+			return fmt.Errorf("model %s has invalid purchase discount: %w", row.ModelName, err)
+		}
+		discount = normalizedDiscount.String()
 		var pointer model.ModelOfficialPrice
 		if err := model.DB.First(&pointer, "model_id = ?", row.ModelId).Error; err != nil {
 			return fmt.Errorf("model %s has no current official price: %w", row.ModelName, err)
@@ -434,8 +494,11 @@ func priceChannel(params channelPricingParams) error {
 		if err := model.DB.First(&official, pointer.CurrentRevisionId).Error; err != nil {
 			return fmt.Errorf("model %s official price cannot be loaded: %w", row.ModelName, err)
 		}
+		isConfirmedSeedanceOfficial := params.UpscaleDiscount != "" &&
+			strings.HasPrefix(row.ModelName, "bytedance/seedance-") &&
+			strings.HasPrefix(official.SourceVersion, "official-")
 		if official.Status != model.PricingVersionStatusActive || official.Source != "vendor-official" ||
-			!strings.Contains(official.Remark, "https://") {
+			(!strings.Contains(official.Remark, "https://") && !isConfirmedSeedanceOfficial) {
 			return fmt.Errorf("model %s lacks an active authoritative official-price source", row.ModelName)
 		}
 
@@ -444,11 +507,11 @@ func priceChannel(params channelPricingParams) error {
 		}
 		bundle, err := pricingadmin.GetActivePriceBundle(row.Id)
 		if err == nil {
-			if bundle.Purchase.PurchaseDiscount != discount ||
-				bundle.Retail.TotalVariableCostRate != decimalString(params.VariableCostRate) ||
-				bundle.Retail.EffectiveTaxRate != decimalString(params.TaxRate) ||
-				bundle.Retail.TargetNetMargin != decimalString(params.TargetMargin) ||
-				bundle.Retail.MinimumMarginRate != decimalString(params.TargetMargin) {
+			if !decimalValuesEqual(bundle.Purchase.PurchaseDiscount, discount) ||
+				!decimalValuesEqual(bundle.Retail.TotalVariableCostRate, params.VariableCostRate) ||
+				!decimalValuesEqual(bundle.Retail.EffectiveTaxRate, params.TaxRate) ||
+				!decimalValuesEqual(bundle.Retail.TargetNetMargin, params.TargetMargin) ||
+				!decimalValuesEqual(bundle.Retail.MinimumMarginRate, params.TargetMargin) {
 				return fmt.Errorf("model %s already has a different active price chain", row.ModelName)
 			}
 			target.AlreadyReady = true
@@ -505,11 +568,11 @@ func verifyChannelPricing(params channelPricingParams, targets []channelPricingT
 		if err != nil {
 			return fmt.Errorf("verify %s active bundle: %w", target.ModelName, err)
 		}
-		if bundle.Purchase.PurchaseDiscount != target.Discount ||
-			bundle.Retail.TotalVariableCostRate != decimalString(params.VariableCostRate) ||
-			bundle.Retail.EffectiveTaxRate != decimalString(params.TaxRate) ||
-			bundle.Retail.TargetNetMargin != decimalString(params.TargetMargin) ||
-			bundle.Retail.MinimumMarginRate != decimalString(params.TargetMargin) {
+		if !decimalValuesEqual(bundle.Purchase.PurchaseDiscount, target.Discount) ||
+			!decimalValuesEqual(bundle.Retail.TotalVariableCostRate, params.VariableCostRate) ||
+			!decimalValuesEqual(bundle.Retail.EffectiveTaxRate, params.TaxRate) ||
+			!decimalValuesEqual(bundle.Retail.TargetNetMargin, params.TargetMargin) ||
+			!decimalValuesEqual(bundle.Retail.MinimumMarginRate, params.TargetMargin) {
 			return fmt.Errorf("verify %s price rates differ from requested values", target.ModelName)
 		}
 		var abilityCount int64
@@ -975,6 +1038,12 @@ func decimalString(value string) string {
 		return value
 	}
 	return parsed.StringFixed(12)
+}
+
+func decimalValuesEqual(left string, right string) bool {
+	leftValue, leftErr := decimal.NewFromString(left)
+	rightValue, rightErr := decimal.NewFromString(right)
+	return leftErr == nil && rightErr == nil && leftValue.Equal(rightValue)
 }
 
 func int64Value(value *int64) int64 {

@@ -76,6 +76,10 @@ func normalizeOpenAIUsage(usage *dto.Usage) {
 	}
 	if usage.OutputTokens != 0 {
 		usage.CompletionTokens = usage.OutputTokens
+		// Image generation output is entirely image-token usage. Preserve it in
+		// the canonical subtype field so V2 img_o expressions settle against the
+		// provider's actual usage instead of the conservative reservation.
+		usage.CompletionTokenDetails.ImageTokens = usage.OutputTokens
 	}
 	if usage.InputTokensDetails != nil {
 		usage.PromptTokensDetails.CachedTokens = usage.InputTokensDetails.CachedTokens

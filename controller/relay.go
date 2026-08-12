@@ -469,6 +469,10 @@ func estimatedPricingUsage(
 			imageCount = dto.MaxImageN
 		}
 		usage.ImageCount = float64(imageCount)
+		maxOutputTokens := value.GetTokenCountMeta().MaxTokens
+		if maxOutputTokens > 0 {
+			usage.ImageOutputTokens = float64(maxOutputTokens) * float64(imageCount)
+		}
 	case *dto.AudioRequest:
 		usage.CharacterCount = float64(len([]rune(value.Input)))
 		if relayInfo != nil &&

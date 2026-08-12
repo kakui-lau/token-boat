@@ -13,7 +13,11 @@ func TestEstimatedPricingUsageNormalizesBusinessDimensions(t *testing.T) {
 	tooManyImages := uint(dto.MaxImageN + 1)
 	imageUsage := estimatedPricingUsage(&dto.ImageRequest{N: &tooManyImages}, nil, 0)
 	assert.Equal(t, float64(dto.MaxImageN), imageUsage.ImageCount)
+	assert.Equal(t, float64(1584*dto.MaxImageN), imageUsage.ImageOutputTokens)
 	assert.Equal(t, float64(1), imageUsage.RequestCount)
+
+	gptImageUsage := estimatedPricingUsage(&dto.ImageRequest{Model: "openai/gpt-image-2"}, nil, 0)
+	assert.Equal(t, float64(dto.MaxEstimatedImageOutputTokensPerImage), gptImageUsage.ImageOutputTokens)
 
 	audioUsage := estimatedPricingUsage(&dto.AudioRequest{Input: "你a"}, nil, 0)
 	assert.Equal(t, float64(2), audioUsage.CharacterCount)

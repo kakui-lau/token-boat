@@ -8,11 +8,18 @@ import (
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/tidwall/gjson"
 )
 
 // MaxImageN caps the image generation count. Without this bound a huge or
 // wrapped-negative n overflows quota calculation into a negative charge.
 const MaxImageN = 128
+
+// MaxEstimatedImageOutputTokensPerImage is the conservative reservation used
+// for token-priced image generation before the provider reports final usage.
+// It covers the largest high-quality output currently supported by the OpenAI
+// compatible image API while remaining bounded by MaxImageN.
+const MaxEstimatedImageOutputTokensPerImage = 8192
 
 type ImageRequest struct {
 	Model             string          `json:"model"`
@@ -38,6 +45,8 @@ type ImageRequest struct {
 	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
 	UserId           json.RawMessage `json:"user_id,omitempty"`
 	Image            json.RawMessage `json:"image,omitempty"`
+	Input            json.RawMessage `json:"input,omitempty"`
+	Parameters       json.RawMessage `json:"parameters,omitempty"`
 	// 用匿名参数接收额外参数
 	Extra map[string]json.RawMessage `json:"-"`
 }
@@ -162,9 +171,26 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	// Keep n separate from ImagePriceRatio so size/quality and count remain
 	// independent billing dimensions. Fixed-price pre-consume stores this on
 	// PriceData, and image settlement reuses or replaces the same "n" ratio.
+	prompt := i.Prompt
+	if prompt == "" && len(i.Input) > 0 {
+		parts := make([]string, 0)
+		for _, message := range gjson.GetBytes(i.Input, "messages").Array() {
+			for _, content := range message.Get("content").Array() {
+				if text := strings.TrimSpace(content.Get("text").String()); text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		prompt = strings.Join(parts, "\n")
+	}
+	maxTokens := 1584
+	if strings.Contains(strings.ToLower(i.Model), "gpt-image") {
+		maxTokens = MaxEstimatedImageOutputTokensPerImage
+	}
+
 	return &types.TokenCountMeta{
-		CombineText:     i.Prompt,
-		MaxTokens:       1584,
+		CombineText:     prompt,
+		MaxTokens:       maxTokens,
 		ImagePriceRatio: sizeRatio * qualityRatio,
 		BillingRatios:   map[string]float64{"n": float64(imageN)},
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
@@ -38,6 +39,20 @@ type config struct {
 	TaxRate            string   `yaml:"tax_rate"`
 	TargetMargin       string   `yaml:"target_margin"`
 	MinimumMargin      string   `yaml:"minimum_margin"`
+}
+
+type stagedVideoChannelConfig struct {
+	ChannelName  string                    `yaml:"channel_name"`
+	StagingGroup string                    `yaml:"staging_group"`
+	BaseURL      string                    `yaml:"base_url"`
+	KeyEnv       string                    `yaml:"key_env"`
+	Models       []stagedVideoChannelModel `yaml:"models"`
+}
+
+type stagedVideoChannelModel struct {
+	LogicalModel     string `yaml:"logical_model"`
+	UpstreamModel    string `yaml:"upstream_model"`
+	PurchaseDiscount string `yaml:"purchase_discount"`
 }
 
 type plan struct {
@@ -95,6 +110,39 @@ func main() {
 		exitWithError(priceChannel(params))
 		return
 	}
+	if command == "inspect-channel" {
+		if *channelID <= 0 {
+			exitWithError(errors.New("channel-id is required"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(inspectChannel(*channelID))
+		return
+	}
+	if command == "stage-video-channel" {
+		if !*yes {
+			exitWithError(errors.New("stage-video-channel requires --yes"))
+		}
+		if strings.TrimSpace(*configPath) == "" {
+			exitWithError(errors.New("--config is required"))
+		}
+		data, err := os.ReadFile(*configPath)
+		if err != nil {
+			exitWithError(err)
+		}
+		var staged stagedVideoChannelConfig
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&staged); err != nil {
+			exitWithError(err)
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(stageVideoChannel(staged))
+		return
+	}
 	if strings.TrimSpace(*configPath) == "" {
 		exitWithError(errors.New("--config is required"))
 	}
@@ -130,6 +178,167 @@ func main() {
 	case "verify":
 		exitWithError(verify(cfg, computed, *probe))
 	}
+}
+
+func stageVideoChannel(cfg stagedVideoChannelConfig) error {
+	cfg.ChannelName = strings.TrimSpace(cfg.ChannelName)
+	cfg.StagingGroup = strings.TrimSpace(cfg.StagingGroup)
+	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	cfg.KeyEnv = strings.TrimSpace(cfg.KeyEnv)
+	if cfg.ChannelName == "" || cfg.StagingGroup == "" || cfg.BaseURL == "" || cfg.KeyEnv == "" {
+		return errors.New("channel_name, staging_group, base_url, and key_env are required")
+	}
+	if strings.Contains(cfg.StagingGroup, ",") || cfg.StagingGroup == "default" || cfg.StagingGroup == "auto" {
+		return errors.New("staging_group must be one isolated non-public group")
+	}
+	key := strings.TrimSpace(os.Getenv(cfg.KeyEnv))
+	if key == "" {
+		return fmt.Errorf("channel key environment variable %s is empty", cfg.KeyEnv)
+	}
+	if len(cfg.Models) == 0 {
+		return errors.New("at least one model is required")
+	}
+
+	logicalNames := make([]string, 0, len(cfg.Models))
+	mapping := make(map[string]string, len(cfg.Models))
+	discounts := make(map[string]string, len(cfg.Models))
+	for _, item := range cfg.Models {
+		logical := strings.TrimSpace(item.LogicalModel)
+		upstream := strings.TrimSpace(item.UpstreamModel)
+		if logical == "" || upstream == "" {
+			return errors.New("every model requires logical_model and upstream_model")
+		}
+		if _, exists := mapping[logical]; exists {
+			return fmt.Errorf("duplicate logical model %s", logical)
+		}
+		if err := validateUnitRate(logical+" purchase discount", item.PurchaseDiscount, true); err != nil {
+			return err
+		}
+		logicalNames = append(logicalNames, logical)
+		mapping[logical] = upstream
+		discounts[logical] = strings.TrimSpace(item.PurchaseDiscount)
+	}
+	mappingJSON, err := common.Marshal(mapping)
+	if err != nil {
+		return err
+	}
+
+	var channel model.Channel
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		var duplicateCount int64
+		if err := tx.Model(&model.Channel{}).Where("name = ?", cfg.ChannelName).Count(&duplicateCount).Error; err != nil {
+			return err
+		}
+		if duplicateCount != 0 {
+			return fmt.Errorf("channel %q already exists", cfg.ChannelName)
+		}
+
+		var models []model.Model
+		if err := tx.Where("model_name IN ?", logicalNames).Find(&models).Error; err != nil {
+			return err
+		}
+		modelsByName := make(map[string]model.Model, len(models))
+		for _, item := range models {
+			modelsByName[item.ModelName] = item
+		}
+		for _, logical := range logicalNames {
+			item, exists := modelsByName[logical]
+			if !exists {
+				return fmt.Errorf("logical model %s has no metadata", logical)
+			}
+			if strings.TrimSpace(item.Description) == "" || strings.TrimSpace(item.Endpoints) == "" || item.VendorID == 0 {
+				return fmt.Errorf("logical model %s metadata is incomplete", logical)
+			}
+		}
+
+		zeroPriority := int64(0)
+		zeroWeight := uint(0)
+		baseURL := cfg.BaseURL
+		modelMapping := string(mappingJSON)
+		channel = model.Channel{
+			Type: constant.ChannelTypeDoubaoVideo, Key: key, Status: common.ChannelStatusEnabled,
+			Name: cfg.ChannelName, Weight: &zeroWeight, CreatedTime: common.GetTimestamp(), BaseURL: &baseURL,
+			Models: strings.Join(logicalNames, ","), Group: cfg.StagingGroup, ModelMapping: &modelMapping,
+			Priority: &zeroPriority,
+		}
+		if err := tx.Create(&channel).Error; err != nil {
+			return err
+		}
+		for _, logical := range logicalNames {
+			ability := model.Ability{Group: cfg.StagingGroup, Model: logical, ChannelId: channel.Id, Enabled: true, Priority: &zeroPriority, Weight: zeroWeight}
+			if err := tx.Create(&ability).Error; err != nil {
+				return err
+			}
+			channelModel := model.ChannelModel{ChannelId: channel.Id, ModelId: modelsByName[logical].Id, UpstreamModelName: mapping[logical], Status: 1, Priority: 0, Weight: 0, RuntimeMode: "legacy"}
+			if err := tx.Create(&channelModel).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	model.InitChannelCache()
+	fmt.Printf("staged channel id=%d name=%q group=%q runtime=legacy pricing=not-created\n", channel.Id, channel.Name, channel.Group)
+	for _, logical := range logicalNames {
+		fmt.Printf("mapping logical=%q upstream=%q purchase_discount=%s\n", logical, mapping[logical], discounts[logical])
+	}
+	return nil
+}
+
+func inspectChannel(channelID int) error {
+	var channel model.Channel
+	if err := model.DB.Select("id", "name", "type", "status", "models", "group", "model_mapping", "base_url", "priority", "weight").First(&channel, channelID).Error; err != nil {
+		return err
+	}
+	priority := int64(0)
+	if channel.Priority != nil {
+		priority = *channel.Priority
+	}
+	weight := uint(0)
+	if channel.Weight != nil {
+		weight = *channel.Weight
+	}
+	fmt.Printf("channel id=%d name=%q type=%d status=%d group=%q base_url=%q priority=%d weight=%d\n", channel.Id, channel.Name, channel.Type, channel.Status, channel.Group, stringValue(channel.BaseURL), priority, weight)
+	fmt.Printf("models=%s\n", channel.Models)
+	fmt.Printf("model_mapping=%s\n", stringValue(channel.ModelMapping))
+
+	var channelModels []struct {
+		ID                int    `gorm:"column:id"`
+		ModelName         string `gorm:"column:model_name"`
+		UpstreamModelName string `gorm:"column:upstream_model_name"`
+		Status            int    `gorm:"column:status"`
+		RuntimeMode       string `gorm:"column:runtime_mode"`
+	}
+	if err := model.DB.Table("channel_models").
+		Select("channel_models.id, models.model_name, channel_models.upstream_model_name, channel_models.status, channel_models.runtime_mode").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Where("channel_models.channel_id = ?", channelID).
+		Order("models.model_name ASC, channel_models.upstream_model_name ASC").
+		Scan(&channelModels).Error; err != nil {
+		return err
+	}
+	for _, item := range channelModels {
+		fmt.Printf("channel_model id=%d logical=%q upstream=%q status=%d runtime=%q\n", item.ID, item.ModelName, item.UpstreamModelName, item.Status, item.RuntimeMode)
+		var purchase model.ChannelModelPurchasePriceVersion
+		purchaseErr := model.DB.Where("channel_model_id = ? AND status = ?", item.ID, model.PricingVersionStatusActive).First(&purchase).Error
+		var retail model.ChannelModelRetailPriceVersion
+		retailErr := model.DB.Where("channel_model_id = ? AND status = ?", item.ID, model.PricingVersionStatusActive).First(&retail).Error
+		if purchaseErr == nil && retailErr == nil {
+			fmt.Printf("pricing purchase_id=%d retail_id=%d purchase_expr=%q retail_expr=%q variable_cost=%s tax=%s minimum_margin=%s target_margin=%s\n", purchase.Id, retail.Id, purchase.PurchaseBillingExpr, retail.RetailBillingExpr, retail.TotalVariableCostRate, retail.EffectiveTaxRate, retail.MinimumMarginRate, retail.TargetNetMargin)
+		} else if !errors.Is(purchaseErr, gorm.ErrRecordNotFound) || !errors.Is(retailErr, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("load active pricing for channel model %d: purchase=%v retail=%v", item.ID, purchaseErr, retailErr)
+		}
+	}
+	var abilities []model.Ability
+	if err := model.DB.Where("channel_id = ?", channelID).Order("model ASC").Find(&abilities).Error; err != nil {
+		return err
+	}
+	for _, ability := range abilities {
+		fmt.Printf("ability group=%q logical=%q enabled=%t\n", ability.Group, ability.Model, ability.Enabled)
+	}
+	return nil
 }
 
 type channelPricingParams struct {

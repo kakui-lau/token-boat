@@ -23,7 +23,7 @@ const MaxEstimatedImageOutputTokensPerImage = 8192
 
 type ImageRequest struct {
 	Model             string          `json:"model"`
-	Prompt            string          `json:"prompt" binding:"required"`
+	Prompt            string          `json:"prompt,omitempty" binding:"required"`
 	N                 *uint           `json:"n,omitempty"`
 	Size              string          `json:"size,omitempty"`
 	Quality           string          `json:"quality,omitempty"`

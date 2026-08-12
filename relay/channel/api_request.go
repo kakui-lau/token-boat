@@ -523,12 +523,22 @@ func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, fa
 		failure,
 		string(body),
 	))
-	if info != nil && info.PersistedTaskID > 0 {
-		if err := model.SaveTaskUpstreamRequest(info.PersistedTaskID, model.TaskUpstreamRequest{
-			Method: method, URL: requestURL, Body: string(body), Failure: failure,
-		}); err != nil {
-			logger.LogError(c, "save failed upstream request to task: "+err.Error())
-		}
+	if info != nil && info.TaskRelayInfo != nil && info.PersistedTaskID > 0 {
+		// Failure diagnostics must never replace the provider error with a panic.
+		// Keep task persistence isolated because database/model hooks are outside
+		// the HTTP error path's control.
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.LogError(c, fmt.Sprintf("save failed upstream request to task panicked: %v", recovered))
+				}
+			}()
+			if err := model.SaveTaskUpstreamRequest(info.PersistedTaskID, model.TaskUpstreamRequest{
+				Method: method, URL: requestURL, Body: string(body), Failure: failure,
+			}); err != nil {
+				logger.LogError(c, "save failed upstream request to task: "+err.Error())
+			}
+		}()
 	}
 }
 

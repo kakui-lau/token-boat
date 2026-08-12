@@ -426,10 +426,11 @@ func SearchChannels(keyword string, group string, model string, idSort bool, sor
 func SearchChannelsByRoutingAbility(group string, modelName string, idSort bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
 	var channels []*Channel
 	options := resolveChannelSortOptions(idSort, sortOptions)
-	query := DB.Model(&Channel{}).
-		Joins("JOIN abilities ON abilities.channel_id = channels.id").
-		Where("abilities.model = ? AND abilities.enabled = ?", modelName, true).
-		Distinct("channels.*")
+	abilityQuery := DB.Model(&Ability{}).
+		Select("1").
+		Where("abilities.channel_id = channels.id").
+		Where("abilities.model = ? AND abilities.enabled = ?", modelName, true)
+	query := DB.Model(&Channel{}).Where("EXISTS (?)", abilityQuery)
 	group = NormalizeChannelGroupFilter(group)
 	if group != "" {
 		groupColumn := "channels.`group`"

@@ -93,6 +93,7 @@ func main() {
 			exitWithError(err)
 		}
 		exitWithError(priceChannel(params))
+		return
 	}
 	if strings.TrimSpace(*configPath) == "" {
 		exitWithError(errors.New("--config is required"))

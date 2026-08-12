@@ -111,7 +111,14 @@ export async function getPlaygroundChannels(
   group: string
 ): Promise<ChannelOption[]> {
   const res = await api.get('/api/channel/search', {
-    params: { model, group, status: 'enabled', p: 0, page_size: 100 },
+    params: {
+      model,
+      group,
+      status: 'enabled',
+      routing_ability: true,
+      p: 0,
+      page_size: 100,
+    },
   })
   const items = res.data?.data?.items
   if (!res.data?.success || !Array.isArray(items)) return []

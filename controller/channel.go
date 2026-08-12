@@ -282,8 +282,26 @@ func SearchChannels(c *gin.Context) {
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
 	sortOptions := model.NewChannelSortOptions(c.Query("sort_by"), c.Query("sort_order"), idSort)
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
+	routingAbility, _ := strconv.ParseBool(c.Query("routing_ability"))
 	channelData := make([]*model.Channel, 0)
-	if enableTagMode {
+	if routingAbility {
+		if strings.TrimSpace(modelKeyword) == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "model is required for routing ability search",
+			})
+			return
+		}
+		channels, err := model.SearchChannelsByRoutingAbility(group, modelKeyword, idSort, sortOptions)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		channelData = channels
+	} else if enableTagMode {
 		tags, err := model.SearchTags(keyword, group, modelKeyword, idSort)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{

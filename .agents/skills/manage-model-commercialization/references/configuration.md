@@ -3,11 +3,13 @@
 Use one YAML file per channel/model commercialization operation.
 
 The following fields are mandatory and never receive defaults: `channel_id`,
-`logical_model`, `upstream_model`, and `purchase_discount`. Stop and ask the
-user when any of them is missing.
+`staging_group`, `logical_model`, `upstream_model`, and `purchase_discount`.
+Stop and ask the user when any of them is missing. `staging_group` must identify
+an isolated internal-test group.
 
 ```yaml
 channel_id: 14
+staging_group: internal-model-test
 logical_model: moonshotai/kimi-k3
 upstream_model: wb-moonshot/kimi-k3
 
@@ -41,6 +43,9 @@ minimum_margin: "0.03"
 ## Semantics
 
 - Prices use USD per 1,000,000 tokens.
+- The target channel must belong only to `staging_group` during `apply` and
+  internal verification. A channel that also belongs to a public group is
+  rejected before any write.
 - Empty price components are omitted.
 - `purchase_discount` multiplies every official component to produce procurement cost.
 - Retail price uses the project's `RetailPriceCalculator` and rounds upward to five decimal places.

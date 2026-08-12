@@ -419,6 +419,47 @@ func SearchChannels(keyword string, group string, model string, idSort bool, sor
 	return channels, nil
 }
 
+// SearchChannelsByRoutingAbility returns channels that can route the exact
+// logical model in the requested group. Unlike Channel.Models, abilities use
+// the client-facing model name and therefore remain correct when a channel
+// maps that name to a different upstream identifier.
+func SearchChannelsByRoutingAbility(group string, modelName string, idSort bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
+	var channels []*Channel
+	options := resolveChannelSortOptions(idSort, sortOptions)
+	query := DB.Model(&Channel{}).
+		Joins("JOIN abilities ON abilities.channel_id = channels.id").
+		Where("abilities.model = ? AND abilities.enabled = ?", modelName, true).
+		Distinct("channels.*")
+	group = NormalizeChannelGroupFilter(group)
+	if group != "" {
+		groupColumn := "channels.`group`"
+		if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+			groupColumn = `"channels"."group"`
+		}
+		condition := "(',' || " + groupColumn + " || ',') LIKE ? ESCAPE '!'"
+		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
+			condition = "CONCAT(',', " + groupColumn + ", ',') LIKE ? ESCAPE '!'"
+		}
+		query = query.Where(condition, channelGroupFilterPattern(group))
+	}
+	orderColumn := "priority"
+	descending := true
+	if options.IDSort {
+		orderColumn = "id"
+	} else if options.SortBy != "" {
+		orderColumn = channelSortColumns[options.SortBy]
+		descending = options.SortOrder != "asc"
+	}
+	query = query.Order(clause.OrderByColumn{
+		Column: clause.Column{Table: "channels", Name: orderColumn},
+		Desc:   descending,
+	})
+	if err := query.Omit("key").Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
 func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil

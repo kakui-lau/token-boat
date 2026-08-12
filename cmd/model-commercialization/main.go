@@ -20,6 +20,7 @@ import (
 
 type config struct {
 	ChannelID          int      `yaml:"channel_id"`
+	StagingGroup       string   `yaml:"staging_group"`
 	LogicalModel       string   `yaml:"logical_model"`
 	UpstreamModel      string   `yaml:"upstream_model"`
 	Vendor             string   `yaml:"vendor"`
@@ -60,8 +61,38 @@ func main() {
 	configPath := flags.String("config", "", "model commercialization YAML file")
 	yes := flags.Bool("yes", false, "confirm database changes")
 	probe := flags.Bool("probe", false, "send one billable upstream request during verify")
+	channelID := flags.Int("channel-id", 0, "channel ID for channel-wide pricing")
+	stagingGroup := flags.String("staging-group", "", "isolated internal-test group")
+	openAIDiscount := flags.String("openai-discount", "", "OpenAI purchase discount")
+	googleDiscount := flags.String("google-discount", "", "Google purchase discount")
+	zAIDiscount := flags.String("z-ai-discount", "", "Z-AI purchase discount")
+	anthropicDiscount := flags.String("anthropic-discount", "", "Anthropic purchase discount")
+	moonshotDiscount := flags.String("moonshotai-discount", "", "Moonshot purchase discount")
+	variableCostRate := flags.String("variable-cost-rate", "", "retail variable cost rate")
+	taxRate := flags.String("tax-rate", "", "retail effective tax rate")
+	targetMargin := flags.String("target-margin", "", "retail target and minimum margin")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		exitWithError(err)
+	}
+	if command == "price-channel" {
+		if !*yes {
+			exitWithError(errors.New("price-channel requires --yes"))
+		}
+		params := channelPricingParams{
+			ChannelID: *channelID, StagingGroup: strings.TrimSpace(*stagingGroup),
+			Discounts: map[string]string{
+				"openai": *openAIDiscount, "google": *googleDiscount, "z-ai": *zAIDiscount,
+				"anthropic": *anthropicDiscount, "moonshotai": *moonshotDiscount,
+			},
+			VariableCostRate: *variableCostRate, TaxRate: *taxRate, TargetMargin: *targetMargin,
+		}
+		if err := validateChannelPricingParams(params); err != nil {
+			exitWithError(err)
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(priceChannel(params))
 	}
 	if strings.TrimSpace(*configPath) == "" {
 		exitWithError(errors.New("--config is required"))
@@ -100,6 +131,189 @@ func main() {
 	}
 }
 
+type channelPricingParams struct {
+	ChannelID        int
+	StagingGroup     string
+	Discounts        map[string]string
+	VariableCostRate string
+	TaxRate          string
+	TargetMargin     string
+}
+
+type channelPricingTarget struct {
+	ChannelModel model.ChannelModel
+	ModelName    string
+	Official     model.OfficialModelPriceVersion
+	Discount     string
+	AlreadyReady bool
+}
+
+func validateChannelPricingParams(params channelPricingParams) error {
+	if params.ChannelID <= 0 {
+		return errors.New("channel-id is required")
+	}
+	if params.StagingGroup == "" {
+		return errors.New("staging-group is required")
+	}
+	for family, value := range params.Discounts {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s discount is required", family)
+		}
+		if err := validateUnitRate(family+" discount", value, true); err != nil {
+			return err
+		}
+	}
+	for name, value := range map[string]string{
+		"variable-cost-rate": params.VariableCostRate,
+		"tax-rate":           params.TaxRate,
+		"target-margin":      params.TargetMargin,
+	} {
+		if err := validateUnitRate(name, value, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateUnitRate(name string, value string, positive bool) error {
+	rate, err := decimal.NewFromString(strings.TrimSpace(value))
+	if err != nil || rate.IsNegative() || rate.GreaterThan(decimal.NewFromInt(1)) ||
+		(positive && rate.IsZero()) {
+		return fmt.Errorf("%s must be a decimal %s 0 and 1", name, map[bool]string{true: "above", false: "between"}[positive])
+	}
+	return nil
+}
+
+func priceChannel(params channelPricingParams) error {
+	var channel model.Channel
+	if err := model.DB.First(&channel, params.ChannelID).Error; err != nil {
+		return err
+	}
+	if err := validateStagingChannel(channel, params.StagingGroup); err != nil {
+		return err
+	}
+
+	var rows []struct {
+		model.ChannelModel
+		ModelName string `gorm:"column:model_name"`
+	}
+	if err := model.DB.Table("channel_models").
+		Select("channel_models.*, models.model_name").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Where("channel_models.channel_id = ? AND channel_models.status = ?", params.ChannelID, 1).
+		Order("models.model_name ASC").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return errors.New("channel has no enabled channel models")
+	}
+
+	targets := make([]channelPricingTarget, 0, len(rows))
+	for _, row := range rows {
+		family := strings.SplitN(row.ModelName, "/", 2)[0]
+		discount, exists := params.Discounts[family]
+		if !exists {
+			return fmt.Errorf("model %s has no explicit family discount", row.ModelName)
+		}
+		var pointer model.ModelOfficialPrice
+		if err := model.DB.First(&pointer, "model_id = ?", row.ModelId).Error; err != nil {
+			return fmt.Errorf("model %s has no current official price: %w", row.ModelName, err)
+		}
+		var official model.OfficialModelPriceVersion
+		if err := model.DB.First(&official, pointer.CurrentRevisionId).Error; err != nil {
+			return fmt.Errorf("model %s official price cannot be loaded: %w", row.ModelName, err)
+		}
+		if official.Status != model.PricingVersionStatusActive || official.Source != "vendor-official" ||
+			!strings.Contains(official.Remark, "https://") {
+			return fmt.Errorf("model %s lacks an active authoritative official-price source", row.ModelName)
+		}
+
+		target := channelPricingTarget{
+			ChannelModel: row.ChannelModel, ModelName: row.ModelName, Official: official, Discount: discount,
+		}
+		bundle, err := pricingadmin.GetActivePriceBundle(row.Id)
+		if err == nil {
+			if bundle.Purchase.PurchaseDiscount != discount ||
+				bundle.Retail.TotalVariableCostRate != decimalString(params.VariableCostRate) ||
+				bundle.Retail.EffectiveTaxRate != decimalString(params.TaxRate) ||
+				bundle.Retail.TargetNetMargin != decimalString(params.TargetMargin) ||
+				bundle.Retail.MinimumMarginRate != decimalString(params.TargetMargin) {
+				return fmt.Errorf("model %s already has a different active price chain", row.ModelName)
+			}
+			target.AlreadyReady = true
+		}
+		targets = append(targets, target)
+	}
+
+	for index := range targets {
+		target := &targets[index]
+		if target.AlreadyReady {
+			continue
+		}
+		officialID := target.Official.Id
+		purchase, err := pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{
+			ChannelModelId: target.ChannelModel.Id, OfficialPriceVersionId: &officialID,
+			PricingMode: "official_ratio", Currency: target.Official.Currency,
+			PurchaseDiscount: target.Discount,
+			QuoteReference:   fmt.Sprintf("channel %d %s of official", params.ChannelID, target.Discount),
+			Remark:           "Anispark tenant API internal-test procurement price",
+		}, 1)
+		if err != nil {
+			return fmt.Errorf("create %s purchase price: %w", target.ModelName, err)
+		}
+		retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
+			ChannelModelId: target.ChannelModel.Id, PurchasePriceVersionId: purchase.Id,
+			TotalVariableCostRate: params.VariableCostRate, EffectiveTaxRate: params.TaxRate,
+			TargetNetMargin: params.TargetMargin, MinimumMarginRate: params.TargetMargin,
+			Remark: "Anispark tenant API internal-test retail price",
+		}, 1)
+		if err != nil {
+			return fmt.Errorf("create %s retail price: %w", target.ModelName, err)
+		}
+		if err := pricingadmin.PublishRetailPriceVersion(retail.Id); err != nil {
+			return fmt.Errorf("publish %s price chain: %w", target.ModelName, err)
+		}
+		fmt.Printf(
+			"priced model=%s channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s\n",
+			target.ModelName, target.ChannelModel.Id, officialID, purchase.Id, retail.Id, target.Discount,
+		)
+	}
+
+	for _, target := range targets {
+		if _, err := pricingruntime.SetModelRuntimeMode(target.ModelName, pricingruntime.RuntimeModeV2); err != nil {
+			return fmt.Errorf("activate V2 for %s: %w", target.ModelName, err)
+		}
+	}
+	pricingruntime.InvalidateCatalog()
+	return verifyChannelPricing(params, targets)
+}
+
+func verifyChannelPricing(params channelPricingParams, targets []channelPricingTarget) error {
+	for _, target := range targets {
+		bundle, err := pricingadmin.GetActivePriceBundle(target.ChannelModel.Id)
+		if err != nil {
+			return fmt.Errorf("verify %s active bundle: %w", target.ModelName, err)
+		}
+		if bundle.Purchase.PurchaseDiscount != target.Discount ||
+			bundle.Retail.TotalVariableCostRate != decimalString(params.VariableCostRate) ||
+			bundle.Retail.EffectiveTaxRate != decimalString(params.TaxRate) ||
+			bundle.Retail.TargetNetMargin != decimalString(params.TargetMargin) ||
+			bundle.Retail.MinimumMarginRate != decimalString(params.TargetMargin) {
+			return fmt.Errorf("verify %s price rates differ from requested values", target.ModelName)
+		}
+		var abilityCount int64
+		if err := model.DB.Model(&model.Ability{}).
+			Where("channel_id = ? AND model = ? AND enabled = ?", params.ChannelID, target.ModelName, true).
+			Where("\"group\" = ?", params.StagingGroup).
+			Count(&abilityCount).Error; err != nil || abilityCount != 1 {
+			return fmt.Errorf("verify %s staging ability count=%d: %w", target.ModelName, abilityCount, err)
+		}
+	}
+	fmt.Printf("verified channel_id=%d staging_group=%s priced_models=%d\n", params.ChannelID, params.StagingGroup, len(targets))
+	return nil
+}
+
 func loadConfig(path string) (config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -117,12 +331,16 @@ func loadConfig(path string) (config, error) {
 	if len(cfg.Endpoints) == 0 {
 		cfg.Endpoints = []string{"openai"}
 	}
+	cfg.StagingGroup = strings.TrimSpace(cfg.StagingGroup)
 	return cfg, validateConfig(cfg)
 }
 
 func validateConfig(cfg config) error {
 	if cfg.ChannelID <= 0 {
 		return errors.New("channel_id is required; ask the user for the target channel ID")
+	}
+	if strings.TrimSpace(cfg.StagingGroup) == "" {
+		return errors.New("staging_group is required; ask the user for the isolated internal-test group")
 	}
 	if strings.TrimSpace(cfg.LogicalModel) == "" {
 		return errors.New("logical_model is required; ask the user for the customer-facing model name")
@@ -203,7 +421,7 @@ func buildPlan(cfg config) (plan, error) {
 }
 
 func printPlan(cfg config, computed plan) {
-	fmt.Printf("model=%s channel_id=%d upstream=%s\n", cfg.LogicalModel, cfg.ChannelID, cfg.UpstreamModel)
+	fmt.Printf("model=%s channel_id=%d upstream=%s staging_group=%s\n", cfg.LogicalModel, cfg.ChannelID, cfg.UpstreamModel, cfg.StagingGroup)
 	fmt.Printf("official input=%s output=%s cache_read=%s cache_write=%s USD/1M\n", cfg.OfficialInput, cfg.OfficialOutput, cfg.OfficialCacheRead, cfg.OfficialCacheWrite)
 	fmt.Printf("purchase input=%s output=%s cache_read=%s cache_write=%s USD/1M\n", computed.PurchaseInput, computed.PurchaseOutput, computed.PurchaseCacheRead, computed.PurchaseCacheWrite)
 	fmt.Printf("retail input=%s output=%s cache_read=%s cache_write=%s USD/1M factor=%s\n", computed.RetailInput, computed.RetailOutput, computed.RetailCacheRead, computed.RetailCacheWrite, computed.SellingFactor)
@@ -228,7 +446,7 @@ func inspect(cfg config) error {
 	}
 	var logicalModel model.Model
 	modelErr := model.DB.Where("model_name = ?", cfg.LogicalModel).First(&logicalModel).Error
-	fmt.Printf("channel id=%d name=%q status=%d configured=%v\n", channel.Id, channel.Name, channel.Status, csvContains(channel.Models, cfg.LogicalModel))
+	fmt.Printf("channel id=%d name=%q status=%d groups=%q configured=%v\n", channel.Id, channel.Name, channel.Status, channel.Group, csvContains(channel.Models, cfg.LogicalModel))
 	if errors.Is(modelErr, gorm.ErrRecordNotFound) {
 		fmt.Println("model: missing")
 		return nil
@@ -253,6 +471,9 @@ func inspect(cfg config) error {
 func apply(cfg config) error {
 	var channel model.Channel
 	if err := model.DB.First(&channel, cfg.ChannelID).Error; err != nil {
+		return err
+	}
+	if err := validateStagingChannel(channel, cfg.StagingGroup); err != nil {
 		return err
 	}
 	if err := validateOtherEnabledChannelsReady(cfg); err != nil {
@@ -376,6 +597,34 @@ func validateOtherEnabledChannelsReady(cfg config) error {
 	return nil
 }
 
+func validateStagingChannel(channel model.Channel, stagingGroup string) error {
+	groups := strings.Split(channel.Group, ",")
+	uniqueGroups := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group != "" {
+			uniqueGroups[group] = struct{}{}
+		}
+	}
+	if len(uniqueGroups) != 1 {
+		return fmt.Errorf(
+			"channel %d must belong only to staging_group %q before apply; current groups=%q",
+			channel.Id,
+			stagingGroup,
+			channel.Group,
+		)
+	}
+	if _, ok := uniqueGroups[stagingGroup]; !ok {
+		return fmt.Errorf(
+			"channel %d is not isolated in staging_group %q; current groups=%q",
+			channel.Id,
+			stagingGroup,
+			channel.Group,
+		)
+	}
+	return nil
+}
+
 func ensureOfficialPrice(cfg config, modelID int) (model.OfficialModelPriceVersion, error) {
 	prices := pricingadmin.FlatTokenPriceInput{InputUnitPrice: cfg.OfficialInput, OutputUnitPrice: cfg.OfficialOutput, CacheReadUnitPrice: cfg.OfficialCacheRead, CacheWriteUnitPrice: cfg.OfficialCacheWrite}
 	var active model.OfficialModelPriceVersion
@@ -447,7 +696,17 @@ func verify(cfg config, expected plan, probe bool) error {
 		return fmt.Errorf("retail prices differ from plan: got %s/%s/%s", bundle.Retail.InputUnitPrice, bundle.Retail.OutputUnitPrice, bundle.Retail.CacheReadUnitPrice)
 	}
 	var abilityCount int64
-	if err := model.DB.Model(&model.Ability{}).Where("channel_id = ? AND model = ? AND enabled = ?", cfg.ChannelID, cfg.LogicalModel, true).Count(&abilityCount).Error; err != nil {
+	groupColumn := "`group`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		groupColumn = `"group"`
+	}
+	if err := model.DB.Model(&model.Ability{}).Where(
+		"channel_id = ? AND model = ? AND "+groupColumn+" = ? AND enabled = ?",
+		cfg.ChannelID,
+		cfg.LogicalModel,
+		cfg.StagingGroup,
+		true,
+	).Count(&abilityCount).Error; err != nil {
 		return err
 	}
 	if abilityCount == 0 {

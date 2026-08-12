@@ -3,6 +3,7 @@ package model
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,6 +96,36 @@ func resetChannelModelPricingTestTables(t *testing.T) {
 	} {
 		require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
 	}
+}
+
+func TestSearchChannelsByRoutingAbilityUsesLogicalModelAndExactGroup(t *testing.T) {
+	resetChannelModelPricingTestTables(t)
+
+	mapping := `{"openai/gpt-test":"provider-gpt-test"}`
+	relevantPriority := int64(20)
+	otherPriority := int64(10)
+	require.NoError(t, DB.Create([]Channel{
+		{
+			Id: 401, Name: "mapped-internal", Status: common.ChannelStatusEnabled,
+			Models: "provider-gpt-test", Group: "internal-model", ModelMapping: &mapping,
+			Priority: &relevantPriority,
+		},
+		{
+			Id: 402, Name: "mapped-public", Status: common.ChannelStatusEnabled,
+			Models: "provider-gpt-test", Group: "default", ModelMapping: &mapping,
+			Priority: &otherPriority,
+		},
+	}).Error)
+	require.NoError(t, DB.Create([]Ability{
+		{Group: "internal-model", Model: "openai/gpt-test", ChannelId: 401, Enabled: true},
+		{Group: "default", Model: "openai/gpt-test", ChannelId: 402, Enabled: true},
+	}).Error)
+
+	channels, err := SearchChannelsByRoutingAbility("internal-model", "openai/gpt-test", false)
+	require.NoError(t, err)
+	require.Len(t, channels, 1)
+	assert.Equal(t, 401, channels[0].Id)
+	assert.Equal(t, "mapped-internal", channels[0].Name)
 }
 
 func TestInitializeChannelModelsFromAbilitiesKeepsLegacyRuntimeAndAggregatesGroups(t *testing.T) {

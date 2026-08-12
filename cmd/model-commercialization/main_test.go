@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -10,7 +11,8 @@ import (
 func validConfig() config {
 	return config{
 		ChannelID: 14, LogicalModel: "moonshotai/kimi-k3", UpstreamModel: "wb-moonshot/kimi-k3",
-		Vendor: "Moonshot", Description: "Kimi K3", OfficialSourceURL: "https://platform.kimi.ai/docs/pricing/chat-k3",
+		StagingGroup: "internal-model-test",
+		Vendor:       "Moonshot", Description: "Kimi K3", OfficialSourceURL: "https://platform.kimi.ai/docs/pricing/chat-k3",
 		OfficialInput: "3", OfficialOutput: "15", OfficialCacheRead: "0.3",
 		PurchaseDiscount: "0.85", VariableCostRate: "0.11", TaxRate: "0.165",
 		TargetMargin: "0.03", MinimumMargin: "0.03",
@@ -48,6 +50,7 @@ func TestValidateConfigRequiresCommercialIdentityInputs(t *testing.T) {
 		message string
 	}{
 		{"channel id", func(cfg *config) { cfg.ChannelID = 0 }, "channel_id is required"},
+		{"staging group", func(cfg *config) { cfg.StagingGroup = "" }, "staging_group is required"},
 		{"logical model", func(cfg *config) { cfg.LogicalModel = "" }, "logical_model is required"},
 		{"upstream model", func(cfg *config) { cfg.UpstreamModel = "" }, "upstream_model is required"},
 		{"purchase discount", func(cfg *config) { cfg.PurchaseDiscount = "" }, "purchase_discount is required"},
@@ -61,7 +64,55 @@ func TestValidateConfigRequiresCommercialIdentityInputs(t *testing.T) {
 	}
 }
 
+func TestValidateStagingChannelBlocksPublicTrafficGroups(t *testing.T) {
+	tests := []struct {
+		name    string
+		groups  string
+		wantErr bool
+	}{
+		{name: "isolated staging group", groups: "internal-model-test"},
+		{name: "staging plus public", groups: "internal-model-test,default", wantErr: true},
+		{name: "public only", groups: "default", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateStagingChannel(model.Channel{Id: 14, Group: test.groups}, "internal-model-test")
+			if test.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestCSVContainsMatchesWholeModelName(t *testing.T) {
 	assert.True(t, csvContains("a,moonshotai/kimi-k3,b", "moonshotai/kimi-k3"))
 	assert.False(t, csvContains("a,moonshotai/kimi-k30,b", "moonshotai/kimi-k3"))
+}
+
+func TestValidateChannelPricingParamsRequiresEveryExplicitDiscount(t *testing.T) {
+	params := channelPricingParams{
+		ChannelID: 18, StagingGroup: "internal-model",
+		Discounts: map[string]string{
+			"openai": "0.61", "google": "0.63", "z-ai": "0.65",
+			"anthropic": "0.85", "moonshotai": "0.8",
+		},
+		VariableCostRate: "0.11", TaxRate: "0.165", TargetMargin: "0.03",
+	}
+	require.NoError(t, validateChannelPricingParams(params))
+	params.Discounts["google"] = ""
+	require.ErrorContains(t, validateChannelPricingParams(params), "google discount is required")
+}
+
+func TestValidateChannelPricingParamsRejectsInvalidRates(t *testing.T) {
+	params := channelPricingParams{
+		ChannelID: 18, StagingGroup: "internal-model",
+		Discounts: map[string]string{
+			"openai": "0.61", "google": "0.63", "z-ai": "0.65",
+			"anthropic": "0.85", "moonshotai": "0.8",
+		},
+		VariableCostRate: "0.11", TaxRate: "1.1", TargetMargin: "0.03",
+	}
+	require.ErrorContains(t, validateChannelPricingParams(params), "tax-rate")
 }

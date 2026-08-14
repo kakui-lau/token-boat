@@ -46,6 +46,8 @@ type testResult struct {
 
 var errAsyncVideoChannelTestUnsupported = errors.New("asynchronous video models are not supported by channel model testing; use the /v1/videos API to verify this model")
 
+var errNoLLMModelForChannelTest = errors.New("no LLM model found for channel testing; image, video, embedding and rerank models are skipped")
+
 func isAsyncVideoTestModel(channelType int, modelName string) bool {
 	modelName = strings.ToLower(strings.TrimSpace(modelName))
 	return channelType == constant.ChannelTypeOpenRouter && strings.HasPrefix(modelName, "bytedance/seedance-")
@@ -53,6 +55,56 @@ func isAsyncVideoTestModel(channelType int, modelName string) bool {
 
 func isOpenAIImageTestModel(modelName string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "gpt-image")
+}
+
+// isMediaTestModel 判断模型是否为图片生成/视频生成等媒体模型。
+// 规则与 buildTestRequest 的请求路径自动检测保持一致。
+func isMediaTestModel(channelType int, modelName string) bool {
+	return isAsyncVideoTestModel(channelType, modelName) ||
+		isOpenAIImageTestModel(modelName) ||
+		common.IsImageGenerationModel(modelName) ||
+		(channelType == constant.ChannelTypeVolcEngine && strings.Contains(strings.ToLower(modelName), "seedream"))
+}
+
+// isEmbeddingTestModel 判断模型是否为 embedding 模型。
+// 规则与 buildTestRequest 中 /v1/embeddings 路径的自动检测保持一致。
+func isEmbeddingTestModel(channelType int, modelName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(modelName))
+	return strings.Contains(lower, "embedding") ||
+		strings.HasPrefix(modelName, "m3e") ||
+		strings.Contains(modelName, "bge-") ||
+		strings.Contains(lower, "embed") ||
+		channelType == constant.ChannelTypeMokaAI
+}
+
+// isRerankTestModel 判断模型是否为 rerank 模型。
+// 规则与 buildTestRequest 中 /v1/rerank 路径的自动检测保持一致。
+func isRerankTestModel(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "rerank")
+}
+
+// isNonLLMTestModel 判断模型是否为非 LLM 文本模型（媒体、embedding、rerank）。
+// 自动探测只覆盖 LLM 文本模型，这类模型会被跳过（或回退到渠道内的 LLM 模型）。
+func isNonLLMTestModel(channelType int, modelName string) bool {
+	return isMediaTestModel(channelType, modelName) ||
+		isEmbeddingTestModel(channelType, modelName) ||
+		isRerankTestModel(modelName)
+}
+
+// findFirstLLMTestModel 返回渠道模型列表中第一个非 LLM 文本模型之外的模型，
+// 用于自动探测在选中模型为非 LLM 模型时回退；渠道没有 LLM 模型则返回空字符串。
+func findFirstLLMTestModel(channel *model.Channel) string {
+	if channel == nil {
+		return ""
+	}
+	for _, m := range channel.GetModels() {
+		m = strings.TrimSpace(m)
+		if m == "" || isNonLLMTestModel(channel.Type, m) {
+			continue
+		}
+		return m
+	}
+	return ""
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
@@ -122,6 +174,18 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			if testModel == "" {
 				testModel = "gpt-4o-mini"
 			}
+		}
+	}
+
+	// 渠道测试（手动/自动一致）只测 LLM 文本模型：若选中的测试模型是图片/视频/embedding/rerank
+	// 等非 LLM 模型，回退到渠道模型列表中的第一个 LLM 模型；渠道没有 LLM 模型则返回错误跳过。
+	// 回退时重置显式端点类型，避免 LLM 模型与媒体端点（如 image_generation）错配。
+	if isNonLLMTestModel(channel.Type, testModel) {
+		if llmModel := findFirstLLMTestModel(channel); llmModel != "" {
+			testModel = llmModel
+			endpointType = ""
+		} else {
+			return testResult{localErr: errNoLLMModelForChannelTest}
 		}
 	}
 
@@ -983,7 +1047,8 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 			break
 		}
 
-		if errors.Is(result.localErr, errAsyncVideoChannelTestUnsupported) {
+		if errors.Is(result.localErr, errAsyncVideoChannelTestUnsupported) ||
+			errors.Is(result.localErr, errNoLLMModelForChannelTest) {
 			continue
 		}
 

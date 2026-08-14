@@ -304,6 +304,71 @@ func TestIsAsyncVideoTestModelRecognizesOpenRouterSeedance(t *testing.T) {
 	require.False(t, isAsyncVideoTestModel(constant.ChannelTypeOpenAI, "bytedance/seedance-2.0"))
 }
 
+func TestIsMediaTestModelDetectsImageAndVideoModels(t *testing.T) {
+	require.True(t, isMediaTestModel(constant.ChannelTypeOpenAI, "gpt-image-1"))
+	require.True(t, isMediaTestModel(constant.ChannelTypeOpenAI, "dall-e-3"))
+	require.True(t, isMediaTestModel(constant.ChannelTypeOpenAI, "flux-schnell"))
+	require.True(t, isMediaTestModel(constant.ChannelTypeVolcEngine, "seedream-2.0"))
+	require.True(t, isMediaTestModel(constant.ChannelTypeOpenRouter, "bytedance/seedance-2.0"))
+	require.False(t, isMediaTestModel(constant.ChannelTypeOpenAI, "gpt-4o-mini"))
+	require.False(t, isMediaTestModel(constant.ChannelTypeOpenAI, "text-embedding-3-small"))
+	require.False(t, isMediaTestModel(constant.ChannelTypeOpenAI, "bge-reranker-v2-m3"))
+}
+
+func TestIsNonLLMTestModelDetectsEmbeddingAndRerank(t *testing.T) {
+	// embedding 模型
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "text-embedding-3-small"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "text-embedding-ada-002"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "m3e-base"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "bge-large-zh"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeMokaAI, "bge-m3"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "jina-embeddings-v3"))
+
+	// rerank 模型
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "bge-reranker-v2-m3"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "jina-reranker-v2-base-multilingual"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "RERANK-v1")) // 大小写不敏感
+
+	// 媒体模型仍然命中
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "gpt-image-1"))
+	require.True(t, isNonLLMTestModel(constant.ChannelTypeOpenRouter, "bytedance/seedance-2.0"))
+
+	// LLM 模型不被误判
+	require.False(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "gpt-4o-mini"))
+	require.False(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "claude-3-5-sonnet"))
+	require.False(t, isNonLLMTestModel(constant.ChannelTypeOpenAI, "deepseek-chat"))
+}
+
+func TestFindFirstLLMTestModelSkipsNonLLMModels(t *testing.T) {
+	mixed := &model.Channel{
+		Type:   constant.ChannelTypeOpenAI,
+		Models: "gpt-image-1,gpt-4o-mini",
+	}
+	require.Equal(t, "gpt-4o-mini", findFirstLLMTestModel(mixed))
+
+	mediaOnly := &model.Channel{
+		Type:   constant.ChannelTypeOpenAI,
+		Models: "gpt-image-1,dall-e-3",
+	}
+	require.Equal(t, "", findFirstLLMTestModel(mediaOnly))
+
+	// embedding/rerank 模型同样被跳过
+	embedOnly := &model.Channel{
+		Type:   constant.ChannelTypeOpenAI,
+		Models: "text-embedding-3-small,bge-reranker-v2-m3",
+	}
+	require.Equal(t, "", findFirstLLMTestModel(embedOnly))
+
+	// 混合 embedding + LLM 回退到 LLM
+	embedAndLLM := &model.Channel{
+		Type:   constant.ChannelTypeOpenAI,
+		Models: "text-embedding-3-small,deepseek-chat",
+	}
+	require.Equal(t, "deepseek-chat", findFirstLLMTestModel(embedAndLLM))
+
+	require.Equal(t, "", findFirstLLMTestModel(nil))
+}
+
 func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *testing.T) {
 	channels := []*model.Channel{
 		{Id: 1, Status: common.ChannelStatusEnabled},

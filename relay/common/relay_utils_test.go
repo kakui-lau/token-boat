@@ -1,6 +1,8 @@
 package common
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +14,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newMultipartTaskContext(t *testing.T, fields map[string]string) (*gin.Context, *RelayInfo) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, value := range fields {
+		require.NoError(t, writer.WriteField(key, value))
+	}
+	require.NoError(t, writer.Close())
+	request := httptest.NewRequest(http.MethodPost, "/v1/video/generations", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = request
+	return context, &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+}
 
 func TestSanitizeURLForLogMasksSensitiveQueryValues(t *testing.T) {
 	rawURL := "https://example.test/v1beta/models/gemini:streamGenerateContent?alt=sse&key=sk-secret&access_token=ya29-secret&api-version=2024-02-01"
@@ -75,6 +92,59 @@ func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"https://example.com/first.png"}, storedReq.Images)
 	require.Equal(t, constant.TaskActionGenerate, info.Action)
+}
+
+func TestValidateBasicTaskRequestPreservesMultipartVideoBillingFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, info := newMultipartTaskContext(t, map[string]string{
+		"model":          "byteplus/seedance-2.0",
+		"prompt":         "animate",
+		"seconds":        "15",
+		"resolution":     "1080p",
+		"aspect_ratio":   "16:9",
+		"generate_audio": "true",
+		"seed":           "7",
+	})
+
+	taskErr := ValidateBasicTaskRequest(context, info, constant.TaskActionGenerate)
+
+	require.Nil(t, taskErr)
+	request, err := GetTaskRequest(context)
+	require.NoError(t, err)
+	assert.Equal(t, 15, request.Duration)
+	assert.Equal(t, "15", request.Seconds)
+	assert.Equal(t, "1080p", request.Resolution)
+	assert.Equal(t, "16:9", request.AspectRatio)
+	require.NotNil(t, request.GenerateAudio)
+	assert.True(t, *request.GenerateAudio)
+	require.NotNil(t, request.Seed)
+	assert.Equal(t, 7, *request.Seed)
+	assert.NotContains(t, request.Metadata, "resolution")
+	assert.NotContains(t, request.Metadata, "seconds")
+}
+
+func TestValidateBasicTaskRequestRejectsInvalidMultipartBillingFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name  string
+		field string
+		value string
+		code  string
+	}{
+		{name: "duration", field: "seconds", value: "many", code: "invalid_multipart_form"},
+		{name: "audio", field: "generate_audio", value: "sometimes", code: "invalid_multipart_form"},
+		{name: "seed", field: "seed", value: "random", code: "invalid_multipart_form"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fields := map[string]string{"model": "video-model", "prompt": "animate", test.field: test.value}
+			context, info := newMultipartTaskContext(t, fields)
+			taskErr := ValidateBasicTaskRequest(context, info, constant.TaskActionGenerate)
+			require.NotNil(t, taskErr)
+			assert.Equal(t, test.code, taskErr.Code)
+			assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+		})
+	}
 }
 
 // TestTaskDurationBounds guards the billing invariant that user-supplied

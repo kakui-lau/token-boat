@@ -32,7 +32,7 @@ func newOpenRouterVideoContext(body string) (*gin.Context, *relaycommon.RelayInf
 func TestBuildRequestBodyConvertsOpenRouterFramesToAnitixOptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	context, info := newOpenRouterVideoContext(`{
-		"model":"byteplus/seedance-2.0-fast",
+		"model":"byteplus/seedance-2.0",
 		"prompt":"make a cloud",
 		"duration":5,
 		"resolution":"1080p",
@@ -44,8 +44,16 @@ func TestBuildRequestBodyConvertsOpenRouterFramesToAnitixOptions(t *testing.T) {
 			{"type":"image_url","image_url":{"url":"https://cdn.example/last.png"},"frame_type":"last_frame"}
 		]
 	}`)
+	info.OriginModelName = "byteplus/seedance-2.0"
+	info.UpstreamModelName = "dreamina-seedance-2-0-260128"
+	info.ChannelMeta.UpstreamModelName = info.UpstreamModelName
 	adaptor := &TaskAdaptor{}
 	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+	require.NotNil(t, info.BillingRequestInput)
+	var billingParams map[string]interface{}
+	require.NoError(t, common.Unmarshal(info.BillingRequestInput.Body, &billingParams))
+	assert.Equal(t, "1080p", billingParams["resolution"])
+	assert.NotContains(t, string(info.BillingRequestInput.Body), "make a cloud")
 
 	body, err := adaptor.BuildRequestBody(context, info)
 	require.NoError(t, err)
@@ -54,7 +62,7 @@ func TestBuildRequestBodyConvertsOpenRouterFramesToAnitixOptions(t *testing.T) {
 	var payload submitRequest
 	require.NoError(t, common.Unmarshal(data, &payload))
 
-	assert.Equal(t, "seedance2-fast", payload.ModelName)
+	assert.Equal(t, "dreamina-seedance-2-0-260128", payload.ModelName)
 	assert.Equal(t, "make a cloud", payload.Prompt)
 	require.NotNil(t, payload.Options.Duration)
 	assert.Equal(t, 5, *payload.Options.Duration)
@@ -67,6 +75,84 @@ func TestBuildRequestBodyConvertsOpenRouterFramesToAnitixOptions(t *testing.T) {
 	assert.Equal(t, "https://cdn.example/first.png", payload.Options.FirstFrameURL)
 	assert.Equal(t, "https://cdn.example/last.png", payload.Options.LastFrameURL)
 	assert.NotContains(t, string(data), `"content"`)
+}
+
+func TestValidateNormalizesAnitixResolutionBeforeBillingAndUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name       string
+		body       string
+		resolution string
+	}{
+		{name: "explicit", body: `{"model":"byteplus/seedance-2.0-fast","prompt":"test","duration":5,"resolution":"720p"}`, resolution: "720p"},
+		{name: "size", body: `{"model":"byteplus/seedance-2.0-fast","prompt":"test","duration":5,"size":"1280x720"}`, resolution: "720p"},
+		{name: "default", body: `{"model":"byteplus/seedance-2.0-fast","prompt":"test","duration":5}`, resolution: "720p"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			context, info := newOpenRouterVideoContext(test.body)
+			adaptor := &TaskAdaptor{}
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+
+			request, err := relaycommon.GetTaskRequest(context)
+			require.NoError(t, err)
+			assert.Equal(t, test.resolution, request.Resolution)
+			require.NotNil(t, info.BillingRequestInput)
+			var billingParams map[string]interface{}
+			require.NoError(t, common.Unmarshal(info.BillingRequestInput.Body, &billingParams))
+			assert.Equal(t, test.resolution, billingParams["resolution"])
+
+			body, err := adaptor.BuildRequestBody(context, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(body)
+			require.NoError(t, err)
+			var payload submitRequest
+			require.NoError(t, common.Unmarshal(data, &payload))
+			assert.Equal(t, test.resolution, payload.Options.Quality)
+		})
+	}
+}
+
+func TestValidateAllows4KForBaseAnitixModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, info := newOpenRouterVideoContext(
+		`{"model":"byteplus/seedance-2.0","prompt":"test","duration":5,"resolution":"4K"}`,
+	)
+	info.OriginModelName = "byteplus/seedance-2.0"
+	info.UpstreamModelName = "dreamina-seedance-2-0-260128"
+	info.ChannelMeta.UpstreamModelName = info.UpstreamModelName
+
+	require.Nil(t, (&TaskAdaptor{}).ValidateRequestAndSetAction(context, info))
+	request, err := relaycommon.GetTaskRequest(context)
+	require.NoError(t, err)
+	assert.Equal(t, "4k", request.Resolution)
+}
+
+func TestValidateRejectsUnsupportedAnitixResolutionBeforeBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, info := newOpenRouterVideoContext(
+		`{"model":"byteplus/seedance-2.0-fast","prompt":"test","duration":5,"resolution":"2K"}`,
+	)
+
+	taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(context, info)
+
+	require.NotNil(t, taskErr)
+	assert.Equal(t, "invalid_resolution", taskErr.Code)
+	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+	assert.Nil(t, info.BillingRequestInput)
+}
+
+func TestValidateRejectsHighResolutionForFastAnitixModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, info := newOpenRouterVideoContext(
+		`{"model":"byteplus/seedance-2.0-fast","prompt":"test","duration":5,"resolution":"1080p"}`,
+	)
+
+	taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(context, info)
+
+	require.NotNil(t, taskErr)
+	assert.Equal(t, "invalid_resolution", taskErr.Code)
+	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
 }
 
 func TestParseTaskResultReturnsAllDirectVideoURLs(t *testing.T) {

@@ -143,6 +143,15 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			http.StatusBadRequest,
 		)
 	}
+	if isSeedanceFastOrMiniModel(req.Model, info.UpstreamModelName) && resolution != "" &&
+		!strings.EqualFold(strings.TrimSpace(resolution), "480p") &&
+		!strings.EqualFold(strings.TrimSpace(resolution), "720p") {
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("this Seedance model supports only 480p and 720p"),
+			"invalid_resolution",
+			http.StatusBadRequest,
+		)
+	}
 	if isSeedance25Model(req.Model, info.UpstreamModelName) {
 		payload, err := a.convertToRequestPayload(&req)
 		if err != nil {
@@ -185,7 +194,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if resolution == "" {
 		resolution = "720p"
 	}
-	normalizedRequest.Metadata["resolution"] = strings.ToLower(strings.TrimSpace(resolution))
+	resolution = strings.ToLower(strings.TrimSpace(resolution))
+	normalizedRequest.Resolution = resolution
+	normalizedRequest.Metadata["resolution"] = resolution
 	duration := normalizedRequest.Duration
 	if duration == 0 {
 		duration, _ = strconv.Atoi(normalizedRequest.Seconds)
@@ -205,7 +216,17 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		// media URLs in the task billing snapshot.
 		normalizedRequest.Metadata["content"] = content
 	}
-	body, err := common.Marshal(normalizedRequest)
+	body, err := common.Marshal(map[string]interface{}{
+		"model":      normalizedRequest.Model,
+		"resolution": normalizedRequest.Resolution,
+		"duration":   duration,
+		"metadata": map[string]interface{}{
+			"resolution":        normalizedRequest.Metadata["resolution"],
+			"duration":          normalizedRequest.Metadata["duration"],
+			"billing_has_video": normalizedRequest.Metadata["billing_has_video"],
+			"content":           normalizedRequest.Metadata["content"],
+		},
+	})
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
@@ -242,6 +263,16 @@ func isSeedance20MiniModel(modelNames ...string) bool {
 			strings.Contains(normalized, "seedance-2-0") ||
 			strings.Contains(normalized, "seedance2")) &&
 			strings.Contains(normalized, "mini") {
+			return true
+		}
+	}
+	return false
+}
+
+func isSeedanceFastOrMiniModel(modelNames ...string) bool {
+	for _, modelName := range modelNames {
+		normalized := strings.ToLower(strings.TrimSpace(modelName))
+		if strings.Contains(normalized, "fast") || strings.Contains(normalized, "mini") {
 			return true
 		}
 	}

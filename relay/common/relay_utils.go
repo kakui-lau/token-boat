@@ -164,18 +164,41 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 
 	formData := c.Request.PostForm
 	req = TaskSubmitReq{
-		Prompt:   formData.Get("prompt"),
-		Model:    formData.Get("model"),
-		Mode:     formData.Get("mode"),
-		Image:    formData.Get("image"),
-		Size:     formData.Get("size"),
-		Metadata: make(map[string]interface{}),
+		Prompt:      formData.Get("prompt"),
+		Model:       formData.Get("model"),
+		Mode:        formData.Get("mode"),
+		Image:       formData.Get("image"),
+		Size:        formData.Get("size"),
+		Resolution:  formData.Get("resolution"),
+		AspectRatio: formData.Get("aspect_ratio"),
+		Metadata:    make(map[string]interface{}),
 	}
 
-	if durationStr := formData.Get("seconds"); durationStr != "" {
-		if duration, err := strconv.Atoi(durationStr); err == nil {
-			req.Duration = duration
+	durationStr := formData.Get("duration")
+	if seconds := formData.Get("seconds"); seconds != "" {
+		durationStr = seconds
+		req.Seconds = seconds
+	}
+	if durationStr != "" {
+		duration, parseErr := strconv.Atoi(durationStr)
+		if parseErr != nil {
+			return req, fmt.Errorf("invalid video duration: %w", parseErr)
 		}
+		req.Duration = duration
+	}
+	if generateAudio := formData.Get("generate_audio"); generateAudio != "" {
+		value, parseErr := strconv.ParseBool(generateAudio)
+		if parseErr != nil {
+			return req, fmt.Errorf("invalid generate_audio: %w", parseErr)
+		}
+		req.GenerateAudio = &value
+	}
+	if seed := formData.Get("seed"); seed != "" {
+		value, parseErr := strconv.Atoi(seed)
+		if parseErr != nil {
+			return req, fmt.Errorf("invalid seed: %w", parseErr)
+		}
+		req.Seed = &value
 	}
 
 	if images := formData["images"]; len(images) > 0 {
@@ -277,7 +300,12 @@ func isKnownTaskField(field string) bool {
 		"image":           true,
 		"images":          true,
 		"size":            true,
+		"resolution":      true,
+		"aspect_ratio":    true,
 		"duration":        true,
+		"seconds":         true,
+		"generate_audio":  true,
+		"seed":            true,
 		"input_reference": true, // Sora 特有字段
 	}
 	return knownFields[field]
@@ -295,10 +323,11 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 		if err != nil {
 			return createTaskError(err, "invalid_multipart_form", http.StatusBadRequest, true)
 		}
-	}
-	// 为了metadata字段的兼容性，统一UnmarshalBodyReusable
-	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
-		return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+	} else {
+		// JSON requests support metadata as either an object or a JSON string.
+		if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+			return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+		}
 	}
 
 	if taskErr := validatePrompt(req.Prompt); taskErr != nil {

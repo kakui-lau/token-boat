@@ -2,7 +2,9 @@ package pricingruntime
 
 import (
 	"errors"
+	"fmt"
 	"math"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -42,6 +44,36 @@ func pricingUsageRequirementsMet(
 		return false
 	}
 	return true
+}
+
+func validateVideoPricingRequest(expressions []string, request billingexpr.RequestInput) error {
+	requiresResolution := false
+	for _, expression := range expressions {
+		if strings.Contains(expression, `param("resolution")`) ||
+			strings.Contains(expression, `param("metadata.resolution")`) {
+			requiresResolution = true
+			break
+		}
+	}
+	if !requiresResolution {
+		return nil
+	}
+	var params struct {
+		Resolution string `json:"resolution"`
+		Metadata   struct {
+			Resolution string `json:"resolution"`
+		} `json:"metadata"`
+	}
+	if len(request.Body) == 0 {
+		return errors.New("video pricing requires a normalized resolution")
+	}
+	if err := common.Unmarshal(request.Body, &params); err != nil {
+		return fmt.Errorf("video pricing request is invalid: %w", err)
+	}
+	if strings.TrimSpace(params.Resolution) == "" && strings.TrimSpace(params.Metadata.Resolution) == "" {
+		return errors.New("video pricing requires a normalized resolution")
+	}
+	return nil
 }
 
 // SupportsFixedVideoTaskPricing reports whether every active expression can be
@@ -107,6 +139,15 @@ func PrepareRelayPricing(
 	usage.PromptTokens = float64(promptTokens)
 	usage.CompletionTokens = float64(maxCompletionTokens)
 	usage.RequestBody = string(requestInput.Body)
+	if billingMode == "video_duration" {
+		expressions := make([]string, 0, len(bundles)*2)
+		for _, bundle := range bundles {
+			expressions = append(expressions, bundle.Purchase.PurchaseBillingExpr, bundle.Retail.RetailBillingExpr)
+		}
+		if err := validateVideoPricingRequest(expressions, requestInput); err != nil {
+			return hosttypes.PriceData{}, false, err
+		}
+	}
 	if billingMode == "audio_duration" && usage.AudioSeconds <= 0 {
 		return hosttypes.PriceData{}, false, nil
 	}

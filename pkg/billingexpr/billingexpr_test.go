@@ -22,6 +22,16 @@ func TestTimeFunctionsUseFrozenRequestEvaluationTime(t *testing.T) {
 	require.Equal(t, "time", trace.MatchedTier)
 }
 
+func TestUsedVarsIncludesRequestFunctions(t *testing.T) {
+	used := billingexpr.UsedVars(
+		`v2:param("resolution") == "1080p" && has(header("x-mode"), "fast") ? tier("fast", video_s) : tier("base", video_s)`,
+	)
+
+	assert.True(t, used["param"])
+	assert.True(t, used["header"])
+	assert.True(t, used["video_s"])
+}
+
 // ---------------------------------------------------------------------------
 // Claude-style: fixed tiers, input > 200K changes both input & output price
 // ---------------------------------------------------------------------------

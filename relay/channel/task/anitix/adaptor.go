@@ -13,6 +13,7 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -114,6 +115,68 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			http.StatusBadRequest,
 		)
 	}
+	resolution := strings.ToLower(strings.TrimSpace(req.Resolution))
+	if resolution == "" {
+		if metadataResolution, ok := req.Metadata["resolution"].(string); ok {
+			resolution = strings.ToLower(strings.TrimSpace(metadataResolution))
+		}
+	}
+	if resolution == "" && strings.TrimSpace(req.Size) != "" {
+		size := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(req.Size), "*", "x"))
+		switch size {
+		case "854x480", "480x854":
+			resolution = "480p"
+		case "1280x720", "720x1280":
+			resolution = "720p"
+		case "1920x1080", "1080x1920":
+			resolution = "1080p"
+		case "3840x2160", "2160x3840":
+			resolution = "4k"
+		default:
+			return service.TaskErrorWrapperLocal(
+				fmt.Errorf("unsupported video size %q", req.Size),
+				"invalid_size",
+				http.StatusBadRequest,
+			)
+		}
+	}
+	if resolution == "" {
+		resolution = "720p"
+	}
+	switch resolution {
+	case "480p", "720p", "1080p", "4k":
+	default:
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("unsupported video resolution %q", resolution),
+			"invalid_resolution",
+			http.StatusBadRequest,
+		)
+	}
+	modelName := strings.ToLower(info.OriginModelName + " " + info.UpstreamModelName)
+	if (strings.Contains(modelName, "fast") || strings.Contains(modelName, "mini")) &&
+		resolution != "480p" && resolution != "720p" {
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("model %s supports only 480p and 720p", info.OriginModelName),
+			"invalid_resolution",
+			http.StatusBadRequest,
+		)
+	}
+	req.Resolution = resolution
+	if req.Metadata == nil {
+		req.Metadata = make(map[string]interface{})
+	}
+	req.Metadata["resolution"] = resolution
+	c.Set("task_request", req)
+	billingBody, err := common.Marshal(map[string]interface{}{
+		"resolution":     resolution,
+		"duration":       req.Duration,
+		"aspect_ratio":   req.AspectRatio,
+		"generate_audio": req.GenerateAudio,
+	})
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	info.BillingRequestInput = &billingexpr.RequestInput{Body: billingBody}
 	for _, reference := range req.InputReferences {
 		if reference.Type != "image_url" {
 			return service.TaskErrorWrapperLocal(

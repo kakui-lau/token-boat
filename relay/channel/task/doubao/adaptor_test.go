@@ -181,10 +181,12 @@ func TestValidateProvidesSafeEstimateForSeedance2(t *testing.T) {
 	require.NotNil(t, tieredInfo.BillingRequestInput)
 	var normalized relaycommon.TaskSubmitReq
 	require.NoError(t, common.Unmarshal(tieredInfo.BillingRequestInput.Body, &normalized))
+	assert.Equal(t, "1080p", normalized.Resolution)
 	assert.Equal(t, "1080p", normalized.Metadata["resolution"])
 	assert.Equal(t, true, normalized.Metadata["billing_has_video"])
 	normalizedBody := string(tieredInfo.BillingRequestInput.Body)
 	assert.NotContains(t, normalizedBody, "https://example.com/in.mp4")
+	assert.NotContains(t, normalizedBody, `"prompt":"test"`)
 	assert.Contains(t, normalizedBody, "video_url")
 
 	seedance25Context, seedance25Info := newDoubaoVideoTestContext(

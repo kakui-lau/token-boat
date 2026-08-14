@@ -347,6 +347,12 @@ export interface TaskUpstreamRequest {
   failure: string
 }
 
+export interface ManualTaskRefundResult {
+  task_id: string
+  refunded_quota: number
+  already_refunded: boolean
+}
+
 // ============================================================================
 // Common Log Types
 // ============================================================================

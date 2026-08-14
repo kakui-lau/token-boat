@@ -2,14 +2,17 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -17,6 +20,63 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
+
+var (
+	ErrManualTaskNotFound = errors.New("task not found")
+	ErrManualTaskTerminal = errors.New("task is already in a terminal state")
+)
+
+type ManualTaskRefundResult struct {
+	RefundedQuota   int
+	AlreadyRefunded bool
+}
+
+// ManuallyFailAndRefundTask lets an administrator stop an unfinished async
+// task without waiting for the global timeout. The status transition is CAS
+// guarded against the polling worker, and RefundTaskQuota provides the
+// transactional, idempotent accounting update.
+func ManuallyFailAndRefundTask(ctx context.Context, taskID, reason string) (ManualTaskRefundResult, error) {
+	task, exists, err := model.GetByOnlyTaskId(taskID)
+	if err != nil {
+		return ManualTaskRefundResult{}, err
+	}
+	if !exists {
+		return ManualTaskRefundResult{}, ErrManualTaskNotFound
+	}
+	if task.RefundStatus == model.TaskRefundStatusCompleted && task.Quota == 0 {
+		return ManualTaskRefundResult{
+			RefundedQuota:   task.RefundQuota,
+			AlreadyRefunded: true,
+		}, nil
+	}
+
+	if task.Status != model.TaskStatusFailure {
+		if task.Status == model.TaskStatusSuccess ||
+			task.Status == model.TaskStatusCancelled ||
+			task.Status == model.TaskStatusExpired {
+			return ManualTaskRefundResult{}, ErrManualTaskTerminal
+		}
+
+		previousStatus := task.Status
+		task.Status = model.TaskStatusFailure
+		task.Progress = taskcommon.ProgressComplete
+		task.FinishTime = time.Now().Unix()
+		task.FailReason = reason
+		won, updateErr := task.UpdateWithStatus(previousStatus)
+		if updateErr != nil {
+			return ManualTaskRefundResult{}, updateErr
+		}
+		if !won {
+			return ManualTaskRefundResult{}, ErrManualTaskTerminal
+		}
+	}
+
+	refundedQuota := task.Quota
+	if !RefundTaskQuota(ctx, task, reason) {
+		return ManualTaskRefundResult{}, errors.New("task refund failed and will be retried by reconciliation")
+	}
+	return ManualTaskRefundResult{RefundedQuota: refundedQuota}, nil
+}
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。

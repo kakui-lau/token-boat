@@ -408,6 +408,13 @@ function TaskLogsCard<TData>({
           cell={cells.get('fail_reason')}
           className='col-span-2 bg-transparent px-0 py-0'
         />
+        {cells.has('actions') ? (
+          <SummaryField
+            label={t('Actions')}
+            cell={cells.get('actions')}
+            className='col-span-2'
+          />
+        ) : null}
       </div>
     </div>
   )

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/types"
@@ -455,6 +456,61 @@ func countLogs(t *testing.T) int64 {
 // ===========================================================================
 // RefundTaskQuota tests
 // ===========================================================================
+
+func TestManuallyFailAndRefundTaskStopsUnfinishedTaskAndRefundsOnce(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 31, 31, 31
+	const initialQuota, chargedQuota = 10000, 3000
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, "sk-manual-refund", 5000)
+	seedChannel(t, channelID)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("used_quota", chargedQuota).Error)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", tokenID).Update("used_quota", chargedQuota).Error)
+	require.NoError(t, model.DB.Model(&model.Channel{}).Where("id = ?", channelID).Update("used_quota", chargedQuota).Error)
+
+	task := makeTask(userID, channelID, chargedQuota, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_manual_refund"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	result, err := ManuallyFailAndRefundTask(ctx, task.TaskID, "administrator manual refund")
+	require.NoError(t, err)
+	assert.Equal(t, chargedQuota, result.RefundedQuota)
+	assert.False(t, result.AlreadyRefunded)
+
+	stored, err := model.GetTaskByID(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), stored.Status)
+	assert.Equal(t, taskcommon.ProgressComplete, stored.Progress)
+	assert.Equal(t, "administrator manual refund", stored.FailReason)
+	assert.Zero(t, stored.Quota)
+	assert.Equal(t, model.TaskRefundStatusCompleted, stored.RefundStatus)
+	assert.Equal(t, chargedQuota, stored.RefundQuota)
+	assert.Equal(t, initialQuota+chargedQuota, getUserQuota(t, userID))
+
+	retry, err := ManuallyFailAndRefundTask(ctx, task.TaskID, "administrator manual refund")
+	require.NoError(t, err)
+	assert.True(t, retry.AlreadyRefunded)
+	assert.Equal(t, chargedQuota, retry.RefundedQuota)
+	assert.Equal(t, initialQuota+chargedQuota, getUserQuota(t, userID))
+}
+
+func TestManuallyFailAndRefundTaskRejectsSuccessfulTask(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	seedUser(t, 32, 10000)
+	seedChannel(t, 32)
+	task := makeTask(32, 32, 3000, 0, BillingSourceWallet, 0)
+	task.TaskID = "task_already_successful"
+	task.Status = model.TaskStatusSuccess
+	require.NoError(t, model.DB.Create(task).Error)
+
+	_, err := ManuallyFailAndRefundTask(ctx, task.TaskID, "administrator manual refund")
+	assert.ErrorIs(t, err, ErrManualTaskTerminal)
+	assert.Equal(t, 10000, getUserQuota(t, 32))
+}
 
 func TestRefundTaskQuota_Wallet(t *testing.T) {
 	truncate(t)

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
+// eslint-disable-next-line import/no-cycle -- legacy log fetch helpers share query serialization
 import { buildQueryParams } from './lib/utils'
 import type {
   GetLogsParams,
@@ -26,6 +27,7 @@ import type {
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
+  ManualTaskRefundResult,
   UserInfo,
 } from './types'
 
@@ -110,3 +112,15 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+export async function manuallyFailAndRefundTask(taskId: string) {
+  const res = await api.post<{
+    success: boolean
+    message: string
+    data: ManualTaskRefundResult
+  }>(`/api/task/${encodeURIComponent(taskId)}/fail-and-refund`)
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to refund task')
+  }
+  return res.data.data
+}

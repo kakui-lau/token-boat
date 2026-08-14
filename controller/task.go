@@ -1,17 +1,23 @@
 package controller
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
+
+const manualTaskRefundReason = "管理员手动终止任务并退款"
 
 func GetAllTask(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
@@ -58,6 +64,37 @@ func GetUserTask(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.ApiSuccess(c, pageInfo)
+}
+
+func ManuallyFailAndRefundTask(c *gin.Context) {
+	taskID := strings.TrimSpace(c.Param("task_id"))
+	if taskID == "" {
+		common.ApiErrorMsg(c, "task_id is required")
+		return
+	}
+
+	result, err := service.ManuallyFailAndRefundTask(c, taskID, manualTaskRefundReason)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrManualTaskNotFound) {
+			status = http.StatusNotFound
+		} else if errors.Is(err, service.ErrManualTaskTerminal) {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	recordManageAudit(c, "task.fail_and_refund", map[string]interface{}{
+		"task_id":          taskID,
+		"refunded_quota":   result.RefundedQuota,
+		"already_refunded": result.AlreadyRefunded,
+	})
+	common.ApiSuccess(c, gin.H{
+		"task_id":          taskID,
+		"refunded_quota":   result.RefundedQuota,
+		"already_refunded": result.AlreadyRefunded,
+	})
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {

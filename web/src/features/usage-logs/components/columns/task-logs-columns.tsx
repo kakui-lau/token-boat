@@ -38,6 +38,7 @@ import {
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
 import { UpstreamRequestDialog } from '../dialogs/upstream-request-dialog'
+import { TaskFailRefundAction } from '../task-fail-refund-action'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -139,11 +140,7 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
   )
 }
 
-function UpstreamRequestControl({
-  request,
-}: {
-  request: TaskUpstreamRequest
-}) {
+function UpstreamRequestControl({ request }: { request: TaskUpstreamRequest }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
@@ -474,6 +471,15 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       maxSize: 220,
     }
   )
+
+  if (isAdmin) {
+    columns.push({
+      id: 'actions',
+      header: t('Actions'),
+      cell: ({ row }) => <TaskFailRefundAction log={row.original} />,
+      size: 130,
+    })
+  }
 
   return columns
 }

@@ -57,35 +57,37 @@ export function UpstreamRequestDialog({
       onOpenChange={onOpenChange}
       title={t('Upstream Request Details')}
       description={t(
-        'Only administrators can view failed upstream request parameters'
+        'Only administrators can view upstream request parameters'
       )}
       contentClassName='sm:max-w-3xl'
       contentHeight='auto'
       bodyClassName='space-y-4'
     >
       <ScrollArea className='max-h-[70vh] pr-4'>
-        <div className='space-y-4 py-4'>
+        <div className='flex flex-col gap-4 py-4'>
           <div className='grid gap-3 sm:grid-cols-2'>
-            <div className='space-y-1'>
+            <div className='flex flex-col gap-1'>
               <Label>{t('Request Method')}</Label>
               <p className='bg-muted rounded-md border p-2 font-mono text-xs'>
                 {request.method}
               </p>
             </div>
-            <div className='space-y-1'>
-              <Label>{t('Failure')}</Label>
-              <p className='bg-muted rounded-md border p-2 font-mono text-xs'>
-                {request.failure}
-              </p>
-            </div>
+            {request.failure ? (
+              <div className='flex flex-col gap-1'>
+                <Label>{t('Failure')}</Label>
+                <p className='bg-muted rounded-md border p-2 font-mono text-xs'>
+                  {request.failure}
+                </p>
+              </div>
+            ) : null}
           </div>
-          <div className='space-y-1'>
+          <div className='flex flex-col gap-1'>
             <Label>{t('Upstream URL')}</Label>
             <p className='bg-muted overflow-wrap-anywhere rounded-md border p-2 font-mono text-xs break-all'>
               {request.url}
             </p>
           </div>
-          <div className='space-y-1'>
+          <div className='flex flex-col gap-1'>
             <div className='flex items-center justify-between'>
               <Label>{t('Complete Upstream Request Body')}</Label>
               <CopyButton

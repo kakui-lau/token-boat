@@ -3,9 +3,12 @@ package channel
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,4 +66,27 @@ func TestCaptureUpstreamRequestBodyDoesNotTruncateLargePayload(t *testing.T) {
 	forwarded, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
 	assert.Equal(t, payload, string(forwarded))
+}
+
+func TestSaveTaskUpstreamRequestCapturesSuccessfulSubmissionInMemory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"https://provider.example/v1/tasks?api_key=secret",
+		strings.NewReader(`{"model":"video","duration":10}`),
+	)
+	info := &relaycommon.RelayInfo{
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	body, err := captureUpstreamRequestBody(req)
+	require.NoError(t, err)
+	saveTaskUpstreamRequest(ctx, taskUpstreamRequest(req, body, ""), info)
+
+	require.NotNil(t, info.AdminUpstreamRequest)
+	assert.Equal(t, http.MethodPost, info.AdminUpstreamRequest.Method)
+	assert.NotContains(t, info.AdminUpstreamRequest.URL, "secret")
+	assert.Equal(t, `{"model":"video","duration":10}`, info.AdminUpstreamRequest.Body)
+	assert.Empty(t, info.AdminUpstreamRequest.Failure)
 }

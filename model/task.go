@@ -145,7 +145,7 @@ type TaskPrivateData struct {
 	AdminUpstreamRequest *TaskUpstreamRequest `json:"admin_upstream_request,omitempty"`
 }
 
-// TaskUpstreamRequest is retained only for failed upstream calls and is never
+// TaskUpstreamRequest is retained for administrator diagnostics and is never
 // included in user-facing task responses.
 type TaskUpstreamRequest struct {
 	Method  string `json:"method"`
@@ -266,6 +266,15 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	if relayInfo != nil {
 		privateData.CallbackURL = relayInfo.CallbackURL
 		properties.GenerationID = relayInfo.GenerationID
+		if relayInfo.TaskRelayInfo != nil && relayInfo.AdminUpstreamRequest != nil {
+			request := relayInfo.AdminUpstreamRequest
+			privateData.AdminUpstreamRequest = &TaskUpstreamRequest{
+				Method:  request.Method,
+				URL:     request.URL,
+				Body:    request.Body,
+				Failure: request.Failure,
+			}
+		}
 	}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||

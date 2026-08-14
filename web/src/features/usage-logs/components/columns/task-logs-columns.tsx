@@ -24,13 +24,14 @@ import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
-import type { TaskLog } from '../../types'
+import type { TaskLog, TaskUpstreamRequest } from '../../types'
 import {
   AudioPreviewDialog,
   type AudioClip,
@@ -133,6 +134,34 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
         open={open}
         onOpenChange={setOpen}
         clips={clips as AudioClip[]}
+      />
+    </>
+  )
+}
+
+function UpstreamRequestControl({
+  request,
+}: {
+  request: TaskUpstreamRequest
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <Button
+        type='button'
+        variant='link'
+        size='xs'
+        className='h-auto w-fit p-0 text-[11px]'
+        onClick={() => setOpen(true)}
+      >
+        {t('View upstream request')}
+      </Button>
+      <UpstreamRequestDialog
+        request={request}
+        open={open}
+        onOpenChange={setOpen}
       />
     </>
   )
@@ -357,7 +386,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const failReason = row.getValue('fail_reason') as string
         const status = log.status
         const [dialogOpen, setDialogOpen] = useState(false)
-        const [upstreamDialogOpen, setUpstreamDialogOpen] = useState(false)
+        const upstreamRequest = isAdmin ? log.admin_upstream_request : undefined
 
         const isSunoSuccess =
           log.platform === 'suno' && status === TASK_STATUS.SUCCESS
@@ -371,7 +400,14 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
                 (c as Record<string, unknown>).audio_url
             )
           ) {
-            return <AudioPreviewCell log={log} />
+            return (
+              <div className='flex flex-col gap-1'>
+                <AudioPreviewCell log={log} />
+                {upstreamRequest ? (
+                  <UpstreamRequestControl request={upstreamRequest} />
+                ) : null}
+              </div>
+            )
           }
         }
 
@@ -387,53 +423,49 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         if (isSuccess && isVideoTask && isUrl) {
           const videoUrl = `/v1/videos/${log.task_id}/content`
           return (
-            <a
-              href={videoUrl}
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-foreground text-xs hover:underline'
-            >
-              {t('Click to preview video')}
-            </a>
+            <div className='flex flex-col gap-1'>
+              <a
+                href={videoUrl}
+                target='_blank'
+                rel='noopener noreferrer'
+                className='text-foreground text-xs hover:underline'
+              >
+                {t('Click to preview video')}
+              </a>
+              {upstreamRequest ? (
+                <UpstreamRequestControl request={upstreamRequest} />
+              ) : null}
+            </div>
           )
         }
 
-        if (!failReason) {
+        if (!failReason && !upstreamRequest) {
           return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
 
         return (
           <div className='flex flex-col gap-1'>
-            <button
-              type='button'
-              className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
-              onClick={() => setDialogOpen(true)}
-              title={t('Click to view full error message')}
-            >
-              <span className='truncate leading-snug text-red-600 group-hover:underline dark:text-red-400'>
-                {failReason}
-              </span>
-            </button>
-            <FailReasonDialog
-              failReason={failReason}
-              open={dialogOpen}
-              onOpenChange={setDialogOpen}
-            />
-            {isAdmin && log.admin_upstream_request ? (
+            {failReason ? (
               <>
                 <button
                   type='button'
-                  className='text-muted-foreground w-fit text-left text-[11px] hover:underline'
-                  onClick={() => setUpstreamDialogOpen(true)}
+                  className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+                  onClick={() => setDialogOpen(true)}
+                  title={t('Click to view full error message')}
                 >
-                  {t('View upstream request')}
+                  <span className='text-destructive truncate leading-snug group-hover:underline'>
+                    {failReason}
+                  </span>
                 </button>
-                <UpstreamRequestDialog
-                  request={log.admin_upstream_request}
-                  open={upstreamDialogOpen}
-                  onOpenChange={setUpstreamDialogOpen}
+                <FailReasonDialog
+                  failReason={failReason}
+                  open={dialogOpen}
+                  onOpenChange={setDialogOpen}
                 />
               </>
+            ) : null}
+            {upstreamRequest ? (
+              <UpstreamRequestControl request={upstreamRequest} />
             ) : null}
           </div>
         )

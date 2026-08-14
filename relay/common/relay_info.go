@@ -852,6 +852,10 @@ type TaskRelayInfo struct {
 	UpstreamTaskAccepted   bool
 	AcceptedUpstreamTaskID string
 	AcceptedTaskData       []byte
+	// AdminUpstreamRequest stores the exact request that was sent to the
+	// provider. It is copied into task private_data and exposed only by the
+	// administrator task-log endpoint.
+	AdminUpstreamRequest *TaskUpstreamRequestSnapshot
 
 	ConsumeQuota bool
 	// TaskPreConsumeTokens is a provider adaptor's conservative token estimate
@@ -863,6 +867,13 @@ type TaskRelayInfo struct {
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
 	// to avoid an import cycle with model; callers type-assert to *model.Channel.
 	LockedChannel any
+}
+
+type TaskUpstreamRequestSnapshot struct {
+	Method  string
+	URL     string
+	Body    string
+	Failure string
 }
 
 type TaskSubmitReq struct {

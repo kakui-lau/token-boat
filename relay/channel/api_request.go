@@ -507,7 +507,7 @@ func captureUpstreamRequestBody(req *http.Request) ([]byte, error) {
 	return body, nil
 }
 
-func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, failure string, info *common.RelayInfo) {
+func taskUpstreamRequest(req *http.Request, body []byte, failure string) model.TaskUpstreamRequest {
 	method := ""
 	requestURL := ""
 	if req != nil {
@@ -516,36 +516,57 @@ func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, fa
 			requestURL = common.SanitizeURLForLog(req.URL.String())
 		}
 	}
+	return model.TaskUpstreamRequest{
+		Method: method, URL: requestURL, Body: string(body), Failure: failure,
+	}
+}
+
+func saveTaskUpstreamRequest(c *gin.Context, request model.TaskUpstreamRequest, info *common.RelayInfo) {
+	if info == nil || info.TaskRelayInfo == nil {
+		return
+	}
+	info.AdminUpstreamRequest = &common.TaskUpstreamRequestSnapshot{
+		Method:  request.Method,
+		URL:     request.URL,
+		Body:    request.Body,
+		Failure: request.Failure,
+	}
+	if info.PersistedTaskID <= 0 {
+		return
+	}
+	// Diagnostics must never replace the provider response with a persistence
+	// failure. A later failure update overwrites the initially recorded request.
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.LogError(c, fmt.Sprintf("save upstream request to task panicked: %v", recovered))
+			}
+		}()
+		if err := model.SaveTaskUpstreamRequest(info.PersistedTaskID, request); err != nil {
+			logger.LogError(c, "save upstream request to task: "+err.Error())
+		}
+	}()
+}
+
+func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, failure string, info *common.RelayInfo) {
+	request := taskUpstreamRequest(req, body, failure)
 	logger.LogError(c, fmt.Sprintf(
 		"upstream request failed: method=%s url=%q failure=%q body=%s",
-		method,
-		requestURL,
+		request.Method,
+		request.URL,
 		failure,
 		string(body),
 	))
-	if info != nil && info.TaskRelayInfo != nil && info.PersistedTaskID > 0 {
-		// Failure diagnostics must never replace the provider error with a panic.
-		// Keep task persistence isolated because database/model hooks are outside
-		// the HTTP error path's control.
-		func() {
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					logger.LogError(c, fmt.Sprintf("save failed upstream request to task panicked: %v", recovered))
-				}
-			}()
-			if err := model.SaveTaskUpstreamRequest(info.PersistedTaskID, model.TaskUpstreamRequest{
-				Method: method, URL: requestURL, Body: string(body), Failure: failure,
-			}); err != nil {
-				logger.LogError(c, "save failed upstream request to task: "+err.Error())
-			}
-		}()
-	}
+	saveTaskUpstreamRequest(c, request, info)
 }
 
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	requestBody, bodyErr := captureUpstreamRequestBody(req)
 	if bodyErr != nil {
 		logger.LogError(c, "capture upstream request body failed: "+bodyErr.Error())
+	}
+	if bodyErr == nil {
+		saveTaskUpstreamRequest(c, taskUpstreamRequest(req, requestBody, ""), info)
 	}
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {

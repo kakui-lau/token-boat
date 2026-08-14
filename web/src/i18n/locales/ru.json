@@ -3615,6 +3615,7 @@
     "Online payment is not enabled. Please contact the administrator.": "Онлайн-оплата не включена. Пожалуйста, свяжитесь с администратором.",
     "Online topup is not enabled. Please use redemption code or contact administrator.": "Онлайн-пополнение не включено. Пожалуйста, используйте код активации или свяжитесь с администратором.",
     "Only administrators can view failed upstream request parameters": "Параметры неудачных запросов к провайдеру доступны только администраторам",
+    "Only administrators can view upstream request parameters": "Параметры запросов к вышестоящему сервису доступны только администраторам",
     "Only allow specific email domains": "Разрешить только определенные домены электронной почты",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "Доступно только для администраторов. При включении вы будете получать сводное уведомление выбранным способом, когда запланированная проверка моделей обнаружит изменения в вышестоящих моделях или сбои проверки.",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Переопределяются только настроенные комбинации. Остальные вызовы используют базовый коэффициент тарифной группы.",

@@ -3615,6 +3615,7 @@
     "Online payment is not enabled. Please contact the administrator.": "Le paiement en ligne n'est pas activé. Veuillez contacter l'administrateur.",
     "Online topup is not enabled. Please use redemption code or contact administrator.": "La recharge en ligne n'est pas activée. Veuillez utiliser un code d'échange ou contacter l'administrateur.",
     "Only administrators can view failed upstream request parameters": "Seuls les administrateurs peuvent voir les paramètres des requêtes en amont ayant échoué",
+    "Only administrators can view upstream request parameters": "Seuls les administrateurs peuvent voir les paramètres des requêtes en amont",
     "Only allow specific email domains": "Autoriser uniquement des domaines d'e-mail spécifiques",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "Uniquement disponible pour les administrateurs. Lorsque cette option est activée, vous recevrez une notification récapitulative via votre méthode sélectionnée lorsque la vérification planifiée des modèles détecte des changements de modèles en amont ou des échecs de vérification.",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Seules les combinaisons configurées sont remplacées. Tous les autres appels gardent le taux de base du groupe de facturation.",

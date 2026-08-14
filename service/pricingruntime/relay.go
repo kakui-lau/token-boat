@@ -258,17 +258,16 @@ func PrepareRelayPricing(
 		EstimatedUsage:            string(estimatedUsageJSON),
 	}
 	info.BillingRequestInput = &requestInput
+	info.PriceData = hosttypes.PriceData{
+		GroupRatioInfo:    groupRatioInfo,
+		QuotaToPreConsume: reservationQuota,
+	}
 	if selectedChannelId > 0 {
 		if err := BindSelectedChannel(info, selectedChannelId); err != nil {
 			return hosttypes.PriceData{}, false, err
 		}
 	}
-	priceData := hosttypes.PriceData{
-		GroupRatioInfo:    groupRatioInfo,
-		QuotaToPreConsume: reservationQuota,
-	}
-	info.PriceData = priceData
-	return priceData, true, nil
+	return info.PriceData, true, nil
 }
 
 func BindSelectedChannel(
@@ -286,7 +285,19 @@ func BindSelectedChannel(
 	if quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
 		return errors.New("selected channel has no valid frozen quota conversion rate")
 	}
+	selectedCustomerCharge, err := decimal.NewFromString(candidate.EstimatedCustomerChargeUSD)
+	if err != nil || selectedCustomerCharge.IsNegative() {
+		return errors.New("selected channel has no valid frozen customer charge")
+	}
+	selectedCustomerChargeFloat, _ := selectedCustomerCharge.Float64()
+	selectedQuota, err := common.QuotaCeilStrict(selectedCustomerChargeFloat * quotaPerUnit)
+	if err != nil {
+		return fmt.Errorf("selected channel customer charge is not representable: %w", err)
+	}
 	info.DynamicPricingSnapshot.Selected = &candidate
+	// Quota is the final charge for the selected route. QuotaToPreConsume stays
+	// at the highest eligible customer charge so retries remain fully reserved.
+	info.PriceData.Quota = selectedQuota
 	info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{
 		BillingMode:               "tiered_expr",
 		ModelName:                 info.OriginModelName,

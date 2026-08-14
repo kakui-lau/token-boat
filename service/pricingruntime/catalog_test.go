@@ -815,6 +815,7 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, 4*int(common.QuotaPerUnit), priceData.QuotaToPreConsume)
+	assert.Equal(t, 2*int(common.QuotaPerUnit), priceData.Quota)
 	assert.Equal(t, []int{6, 5}, info.DynamicPricingSnapshot.RouteChannelIds)
 	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
 	assert.Equal(t, 5, info.DynamicPricingSnapshot.Selected.ChannelModelId)
@@ -826,12 +827,14 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
 	require.NoError(t, BindSelectedChannel(info, 6))
 	assert.Equal(t, 6, info.DynamicPricingSnapshot.Selected.ChannelModelId)
+	assert.Equal(t, 4*int(frozenQuotaPerUnit), info.PriceData.Quota)
+	assert.Equal(t, 4*int(frozenQuotaPerUnit), info.PriceData.QuotaToPreConsume)
 	assert.Contains(t, info.TieredBillingSnapshot.ExprString, "p * 4")
 	assert.Equal(t, frozenQuotaPerUnit, info.TieredBillingSnapshot.QuotaPerUnit)
 	assert.Equal(t, priceData.QuotaToPreConsume, info.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
 
 	unboundInfo := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
-	_, ok, err = PrepareRelayPricing(
+	unboundPriceData, ok, err := PrepareRelayPricing(
 		unboundInfo,
 		"default",
 		0,
@@ -843,9 +846,13 @@ func TestPrepareRelayPricingReservesHighestCandidateAndFreezesSelectedPrice(t *t
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
+	assert.Zero(t, unboundPriceData.Quota)
+	unboundQuotaPerUnit := unboundInfo.DynamicPricingSnapshot.QuotaPerUnit
+	assert.Equal(t, 4*int(unboundQuotaPerUnit), unboundPriceData.QuotaToPreConsume)
 	assert.Nil(t, unboundInfo.DynamicPricingSnapshot.Selected)
 	require.NoError(t, BindSelectedChannel(unboundInfo, 6))
 	assert.Equal(t, 6, unboundInfo.DynamicPricingSnapshot.Selected.ChannelModelId)
+	assert.Equal(t, 4*int(unboundQuotaPerUnit), unboundInfo.PriceData.Quota)
 }
 
 func TestPrepareRelayPricingUsesRequestHeadersForConditionalPrices(t *testing.T) {

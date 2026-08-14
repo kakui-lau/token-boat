@@ -262,10 +262,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		if err := pricingruntime.BindSelectedChannel(info, info.ChannelId); err != nil {
 			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 		}
+		selectedQuota := info.PriceData.Quota
 		frozenRatios := info.PriceData.OtherRatios()
 		info.PriceData = hosttypes.PriceData{
 			GroupRatioInfo:    helper.HandleGroupRatio(c, info),
-			Quota:             info.DynamicPricingSnapshot.ReservationQuota,
+			Quota:             selectedQuota,
 			QuotaToPreConsume: info.DynamicPricingSnapshot.ReservationQuota,
 		}
 		for name, ratio := range frozenRatios {
@@ -363,7 +364,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	firstPreConsume := info.Billing == nil
 	if firstPreConsume && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
-		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
+		quotaToPreConsume := info.PriceData.Quota
+		if usesV2Pricing {
+			quotaToPreConsume = info.PriceData.QuotaToPreConsume
+		}
+		if apiErr := service.PreConsumeBilling(c, quotaToPreConsume, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
 		}
 	}

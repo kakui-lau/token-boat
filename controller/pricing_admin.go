@@ -455,8 +455,8 @@ func AdminExportChannelPricing(c *gin.Context) {
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
 		"模型名称", "上游渠道", "上游模型", "官方价格", "官方价版本",
-		"采购价版本", "采购定价方式", "采购折扣", "销售价格", "销售价版本",
-		"销售价折扣（相对官方价）", "币种",
+		"采购价版本", "采购定价方式", "采购折扣", "销售价折扣（相对官方价）",
+		"销售价格", "销售价版本", "币种",
 		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
 	})
 	for _, row := range rows {
@@ -495,15 +495,15 @@ func AdminExportChannelPricing(c *gin.Context) {
 				row.PurchaseDiscount,
 				row.PurchaseQuoteSpec,
 			),
-			retailSummary,
-			formatPriceVersionForCSV(
-				row.RetailPriceVersionId,
-				row.RetailPriceVersion,
-			),
 			formatRetailOfficialDiscountForCSV(
 				row.PurchasePricingMode,
 				row.OfficialPriceComponents,
 				row.RetailPriceComponents,
+			),
+			retailSummary,
+			formatPriceVersionForCSV(
+				row.RetailPriceVersionId,
+				row.RetailPriceVersion,
 			),
 			currency,
 			formatPricingRatePercentage(row.TotalVariableCostRate.String),

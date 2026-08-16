@@ -419,8 +419,8 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 	require.Len(t, records, 2)
 	assert.Equal(t, []string{
 		"\ufeff模型名称", "上游渠道", "上游模型", "官方价格", "官方价版本",
-		"采购价版本", "采购定价方式", "采购折扣", "销售价格", "销售价版本",
-		"销售价折扣（相对官方价）", "币种",
+		"采购价版本", "采购定价方式", "采购折扣", "销售价折扣（相对官方价）",
+		"销售价格", "销售价版本", "币种",
 		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
 	}, records[0])
 	assert.Equal(t, "'+gpt-enterprise", records[1][0])
@@ -431,9 +431,9 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 	assert.Equal(t, "v1 (#145)", records[1][5])
 	assert.Equal(t, "官方价统一折扣", records[1][6])
 	assert.Equal(t, "6折（官方价的60%）", records[1][7])
-	assert.Equal(t, "输入 / 1M Token: 2 USD；输出 / 1M Token: 12 USD；缓存读取 / 1M Token: 0.2 USD", records[1][8])
-	assert.Equal(t, "v1 (#146)", records[1][9])
-	assert.Equal(t, "8折（80%）", records[1][10])
+	assert.Equal(t, "8折（80%）", records[1][8])
+	assert.Equal(t, "输入 / 1M Token: 2 USD；输出 / 1M Token: 12 USD；缓存读取 / 1M Token: 0.2 USD", records[1][9])
+	assert.Equal(t, "v1 (#146)", records[1][10])
 	assert.Equal(t, "USD", records[1][11])
 	assert.Equal(t, "11%", records[1][12])
 	assert.Equal(t, "16.5%", records[1][13])

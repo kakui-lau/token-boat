@@ -205,6 +205,19 @@ describe('channel model retail publication status', () => {
     expect(
       within(unpublishedRow).getByText('Removed from channel')
     ).toBeVisible()
+    expect(
+      within(unpublishedRow).getByText('unpublished-provider-model')
+    ).toBeVisible()
+
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent?.trim())
+    expect(headers.slice(1, 5)).toEqual([
+      'Model',
+      'Provider Model',
+      'Status',
+      'Routing',
+    ])
 
     fireEvent.change(screen.getByLabelText('Retail Status'), {
       target: { value: 'published' },
@@ -213,6 +226,21 @@ describe('channel model retail publication status', () => {
     await waitFor(() => {
       expect(getChannelModels).toHaveBeenLastCalledWith(
         expect.objectContaining({ retail_status: 'published' })
+      )
+    })
+  })
+
+  test('filters channel models by routing availability', async () => {
+    renderPricingAdmin()
+
+    await screen.findByText('published-model')
+    fireEvent.change(screen.getByLabelText('Routing'), {
+      target: { value: 'removed' },
+    })
+
+    await waitFor(() => {
+      expect(getChannelModels).toHaveBeenLastCalledWith(
+        expect.objectContaining({ routing_status: 'removed' })
       )
     })
   })
@@ -279,6 +307,9 @@ describe('channel model retail publication status', () => {
     fireEvent.change(screen.getByLabelText('Retail Status'), {
       target: { value: 'published' },
     })
+    fireEvent.change(screen.getByLabelText('Routing'), {
+      target: { value: 'available' },
+    })
 
     fireEvent.click(exportButton)
 
@@ -289,6 +320,7 @@ describe('channel model retail publication status', () => {
         status: 1,
         runtime_mode: 'v2',
         retail_status: 'published',
+        routing_status: 'available',
       })
     )
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))

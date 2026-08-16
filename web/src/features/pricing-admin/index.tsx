@@ -91,6 +91,7 @@ export function PricingAdmin() {
   const [page, setPage] = useState(1)
   const [channelId, setChannelId] = useState('')
   const [status, setStatus] = useState('')
+  const [routingStatus, setRoutingStatus] = useState('')
   const [runtimeMode, setRuntimeMode] = useState('')
   const [retailStatus, setRetailStatus] = useState('')
   const [selectedChannelModel, setSelectedChannelModel] =
@@ -113,6 +114,7 @@ export function PricingAdmin() {
       deferredKeyword,
       channelId,
       status,
+      routingStatus,
       runtimeMode,
       retailStatus,
       page,
@@ -122,6 +124,10 @@ export function PricingAdmin() {
         keyword: deferredKeyword.trim() || undefined,
         channel_id: channelId ? Number(channelId) : undefined,
         status: status ? Number(status) : undefined,
+        routing_status:
+          routingStatus === 'available' || routingStatus === 'removed'
+            ? routingStatus
+            : undefined,
         runtime_mode:
           runtimeMode === 'legacy' || runtimeMode === 'v2'
             ? runtimeMode
@@ -174,6 +180,10 @@ export function PricingAdmin() {
         keyword: deferredKeyword.trim() || undefined,
         channel_id: channelId ? Number(channelId) : undefined,
         status: status ? Number(status) : undefined,
+        routing_status:
+          routingStatus === 'available' || routingStatus === 'removed'
+            ? routingStatus
+            : undefined,
         runtime_mode:
           runtimeMode === 'legacy' || runtimeMode === 'v2'
             ? runtimeMode
@@ -307,6 +317,28 @@ export function PricingAdmin() {
               </NativeSelect>
             </Field>
             <Field className='w-auto'>
+              <FieldLabel htmlFor='pricing-admin-routing'>
+                {t('Routing')}
+              </FieldLabel>
+              <NativeSelect
+                id='pricing-admin-routing'
+                className='w-44'
+                value={routingStatus}
+                onChange={(event) => {
+                  setRoutingStatus(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
+                <NativeSelectOption value='available'>
+                  {t('Available')}
+                </NativeSelectOption>
+                <NativeSelectOption value='removed'>
+                  {t('Removed from channel')}
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <Field className='w-auto'>
               <FieldLabel htmlFor='pricing-admin-runtime'>
                 {t('Runtime')}
               </FieldLabel>
@@ -376,6 +408,14 @@ export function PricingAdmin() {
                     <TableCell className='font-medium'>
                       {row.model_name}
                     </TableCell>
+                    <TableCell>{row.upstream_model_name}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={row.status === 1 ? 'default' : 'secondary'}
+                      >
+                        {row.status === 1 ? t('Enabled') : t('Disabled')}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant={
@@ -385,14 +425,6 @@ export function PricingAdmin() {
                         {row.routing_enabled
                           ? t('Available')
                           : t('Removed from channel')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{row.upstream_model_name}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={row.status === 1 ? 'default' : 'secondary'}
-                      >
-                        {row.status === 1 ? t('Enabled') : t('Disabled')}
                       </Badge>
                     </TableCell>
                     <TableCell>{row.priority}</TableCell>

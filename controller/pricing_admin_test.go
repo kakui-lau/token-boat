@@ -335,6 +335,14 @@ func TestAdminListChannelModelsReturnsAndFiltersActiveRetailPriceStatus(t *testi
 	unpublishedRows := list("/api/pricing-admin/channel-models?retail_status=unpublished")
 	require.Len(t, unpublishedRows, 1)
 	assert.Equal(t, 95, unpublishedRows[0].Id)
+
+	availableRows := list("/api/pricing-admin/channel-models?routing_status=available")
+	require.Len(t, availableRows, 1)
+	assert.Equal(t, 94, availableRows[0].Id)
+
+	removedRows := list("/api/pricing-admin/channel-models?routing_status=removed")
+	require.Len(t, removedRows, 1)
+	assert.Equal(t, 95, removedRows[0].Id)
 }
 
 func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {

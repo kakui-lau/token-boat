@@ -552,6 +552,22 @@ func channelModelAdminQuery(c *gin.Context) (*gorm.DB, error) {
 		}
 		query = query.Where("channel_models.status = ?", statusValue)
 	}
+	if routingStatus := strings.TrimSpace(c.Query("routing_status")); routingStatus != "" {
+		routingAbilityExists := `EXISTS (
+			SELECT 1 FROM abilities
+			WHERE abilities.channel_id = channel_models.channel_id
+			AND abilities.model = models.model_name
+			AND abilities.enabled = ?
+		)`
+		switch routingStatus {
+		case "available":
+			query = query.Where(routingAbilityExists, true)
+		case "removed":
+			query = query.Where("NOT "+routingAbilityExists, true)
+		default:
+			return nil, errors.New("routing_status 无效")
+		}
+	}
 	if runtimeMode := strings.TrimSpace(c.Query("runtime_mode")); runtimeMode != "" {
 		if runtimeMode != "legacy" && runtimeMode != "v2" {
 			return nil, errors.New("runtime_mode 无效")

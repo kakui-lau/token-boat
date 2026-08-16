@@ -103,6 +103,7 @@ export async function getChannelModels(params: {
   keyword?: string
   channel_id?: number
   status?: number
+  routing_status?: 'available' | 'removed'
   runtime_mode?: 'legacy' | 'v2'
   retail_status?: 'published' | 'unpublished'
   page?: number
@@ -118,6 +119,7 @@ export async function exportChannelModelPrices(params: {
   keyword?: string
   channel_id?: number
   status?: number
+  routing_status?: 'available' | 'removed'
   runtime_mode?: 'legacy' | 'v2'
   retail_status?: 'published' | 'unpublished'
 }): Promise<Blob> {

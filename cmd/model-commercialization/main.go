@@ -83,11 +83,17 @@ func main() {
 	zAIDiscount := flags.String("z-ai-discount", "", "Z-AI purchase discount")
 	anthropicDiscount := flags.String("anthropic-discount", "", "Anthropic purchase discount")
 	moonshotDiscount := flags.String("moonshotai-discount", "", "Moonshot purchase discount")
+	deepSeekDiscount := flags.String("deepseek-discount", "", "DeepSeek purchase discount")
 	variableCostRate := flags.String("variable-cost-rate", "", "retail variable cost rate")
 	taxRate := flags.String("tax-rate", "", "retail effective tax rate")
 	targetMargin := flags.String("target-margin", "", "retail target and minimum margin")
 	upscaleDiscount := flags.String("upscale-discount", "", "purchase discount for models ending in -upscale")
 	standardDiscount := flags.String("standard-discount", "", "purchase discount for other models")
+	sourceChannelID := flags.Int("source-channel-id", 0, "source channel ID to clone for staging")
+	logicalModel := flags.String("logical-model", "", "logical model name")
+	channelName := flags.String("channel-name", "", "new isolated staging channel name")
+	channelModelID := flags.Int("channel-model-id", 0, "channel model ID")
+	production := flags.Bool("production", false, "confirm a production price-chain replacement")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		exitWithError(err)
 	}
@@ -95,12 +101,19 @@ func main() {
 		if !*yes {
 			exitWithError(errors.New("price-channel requires --yes"))
 		}
+		discounts := map[string]string{
+			"openai": *openAIDiscount, "google": *googleDiscount, "z-ai": *zAIDiscount,
+			"anthropic": *anthropicDiscount, "moonshotai": *moonshotDiscount,
+			"deepseek": *deepSeekDiscount,
+		}
+		for family, discount := range discounts {
+			if strings.TrimSpace(discount) == "" {
+				delete(discounts, family)
+			}
+		}
 		params := channelPricingParams{
 			ChannelID: *channelID, StagingGroup: strings.TrimSpace(*stagingGroup),
-			Discounts: map[string]string{
-				"openai": *openAIDiscount, "google": *googleDiscount, "z-ai": *zAIDiscount,
-				"anthropic": *anthropicDiscount, "moonshotai": *moonshotDiscount,
-			},
+			Discounts:        discounts,
 			VariableCostRate: *variableCostRate, TaxRate: *taxRate, TargetMargin: *targetMargin,
 		}
 		if err := validateChannelPricingParams(params); err != nil {
@@ -110,6 +123,44 @@ func main() {
 			exitWithError(err)
 		}
 		exitWithError(priceChannel(params))
+		return
+	}
+	if command == "clone-channel-model" {
+		if !*yes {
+			exitWithError(errors.New("clone-channel-model requires --yes"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(cloneChannelModelForStaging(
+			*sourceChannelID,
+			strings.TrimSpace(*logicalModel),
+			strings.TrimSpace(*channelName),
+			strings.TrimSpace(*stagingGroup),
+		))
+		return
+	}
+	if command == "publish-official-expression" {
+		if !*yes {
+			exitWithError(errors.New("publish-official-expression requires --yes"))
+		}
+		if strings.TrimSpace(*configPath) == "" {
+			exitWithError(errors.New("--config is required"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(publishOfficialExpression(*configPath))
+		return
+	}
+	if command == "reprice-active-channel-model" {
+		if !*yes || !*production {
+			exitWithError(errors.New("reprice-active-channel-model requires --yes and --production"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(repriceActiveChannelModel(*channelModelID))
 		return
 	}
 	if command == "price-video-channel" {

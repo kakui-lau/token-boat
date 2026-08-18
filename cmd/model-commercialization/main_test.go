@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func validConfig() config {
@@ -115,4 +120,47 @@ func TestValidateChannelPricingParamsRejectsInvalidRates(t *testing.T) {
 		VariableCostRate: "0.11", TaxRate: "1.1", TargetMargin: "0.03",
 	}
 	require.ErrorContains(t, validateChannelPricingParams(params), "tax-rate")
+}
+
+func TestDeepSeekOfficialExpressionsMatchPeakAndOffPeakBoundaries(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		peakInput    float64
+		offPeakInput float64
+	}{
+		{name: "flash", path: "../../configs/pricing/deepseek-v4-flash-20260817.yaml", peakInput: 0.44, offPeakInput: 0.22},
+		{name: "pro", path: "../../configs/pricing/deepseek-v4-pro-20260817.yaml", peakInput: 1.32, offPeakInput: 0.66},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := os.ReadFile(test.path)
+			require.NoError(t, err)
+			var cfg officialExpressionConfig
+			decoder := yaml.NewDecoder(bytes.NewReader(data))
+			decoder.KnownFields(true)
+			require.NoError(t, decoder.Decode(&cfg))
+
+			for _, hour := range []int{0, 4, 5, 10, 23} {
+				cost, trace, runErr := billingexpr.RunExprWithRequest(
+					cfg.BillingExpr,
+					billingexpr.TokenParams{P: 1_000_000},
+					billingexpr.RequestInput{EvaluatedAtUnix: time.Date(2026, 8, 17, hour, 0, 0, 0, time.UTC).Unix()},
+				)
+				require.NoError(t, runErr)
+				assert.InDelta(t, test.offPeakInput, cost, 1e-12, "hour=%d", hour)
+				assert.Equal(t, "off_peak", trace.MatchedTier, "hour=%d", hour)
+			}
+			for _, hour := range []int{1, 3, 6, 9} {
+				cost, trace, runErr := billingexpr.RunExprWithRequest(
+					cfg.BillingExpr,
+					billingexpr.TokenParams{P: 1_000_000},
+					billingexpr.RequestInput{EvaluatedAtUnix: time.Date(2026, 8, 17, hour, 0, 0, 0, time.UTC).Unix()},
+				)
+				require.NoError(t, runErr)
+				assert.InDelta(t, test.peakInput, cost, 1e-12, "hour=%d", hour)
+				assert.Equal(t, "peak", trace.MatchedTier, "hour=%d", hour)
+			}
+		})
+	}
 }

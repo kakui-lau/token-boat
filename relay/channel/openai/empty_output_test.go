@@ -67,6 +67,9 @@ func TestOaiStreamHandlerRejectsReasoningOnlyCompletion(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, relayErr.StatusCode)
 	assert.Equal(t, types.ErrorCodeBadResponse, relayErr.GetErrorCode())
 	assert.Nil(t, usage)
+	assert.Contains(t, recorder.Body.String(), "event: error")
+	assert.Contains(t, recorder.Body.String(), `"code":"bad_response"`)
+	assert.Contains(t, recorder.Body.String(), "upstream returned no visible assistant content or tool calls")
 	assert.NotContains(t, recorder.Body.String(), `data: [DONE]`)
 }
 

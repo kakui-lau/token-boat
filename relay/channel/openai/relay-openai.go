@@ -174,11 +174,26 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	if !isAudioModel && strings.TrimSpace(visibleTextBuilder.String()) == "" && toolCount == 0 {
-		return nil, types.NewOpenAIError(
+		emptyOutputErr := types.NewOpenAIError(
 			fmt.Errorf("upstream returned no visible assistant content or tool calls"),
 			types.ErrorCodeBadResponse,
 			http.StatusBadGateway,
 		)
+		errorData, marshalErr := common.Marshal(gin.H{
+			"error": gin.H{
+				"code":    emptyOutputErr.GetErrorCode(),
+				"message": emptyOutputErr.Error(),
+			},
+		})
+		if marshalErr != nil {
+			logger.LogError(c, "failed to marshal empty stream output error: "+marshalErr.Error())
+		} else {
+			c.Render(-1, common.CustomEvent{Data: "event: error\n"})
+			if sendErr := helper.StringData(c, string(errorData)); sendErr != nil {
+				logger.LogError(c, "failed to send empty stream output error: "+sendErr.Error())
+			}
+		}
+		return nil, emptyOutputErr
 	}
 
 	if info.RelayFormat == types.RelayFormatOpenAI {

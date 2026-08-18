@@ -448,7 +448,7 @@ func TestSelectModelProbeTargetsUsesOneTextChannelPerModelAndSkipsMedia(t *testi
 			Id:     2,
 			Type:   constant.ChannelTypeOpenAI,
 			Status: common.ChannelStatusEnabled,
-			Models: "gpt-4o-mini,claude-compatible",
+			Models: "gpt-4o-mini,claude-compatible,google/gemini-3-pro-image-preview,google/gemini-3.1-flash-image-preview",
 		},
 		{
 			Id:     3,
@@ -464,7 +464,7 @@ func TestSelectModelProbeTargetsUsesOneTextChannelPerModelAndSkipsMedia(t *testi
 	assert.Equal(t, "gpt-4o-mini", targets[0].modelName)
 	assert.Equal(t, 1, targets[0].channel.Id)
 	assert.Equal(t, "claude-compatible", targets[1].modelName)
-	assert.Equal(t, 2, skipped)
+	assert.Equal(t, 4, skipped)
 }
 
 func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {

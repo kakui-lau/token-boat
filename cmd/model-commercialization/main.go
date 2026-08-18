@@ -91,6 +91,8 @@ func main() {
 	standardDiscount := flags.String("standard-discount", "", "purchase discount for other models")
 	sourceChannelID := flags.Int("source-channel-id", 0, "source channel ID to clone for staging")
 	logicalModel := flags.String("logical-model", "", "logical model name")
+	upstreamModel := flags.String("upstream-model", "", "provider model name")
+	purchaseDiscount := flags.String("purchase-discount", "", "confirmed procurement discount")
 	channelName := flags.String("channel-name", "", "new isolated staging channel name")
 	channelModelID := flags.Int("channel-model-id", 0, "channel model ID")
 	production := flags.Bool("production", false, "confirm a production price-chain replacement")
@@ -161,6 +163,24 @@ func main() {
 			exitWithError(err)
 		}
 		exitWithError(repriceActiveChannelModel(*channelModelID))
+		return
+	}
+	if command == "attach-production-channel-model" {
+		if !*yes || !*production {
+			exitWithError(errors.New("attach-production-channel-model requires --yes and --production"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(attachProductionChannelModel(
+			*channelID,
+			strings.TrimSpace(*logicalModel),
+			strings.TrimSpace(*upstreamModel),
+			strings.TrimSpace(*purchaseDiscount),
+			strings.TrimSpace(*variableCostRate),
+			strings.TrimSpace(*taxRate),
+			strings.TrimSpace(*targetMargin),
+		))
 		return
 	}
 	if command == "price-video-channel" {

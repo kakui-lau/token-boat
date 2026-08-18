@@ -208,3 +208,122 @@ func repriceActiveChannelModel(channelModelID int) error {
 	)
 	return nil
 }
+
+func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, purchaseDiscount, variableCostRate, taxRate, targetMargin string) error {
+	if channelID <= 0 || logicalModel == "" || upstreamModel == "" {
+		return errors.New("channel-id, logical-model, and upstream-model are required")
+	}
+	for _, rate := range []struct {
+		name     string
+		value    string
+		positive bool
+	}{
+		{name: "purchase-discount", value: purchaseDiscount, positive: true},
+		{name: "variable-cost-rate", value: variableCostRate},
+		{name: "tax-rate", value: taxRate},
+		{name: "target-margin", value: targetMargin, positive: true},
+	} {
+		if err := validateUnitRate(rate.name, rate.value, rate.positive); err != nil {
+			return err
+		}
+	}
+
+	var channel model.Channel
+	if err := model.DB.First(&channel, channelID).Error; err != nil {
+		return err
+	}
+	if channel.Status != common.ChannelStatusEnabled || !csvContains(channel.Models, logicalModel) {
+		return errors.New("production channel must already be enabled for the logical model")
+	}
+	mapping := map[string]string{}
+	if channel.ModelMapping == nil || strings.TrimSpace(*channel.ModelMapping) == "" {
+		return errors.New("production channel has no model mapping")
+	}
+	if err := common.UnmarshalJsonStr(*channel.ModelMapping, &mapping); err != nil {
+		return err
+	}
+	if mapping[logicalModel] != upstreamModel {
+		return fmt.Errorf("production mapping for %s is %q, not %q", logicalModel, mapping[logicalModel], upstreamModel)
+	}
+
+	var logical model.Model
+	if err := model.DB.Where("model_name = ? AND status = ?", logicalModel, 1).First(&logical).Error; err != nil {
+		return err
+	}
+	var abilityCount int64
+	if err := model.DB.Model(&model.Ability{}).
+		Where("channel_id = ? AND model = ? AND enabled = ?", channelID, logicalModel, true).
+		Count(&abilityCount).Error; err != nil {
+		return err
+	}
+	if abilityCount == 0 {
+		return errors.New("production channel has no enabled ability for the logical model")
+	}
+
+	var pointer model.ModelOfficialPrice
+	if err := model.DB.First(&pointer, "model_id = ?", logical.Id).Error; err != nil {
+		return err
+	}
+	var official model.OfficialModelPriceVersion
+	if err := model.DB.First(&official, pointer.CurrentRevisionId).Error; err != nil {
+		return err
+	}
+	if official.Status != model.PricingVersionStatusActive || official.Source != "vendor-official" ||
+		!strings.Contains(official.Remark, "https://") || official.ExpressionSchemaVersion != "v2" {
+		return errors.New("current official price is not an active authoritative V2 vendor price")
+	}
+
+	var channelModel model.ChannelModel
+	err := model.DB.Where("channel_id = ? AND model_id = ?", channelID, logical.Id).First(&channelModel).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		channelModel = model.ChannelModel{
+			ChannelId: channelID, ModelId: logical.Id, UpstreamModelName: upstreamModel,
+			Status: 1, Priority: int64Value(channel.Priority), Weight: uint(channel.GetWeight()),
+			RuntimeMode: pricingruntime.RuntimeModeLegacy,
+		}
+		if err := model.DB.Create(&channelModel).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else if channelModel.UpstreamModelName != upstreamModel {
+		return fmt.Errorf("channel model %d uses immutable upstream %q", channelModel.Id, channelModel.UpstreamModelName)
+	}
+	if _, err := pricingadmin.GetActivePriceBundle(channelModel.Id); err == nil {
+		return fmt.Errorf("channel model %d already has an active price bundle", channelModel.Id)
+	}
+
+	officialID := official.Id
+	purchase, err := pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{
+		ChannelModelId: channelModel.Id, OfficialPriceVersionId: &officialID,
+		PricingMode: "official_ratio", Currency: official.Currency,
+		PurchaseDiscount: purchaseDiscount,
+		QuoteReference:   fmt.Sprintf("channel %d %s of official", channelID, purchaseDiscount),
+		Remark:           "Confirmed production procurement price",
+	}, 1)
+	if err != nil {
+		return err
+	}
+	retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
+		ChannelModelId: channelModel.Id, PurchasePriceVersionId: purchase.Id,
+		TotalVariableCostRate: variableCostRate, EffectiveTaxRate: taxRate,
+		TargetNetMargin: targetMargin, MinimumMarginRate: targetMargin,
+		Remark: "Production retail price from confirmed procurement rate",
+	}, 1)
+	if err != nil {
+		return err
+	}
+	if err := pricingadmin.PublishRetailPriceVersion(retail.Id); err != nil {
+		return err
+	}
+	if _, err := pricingruntime.SetModelRuntimeMode(logicalModel, pricingruntime.RuntimeModeV2); err != nil {
+		return err
+	}
+	pricingruntime.InvalidateCatalog()
+	model.InitChannelCache()
+	fmt.Printf(
+		"attached production channel_id=%d model=%q channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s\n",
+		channelID, logicalModel, channelModel.Id, official.Id, purchase.Id, retail.Id, purchaseDiscount,
+	)
+	return nil
+}

@@ -40,6 +40,27 @@ func TestResolveChannelTestGroupUsesChannelPricingGroup(t *testing.T) {
 	}
 }
 
+func TestBuildChannelTestRequestAllowsReasoningBeforeVisibleOutput(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+	}{
+		{name: "DeepSeek V4", model: "deepseek/deepseek-v4-pro"},
+		{name: "GLM 5", model: "z-ai/glm-5.2"},
+		{name: "ordinary chat", model: "openai/gpt-4.1"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request, ok := buildTestRequest(test.model, "", &model.Channel{}, false).(*dto.GeneralOpenAIRequest)
+			require.True(t, ok)
+			require.NotNil(t, request.MaxTokens)
+			assert.Equal(t, uint(512), *request.MaxTokens)
+			assert.Equal(t, "Reply with exactly: OK", request.Messages[0].Content)
+		})
+	}
+}
+
 func TestValidateChannelProxy(t *testing.T) {
 	tests := []struct {
 		name    string

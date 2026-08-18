@@ -817,7 +817,9 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
-	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
+	const channelTestMaxTokens = uint(512)
+	testPrompt := "Reply with exactly: OK"
+	testResponsesInput := json.RawMessage(`[{"role":"user","content":"Reply with exactly: OK"}]`)
 
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
@@ -859,7 +861,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			}
 		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI:
 			// 返回 GeneralOpenAIRequest
-			maxTokens := uint(16)
+			maxTokens := channelTestMaxTokens
 			if constant.EndpointType(endpointType) == constant.EndpointTypeGemini {
 				maxTokens = 3000
 			}
@@ -869,7 +871,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Messages: []dto.Message{
 					{
 						Role:    "user",
-						Content: "hi",
+						Content: testPrompt,
 					},
 				},
 				MaxTokens: lo.ToPtr(maxTokens),
@@ -923,7 +925,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	if strings.Contains(strings.ToLower(model), "codex") {
 		return &dto.OpenAIResponsesRequest{
 			Model:  model,
-			Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
+			Input:  testResponsesInput,
 			Stream: lo.ToPtr(isStream),
 		}
 	}
@@ -935,7 +937,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		Messages: []dto.Message{
 			{
 				Role:    "user",
-				Content: "hi",
+				Content: testPrompt,
 			},
 		},
 	}
@@ -944,15 +946,15 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	if dto.IsOpenAIReasoningOModel(model) {
-		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
+		testRequest.MaxCompletionTokens = lo.ToPtr(channelTestMaxTokens)
 	} else if strings.Contains(model, "thinking") {
 		if !strings.Contains(model, "claude") {
-			testRequest.MaxTokens = lo.ToPtr(uint(50))
+			testRequest.MaxTokens = lo.ToPtr(channelTestMaxTokens)
 		}
 	} else if strings.Contains(model, "gemini") {
 		testRequest.MaxTokens = lo.ToPtr(uint(3000))
 	} else {
-		testRequest.MaxTokens = lo.ToPtr(uint(16))
+		testRequest.MaxTokens = lo.ToPtr(channelTestMaxTokens)
 	}
 
 	return testRequest

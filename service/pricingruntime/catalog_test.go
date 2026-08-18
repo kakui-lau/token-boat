@@ -1582,6 +1582,30 @@ func TestApplyV2RetailPricingPublishesOfficialAndLowestPriceSummaries(t *testing
 	assert.Equal(t, "2.4", result[0].RetailPricesByGroup["vip"].Items[0].Amount)
 }
 
+func TestBuildPublicPriceSummaryPublishesTimeBasedTokenTiers(t *testing.T) {
+	summary := buildPublicPriceSummary(
+		"token",
+		"expression",
+		"USD",
+		`{"price_unit":"per_1m_tokens","timezone":"UTC","tiers":[`+
+			`{"name":"peak","input_unit_price":"0.44","output_unit_price":"1.32","cache_read_unit_price":"0.014"},`+
+			`{"name":"off_peak","input_unit_price":"0.22","output_unit_price":"0.66","cache_read_unit_price":"0.007"}`+
+			`]}`,
+		decimal.NewFromInt(1),
+	)
+
+	require.NotNil(t, summary)
+	require.Len(t, summary.Items, 6)
+	assert.Equal(t, "peak", summary.Items[0].Tier)
+	assert.Equal(t, "0.44", summary.Items[0].Amount)
+	assert.Equal(t, "1.32", summary.Items[1].Amount)
+	assert.Equal(t, "0.014", summary.Items[2].Amount)
+	assert.Equal(t, "off_peak", summary.Items[3].Tier)
+	assert.Equal(t, "0.22", summary.Items[3].Amount)
+	assert.Equal(t, "0.66", summary.Items[4].Amount)
+	assert.Equal(t, "0.007", summary.Items[5].Amount)
+}
+
 func TestApplyV2RetailPricingPreservesGroupsWithEqualEffectiveRatio(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 14, RuntimeModeV2)

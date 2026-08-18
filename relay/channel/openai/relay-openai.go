@@ -115,6 +115,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var systemFingerprint string
 	var containStreamUsage bool
 	var responseTextBuilder strings.Builder
+	var visibleTextBuilder strings.Builder
 	var toolCount int
 	var usage = &dto.Usage{}
 	var lastStreamData string
@@ -140,7 +141,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 			lastStreamData = data
 			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
-			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
+			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &visibleTextBuilder, &toolCount); err != nil {
 				logger.LogError(c, "error processing stream token data: "+err.Error())
 				sr.Error(err)
 			}
@@ -170,6 +171,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
+	}
+
+	if !isAudioModel && strings.TrimSpace(visibleTextBuilder.String()) == "" && toolCount == 0 {
+		return nil, types.NewOpenAIError(
+			fmt.Errorf("upstream returned no visible assistant content or tool calls"),
+			types.ErrorCodeBadResponse,
+			http.StatusBadGateway,
+		)
 	}
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
@@ -251,6 +260,22 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+	if !strings.Contains(strings.ToLower(info.UpstreamModelName), "audio") {
+		hasVisibleOutput := false
+		for _, choice := range simpleResponse.Choices {
+			if strings.TrimSpace(choice.Message.StringContent()) != "" || len(choice.Message.ParseToolCalls()) > 0 {
+				hasVisibleOutput = true
+				break
+			}
+		}
+		if !hasVisibleOutput {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("upstream returned no visible assistant content or tool calls"),
+				types.ErrorCodeBadResponse,
+				http.StatusBadGateway,
+			)
+		}
 	}
 
 	for _, choice := range simpleResponse.Choices {

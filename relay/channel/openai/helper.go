@@ -90,9 +90,31 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	return nil
 }
 
-func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, responseTextBuilder *strings.Builder, toolCount *int) error {
+func ProcessStreamResponse(
+	streamResponse dto.ChatCompletionsStreamResponse,
+	responseTextBuilder *strings.Builder,
+	toolCount *int,
+) error {
+	return processStreamResponseWithVisible(
+		streamResponse,
+		responseTextBuilder,
+		nil,
+		toolCount,
+	)
+}
+
+func processStreamResponseWithVisible(
+	streamResponse dto.ChatCompletionsStreamResponse,
+	responseTextBuilder *strings.Builder,
+	visibleTextBuilder *strings.Builder,
+	toolCount *int,
+) error {
 	for _, choice := range streamResponse.Choices {
-		responseTextBuilder.WriteString(choice.Delta.GetContentString())
+		content := choice.Delta.GetContentString()
+		responseTextBuilder.WriteString(content)
+		if visibleTextBuilder != nil {
+			visibleTextBuilder.WriteString(content)
+		}
 		responseTextBuilder.WriteString(choice.Delta.GetReasoningContent())
 		if choice.Delta.ToolCalls != nil {
 			if len(choice.Delta.ToolCalls) > *toolCount {
@@ -107,20 +129,27 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
 	return nil
 }
 
-func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
+func processTokenData(
+	relayMode int,
+	data string,
+	responseTextBuilder *strings.Builder,
+	visibleTextBuilder *strings.Builder,
+	toolCount *int,
+) error {
 	switch relayMode {
 	case relayconstant.RelayModeChatCompletions:
 		var streamResponse dto.ChatCompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
 			return err
 		}
-		return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
+		return processStreamResponseWithVisible(streamResponse, responseTextBuilder, visibleTextBuilder, toolCount)
 	case relayconstant.RelayModeCompletions:
 		var streamResponse dto.CompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
 			return err
 		}
 		processCompletionsStreamResponse(streamResponse, responseTextBuilder)
+		processCompletionsStreamResponse(streamResponse, visibleTextBuilder)
 	}
 	return nil
 }

@@ -432,6 +432,7 @@ func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, "tiered", retail.PriceStructure)
 	assert.Contains(t, retail.RetailBillingExpr, "* 1.666666")
+	require.NoError(t, PublishRetailPriceVersion(retail.Id))
 
 	result, err := SimulatePrice(PriceSimulationInput{
 		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,

@@ -520,6 +520,12 @@ func publicTierPriority(item model.PublicPriceItem) string {
 	if strings.EqualFold(item.Tier, "standard") || item.Tier == "" {
 		return "000"
 	}
+	if strings.EqualFold(item.Tier, "peak") {
+		return "100"
+	}
+	if strings.EqualFold(item.Tier, "off_peak") {
+		return "200"
+	}
 	if strings.Contains(strings.ToLower(item.Tier), "long") {
 		return "900"
 	}

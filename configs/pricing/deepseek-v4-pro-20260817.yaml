@@ -3,10 +3,10 @@ billing_mode: token
 price_structure: expression
 currency: USD
 source: vendor-official
-source_version: official-2026-08-17-peak-offpeak
+source_version: official-2026-08-17-peak-offpeak-catalog-v2
 source_updated_at: 1786896000
 price_components: >-
-  {"schema_version":"v2","price_unit":"per_1m_tokens","timezone":"UTC","peak_hours":"01:00-04:00,06:00-10:00","peak_cache_read_unit_price":"0.044","peak_input_unit_price":"1.32","peak_output_unit_price":"3.96","off_peak_cache_read_unit_price":"0.022","off_peak_input_unit_price":"0.66","off_peak_output_unit_price":"1.98"}
+  {"schema_version":"v2","price_unit":"per_1m_tokens","timezone":"UTC","peak_hours":"01:00-04:00,06:00-10:00","tiers":[{"name":"peak","input_unit_price":"1.32","output_unit_price":"3.96","cache_read_unit_price":"0.044"},{"name":"off_peak","input_unit_price":"0.66","output_unit_price":"1.98","cache_read_unit_price":"0.022"}]}
 billing_expr: >-
   v2:(((hour("UTC") >= 1 && hour("UTC") < 4) || (hour("UTC") >= 6 && hour("UTC") < 10)) ? tier("peak", p * 1.32 + c * 3.96 + cr * 0.044) : tier("off_peak", p * 0.66 + c * 1.98 + cr * 0.022)) / 1000000
 remark: >-

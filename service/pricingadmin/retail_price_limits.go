@@ -137,6 +137,9 @@ func validateRetailBelowOfficial(officialRaw string, retailRaw string) error {
 		}
 		return nil
 	}
+	if _, hasTiers := retail["tiers"]; hasTiers {
+		return validateNestedRetailPrices(official, retail, "")
+	}
 
 	foundRetailPrice := false
 	for key, value := range retail {
@@ -161,6 +164,70 @@ func validateRetailBelowOfficial(officialRaw string, retailRaw string) error {
 	}
 	return nil
 }
+
+func validateNestedRetailPrices(officialValue any, retailValue any, path string) error {
+	switch retailTyped := retailValue.(type) {
+	case map[string]any:
+		officialTyped, ok := officialValue.(map[string]any)
+		if !ok {
+			return fmt.Errorf("official price is missing for %s", path)
+		}
+		found := false
+		for key, child := range retailTyped {
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			if key == "unit_price" || strings.HasSuffix(key, "_unit_price") {
+				retailPrice, ok := child.(string)
+				if !ok || strings.TrimSpace(retailPrice) == "" {
+					continue
+				}
+				officialPrice, ok := officialTyped[key].(string)
+				if !ok || strings.TrimSpace(officialPrice) == "" {
+					return fmt.Errorf("official price is missing for %s", childPath)
+				}
+				if err := requireRetailPriceBelowOfficial(childPath, retailPrice, officialPrice); err != nil {
+					return err
+				}
+				found = true
+				continue
+			}
+			if err := validateNestedRetailPrices(officialTyped[key], child, childPath); err != nil {
+				if !errors.Is(err, errNoComparablePrice) {
+					return err
+				}
+			} else {
+				found = true
+			}
+		}
+		if found {
+			return nil
+		}
+	case []any:
+		officialTyped, ok := officialValue.([]any)
+		if !ok || len(officialTyped) < len(retailTyped) {
+			return fmt.Errorf("official price is missing for %s", path)
+		}
+		found := false
+		for index, child := range retailTyped {
+			childPath := fmt.Sprintf("%s[%d]", path, index)
+			if err := validateNestedRetailPrices(officialTyped[index], child, childPath); err != nil {
+				if !errors.Is(err, errNoComparablePrice) {
+					return err
+				}
+			} else {
+				found = true
+			}
+		}
+		if found {
+			return nil
+		}
+	}
+	return errNoComparablePrice
+}
+
+var errNoComparablePrice = errors.New("no comparable unit prices")
 
 func decodeComparableRules(components map[string]any) ([]comparablePriceRule, error) {
 	encoded, err := common.Marshal(components)

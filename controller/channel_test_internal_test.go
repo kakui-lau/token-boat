@@ -21,6 +21,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestResolveChannelTestGroupUsesChannelPricingGroup(t *testing.T) {
+	tests := []struct {
+		name      string
+		channel   *model.Channel
+		userGroup string
+		want      string
+	}{
+		{name: "user group belongs to channel", channel: &model.Channel{Group: "default,internal-model"}, userGroup: "internal-model", want: "internal-model"},
+		{name: "admin group differs from channel", channel: &model.Channel{Group: "default"}, userGroup: "internal-model", want: "default"},
+		{name: "channel group missing", channel: &model.Channel{}, userGroup: "internal-model", want: "internal-model"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, resolveChannelTestGroup(test.channel, test.userGroup))
+		})
+	}
+}
+
 func TestValidateChannelProxy(t *testing.T) {
 	tests := []struct {
 		name    string

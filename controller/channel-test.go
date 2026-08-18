@@ -107,6 +107,22 @@ func findFirstLLMTestModel(channel *model.Channel) string {
 	return ""
 }
 
+func resolveChannelTestGroup(channel *model.Channel, userGroup string) string {
+	if channel == nil {
+		return strings.TrimSpace(userGroup)
+	}
+	groups := channel.GetGroups()
+	for _, group := range groups {
+		if group == userGroup {
+			return group
+		}
+	}
+	if len(groups) > 0 {
+		return groups[0]
+	}
+	return strings.TrimSpace(userGroup)
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -255,6 +271,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Set("base_url", channel.GetBaseURL())
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, resolveChannelTestGroup(channel, group))
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
 	if newAPIError != nil {

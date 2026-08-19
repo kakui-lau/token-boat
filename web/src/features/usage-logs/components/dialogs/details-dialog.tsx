@@ -278,13 +278,17 @@ function BillingBreakdown(props: {
     }
   } else {
     rows.push({ label: t('Billing Mode'), value: t('Per-token') })
-    if (other.model_ratio != null) {
+    if (other.model_ratio != null && baseInputUSD > 0) {
       rows.push({
         label: t('Input'),
         value: `${fmtPrice(baseInputUSD)}/M`,
       })
     }
-    if (other.completion_ratio != null && other.model_ratio != null) {
+    if (
+      other.completion_ratio != null &&
+      other.model_ratio != null &&
+      baseInputUSD > 0
+    ) {
       rows.push({
         label: t('Output'),
         value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
@@ -477,7 +481,7 @@ function BillingBreakdown(props: {
 
   if (isAdmin && other.admin_info) {
     rows.push({
-      label: t('Billing Path'),
+      label: t('Final Charge Source'),
       value: getUsageBillingPathLabel(t, other.admin_info),
     })
   }
@@ -490,7 +494,7 @@ function BillingBreakdown(props: {
   if (rows.length === 0) return null
 
   return (
-    <DetailSection label={t('Billing Details')}>
+    <DetailSection label={t('Platform Billing Calculation')}>
       {rows.map((row) => (
         <DetailRow key={row.label} label={row.label} value={row.value} mono />
       ))}
@@ -555,8 +559,13 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
     })
   }
 
+  const usageSource = isUsageBillingPathLocal(other.admin_info)
+    ? t('Counted by Platform')
+    : t('Reported by Upstream')
+
   return (
-    <DetailSection label={t('Token Breakdown')}>
+    <DetailSection label={t('Usage Data')}>
+      <DetailRow label={t('Data Source')} value={usageSource} />
       {rows.map((row) => (
         <DetailRow key={row.label} label={row.label} value={row.value} mono />
       ))}
@@ -738,7 +747,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         <div className='min-w-0 space-y-1'>
           {props.log.request_id && (
             <DetailRow
-              label={t('Request ID')}
+              label={t('Platform Request ID')}
               value={props.log.request_id}
               mono
             />

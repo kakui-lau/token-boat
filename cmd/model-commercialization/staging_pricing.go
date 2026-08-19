@@ -151,9 +151,14 @@ func publishOfficialExpression(path string) error {
 	return nil
 }
 
-func repriceActiveChannelModel(channelModelID int) error {
+func repriceActiveChannelModel(channelModelID int, purchaseDiscountOverride string) error {
 	if channelModelID <= 0 {
 		return errors.New("channel-model-id is required")
+	}
+	if purchaseDiscountOverride != "" {
+		if err := validateUnitRate("purchase-discount", purchaseDiscountOverride, true); err != nil {
+			return err
+		}
 	}
 	var channelModel model.ChannelModel
 	if err := model.DB.First(&channelModel, channelModelID).Error; err != nil {
@@ -176,13 +181,17 @@ func repriceActiveChannelModel(channelModelID int) error {
 		return errors.New("current official price is not an active authoritative vendor price")
 	}
 	officialID := official.Id
+	purchaseDiscount := current.Purchase.PurchaseDiscount
+	if purchaseDiscountOverride != "" {
+		purchaseDiscount = purchaseDiscountOverride
+	}
 	purchase, err := pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{
 		ChannelModelId: channelModelID, OfficialPriceVersionId: &officialID,
 		PricingMode: current.Purchase.PricingMode, Currency: official.Currency,
-		PurchaseDiscount:  current.Purchase.PurchaseDiscount,
+		PurchaseDiscount:  purchaseDiscount,
 		QuoteReference:    current.Purchase.QuoteReference,
 		ContractReference: current.Purchase.ContractReference,
-		Remark:            "Recreated from current official price after vendor price update",
+		Remark:            "Recreated from current official price or procurement discount",
 	}, 1)
 	if err != nil {
 		return err
@@ -193,7 +202,7 @@ func repriceActiveChannelModel(channelModelID int) error {
 		EffectiveTaxRate:      current.Retail.EffectiveTaxRate,
 		TargetNetMargin:       current.Retail.TargetNetMargin,
 		MinimumMarginRate:     current.Retail.MinimumMarginRate,
-		Remark:                "Recreated from current purchase price after vendor price update",
+		Remark:                "Recreated from current purchase price",
 	}, 1)
 	if err != nil {
 		return err
@@ -207,6 +216,93 @@ func repriceActiveChannelModel(channelModelID int) error {
 		channelModelID, official.Id, purchase.Id, retail.Id, purchase.PurchaseDiscount,
 	)
 	return nil
+}
+
+func consolidateChannelModel(channelModelID, duplicateChannelModelID int) error {
+	if channelModelID <= 0 || duplicateChannelModelID <= 0 || channelModelID == duplicateChannelModelID {
+		return errors.New("distinct channel-model-id and duplicate-channel-model-id are required")
+	}
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		var kept model.ChannelModel
+		if err := tx.First(&kept, channelModelID).Error; err != nil {
+			return err
+		}
+		var duplicate model.ChannelModel
+		if err := tx.First(&duplicate, duplicateChannelModelID).Error; err != nil {
+			return err
+		}
+		if kept.ChannelId != duplicate.ChannelId || kept.ModelId != duplicate.ModelId {
+			return errors.New("channel model records do not represent the same channel and logical model")
+		}
+		if kept.RuntimeMode != pricingruntime.RuntimeModeV2 || duplicate.RuntimeMode != pricingruntime.RuntimeModeLegacy {
+			return errors.New("expected a V2 record and a legacy duplicate")
+		}
+
+		var purchaseCount, retailCount, snapshotCount int64
+		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+			Where("channel_model_id = ?", duplicate.Id).Count(&purchaseCount).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
+			Where("channel_model_id = ?", duplicate.Id).Count(&retailCount).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.RequestPricingSnapshot{}).
+			Where("channel_model_id = ?", duplicate.Id).Count(&snapshotCount).Error; err != nil {
+			return err
+		}
+		if purchaseCount > 0 || retailCount > 0 || snapshotCount > 0 {
+			return fmt.Errorf(
+				"duplicate channel model has references: purchase=%d retail=%d snapshots=%d",
+				purchaseCount, retailCount, snapshotCount,
+			)
+		}
+
+		var activePurchases, activeRetails int64
+		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
+			Where("channel_model_id = ? AND status = ?", kept.Id, model.PricingVersionStatusActive).
+			Count(&activePurchases).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
+			Where("channel_model_id = ? AND status = ?", kept.Id, model.PricingVersionStatusActive).
+			Count(&activeRetails).Error; err != nil {
+			return err
+		}
+		if activePurchases != 1 || activeRetails != 1 {
+			return fmt.Errorf("kept V2 record has incomplete active pricing: purchase=%d retail=%d", activePurchases, activeRetails)
+		}
+
+		var channel model.Channel
+		if err := tx.Select("id", "model_mapping").First(&channel, kept.ChannelId).Error; err != nil {
+			return err
+		}
+		var logical model.Model
+		if err := tx.Select("id", "model_name").First(&logical, kept.ModelId).Error; err != nil {
+			return err
+		}
+		mapping := make(map[string]string)
+		if channel.ModelMapping != nil && strings.TrimSpace(*channel.ModelMapping) != "" {
+			if err := common.UnmarshalJsonStr(*channel.ModelMapping, &mapping); err != nil {
+				return err
+			}
+		}
+		if strings.TrimSpace(mapping[logical.ModelName]) != duplicate.UpstreamModelName {
+			return fmt.Errorf("channel mapping for %q is %q, not duplicate upstream %q", logical.ModelName, mapping[logical.ModelName], duplicate.UpstreamModelName)
+		}
+
+		if err := tx.Delete(&duplicate).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&kept).Update("upstream_model_name", duplicate.UpstreamModelName).Error; err != nil {
+			return err
+		}
+		fmt.Printf(
+			"consolidated channel_id=%d model=%q kept_channel_model_id=%d removed_channel_model_id=%d upstream=%q\n",
+			kept.ChannelId, logical.ModelName, kept.Id, duplicate.Id, duplicate.UpstreamModelName,
+		)
+		return nil
+	})
 }
 
 func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, purchaseDiscount, variableCostRate, taxRate, targetMargin string) error {

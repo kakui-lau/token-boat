@@ -5022,6 +5022,7 @@
     "socks5://user:pass@host:port": "socks5://user:pass@host:port",
     "Soft Errors": "软错误",
     "Some channels failed: {{errorMsg}}": "部分渠道失败：{{errorMsg}}",
+    "Some models were skipped because they are missing from the model catalog: {{models}}": "部分模型因未录入模型目录而被跳过：{{models}}",
     "Something went wrong!": "出现错误！",
     "Sonnet Model": "Sonnet 模型",
     "Sora": "Sora",

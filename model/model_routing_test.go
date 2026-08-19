@@ -14,7 +14,7 @@ func setupModelRoutingTestDB(t *testing.T) {
 	originalDB := DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Model{}))
+	require.NoError(t, db.AutoMigrate(&Model{}, &ChannelModel{}, &Ability{}))
 	DB = db
 	InvalidateModelRoutingCache()
 	t.Cleanup(func() {
@@ -136,6 +136,26 @@ func TestReferencedRoutingTargetCannotBeDisabledChangedOrDeleted(t *testing.T) {
 	err = target.Delete()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "referenced by a system alias")
+}
+
+func TestRoutedModelCannotBeDisabledOrDeleted(t *testing.T) {
+	setupModelRoutingTestDB(t)
+	routed := Model{ModelName: "routed-model", Status: 1, NameRule: NameRuleExact}
+	require.NoError(t, routed.Insert())
+	require.NoError(t, DB.Create(&ChannelModel{
+		ChannelId: 1, ModelId: routed.Id, UpstreamModelName: "provider-model", Status: 1,
+	}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		Group: "default", Model: routed.ModelName, ChannelId: 1, Enabled: true,
+	}).Error)
+
+	err := UpdateModelStatus(routed.Id, 0)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still enabled on a channel")
+
+	err = routed.Delete()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still enabled on a channel")
 }
 
 func TestListModelRoutingTargetsReturnsOnlyEnabledDirectExactModels(t *testing.T) {

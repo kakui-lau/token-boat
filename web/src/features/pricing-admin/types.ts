@@ -62,6 +62,7 @@ export type PricingRuntimeStatus = {
 export type ChannelCircuitStatus = {
   channel_id: number
   channel_name: string
+  model_names: string[]
   state: 'monitoring' | 'open' | 'half_open'
   consecutive_failures: number
   open_until: number
@@ -219,6 +220,7 @@ export type ImportResult = {
   updated?: number
   skipped_existing?: number
   skipped_unknown?: number
+  unknown_model_names?: string[]
   skipped_unpriced?: number
 }
 

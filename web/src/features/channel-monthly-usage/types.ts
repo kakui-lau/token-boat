@@ -47,6 +47,7 @@ export type ChannelMonthlyUsageList = {
 }
 
 export type ChannelMonthlyUsageSummary = {
+  last_calculated_at: number
   billed_request_count: number
   prompt_tokens: number
   cache_read_tokens: number

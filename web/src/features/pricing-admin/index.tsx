@@ -146,11 +146,21 @@ export function PricingAdmin() {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'channel-models'],
       })
-      toast.success(
-        t('Channel models synchronized: {{count}} created', {
-          count: response.data.created,
-        })
-      )
+      const unknownModels = response.data.unknown_model_names ?? []
+      if (unknownModels.length > 0) {
+        toast.warning(
+          t(
+            'Some models were skipped because they are missing from the model catalog: {{models}}',
+            { models: unknownModels.join(', ') }
+          )
+        )
+      } else {
+        toast.success(
+          t('Channel models synchronized: {{count}} created', {
+            count: response.data.created,
+          })
+        )
+      }
       setPendingV2ModelName(null)
     },
     onError: handleServerError,

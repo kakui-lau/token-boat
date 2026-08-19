@@ -95,6 +95,7 @@ func main() {
 	purchaseDiscount := flags.String("purchase-discount", "", "confirmed procurement discount")
 	channelName := flags.String("channel-name", "", "new isolated staging channel name")
 	channelModelID := flags.Int("channel-model-id", 0, "channel model ID")
+	duplicateChannelModelID := flags.Int("duplicate-channel-model-id", 0, "unreferenced duplicate channel model ID")
 	production := flags.Bool("production", false, "confirm a production price-chain replacement")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		exitWithError(err)
@@ -162,7 +163,17 @@ func main() {
 		if err := openDatabase(); err != nil {
 			exitWithError(err)
 		}
-		exitWithError(repriceActiveChannelModel(*channelModelID))
+		exitWithError(repriceActiveChannelModel(*channelModelID, strings.TrimSpace(*purchaseDiscount)))
+		return
+	}
+	if command == "consolidate-channel-model" {
+		if !*yes || !*production {
+			exitWithError(errors.New("consolidate-channel-model requires --yes and --production"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(consolidateChannelModel(*channelModelID, *duplicateChannelModelID))
 		return
 	}
 	if command == "attach-production-channel-model" {
@@ -202,13 +213,27 @@ func main() {
 		return
 	}
 	if command == "inspect-channel" {
-		if *channelID <= 0 {
-			exitWithError(errors.New("channel-id is required"))
+		if *channelID <= 0 && strings.TrimSpace(*channelName) == "" {
+			exitWithError(errors.New("channel-id or channel-name is required"))
 		}
 		if err := openDatabase(); err != nil {
 			exitWithError(err)
 		}
+		if *channelID <= 0 {
+			var channel model.Channel
+			if err := model.DB.Select("id").Where("name = ?", strings.TrimSpace(*channelName)).First(&channel).Error; err != nil {
+				exitWithError(err)
+			}
+			*channelID = channel.Id
+		}
 		exitWithError(inspectChannel(*channelID))
+		return
+	}
+	if command == "audit-deleted-references" {
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(auditDeletedReferences())
 		return
 	}
 	if command == "stage-video-channel" {
@@ -444,6 +469,41 @@ func inspectChannel(channelID int) error {
 	for _, ability := range abilities {
 		fmt.Printf("ability group=%q logical=%q enabled=%t\n", ability.Group, ability.Model, ability.Enabled)
 	}
+	return nil
+}
+
+func auditDeletedReferences() error {
+	var orphanAbilities int64
+	if err := model.DB.Table("abilities").
+		Joins("LEFT JOIN channels ON channels.id = abilities.channel_id").
+		Where("channels.id IS NULL").Count(&orphanAbilities).Error; err != nil {
+		return err
+	}
+	var orphanActiveChannelModels int64
+	if err := model.DB.Table("channel_models").
+		Joins("LEFT JOIN channels ON channels.id = channel_models.channel_id").
+		Where("channels.id IS NULL AND channel_models.status <> ?", 0).
+		Count(&orphanActiveChannelModels).Error; err != nil {
+		return err
+	}
+	var activeDeletedModels int64
+	if err := model.DB.Unscoped().Table("models").
+		Joins("JOIN channel_models ON channel_models.model_id = models.id AND channel_models.status <> 0").
+		Where("models.deleted_at IS NOT NULL").
+		Distinct("models.id").Count(&activeDeletedModels).Error; err != nil {
+		return err
+	}
+	var routedDeletedModels int64
+	if err := model.DB.Unscoped().Table("models").
+		Joins("JOIN abilities ON abilities.model = models.model_name AND abilities.enabled = ?", true).
+		Where("models.deleted_at IS NOT NULL").
+		Distinct("models.id").Count(&routedDeletedModels).Error; err != nil {
+		return err
+	}
+	fmt.Printf(
+		"orphan_abilities=%d orphan_active_channel_models=%d active_deleted_models=%d routed_deleted_models=%d\n",
+		orphanAbilities, orphanActiveChannelModels, activeDeletedModels, routedDeletedModels,
+	)
 	return nil
 }
 

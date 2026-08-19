@@ -781,13 +781,15 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Channel{
-		Id: 121, Name: "circuit-provider",
+		Id: 121, Name: "circuit-provider", Models: "model-a,model-b",
 	}).Error)
 	pricingruntime.RecordChannelFailure(121, 500)
 	pricingruntime.RecordChannelFailure(121, 502)
 	pricingruntime.RecordChannelFailure(121, 503)
+	pricingruntime.RecordChannelFailure(999, 500)
 	t.Cleanup(func() {
-		pricingruntime.ResetChannelCircuit(121)
+		pricingruntime.RemoveChannelCircuit(121)
+		pricingruntime.RemoveChannelCircuit(999)
 	})
 
 	overviewContext, overviewRecorder := newPricingAdminJSONContext(
@@ -808,6 +810,7 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 	require.True(t, overviewResponse.Success)
 	require.Len(t, overviewResponse.Data.Channels, 1)
 	assert.Equal(t, "circuit-provider", overviewResponse.Data.Channels[0].ChannelName)
+	assert.Equal(t, []string{"model-a", "model-b"}, overviewResponse.Data.Channels[0].ModelNames)
 	assert.Equal(t, "open", overviewResponse.Data.Channels[0].State)
 
 	resetContext, resetRecorder := newPricingAdminJSONContext(
@@ -1294,6 +1297,7 @@ func TestAdminListPersistentCircuitEventsFiltersEventType(t *testing.T) {
 	require.NoError(t, model.DB.Create([]model.PricingCircuitEvent{
 		{ChannelId: 77, Event: "opened", StatusCode: 500, OccurredAt: 100},
 		{ChannelId: 77, Event: "recovered", OccurredAt: 200},
+		{ChannelId: 999, Event: "opened", StatusCode: 500, OccurredAt: 300},
 	}).Error)
 	context, recorder := newPricingAdminJSONContext(
 		t,

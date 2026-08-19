@@ -157,6 +157,22 @@ func ResetChannelCircuit(channelId int) bool {
 	return true
 }
 
+// RemoveChannelCircuit drops live circuit state when a channel is deleted.
+// Persistent transition events remain as historical audit records.
+func RemoveChannelCircuit(channelId int) {
+	if channelId <= 0 {
+		return
+	}
+	if circuitRedisEnabled() {
+		if err := removeChannelCircuitRedis(channelId); err != nil {
+			common.SysError("pricing circuit Redis cleanup failed: " + err.Error())
+		}
+	}
+	channelCircuits.Lock()
+	delete(channelCircuits.byChannelId, channelId)
+	channelCircuits.Unlock()
+}
+
 func RecordChannelFailure(channelId int, statusCode int) {
 	if circuitRedisEnabled() {
 		if err := recordChannelFailureRedis(channelId, statusCode, time.Now()); err == nil {

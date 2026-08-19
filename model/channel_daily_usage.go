@@ -87,6 +87,7 @@ type ChannelDailyUsageFilterOptions struct {
 }
 
 type ChannelDailyUsageSummary struct {
+	LastCalculatedAt        int64  `json:"last_calculated_at"`
 	BilledRequestCount      int64  `json:"billed_request_count"`
 	PromptTokens            int64  `json:"prompt_tokens"`
 	CacheReadTokens         int64  `json:"cache_read_tokens"`
@@ -213,6 +214,7 @@ func ListChannelMonthlyUsages(filter ChannelDailyUsageFilter, offset, limit int)
 func SummarizeChannelDailyUsages(filter ChannelDailyUsageFilter) (ChannelDailyUsageSummary, error) {
 	var summary ChannelDailyUsageSummary
 	fields := []string{
+		"COALESCE(MAX(calculated_at),0) AS last_calculated_at",
 		"COALESCE(SUM(billed_request_count),0) AS billed_request_count",
 		"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens",
 		"COALESCE(SUM(cache_read_tokens),0) AS cache_read_tokens",
@@ -281,7 +283,7 @@ func ListChannelMonthlyUsageSummary(filter ChannelDailyUsageFilter, month, group
 	}
 	var rows []ChannelMonthlyUsage
 	err = DB.Table("(?) AS channel_monthly_summary", grouped).
-		Order("channel_id ASC, " + groupColumn + " ASC").
+		Order("total_tokens DESC, channel_id ASC, " + groupColumn + " ASC").
 		Offset(offset).Limit(limit).Scan(&rows).Error
 	return rows, total, err
 }

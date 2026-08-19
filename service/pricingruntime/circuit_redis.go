@@ -143,6 +143,14 @@ return 1
 	return true, nil
 }
 
+func removeChannelCircuitRedis(channelId int) error {
+	pipe := common.RDB.TxPipeline()
+	pipe.Del(context.Background(), circuitRedisChannelKey(channelId))
+	pipe.SRem(context.Background(), circuitRedisChannelsKey, channelId)
+	_, err := pipe.Exec(context.Background())
+	return err
+}
+
 func appendChannelCircuitEventRedis(channelId int, event string, statusCode int, occurredAt time.Time) error {
 	id, err := common.RDB.Incr(context.Background(), circuitRedisEventIdKey).Result()
 	if err != nil {

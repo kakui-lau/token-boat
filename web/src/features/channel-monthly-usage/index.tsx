@@ -78,6 +78,11 @@ function formatUsd(value: string | undefined): string {
   }).format(Number.isFinite(amount) ? amount : 0)
 }
 
+function formatTimestamp(value: number | undefined): string {
+  if (!value) return '—'
+  return new Date(value * 1000).toLocaleString()
+}
+
 export function ChannelMonthlyUsagePage() {
   const { t } = useTranslation()
   const [month, setMonth] = useState(currentUtcMonth)
@@ -139,6 +144,9 @@ export function ChannelMonthlyUsagePage() {
           <Card className='border-primary/20 bg-primary/5'>
             <CardHeader>
               <CardTitle>{t('UTC monthly channel reconciliation')}</CardTitle>
+              <CardAction className='text-muted-foreground text-sm font-normal'>
+                {t('Last updated:')} {formatTimestamp(summary?.last_calculated_at)}
+              </CardAction>
             </CardHeader>
             <CardContent className='text-muted-foreground'>
               {t(

@@ -66,6 +66,7 @@ test('shows open channels and recent circuit transitions', async () => {
         {
           channel_id: 12,
           channel_name: 'video-provider',
+          model_names: ['byteplus/seedance-2.0-ep'],
           state: 'open',
           consecutive_failures: 3,
           open_until: 1_800_000_030,
@@ -100,6 +101,7 @@ test('shows open channels and recent circuit transitions', async () => {
 
   await waitFor(() => expect(screen.getByText('#12')).toBeInTheDocument())
   expect(screen.getAllByText('video-provider')).toHaveLength(3)
+  expect(screen.getByText('byteplus/seedance-2.0-ep')).toBeInTheDocument()
   expect(screen.getAllByText('Circuit opened')).toHaveLength(2)
   expect(screen.getByText('503')).toBeInTheDocument()
   expect(screen.getByText('3')).toBeInTheDocument()
@@ -116,6 +118,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
         {
           channel_id: 15,
           channel_name: 'recoverable-provider',
+          model_names: ['test-model'],
           state: 'open',
           consecutive_failures: 3,
           open_until: 1_800_000_030,

@@ -190,6 +190,7 @@ export function PricingCircuitPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('Channel')}</TableHead>
+                <TableHead>{t('Models')}</TableHead>
                 <TableHead>{t('State')}</TableHead>
                 <TableHead>{t('Consecutive failures')}</TableHead>
                 <TableHead>{t('Success rate')}</TableHead>
@@ -210,6 +211,11 @@ export function PricingCircuitPanel() {
                         #{channel.channel_id}
                       </div>
                     ) : null}
+                  </TableCell>
+                  <TableCell className='max-w-64'>
+                    <div className='text-muted-foreground line-clamp-3 text-xs'>
+                      {channel.model_names.join(', ') || '—'}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <CircuitStateBadge state={channel.state} />
@@ -272,7 +278,7 @@ export function PricingCircuitPanel() {
               {!circuitQuery.isLoading && channels.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className='text-muted-foreground h-20 text-center'
                   >
                     {t('All channels are healthy')}

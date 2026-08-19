@@ -33,6 +33,7 @@ import {
   exportChannelModelPrices,
   getChannelModels,
   setPricingModelRuntime,
+  syncLegacyChannelModels,
 } from '../api'
 import { PricingAdmin } from '../index'
 
@@ -40,6 +41,15 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
   }),
+}))
+
+const { toastWarning } = vi.hoisted(() => ({ toastWarning: vi.fn() }))
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    warning: toastWarning,
+    error: vi.fn(),
+  },
 }))
 
 vi.mock('@/stores/auth-store', () => ({
@@ -243,6 +253,26 @@ describe('channel model retail publication status', () => {
         expect.objectContaining({ routing_status: 'removed' })
       )
     })
+  })
+
+  test('reports catalog models skipped by synchronization', async () => {
+    vi.mocked(syncLegacyChannelModels).mockResolvedValue({
+      success: true,
+      data: {
+        created: 0,
+        skipped_unknown: 1,
+        unknown_model_names: ['z-ai/glm-5.3'],
+      },
+    })
+    renderPricingAdmin()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync Catalog' }))
+
+    await waitFor(() =>
+      expect(toastWarning).toHaveBeenCalledWith(
+        'Some models were skipped because they are missing from the model catalog: {{models}}'
+      )
+    )
   })
 
   test('enables V2 for every channel of the selected model', async () => {

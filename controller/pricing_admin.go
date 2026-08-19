@@ -137,7 +137,8 @@ type requestPricingSnapshotAdminRow struct {
 
 type pricingCircuitChannelAdminRow struct {
 	pricingruntime.ChannelCircuitStatus
-	ChannelName string `json:"channel_name"`
+	ChannelName string   `json:"channel_name"`
+	ModelNames  []string `json:"model_names"`
 }
 
 type pricingCircuitEventAdminRow struct {
@@ -183,35 +184,51 @@ func AdminGetPricingCircuitOverview(c *gin.Context) {
 		}
 	}
 	type channelNameRow struct {
-		Id   int
-		Name string
+		Id     int
+		Name   string
+		Models string
 	}
 	var channelNames []channelNameRow
 	if len(channelIds) > 0 {
 		if err := model.DB.Model(&model.Channel{}).
-			Select("id, name").
-			Where("id IN ?", channelIds).
+			Select("id, name, models").
+			Where("id IN ? AND status = ?", channelIds, common.ChannelStatusEnabled).
 			Scan(&channelNames).Error; err != nil {
 			common.ApiError(c, err)
 			return
 		}
 	}
 	nameByChannelId := make(map[int]string, len(channelNames))
+	modelsByChannelId := make(map[int][]string, len(channelNames))
 	for _, channel := range channelNames {
 		nameByChannelId[channel.Id] = channel.Name
+		for _, modelName := range strings.Split(channel.Models, ",") {
+			if modelName = strings.TrimSpace(modelName); modelName != "" {
+				modelsByChannelId[channel.Id] = append(modelsByChannelId[channel.Id], modelName)
+			}
+		}
 	}
 	channels := make([]pricingCircuitChannelAdminRow, 0, len(overview.Channels))
 	for _, channel := range overview.Channels {
+		channelName, exists := nameByChannelId[channel.ChannelId]
+		if !exists {
+			continue
+		}
 		channels = append(channels, pricingCircuitChannelAdminRow{
 			ChannelCircuitStatus: channel,
-			ChannelName:          nameByChannelId[channel.ChannelId],
+			ChannelName:          channelName,
+			ModelNames:           modelsByChannelId[channel.ChannelId],
 		})
 	}
 	events := make([]pricingCircuitEventAdminRow, 0, len(overview.Events))
 	for _, event := range overview.Events {
+		channelName, exists := nameByChannelId[event.ChannelId]
+		if !exists {
+			continue
+		}
 		events = append(events, pricingCircuitEventAdminRow{
 			ChannelCircuitEvent: event,
-			ChannelName:         nameByChannelId[event.ChannelId],
+			ChannelName:         channelName,
 		})
 	}
 	common.ApiSuccess(c, gin.H{
@@ -240,7 +257,7 @@ func AdminListPricingCircuitEvents(c *gin.Context) {
 		Select(
 			"pricing_circuit_events.*, COALESCE(channels.name, '') AS channel_name",
 		).
-		Joins("LEFT JOIN channels ON channels.id = pricing_circuit_events.channel_id")
+		Joins("JOIN channels ON channels.id = pricing_circuit_events.channel_id")
 	if rawChannelId := strings.TrimSpace(c.Query("channel_id")); rawChannelId != "" {
 		channelId, err := strconv.Atoi(rawChannelId)
 		if err != nil || channelId <= 0 {
@@ -524,7 +541,7 @@ func channelModelAdminQuery(c *gin.Context) (*gorm.DB, error) {
 		Group("channel_model_id")
 	query := model.DB.Table("channel_models").
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
-		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins("JOIN models ON models.id = channel_models.model_id AND models.deleted_at IS NULL").
 		Joins(
 			"LEFT JOIN (?) AS active_retail ON active_retail.channel_model_id = channel_models.id",
 			activeRetailPrices,

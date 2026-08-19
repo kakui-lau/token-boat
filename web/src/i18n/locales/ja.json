@@ -5022,6 +5022,7 @@
     "socks5://user:pass@host:port": "socks5://user:pass@host:port",
     "Soft Errors": "ソフトエラー",
     "Some channels failed: {{errorMsg}}": "一部のチャネルが失敗しました：{{errorMsg}}",
+    "Some models were skipped because they are missing from the model catalog: {{models}}": "モデルカタログに登録されていないため、一部のモデルをスキップしました：{{models}}",
     "Something went wrong!": "問題が発生しました！",
     "Sonnet Model": "Sonnet モデル",
     "Sora": "Sora",

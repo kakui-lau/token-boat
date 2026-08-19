@@ -120,6 +120,17 @@ func TestResetChannelCircuitClearsActiveStateAndRecordsAuditEvent(t *testing.T) 
 	assert.Equal(t, "manual_reset", overview.Events[1].Event)
 }
 
+func TestRemoveChannelCircuitDropsLiveState(t *testing.T) {
+	resetChannelCircuits()
+	t.Cleanup(resetChannelCircuits)
+
+	RecordChannelFailure(43, 500)
+	require.Len(t, GetChannelCircuitOverview().Channels, 1)
+
+	RemoveChannelCircuit(43)
+	assert.Empty(t, GetChannelCircuitOverview().Channels)
+}
+
 func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testing.T) {
 	useCircuitMiniRedis(t)
 
@@ -145,6 +156,9 @@ func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testin
 	metrics := GetChannelRouteMetrics(51)
 	assert.Equal(t, float64(240), metrics.AverageLatencyMs)
 	assert.InDelta(t, float64(100)/104, metrics.SuccessRate, 0.0001)
+
+	RemoveChannelCircuit(51)
+	assert.Empty(t, GetChannelCircuitOverview().Channels)
 }
 
 func TestChannelCircuitRedisIgnoresClientErrors(t *testing.T) {

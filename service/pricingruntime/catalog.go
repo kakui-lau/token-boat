@@ -399,10 +399,11 @@ func RefreshCatalog() error {
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
 		Joins("JOIN models ON models.id = channel_models.model_id").
 		Where(
-			"channel_models.runtime_mode = ? AND channel_models.status <> ? AND channels.status = ? AND models.routing_target_model_id IS NULL",
+			"channel_models.runtime_mode = ? AND channel_models.status <> ? AND channels.status = ? AND models.status = ? AND models.deleted_at IS NULL AND models.routing_target_model_id IS NULL",
 			RuntimeModeV2,
 			0,
 			common.ChannelStatusEnabled,
+			1,
 		).
 		Find(&channelModels).Error; err != nil {
 		return err
@@ -565,10 +566,11 @@ func GetRuntimeReadiness() (RuntimeReadiness, error) {
 			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
 		).
 		Where(
-			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ? AND models.routing_target_model_id IS NULL",
+			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ? AND models.status = ? AND models.deleted_at IS NULL AND models.routing_target_model_id IS NULL",
 			0,
 			common.ChannelStatusEnabled,
 			true,
+			1,
 		).
 		Distinct("channel_models.id")
 	if err := activeChannelModels.

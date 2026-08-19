@@ -149,7 +149,7 @@ func ValidateModelStatusChange(tx *gorm.DB, modelId int, status int) error {
 	if references > 0 {
 		return errors.New("model is the active routing target of a system alias")
 	}
-	return nil
+	return validateModelHasNoActiveChannelReferences(tx, modelId)
 }
 
 func ValidateModelDeletion(tx *gorm.DB, modelId int) error {
@@ -167,6 +167,29 @@ func ValidateModelDeletion(tx *gorm.DB, modelId int) error {
 	}
 	if references > 0 {
 		return errors.New("model is referenced by a system alias")
+	}
+	return validateModelHasNoActiveChannelReferences(tx, modelId)
+}
+
+func validateModelHasNoActiveChannelReferences(tx *gorm.DB, modelId int) error {
+	var current Model
+	if err := tx.Select("model_name").First(&current, modelId).Error; err != nil {
+		return err
+	}
+	var activeChannelModels int64
+	if err := tx.Model(&ChannelModel{}).
+		Where("model_id = ? AND status <> ?", modelId, 0).
+		Count(&activeChannelModels).Error; err != nil {
+		return err
+	}
+	var activeAbilities int64
+	if err := tx.Model(&Ability{}).
+		Where("model = ? AND enabled = ?", current.ModelName, true).
+		Count(&activeAbilities).Error; err != nil {
+		return err
+	}
+	if activeChannelModels > 0 || activeAbilities > 0 {
+		return errors.New("model is still enabled on a channel; remove it from channel routing first")
 	}
 	return nil
 }

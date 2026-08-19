@@ -769,6 +769,7 @@ func DeleteChannel(c *gin.Context) {
 		return
 	}
 	model.InitChannelCache()
+	pricingruntime.RemoveChannelCircuit(id)
 	if channelLookupFailed {
 		service.ResetProxyClientCache()
 	} else {
@@ -786,12 +787,22 @@ func DeleteChannel(c *gin.Context) {
 }
 
 func DeleteDisabledChannel(c *gin.Context) {
+	var channelIds []int
+	if err := model.DB.Model(&model.Channel{}).
+		Where("status = ? OR status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).
+		Pluck("id", &channelIds).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	rows, err := model.DeleteDisabledChannel()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	model.InitChannelCache()
+	for _, channelId := range channelIds {
+		pricingruntime.RemoveChannelCircuit(channelId)
+	}
 	if rows > 0 {
 		service.ResetProxyClientCache()
 	}
@@ -951,6 +962,9 @@ func DeleteChannelBatch(c *gin.Context) {
 		return
 	}
 	model.InitChannelCache()
+	for _, channelId := range channelBatch.Ids {
+		pricingruntime.RemoveChannelCircuit(channelId)
+	}
 	if deletedCount > 0 {
 		service.ResetProxyClientCache()
 	}

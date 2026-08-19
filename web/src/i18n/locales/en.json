@@ -5022,6 +5022,7 @@
     "socks5://user:pass@host:port": "socks5://user:pass@host:port",
     "Soft Errors": "Soft Errors",
     "Some channels failed: {{errorMsg}}": "Some channels failed: {{errorMsg}}",
+    "Some models were skipped because they are missing from the model catalog: {{models}}": "Some models were skipped because they are missing from the model catalog: {{models}}",
     "Something went wrong!": "Something went wrong!",
     "Sonnet Model": "Sonnet Model",
     "Sora": "Sora",

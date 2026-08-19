@@ -5022,6 +5022,7 @@
     "socks5://user:pass@host:port": "socks5://user:pass@host:port",
     "Soft Errors": "Мягкие ошибки",
     "Some channels failed: {{errorMsg}}": "Некоторые каналы не удались: {{errorMsg}}",
+    "Some models were skipped because they are missing from the model catalog: {{models}}": "Некоторые модели пропущены, поскольку их нет в каталоге моделей: {{models}}",
     "Something went wrong!": "Что-то пошло не так!",
     "Sonnet Model": "Модель Sonnet",
     "Sora": "Sora",

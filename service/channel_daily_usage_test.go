@@ -84,6 +84,7 @@ func TestRecalculateChannelDailyUsageUsesUTCHalfOpenBoundaryAndIsIdempotent(t *t
 		StartDate: "2026-07-25", EndDate: "2026-07-25",
 	})
 	require.NoError(t, err)
+	assert.Equal(t, row.CalculatedAt, summary.LastCalculatedAt)
 	assert.Equal(t, int64(2), summary.BilledRequestCount)
 	assert.Equal(t, int64(190), summary.TotalTokens)
 }
@@ -397,7 +398,7 @@ func TestListChannelMonthlyUsageSummaryGroupsBySelectedModelDimension(t *testing
 		{
 			UsageDate: "2026-07-03", Timezone: "UTC", ChannelID: 20, ChannelName: "Beta",
 			ModelName: "platform-a", UpstreamModel: "upstream-other", BilledRequestCount: 4,
-			TotalTokens: 40, CustomerRevenueUSD: "4", ProviderReportedCostUSD: "2",
+			TotalTokens: 60, CustomerRevenueUSD: "4", ProviderReportedCostUSD: "2",
 			Status: model.ChannelDailyUsageStatusOpen,
 		},
 		{
@@ -417,17 +418,18 @@ func TestListChannelMonthlyUsageSummaryGroupsBySelectedModelDimension(t *testing
 	require.Equal(t, int64(2), total)
 	require.Len(t, byUpstream, 2)
 	assert.Equal(t, "2026-07", byUpstream[0].Month)
-	assert.Equal(t, 10, byUpstream[0].ChannelID)
-	assert.Equal(t, "Alpha Renamed", byUpstream[0].ChannelName)
-	assert.Equal(t, "upstream-shared", byUpstream[0].UpstreamModel)
+	assert.Equal(t, 20, byUpstream[0].ChannelID)
+	assert.Equal(t, "Beta", byUpstream[0].ChannelName)
+	assert.Equal(t, "upstream-other", byUpstream[0].UpstreamModel)
 	assert.Empty(t, byUpstream[0].ModelName)
-	assert.Equal(t, int64(5), byUpstream[0].BilledRequestCount)
-	assert.Equal(t, int64(50), byUpstream[0].TotalTokens)
-	assert.Equal(t, int64(1), byUpstream[0].MissingUsageCount)
+	assert.Equal(t, int64(4), byUpstream[0].BilledRequestCount)
+	assert.Equal(t, int64(60), byUpstream[0].TotalTokens)
+	assert.Equal(t, int64(0), byUpstream[0].MissingUsageCount)
+	assert.Equal(t, int64(50), byUpstream[1].TotalTokens)
 
 	byPlatform, total, err := model.ListChannelMonthlyUsageSummary(
 		model.ChannelDailyUsageFilter{ChannelID: 10}, "2026-07",
-		model.ChannelMonthlyUsageGroupByModelName, 1, 1,
+		model.ChannelMonthlyUsageGroupByModelName, 0, 1,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total)

@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -240,6 +241,12 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&model.Log{}))
 	channel := &model.Channel{Name: "existing", Key: "test-key"}
 	require.NoError(t, db.Create(channel).Error)
+	channelModel := model.ChannelModel{
+		ChannelId: channel.Id, ModelId: 1001, UpstreamModelName: "provider-model", Status: 1,
+	}
+	require.NoError(t, db.Create(&channelModel).Error)
+	pricingruntime.RecordChannelFailure(channel.Id, 500)
+	t.Cleanup(func() { pricingruntime.RemoveChannelCircuit(channel.Id) })
 
 	requestBody, err := common.Marshal(ChannelBatch{Ids: []int{channel.Id, 999999}})
 	require.NoError(t, err)
@@ -257,6 +264,12 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	assert.True(t, response.Success)
 	assert.Equal(t, int64(1), response.Data)
+	var deletedChannelModel model.ChannelModel
+	require.NoError(t, db.First(&deletedChannelModel, channelModel.Id).Error)
+	assert.Zero(t, deletedChannelModel.Status)
+	for _, status := range pricingruntime.GetChannelCircuitOverview().Channels {
+		assert.NotEqual(t, channel.Id, status.ChannelId)
+	}
 
 	var auditLog model.Log
 	require.NoError(t, db.Order("id desc").First(&auditLog).Error)

@@ -5022,6 +5022,7 @@
     "socks5://user:pass@host:port": "socks5://user:pass@host:port",
     "Soft Errors": "Lỗi mềm",
     "Some channels failed: {{errorMsg}}": "Một số kênh thất bại: {{errorMsg}}",
+    "Some models were skipped because they are missing from the model catalog: {{models}}": "Một số mô hình đã bị bỏ qua vì chưa có trong danh mục mô hình: {{models}}",
     "Something went wrong!": "Có gì đó không ổn!",
     "Sonnet Model": "Mô hình Sonnet",
     "Sora": "Sora",

@@ -123,7 +123,7 @@ func ListModelPriceOverview(keyword string) ([]ModelPriceOverview, error) {
 			purchase.input_unit_price AS purchase_input_price,
 			purchase.output_unit_price AS purchase_output_price`).
 		Joins("JOIN channel_models ON channel_models.id = retail.channel_model_id").
-		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins("JOIN models ON models.id = channel_models.model_id AND models.deleted_at IS NULL").
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
 		Joins("LEFT JOIN channel_model_purchase_price_versions AS purchase ON purchase.id = retail.purchase_price_version_id").
 		Where("retail.status = ? AND channel_models.status = ?", model.PricingVersionStatusActive, 1)

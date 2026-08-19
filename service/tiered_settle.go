@@ -9,6 +9,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
 )
 
@@ -133,7 +134,13 @@ func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon
 	relayInfo.PriceData.FreeModel = false
 
 	if relayInfo.Billing == nil {
-		return PreConsumeBilling(c, snap.EstimatedQuotaAfterGroup, relayInfo)
+		if apiErr := PreConsumeBilling(c, snap.EstimatedQuotaAfterGroup, relayInfo); apiErr != nil {
+			return apiErr
+		}
+		if err := pricingruntime.SyncRequestPricingPreConsume(relayInfo); err != nil {
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		return nil
 	}
 	if err := relayInfo.Billing.Reserve(snap.EstimatedQuotaAfterGroup); err != nil {
 		var apiErr *types.NewAPIError
@@ -143,6 +150,9 @@ func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
 	relayInfo.FinalPreConsumedQuota = relayInfo.Billing.GetPreConsumedQuota()
+	if err := pricingruntime.SyncRequestPricingPreConsume(relayInfo); err != nil {
+		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+	}
 	return nil
 }
 

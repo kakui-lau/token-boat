@@ -118,6 +118,10 @@ export type RequestPricingSnapshot = {
   estimated_usage?: string
   actual_usage?: string
   reserved_quota: number
+  actual_pre_consumed_quota?: number
+  token_pre_consumed_quota?: number
+  pre_consume_captured?: boolean
+  token_id?: number
   settled_quota: number
   purchase_cost: string
   provider_reported_cost?: string
@@ -161,10 +165,15 @@ export type RequestPricingSnapshot = {
   billing_source?: 'wallet' | 'subscription'
   subscription_id?: number
   currency: string
-  status: 'reserved' | 'pending' | 'settled' | 'refunded'
+  status: 'reserved' | 'pending' | 'settled' | 'refunded' | 'archived'
   failure_code?: string
   failure_reason?: string
-  resolution?: '' | 'automatic_refund' | 'admin_confirmed_refund'
+  resolution?:
+    | ''
+    | 'automatic_refund'
+    | 'automatic_no_charge'
+    | 'admin_confirmed_refund'
+    | 'legacy_evidence_unavailable'
   resolved_at?: number
   resolved_by?: number
   updated_at: number
@@ -187,6 +196,8 @@ export type PricingReconciliationSummary = {
   stale_reserved: number
   settled_last_24h: number
   refunded_last_24h: number
+  archived_last_24h?: number
+  manual_review?: number
   oldest_anomaly_created_at: number
 }
 

@@ -168,11 +168,22 @@ func (pricingReconciliationHandler) Run(
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
 	}
+	classified, err := pricingruntime.ClassifyStalePendingPricingSnapshots(
+		common.GetTimestamp() - pricingReconciliationReservedAgeSeconds,
+	)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
 	finishSystemTaskHandler(
 		task,
 		runnerID,
 		model.SystemTaskStatusSucceeded,
-		map[string]int64{"marked_pending": updated},
+		map[string]int64{
+			"marked_pending":      updated,
+			"no_charge_finalized": classified.NoChargeFinalized,
+			"legacy_archived":     classified.LegacyArchived,
+		},
 		nil,
 	)
 }

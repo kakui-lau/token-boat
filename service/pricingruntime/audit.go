@@ -20,6 +20,7 @@ const (
 	PricingSnapshotStatusSettled  = "settled"
 	PricingSnapshotStatusPending  = "pending"
 	PricingSnapshotStatusRefunded = "refunded"
+	PricingSnapshotStatusArchived = "archived"
 )
 
 func sanitizedPricingUsageJSON(rawUsage string) (string, error) {
@@ -62,6 +63,8 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		BillingMode:             selected.BillingMode,
 		EstimatedUsage:          estimatedUsage,
 		ReservedQuota:           int64(info.DynamicPricingSnapshot.ReservationQuota),
+		PreConsumeCaptured:      true,
+		TokenId:                 info.TokenId,
 		SettledQuota:            0,
 		PurchaseCost:            selected.EstimatedPurchaseUSD,
 		ProviderCostMode:        selected.ProviderCostMode,
@@ -82,10 +85,49 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		Currency:                selected.Currency,
 		Status:                  PricingSnapshotStatusReserved,
 	}
+	if info.Billing != nil {
+		snapshot.ActualPreConsumedQuota = int64(info.Billing.GetPreConsumedQuota())
+		if !info.IsPlayground {
+			snapshot.TokenPreConsumedQuota = snapshot.ActualPreConsumedQuota
+		}
+	}
 	if err := model.DB.Create(&snapshot).Error; err != nil {
 		return err
 	}
 	info.DynamicPricingSnapshot.AuditCreated = true
+	return nil
+}
+
+// SyncRequestPricingPreConsume refreshes the durable reservation audit after a
+// retry raises the amount held by the billing session. It never infers an
+// amount from the estimate: zero is a valid captured value for trusted users.
+func SyncRequestPricingPreConsume(info *relaycommon.RelayInfo) error {
+	if info == nil || info.DynamicPricingSnapshot == nil || info.Billing == nil || info.RequestId == "" {
+		return nil
+	}
+	actual := int64(info.Billing.GetPreConsumedQuota())
+	tokenActual := actual
+	if info.IsPlayground {
+		tokenActual = 0
+	}
+	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ? AND status IN ?", info.RequestId, []string{
+			PricingSnapshotStatusReserved,
+			PricingSnapshotStatusPending,
+		}).
+		Updates(map[string]any{
+			"actual_pre_consumed_quota": actual,
+			"token_pre_consumed_quota":  tokenActual,
+			"pre_consume_captured":      true,
+			"token_id":                  info.TokenId,
+			"updated_at":                common.GetTimestamp(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("v2 pricing snapshot was not found or already finalized")
+	}
 	return nil
 }
 
@@ -379,6 +421,7 @@ func PurgeFinalizedRequestPricingSnapshots(cutoff int64, batchSize int) (int64, 
 	statuses := []string{
 		PricingSnapshotStatusSettled,
 		PricingSnapshotStatusRefunded,
+		PricingSnapshotStatusArchived,
 	}
 	var ids []int
 	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
@@ -455,15 +498,88 @@ func ReconcileStaleRequestPricingSnapshots(staleBefore int64) (int64, error) {
 	if staleBefore <= 0 {
 		return 0, errors.New("stale cutoff is required")
 	}
-	result := model.DB.Model(&model.RequestPricingSnapshot{}).
+	captured := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where(
-			"status = ? AND created_at <= ?",
+			"status = ? AND created_at <= ? AND pre_consume_captured = ?",
 			PricingSnapshotStatusReserved,
 			staleBefore,
+			true,
 		).
 		Updates(map[string]any{
-			"status":     PricingSnapshotStatusPending,
-			"updated_at": common.GetTimestamp(),
+			"status":         PricingSnapshotStatusPending,
+			"failure_code":   "stale_reservation",
+			"failure_reason": "captured reservation exceeded the reconciliation grace period",
+			"updated_at":     common.GetTimestamp(),
 		})
-	return result.RowsAffected, result.Error
+	if captured.Error != nil {
+		return 0, captured.Error
+	}
+	legacy := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where(
+			"status = ? AND created_at <= ? AND (pre_consume_captured = ? OR pre_consume_captured IS NULL)",
+			PricingSnapshotStatusReserved,
+			staleBefore,
+			false,
+		).
+		Updates(map[string]any{
+			"status":         PricingSnapshotStatusPending,
+			"failure_code":   "legacy_preconsume_unknown",
+			"failure_reason": "legacy snapshot does not contain the actual pre-consumed amount",
+			"updated_at":     common.GetTimestamp(),
+		})
+	return captured.RowsAffected + legacy.RowsAffected, legacy.Error
+}
+
+type PricingReconciliationClassification struct {
+	NoChargeFinalized int64
+	LegacyArchived    int64
+}
+
+// ClassifyStalePendingPricingSnapshots only closes cases that cannot move
+// money. Captured zero reservations are known to have charged nothing. Legacy
+// snapshots are archived as evidence-incomplete and are never treated as
+// refunds. Positive captured reservations remain pending for explicit review.
+func ClassifyStalePendingPricingSnapshots(staleBefore int64) (PricingReconciliationClassification, error) {
+	result := PricingReconciliationClassification{}
+	if staleBefore <= 0 {
+		return result, errors.New("stale cutoff is required")
+	}
+	now := common.GetTimestamp()
+	noCharge := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where(
+			"status = ? AND created_at <= ? AND pre_consume_captured = ? AND actual_pre_consumed_quota = 0 AND token_pre_consumed_quota = 0",
+			PricingSnapshotStatusPending,
+			staleBefore,
+			true,
+		).
+		Updates(map[string]any{
+			"status":      PricingSnapshotStatusRefunded,
+			"resolution":  "automatic_no_charge",
+			"resolved_at": now,
+			"updated_at":  now,
+		})
+	if noCharge.Error != nil {
+		return result, noCharge.Error
+	}
+	result.NoChargeFinalized = noCharge.RowsAffected
+	legacy := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where(
+			"status = ? AND created_at <= ? AND (pre_consume_captured = ? OR pre_consume_captured IS NULL)",
+			PricingSnapshotStatusPending,
+			staleBefore,
+			false,
+		).
+		Updates(map[string]any{
+			"status":         PricingSnapshotStatusArchived,
+			"failure_code":   "legacy_preconsume_unknown",
+			"failure_reason": "archived without balance adjustment because actual pre-consume evidence is unavailable",
+			"resolution":     "legacy_evidence_unavailable",
+			"resolved_at":    now,
+			"updated_at":     now,
+		})
+	if legacy.Error != nil {
+		return result, legacy.Error
+	}
+	result.LegacyArchived = legacy.RowsAffected
+	return result, nil
 }

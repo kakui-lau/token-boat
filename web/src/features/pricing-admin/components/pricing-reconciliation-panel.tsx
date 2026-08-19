@@ -138,7 +138,12 @@ export function PricingReconciliationPanel() {
       getRequestPricingSnapshots({
         reconciliation: showAllRecords ? undefined : true,
         status: statusFilter
-          ? (statusFilter as 'reserved' | 'pending' | 'settled' | 'refunded')
+          ? (statusFilter as
+              | 'reserved'
+              | 'pending'
+              | 'settled'
+              | 'refunded'
+              | 'archived')
           : undefined,
         billing_mode: billingModeFilter || undefined,
         created_from: createdFrom ? dayjs(createdFrom).unix() : undefined,
@@ -203,6 +208,7 @@ export function PricingReconciliationPanel() {
     reserved: t('Reserved'),
     settled: t('Settled'),
     refunded: t('Refunded'),
+    archived: t('Archived'),
   }
   const exportParams = new URLSearchParams()
   if (!showAllRecords) {
@@ -310,7 +316,9 @@ export function PricingReconciliationPanel() {
           }}
         >
           <NativeSelectOption value=''>{t('All statuses')}</NativeSelectOption>
-          {(['reserved', 'pending', 'settled', 'refunded'] as const).map(
+          {(
+            ['reserved', 'pending', 'settled', 'refunded', 'archived'] as const
+          ).map(
             (status) => (
               <NativeSelectOption key={status} value={status}>
                 {statusLabels[status]}
@@ -382,6 +390,14 @@ export function PricingReconciliationPanel() {
           {
             label: t('Refunded (24h)'),
             value: summaryQuery.data?.data.refunded_last_24h ?? 0,
+          },
+          {
+            label: t('Archived (24h)'),
+            value: summaryQuery.data?.data.archived_last_24h ?? 0,
+          },
+          {
+            label: t('Requires manual review'),
+            value: summaryQuery.data?.data.manual_review ?? 0,
           },
           {
             label: t('Oldest anomaly'),
@@ -690,7 +706,9 @@ export function PricingReconciliationPanel() {
                       >
                         {t('View details')}
                       </Button>
-                      {canOperate && row.status === 'pending' ? (
+                      {canOperate &&
+                      row.status === 'pending' &&
+                      row.pre_consume_captured ? (
                         <Button
                           size='sm'
                           variant='outline'
@@ -796,6 +814,26 @@ export function PricingReconciliationPanel() {
                   {selectedSnapshot.billing_source === 'subscription'
                     ? `${t('Subscription')} #${selectedSnapshot.subscription_id || '—'}`
                     : t('Wallet')}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Actual pre-consumed quota')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.pre_consume_captured
+                    ? (selectedSnapshot.actual_pre_consumed_quota ?? 0)
+                    : t('Legacy evidence unavailable')}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Token pre-consumed quota')}
+                </div>
+                <div className='font-mono text-xs'>
+                  {selectedSnapshot.pre_consume_captured
+                    ? (selectedSnapshot.token_pre_consumed_quota ?? 0)
+                    : '—'}
                 </div>
               </div>
               <div>

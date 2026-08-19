@@ -131,7 +131,7 @@ export async function exportChannelModelPrices(params: {
 }
 
 export async function getRequestPricingSnapshots(params: {
-  status?: 'reserved' | 'pending' | 'settled' | 'refunded'
+  status?: 'reserved' | 'pending' | 'settled' | 'refunded' | 'archived'
   reconciliation?: boolean
   billing_mode?: string
   created_from?: number

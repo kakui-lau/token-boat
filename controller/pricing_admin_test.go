@@ -957,7 +957,8 @@ func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testi
 		ProviderReportedCost: "0.01", ProviderCostKnown: true,
 		ProviderCostScope: "full_provider_cost", GrossMargin: "0.01",
 		GrossMarginKnown: true,
-		ReservedQuota:    10, Status: pricingruntime.PricingSnapshotStatusPending,
+		ReservedQuota:    10, PreConsumeCaptured: true,
+		Status: pricingruntime.PricingSnapshotStatusPending,
 	}
 	require.NoError(t, model.DB.Create(&snapshot).Error)
 	context, recorder := newPricingAdminJSONContext(

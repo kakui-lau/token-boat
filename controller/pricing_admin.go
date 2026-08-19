@@ -744,6 +744,10 @@ func AdminConfirmRequestPricingSnapshotRefunded(c *gin.Context) {
 		common.ApiErrorMsg(c, "只有待确认价格快照可以确认已退款")
 		return
 	}
+	if !snapshot.PreConsumeCaptured {
+		common.ApiErrorMsg(c, "历史快照缺少实际预扣凭据，禁止登记退款；请归档为历史证据不足")
+		return
+	}
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where("id = ? AND status = ?", id, pricingruntime.PricingSnapshotStatusPending).
 		Updates(map[string]any{
@@ -1054,7 +1058,8 @@ func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {
 		case pricingruntime.PricingSnapshotStatusReserved,
 			pricingruntime.PricingSnapshotStatusPending,
 			pricingruntime.PricingSnapshotStatusSettled,
-			pricingruntime.PricingSnapshotStatusRefunded:
+			pricingruntime.PricingSnapshotStatusRefunded,
+			pricingruntime.PricingSnapshotStatusArchived:
 			query = query.Where("request_pricing_snapshots.status = ?", status)
 		default:
 			return nil, errors.New("status 无效")
@@ -1606,6 +1611,26 @@ func AdminGetPricingReconciliationSummary(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	var archivedRecentCount int64
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ? AND updated_at >= ?",
+			pricingruntime.PricingSnapshotStatusArchived,
+			recentSince,
+		).
+		Count(&archivedRecentCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var manualReviewCount int64
+	if err := model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("status = ? AND pre_consume_captured = ? AND (actual_pre_consumed_quota > 0 OR token_pre_consumed_quota > 0)",
+			pricingruntime.PricingSnapshotStatusPending,
+			true,
+		).
+		Count(&manualReviewCount).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	var oldestAnomaly model.RequestPricingSnapshot
 	oldestAnomalyCreatedAt := int64(0)
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
@@ -1630,6 +1655,8 @@ func AdminGetPricingReconciliationSummary(c *gin.Context) {
 		"stale_reserved":            staleReservedCount,
 		"settled_last_24h":          settledRecentCount,
 		"refunded_last_24h":         refundedRecentCount,
+		"archived_last_24h":         archivedRecentCount,
+		"manual_review":             manualReviewCount,
 		"oldest_anomaly_created_at": oldestAnomalyCreatedAt,
 	})
 }

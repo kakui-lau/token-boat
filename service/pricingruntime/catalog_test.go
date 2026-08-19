@@ -1367,6 +1367,44 @@ func TestReconcileStaleRequestPricingSnapshotsMarksOnlyOldReservations(t *testin
 	assert.Equal(t, PricingSnapshotStatusReserved, fresh.Status)
 }
 
+func TestClassifyStalePendingPricingSnapshotsClosesOnlyNoChargeAndLegacyRows(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create([]model.RequestPricingSnapshot{
+		{
+			RequestId: "captured-zero", UserId: 1, ModelId: 2, ChannelModelId: 3,
+			BillingMode: "token", Status: PricingSnapshotStatusPending,
+			PreConsumeCaptured: true,
+		},
+		{
+			RequestId: "captured-positive", UserId: 1, ModelId: 2, ChannelModelId: 3,
+			BillingMode: "token", Status: PricingSnapshotStatusPending,
+			PreConsumeCaptured: true, ActualPreConsumedQuota: 50, TokenPreConsumedQuota: 50,
+		},
+		{
+			RequestId: "legacy-unknown", UserId: 1, ModelId: 2, ChannelModelId: 3,
+			BillingMode: "token", Status: PricingSnapshotStatusPending,
+		},
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id IN ?", []string{"captured-zero", "captured-positive", "legacy-unknown"}).
+		UpdateColumn("created_at", 100).Error)
+
+	classified, err := ClassifyStalePendingPricingSnapshots(150)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), classified.NoChargeFinalized)
+	assert.Equal(t, int64(1), classified.LegacyArchived)
+
+	var zero, positive, legacy model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", "captured-zero").First(&zero).Error)
+	require.NoError(t, model.DB.Where("request_id = ?", "captured-positive").First(&positive).Error)
+	require.NoError(t, model.DB.Where("request_id = ?", "legacy-unknown").First(&legacy).Error)
+	assert.Equal(t, PricingSnapshotStatusRefunded, zero.Status)
+	assert.Equal(t, "automatic_no_charge", zero.Resolution)
+	assert.Equal(t, PricingSnapshotStatusPending, positive.Status)
+	assert.Equal(t, PricingSnapshotStatusArchived, legacy.Status)
+	assert.Equal(t, "legacy_evidence_unavailable", legacy.Resolution)
+}
+
 func TestPurgeFinalizedRequestPricingSnapshotsKeepsActiveAndAnomalousRows(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	snapshots := []model.RequestPricingSnapshot{

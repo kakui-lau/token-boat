@@ -163,7 +163,13 @@ func main() {
 		if err := openDatabase(); err != nil {
 			exitWithError(err)
 		}
-		exitWithError(repriceActiveChannelModel(*channelModelID, strings.TrimSpace(*purchaseDiscount)))
+		exitWithError(repriceActiveChannelModel(
+			*channelModelID,
+			strings.TrimSpace(*purchaseDiscount),
+			strings.TrimSpace(*variableCostRate),
+			strings.TrimSpace(*taxRate),
+			strings.TrimSpace(*targetMargin),
+		))
 		return
 	}
 	if command == "consolidate-channel-model" {
@@ -227,6 +233,17 @@ func main() {
 			*channelID = channel.Id
 		}
 		exitWithError(inspectChannel(*channelID))
+		return
+	}
+	if command == "audit-model-pricing" {
+		if strings.TrimSpace(*logicalModel) == "" {
+			exitWithError(errors.New("logical-model is required"))
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		model.InitOptionMap()
+		exitWithError(auditModelPricing(strings.TrimSpace(*logicalModel), *channelID))
 		return
 	}
 	if command == "audit-deleted-references" {
@@ -840,7 +857,10 @@ func openDatabase() error {
 	if err := os.Setenv("MIGRATION_ENABLED", "false"); err != nil {
 		return err
 	}
-	return model.InitDB()
+	if err := model.InitDB(); err != nil {
+		return err
+	}
+	return common.InitRedisClient()
 }
 
 func inspect(cfg config) error {

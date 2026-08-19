@@ -57,6 +57,9 @@ func Distribute() func(c *gin.Context) {
 			common.SetContextKey(c, constant.ContextKeyRequestedModel, resolution.RequestedModelName)
 			modelRequest.Model = resolution.ResolvedModelName
 		}
+		if !applyPlaygroundGroupSelection(c, modelRequest.Group) {
+			return
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -105,23 +108,6 @@ func Distribute() func(c *gin.Context) {
 				v2PriceChainFound := false
 				v2MarginEligible := false
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-				// check path is /pg/chat/completions
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") || c.GetBool("playground_request") {
-					playgroundRequest := &dto.PlayGroundRequest{}
-					err = common.UnmarshalBodyReusable(c, playgroundRequest)
-					if err != nil {
-						abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
-						return
-					}
-					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
-							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
-							return
-						}
-						usingGroup = playgroundRequest.Group
-						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
-					}
-				}
 				routeGroups := []string{usingGroup}
 				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 				if usingGroup == "auto" {
@@ -306,6 +292,30 @@ func applyPlaygroundChannelSelection(c *gin.Context) bool {
 	}
 
 	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(*playgroundRequest.ChannelId))
+	return true
+}
+
+func applyPlaygroundGroupSelection(c *gin.Context, requestedGroup string) bool {
+	if !strings.HasPrefix(c.Request.URL.Path, "/pg/") && !c.GetBool("playground_request") {
+		return true
+	}
+
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if usingGroup == "" {
+		usingGroup = userGroup
+	}
+	if requestedGroup != "" {
+		if !service.GroupInUserUsableGroups(userGroup, requestedGroup) &&
+			requestedGroup != userGroup {
+			abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+			return false
+		}
+		usingGroup = requestedGroup
+	}
+	if usingGroup != "" {
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+	}
 	return true
 }
 

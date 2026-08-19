@@ -130,6 +130,39 @@ export async function exportChannelModelPrices(params: {
   return response.data
 }
 
+export async function exportSelectedChannelModelPrices(
+  channelModelIds: number[]
+): Promise<Blob> {
+  const response = await api.post(
+    '/api/pricing-admin/channel-models/export-selected',
+    { channel_model_ids: channelModelIds },
+    { responseType: 'blob' }
+  )
+  return response.data
+}
+
+export async function exportSelectedPurchaseDiscounts(
+  channelModelIds: number[]
+): Promise<Blob> {
+  const response = await api.post(
+    '/api/pricing-admin/channel-models/export-selected-purchase-discounts',
+    { channel_model_ids: channelModelIds },
+    { responseType: 'blob' }
+  )
+  return response.data
+}
+
+export async function exportSelectedPricingComparison(
+  channelModelIds: number[]
+): Promise<Blob> {
+  const response = await api.post(
+    '/api/pricing-admin/channel-models/export-selected-pricing-comparison',
+    { channel_model_ids: channelModelIds },
+    { responseType: 'blob' }
+  )
+  return response.data
+}
+
 export async function getRequestPricingSnapshots(params: {
   status?: 'reserved' | 'pending' | 'settled' | 'refunded' | 'archived'
   reconciliation?: boolean

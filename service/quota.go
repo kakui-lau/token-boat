@@ -88,7 +88,11 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
-	if relayInfo.UsePrice {
+	// V2 requests reserve the highest eligible customer charge before opening
+	// the websocket and settle from the frozen expression at the end. Charging
+	// incremental usage through ModelRatio here would mix the legacy and V2
+	// ledgers and double-consume quota.
+	if relayInfo.DynamicPricingSnapshot != nil || relayInfo.UsePrice {
 		return nil
 	}
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)

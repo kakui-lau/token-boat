@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -248,7 +249,16 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		}
 		if !acceptUnsetRatioModel && !helper.HasModelBillingConfig(modelName) {
-			continue
+			hasV2Pricing := false
+			for _, group := range ownerGroups {
+				if pricingruntime.HasCompleteV2Pricing(group, modelName) {
+					hasV2Pricing = true
+					break
+				}
+			}
+			if !hasV2Pricing {
+				continue
+			}
 		}
 		userModelNames = append(userModelNames, modelName)
 	}

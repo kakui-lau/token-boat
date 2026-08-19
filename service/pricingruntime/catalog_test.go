@@ -119,6 +119,34 @@ func TestValidateV2ActivationRejectsIncompletePriceChain(t *testing.T) {
 	assert.Equal(t, RuntimeModeLegacy, stored.RuntimeMode)
 }
 
+func TestPrepareRelayPricingRefreshesStaleCatalogForSelectedChannel(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, RefreshCatalog())
+	createRuntimeBundle(t, 1, RuntimeModeV2)
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "runtime-model",
+		UsingGroup:      "default",
+	}
+	priceData, ok, err := PrepareRelayPricing(
+		info,
+		"default",
+		1,
+		100,
+		100,
+		hosttypes.GroupRatioInfo{GroupRatio: 1},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{RequestCount: 1},
+	)
+
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NotNil(t, info.DynamicPricingSnapshot)
+	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
+	assert.Equal(t, 1, info.DynamicPricingSnapshot.Selected.ChannelId)
+	assert.Positive(t, priceData.QuotaToPreConsume)
+}
+
 func TestSetModelRuntimeModeAllowsVideoDurationPricing(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 9, RuntimeModeLegacy)

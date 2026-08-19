@@ -469,6 +469,130 @@ func TestAdminExportChannelPricingProducesFilteredReadableCSV(t *testing.T) {
 	assert.Empty(t, records[1][12])
 	assert.Empty(t, records[1][13])
 	assert.Empty(t, records[1][14])
+
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models/export-selected",
+		channelModelSelectionInput{ChannelModelIds: []int{143}},
+	)
+	AdminExportSelectedChannelPricing(context)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, "'+gpt-enterprise", records[1][0])
+	assert.Equal(t, "'=provider", records[1][1])
+	assert.Equal(t, "'@gpt-upstream", records[1][2])
+
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models/export-selected-purchase-discounts",
+		channelModelSelectionInput{ChannelModelIds: []int{143}},
+	)
+	AdminExportSelectedChannelPurchaseDiscounts(context)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "selected-purchase-discounts-")
+	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, []string{"\ufeff上游渠道", "模型名称", "采购折扣"}, records[0])
+	assert.Equal(t, []string{"'=provider", "'+gpt-enterprise", "6折（官方价的60%）"}, records[1])
+
+	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
+		Id: 151, ChannelModelId: 148, PurchasePriceVersionId: 150,
+		BillingMode: "token", PriceStructure: "flat",
+		PriceComponents:   `{"input_unit_price":"2.1","output_unit_price":"14.4"}`,
+		RetailBillingExpr: "v2:(p * 2.1 + c * 14.4) / 1000000",
+		RetailExprHash:    "comparison-retail-hash", ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+		TotalVariableCostRate: "0.12", EffectiveTaxRate: "0.1",
+		TargetNetMargin: "0.15", MinimumMarginRate: "0.05",
+		Version: 1, Status: model.PricingVersionStatusActive,
+	}).Error)
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models/export-selected-pricing-comparison",
+		channelModelSelectionInput{ChannelModelIds: []int{143, 148}},
+	)
+	AdminExportSelectedPricingComparison(context)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "selected-pricing-comparison-")
+	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, []string{
+		"\ufeff模型名称",
+		"生效费率详情（变动成本率VCR，利得税率TR，目标净利率TM）",
+		"最低销售折扣", "最低采购折扣",
+		"渠道A名称", "渠道A采购折扣", "渠道A售出折扣",
+		"渠道B名称", "渠道B采购折扣", "渠道B售出折扣",
+	}, records[0])
+	assert.Equal(t, []string{
+		"'+gpt-enterprise",
+		"'=provider：VCR 11%；TR 16.5%；TM 20% | other-provider：VCR 12%；TR 10%；TM 15%",
+		"7折（70%）", "5折（50%）",
+		"'=provider", "6折（官方价的60%）", "8折（80%）",
+		"other-provider", "输入 5折（50%）；输出 7.5折（75%）",
+		"输入 7折（70%）；输出 8折（80%）",
+	}, records[1])
+
+	require.NoError(t, model.DB.Model(&model.ChannelModelRetailPriceVersion{}).
+		Where("id = ?", 151).
+		Updates(map[string]any{
+			"total_variable_cost_rate": "0.11",
+			"effective_tax_rate":       "0.165",
+			"target_net_margin":        "0.2",
+		}).Error)
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models/export-selected-pricing-comparison",
+		channelModelSelectionInput{ChannelModelIds: []int{143, 148}},
+	)
+	AdminExportSelectedPricingComparison(context)
+	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(
+		t,
+		"VCR 11%；TR 16.5%；TM 20%",
+		records[1][1],
+	)
+}
+
+func TestAdminListChannelModelsDefaultsToPageSize200(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 151, Name: "page-size-channel"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 152, ModelName: "page-size-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 153, ChannelId: 151, ModelId: 152, UpstreamModelName: "page-size-upstream",
+		Status: 1, RuntimeMode: "v2",
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t,
+		http.MethodGet,
+		"/api/pricing-admin/channel-models?p=1",
+		nil,
+	)
+	AdminListChannelModels(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items    []channelModelAdminRow `json:"items"`
+			PageSize int                    `json:"page_size"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data.Items, 1)
+	assert.Equal(t, 200, response.Data.PageSize)
 }
 
 func TestFormatPricingComponentsForCSVSupportsStructuredPrices(t *testing.T) {

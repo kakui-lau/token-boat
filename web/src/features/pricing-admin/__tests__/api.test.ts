@@ -4,6 +4,9 @@ import { api } from '@/lib/api'
 
 import {
   createPurchaseDraft,
+  exportSelectedChannelModelPrices,
+  exportSelectedPricingComparison,
+  exportSelectedPurchaseDiscounts,
   getActivePriceBundle,
   getChannelModels,
 } from '../api'
@@ -56,6 +59,42 @@ test('sends common channel pricing filters to the list endpoint', async () => {
       page_size: 50,
     },
   })
+})
+
+test('posts selected channel model ids to the channel pricing export', async () => {
+  vi.mocked(api.post).mockResolvedValue({ data: new Blob(['pricing']) })
+
+  await exportSelectedChannelModelPrices([12, 34])
+
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/pricing-admin/channel-models/export-selected',
+    { channel_model_ids: [12, 34] },
+    { responseType: 'blob' }
+  )
+})
+
+test('posts selected channel model ids to the purchase discount export', async () => {
+  vi.mocked(api.post).mockResolvedValue({ data: new Blob(['discounts']) })
+
+  await exportSelectedPurchaseDiscounts([12, 34])
+
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/pricing-admin/channel-models/export-selected-purchase-discounts',
+    { channel_model_ids: [12, 34] },
+    { responseType: 'blob' }
+  )
+})
+
+test('posts selected channel model ids to the pricing comparison export', async () => {
+  vi.mocked(api.post).mockResolvedValue({ data: new Blob(['comparison']) })
+
+  await exportSelectedPricingComparison([12, 34])
+
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/pricing-admin/channel-models/export-selected-pricing-comparison',
+    { channel_model_ids: [12, 34] },
+    { responseType: 'blob' }
+  )
 })
 
 test('does not report a purchase draft as created after a business error', async () => {

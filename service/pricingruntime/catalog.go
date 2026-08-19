@@ -622,10 +622,6 @@ func getCatalogSnapshot() (*CatalogSnapshot, bool) {
 	return snapshot, snapshot != nil
 }
 
-func InvalidateCatalog() {
-	currentCatalog.Store(nil)
-}
-
 func bundleRevision(bundle ActivePriceBundle) string {
 	officialIdentity := "none"
 	if bundle.Official != nil {

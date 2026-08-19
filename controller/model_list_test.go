@@ -11,7 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -49,7 +51,18 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}, &model.ChannelModel{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Channel{},
+		&model.Ability{},
+		&model.Model{},
+		&model.Vendor{},
+		&model.ChannelModel{},
+		&model.OfficialModelPriceVersion{},
+		&model.ModelOfficialPrice{},
+		&model.ChannelModelPurchasePriceVersion{},
+		&model.ChannelModelRetailPriceVersion{},
+	))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -319,6 +332,66 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, missingExprPricing.BillingMode)
 	require.Empty(t, missingExprPricing.BillingExpr)
+}
+
+func TestListModelsIncludesV2OnlyModel(t *testing.T) {
+	withSelfUseModeDisabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1004,
+		Username: "v2-model-list-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Model{
+		Id: 801, ModelName: "zz-v2-only-model", Status: 1,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 801, Name: "v2-only-channel", Type: constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "zz-v2-only-model", ChannelId: 801, Enabled: true,
+	}).Error)
+	require.NoError(t, db.Create(&model.ChannelModel{
+		Id: 801, ChannelId: 801, ModelId: 801, UpstreamModelName: "zz-v2-only-model",
+		Status: 1, RuntimeMode: pricingruntime.RuntimeModeV2,
+	}).Error)
+	purchaseExpression := `v2:tier("base", p * 1 / 1000000)`
+	retailExpression := `v2:tier("base", p * 2 / 1000000)`
+	require.NoError(t, db.Create(&model.ChannelModelPurchasePriceVersion{
+		Id: 801, ChannelModelId: 801, BillingMode: "token",
+		PricingMode: "fixed_unit_price", PriceStructure: "flat",
+		PurchaseBillingExpr:     purchaseExpression,
+		PurchaseExprHash:        billingexpr.ExprHashString(purchaseExpression),
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&model.ChannelModelRetailPriceVersion{
+		Id: 801, ChannelModelId: 801, PurchasePriceVersionId: 801,
+		BillingMode: "token", PriceStructure: "flat",
+		RetailBillingExpr:       retailExpression,
+		RetailExprHash:          billingexpr.ExprHashString(retailExpression),
+		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
+		Status:                model.PricingVersionStatusActive,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		MinimumMarginRate: "0.1", TargetNetMargin: "0.2",
+	}).Error)
+
+	pricingruntime.InvalidateCatalog()
+	require.NoError(t, pricingruntime.RefreshCatalog())
+	t.Cleanup(pricingruntime.InvalidateCatalog)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1004)
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.Contains(t, ids, "zz-v2-only-model")
 }
 
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {

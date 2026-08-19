@@ -391,6 +391,9 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			pricingAdminRoute.GET("/channel-models", middleware.RequirePermission(authz.PricingRead), controller.AdminListChannelModels)
 			pricingAdminRoute.GET("/channel-models/export", middleware.RequirePermission(authz.PricingExport), controller.AdminExportChannelPricing)
+			pricingAdminRoute.POST("/channel-models/export-selected", middleware.RequirePermission(authz.PricingExport), controller.AdminExportSelectedChannelPricing)
+			pricingAdminRoute.POST("/channel-models/export-selected-purchase-discounts", middleware.RequirePermission(authz.PricingExport), controller.AdminExportSelectedChannelPurchaseDiscounts)
+			pricingAdminRoute.POST("/channel-models/export-selected-pricing-comparison", middleware.RequirePermission(authz.PricingExport), controller.AdminExportSelectedPricingComparison)
 			pricingAdminRoute.GET("/request-pricing-snapshots", middleware.RequirePermission(authz.PricingGovernanceRead), controller.AdminListRequestPricingSnapshots)
 			pricingAdminRoute.GET("/request-pricing-snapshots/summary", middleware.RequirePermission(authz.PricingGovernanceRead), controller.AdminGetPricingReconciliationSummary)
 			pricingAdminRoute.GET("/request-pricing-snapshots/financial-summary", middleware.RequirePermission(authz.PricingGovernanceRead), controller.AdminGetPricingFinancialSummary)

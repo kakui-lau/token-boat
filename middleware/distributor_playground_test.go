@@ -62,3 +62,34 @@ func TestApplyPlaygroundChannelSelectionSkipsTaskFetch(t *testing.T) {
 	assert.True(t, applyPlaygroundChannelSelection(context))
 	assert.Equal(t, http.StatusOK, recorder.Code)
 }
+
+func TestApplyPlaygroundGroupSelectionAppliesBeforeSpecificChannelPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/pg/chat/completions",
+		strings.NewReader(`{"model":"moonshotai/kimi-k3","group":"default","channel_id":17}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	context.Set("role", common.RoleAdminUser)
+	common.SetContextKey(context, constant.ContextKeyUserGroup, "default")
+
+	require.True(t, applyPlaygroundChannelSelection(context))
+	request, _, err := getModelRequest(context)
+	require.NoError(t, err)
+	require.True(t, applyPlaygroundGroupSelection(context, request.Group))
+
+	assert.Equal(
+		t,
+		"default",
+		common.GetContextKeyString(context, constant.ContextKeyUsingGroup),
+	)
+	channelID, ok := common.GetContextKey(
+		context,
+		constant.ContextKeyTokenSpecificChannelId,
+	)
+	require.True(t, ok)
+	assert.Equal(t, "17", channelID)
+}

@@ -111,15 +111,36 @@ func PrepareRelayPricing(
 	businessUsage pricingengine.Usage,
 ) (hosttypes.PriceData, bool, error) {
 	bundles := GetCandidateBundles(group, info.OriginModelName)
-	if len(bundles) == 0 {
-		return hosttypes.PriceData{}, false, nil
-	}
 	selectedIsV2 := selectedChannelId == 0
 	for _, bundle := range bundles {
 		if bundle.ChannelModel.ChannelId == selectedChannelId {
 			selectedIsV2 = true
 			break
 		}
+	}
+	// A specifically selected channel bypasses automatic V2 route planning in
+	// the distributor. Refresh once on a miss so a price chain published by a
+	// different process cannot remain unusable on this pod until its local TTL
+	// expires. Automatic traffic already fails closed in the distributor and
+	// does not enter this recovery path.
+	if selectedChannelId > 0 && (len(bundles) == 0 || !selectedIsV2) {
+		if err := RefreshCatalog(); err != nil {
+			return hosttypes.PriceData{}, false, fmt.Errorf(
+				"refresh V2 pricing catalog for selected channel: %w",
+				err,
+			)
+		}
+		bundles = GetCandidateBundles(group, info.OriginModelName)
+		selectedIsV2 = false
+		for _, bundle := range bundles {
+			if bundle.ChannelModel.ChannelId == selectedChannelId {
+				selectedIsV2 = true
+				break
+			}
+		}
+	}
+	if len(bundles) == 0 {
+		return hosttypes.PriceData{}, false, nil
 	}
 	if !selectedIsV2 {
 		return hosttypes.PriceData{}, false, nil

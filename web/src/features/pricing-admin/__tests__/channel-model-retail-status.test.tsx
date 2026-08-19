@@ -31,6 +31,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
   exportChannelModelPrices,
+  exportSelectedChannelModelPrices,
+  exportSelectedPricingComparison,
+  exportSelectedPurchaseDiscounts,
   getChannelModels,
   setPricingModelRuntime,
   syncLegacyChannelModels,
@@ -39,7 +42,13 @@ import { PricingAdmin } from '../index'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, values?: Record<string, unknown>) => {
+      let translated = key
+      for (const [name, value] of Object.entries(values ?? {})) {
+        translated = translated.replaceAll(`{{${name}}}`, String(value))
+      }
+      return translated
+    },
   }),
 }))
 
@@ -65,6 +74,9 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../api', () => ({
   exportChannelModelPrices: vi.fn(),
+  exportSelectedChannelModelPrices: vi.fn(),
+  exportSelectedPricingComparison: vi.fn(),
+  exportSelectedPurchaseDiscounts: vi.fn(),
   getChannelModels: vi.fn(),
   getPricingCatalogOptions: vi.fn().mockResolvedValue({
     data: {
@@ -142,6 +154,15 @@ describe('channel model retail publication status', () => {
     vi.mocked(exportChannelModelPrices).mockResolvedValue(
       new Blob(['channel pricing'])
     )
+    vi.mocked(exportSelectedChannelModelPrices).mockResolvedValue(
+      new Blob(['selected channel pricing'])
+    )
+    vi.mocked(exportSelectedPurchaseDiscounts).mockResolvedValue(
+      new Blob(['selected purchase discounts'])
+    )
+    vi.mocked(exportSelectedPricingComparison).mockResolvedValue(
+      new Blob(['selected pricing comparison'])
+    )
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:channel-pricing')
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
@@ -186,7 +207,7 @@ describe('channel model retail publication status', () => {
         ],
         total: 2,
         page: 1,
-        page_size: 50,
+        page_size: 200,
       },
     })
   })
@@ -202,6 +223,9 @@ describe('channel model retail publication status', () => {
 
     const publishedRow = (await screen.findByText('published-model')).closest(
       'tr'
+    )
+    expect(getChannelModels).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, page_size: 200 })
     )
     expect(screen.queryByText('Billing Anomalies')).not.toBeInTheDocument()
     const unpublishedRow = screen.getByText('unpublished-model').closest('tr')
@@ -222,7 +246,7 @@ describe('channel model retail publication status', () => {
     const headers = screen
       .getAllByRole('columnheader')
       .map((header) => header.textContent?.trim())
-    expect(headers.slice(1, 5)).toEqual([
+    expect(headers.slice(2, 6)).toEqual([
       'Model',
       'Provider Model',
       'Status',
@@ -270,7 +294,7 @@ describe('channel model retail publication status', () => {
 
     await waitFor(() =>
       expect(toastWarning).toHaveBeenCalledWith(
-        'Some models were skipped because they are missing from the model catalog: {{models}}'
+        'Some models were skipped because they are missing from the model catalog: z-ai/glm-5.3'
       )
     )
   })
@@ -316,7 +340,7 @@ describe('channel model retail publication status', () => {
       screen.queryByRole('button', { name: 'Price Comparison' })
     ).not.toBeInTheDocument()
     const exportButton = await screen.findByRole('button', {
-      name: 'Export filtered CSV',
+      name: 'Export filtered results',
     })
 
     await screen.findByRole('option', { name: 'Published Channel' })
@@ -355,5 +379,58 @@ describe('channel model retail publication status', () => {
     )
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:channel-pricing')
+  })
+
+  test('inverts the current-page selection and exports selected rows', async () => {
+    renderPricingAdmin()
+
+    await screen.findByText('published-model')
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select published-model' })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Invert current page' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Export selected (1)' }))
+
+    await waitFor(() =>
+      expect(exportSelectedChannelModelPrices).toHaveBeenCalledWith([12])
+    )
+  })
+
+  test('exports purchase discounts for the selected rows', async () => {
+    renderPricingAdmin()
+
+    await screen.findByText('published-model')
+    const exportButton = screen.getByRole('button', {
+      name: 'Export selected purchase discounts',
+    })
+    expect(exportButton).toBeDisabled()
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select published-model' })
+    )
+    fireEvent.click(exportButton)
+
+    await waitFor(() =>
+      expect(exportSelectedPurchaseDiscounts).toHaveBeenCalledWith([11])
+    )
+  })
+
+  test('exports a pricing comparison for the selected rows', async () => {
+    renderPricingAdmin()
+
+    await screen.findByText('published-model')
+    const exportButton = screen.getByRole('button', {
+      name: 'Export selected pricing comparison',
+    })
+    expect(exportButton).toBeDisabled()
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select published-model' })
+    )
+    fireEvent.click(exportButton)
+
+    await waitFor(() =>
+      expect(exportSelectedPricingComparison).toHaveBeenCalledWith([11])
+    )
   })
 })

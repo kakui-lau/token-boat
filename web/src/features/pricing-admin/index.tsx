@@ -16,15 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  ArrowReloadHorizontalIcon,
+  CheckListIcon,
+} from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import {
-  BadgeDollarSign,
-  Download,
-  Plus,
-  RefreshCw,
-  Search,
-} from 'lucide-react'
+import { BadgeDollarSign, Download, Plus, RefreshCw } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -33,13 +32,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from '@/components/ui/input-group'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -58,15 +51,36 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   exportChannelModelPrices,
+  exportSelectedChannelModelPrices,
+  exportSelectedPricingComparison,
+  exportSelectedPurchaseDiscounts,
   getChannelModels,
   getPricingCatalogOptions,
   setPricingModelRuntime,
   syncLegacyChannelModels,
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
+import { ChannelModelFilters } from './components/channel-model-filters'
+import { ChannelModelPagination } from './components/channel-model-pagination'
 import { PriceEditorSheet } from './components/price-editor-sheet'
 import { PricingRuntimeStatus } from './components/pricing-runtime-status'
+import {
+  EMPTY_CHANNEL_MODEL_FILTERS,
+  type ChannelModelFilterValues,
+} from './lib/channel-model-filters'
 import type { ChannelModel } from './types'
+
+function downloadCSV(blob: Blob, filenamePrefix: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${filenamePrefix}-${new Date()
+    .toISOString()
+    .slice(0, 10)
+    .replaceAll('-', '')}.csv`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
 
 export function PricingAdmin() {
   const { t } = useTranslation()
@@ -87,13 +101,12 @@ export function PricingAdmin() {
     ADMIN_PERMISSION_RESOURCES.PRICING,
     ADMIN_PERMISSION_ACTIONS.EXPORT
   )
-  const [keyword, setKeyword] = useState('')
+  const [filters, setFilters] = useState<ChannelModelFilterValues>({
+    ...EMPTY_CHANNEL_MODEL_FILTERS,
+  })
   const [page, setPage] = useState(1)
-  const [channelId, setChannelId] = useState('')
-  const [status, setStatus] = useState('')
-  const [routingStatus, setRoutingStatus] = useState('')
-  const [runtimeMode, setRuntimeMode] = useState('')
-  const [retailStatus, setRetailStatus] = useState('')
+  const [pageSize, setPageSize] = useState(200)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [selectedChannelModel, setSelectedChannelModel] =
     useState<ChannelModel | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -102,7 +115,7 @@ export function PricingAdmin() {
   const [pendingV2ModelName, setPendingV2ModelName] = useState<string | null>(
     null
   )
-  const deferredKeyword = useDeferredValue(keyword)
+  const deferredKeyword = useDeferredValue(filters.keyword)
   const catalogQuery = useQuery({
     queryKey: ['pricing-admin', 'catalog-options'],
     queryFn: () => getPricingCatalogOptions(),
@@ -112,32 +125,35 @@ export function PricingAdmin() {
       'pricing-admin',
       'channel-models',
       deferredKeyword,
-      channelId,
-      status,
-      routingStatus,
-      runtimeMode,
-      retailStatus,
+      filters.channelId,
+      filters.status,
+      filters.routingStatus,
+      filters.runtimeMode,
+      filters.retailStatus,
       page,
+      pageSize,
     ],
     queryFn: () =>
       getChannelModels({
         keyword: deferredKeyword.trim() || undefined,
-        channel_id: channelId ? Number(channelId) : undefined,
-        status: status ? Number(status) : undefined,
+        channel_id: filters.channelId ? Number(filters.channelId) : undefined,
+        status: filters.status ? Number(filters.status) : undefined,
         routing_status:
-          routingStatus === 'available' || routingStatus === 'removed'
-            ? routingStatus
+          filters.routingStatus === 'available' ||
+          filters.routingStatus === 'removed'
+            ? filters.routingStatus
             : undefined,
         runtime_mode:
-          runtimeMode === 'legacy' || runtimeMode === 'v2'
-            ? runtimeMode
+          filters.runtimeMode === 'legacy' || filters.runtimeMode === 'v2'
+            ? filters.runtimeMode
             : undefined,
         retail_status:
-          retailStatus === 'published' || retailStatus === 'unpublished'
-            ? retailStatus
+          filters.retailStatus === 'published' ||
+          filters.retailStatus === 'unpublished'
+            ? filters.retailStatus
             : undefined,
         page,
-        page_size: 50,
+        page_size: pageSize,
       }),
   })
   const syncMutation = useMutation({
@@ -184,59 +200,122 @@ export function PricingAdmin() {
       )
     },
   })
-  const exportMutation = useMutation({
+  const exportAllMutation = useMutation({
     mutationFn: () =>
       exportChannelModelPrices({
         keyword: deferredKeyword.trim() || undefined,
-        channel_id: channelId ? Number(channelId) : undefined,
-        status: status ? Number(status) : undefined,
+        channel_id: filters.channelId ? Number(filters.channelId) : undefined,
+        status: filters.status ? Number(filters.status) : undefined,
         routing_status:
-          routingStatus === 'available' || routingStatus === 'removed'
-            ? routingStatus
+          filters.routingStatus === 'available' ||
+          filters.routingStatus === 'removed'
+            ? filters.routingStatus
             : undefined,
         runtime_mode:
-          runtimeMode === 'legacy' || runtimeMode === 'v2'
-            ? runtimeMode
+          filters.runtimeMode === 'legacy' || filters.runtimeMode === 'v2'
+            ? filters.runtimeMode
             : undefined,
         retail_status:
-          retailStatus === 'published' || retailStatus === 'unpublished'
-            ? retailStatus
+          filters.retailStatus === 'published' ||
+          filters.retailStatus === 'unpublished'
+            ? filters.retailStatus
             : undefined,
       }),
-    onSuccess: (blob) => {
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `channel-pricing-${new Date()
-        .toISOString()
-        .slice(0, 10)
-        .replaceAll('-', '')}.csv`
-      anchor.click()
-      URL.revokeObjectURL(url)
-    },
+    onSuccess: (blob) => downloadCSV(blob, 'channel-pricing'),
+    onError: handleServerError,
+  })
+  const exportSelectedMutation = useMutation({
+    mutationFn: (channelModelIds: number[]) =>
+      exportSelectedChannelModelPrices(channelModelIds),
+    onSuccess: (blob) => downloadCSV(blob, 'channel-pricing'),
+    onError: handleServerError,
+  })
+  const exportSelectedPurchaseDiscountsMutation = useMutation({
+    mutationFn: (channelModelIds: number[]) =>
+      exportSelectedPurchaseDiscounts(channelModelIds),
+    onSuccess: (blob) => downloadCSV(blob, 'selected-purchase-discounts'),
+    onError: handleServerError,
+  })
+  const exportSelectedPricingComparisonMutation = useMutation({
+    mutationFn: (channelModelIds: number[]) =>
+      exportSelectedPricingComparison(channelModelIds),
+    onSuccess: (blob) => downloadCSV(blob, 'selected-pricing-comparison'),
     onError: handleServerError,
   })
   const rows = channelModelsQuery.data?.data.items ?? []
   const total = channelModelsQuery.data?.data.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / 50))
+  let selectedOnPage = 0
+  for (const row of rows) {
+    if (selectedIds.has(row.id)) selectedOnPage += 1
+  }
+  const allRowsOnPageSelected =
+    rows.length > 0 && selectedOnPage === rows.length
+  const someRowsOnPageSelected =
+    selectedOnPage > 0 && selectedOnPage < rows.length
 
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         {canExport ? (
-          <Button
-            variant='outline'
-            disabled={exportMutation.isPending}
-            onClick={() => exportMutation.mutate()}
-          >
-            <Download data-icon='inline-start' />
-            {t('Export filtered CSV')}
-          </Button>
+          <>
+            <Button
+              variant='outline'
+              disabled={exportAllMutation.isPending}
+              onClick={() => exportAllMutation.mutate()}
+            >
+              <Download data-icon='inline-start' />
+              {t('Export filtered results')}
+            </Button>
+            <Button
+              disabled={
+                selectedIds.size === 0 || exportSelectedMutation.isPending
+              }
+              onClick={() =>
+                exportSelectedMutation.mutate(
+                  [...selectedIds].sort((left, right) => left - right)
+                )
+              }
+            >
+              <Download data-icon='inline-start' />
+              {t('Export selected ({{count}})', { count: selectedIds.size })}
+            </Button>
+            <Button
+              variant='outline'
+              disabled={
+                selectedIds.size === 0 ||
+                exportSelectedPurchaseDiscountsMutation.isPending
+              }
+              onClick={() =>
+                exportSelectedPurchaseDiscountsMutation.mutate(
+                  [...selectedIds].sort((left, right) => left - right)
+                )
+              }
+            >
+              <Download data-icon='inline-start' />
+              {t('Export selected purchase discounts')}
+            </Button>
+            <Button
+              variant='outline'
+              disabled={
+                selectedIds.size === 0 ||
+                exportSelectedPricingComparisonMutation.isPending
+              }
+              onClick={() =>
+                exportSelectedPricingComparisonMutation.mutate(
+                  [...selectedIds].sort((left, right) => left - right)
+                )
+              }
+            >
+              <Download data-icon='inline-start' />
+              {t('Export selected pricing comparison')}
+            </Button>
+          </>
         ) : null}
         <Button
           variant='outline'
           render={<Link to='/official-pricing' search={{}} />}
+          nativeButton={false}
         >
           <BadgeDollarSign data-icon='inline-start' />
           {t('Official Pricing')}
@@ -259,146 +338,98 @@ export function PricingAdmin() {
       </SectionPageLayout.Actions>
       <PricingRuntimeStatus />
       <SectionPageLayout.Content>
-        <div className='h-full space-y-4 overflow-auto'>
-          <FieldGroup className='flex-row flex-wrap items-end gap-3'>
-            <Field className='max-w-md'>
-              <FieldLabel htmlFor='pricing-admin-search' className='sr-only'>
-                {t('Search channels or models')}
-              </FieldLabel>
-              <InputGroup>
-                <InputGroupAddon>
-                  <Search aria-hidden='true' />
-                </InputGroupAddon>
-                <InputGroupInput
-                  id='pricing-admin-search'
-                  value={keyword}
-                  placeholder={t('Search channels or models')}
-                  onChange={(event) => {
-                    setKeyword(event.target.value)
-                    setPage(1)
-                  }}
-                />
-              </InputGroup>
-            </Field>
-            <Field className='w-auto'>
-              <FieldLabel htmlFor='pricing-admin-channel'>
-                {t('Channel')}
-              </FieldLabel>
-              <NativeSelect
-                id='pricing-admin-channel'
-                className='w-48'
-                value={channelId}
-                onChange={(event) => {
-                  setChannelId(event.target.value)
-                  setPage(1)
-                }}
-              >
-                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
-                {(catalogQuery.data?.data.channels ?? []).map((channel) => (
-                  <NativeSelectOption
-                    key={channel.id}
-                    value={String(channel.id)}
-                  >
-                    {channel.name}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field className='w-auto'>
-              <FieldLabel htmlFor='pricing-admin-status'>
-                {t('Status')}
-              </FieldLabel>
-              <NativeSelect
-                id='pricing-admin-status'
-                className='w-36'
-                value={status}
-                onChange={(event) => {
-                  setStatus(event.target.value)
-                  setPage(1)
-                }}
-              >
-                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
-                <NativeSelectOption value='1'>
-                  {t('Enabled')}
-                </NativeSelectOption>
-                <NativeSelectOption value='0'>
-                  {t('Disabled')}
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-            <Field className='w-auto'>
-              <FieldLabel htmlFor='pricing-admin-routing'>
-                {t('Routing')}
-              </FieldLabel>
-              <NativeSelect
-                id='pricing-admin-routing'
-                className='w-44'
-                value={routingStatus}
-                onChange={(event) => {
-                  setRoutingStatus(event.target.value)
-                  setPage(1)
-                }}
-              >
-                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
-                <NativeSelectOption value='available'>
-                  {t('Available')}
-                </NativeSelectOption>
-                <NativeSelectOption value='removed'>
-                  {t('Removed from channel')}
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-            <Field className='w-auto'>
-              <FieldLabel htmlFor='pricing-admin-runtime'>
-                {t('Runtime')}
-              </FieldLabel>
-              <NativeSelect
-                id='pricing-admin-runtime'
-                className='w-40'
-                value={runtimeMode}
-                onChange={(event) => {
-                  setRuntimeMode(event.target.value)
-                  setPage(1)
-                }}
-              >
-                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
-                <NativeSelectOption value='legacy'>
-                  {t('Legacy Billing')}
-                </NativeSelectOption>
-                <NativeSelectOption value='v2'>
-                  {t('V2 Pricing')}
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-            <Field className='w-auto'>
-              <FieldLabel htmlFor='pricing-admin-retail-status'>
-                {t('Retail Status')}
-              </FieldLabel>
-              <NativeSelect
-                id='pricing-admin-retail-status'
-                className='w-40'
-                value={retailStatus}
-                onChange={(event) => {
-                  setRetailStatus(event.target.value)
-                  setPage(1)
-                }}
-              >
-                <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
-                <NativeSelectOption value='published'>
-                  {t('Published')}
-                </NativeSelectOption>
-                <NativeSelectOption value='unpublished'>
-                  {t('Not Published')}
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-          </FieldGroup>
+        <div className='flex h-full flex-col gap-4 overflow-auto'>
+          <ChannelModelFilters
+            idPrefix='pricing-admin'
+            value={filters}
+            channels={catalogQuery.data?.data.channels ?? []}
+            onChange={(nextFilters) => {
+              setFilters(nextFilters)
+              setPage(1)
+              setSelectedIds(new Set())
+            }}
+          />
 
-          <h2 className='font-medium'>{t('Channel Models')}</h2>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <div>
+              <h2 className='font-medium'>{t('Channel Models')}</h2>
+              <p className='text-muted-foreground text-sm'>
+                {t('{{count}} selected', { count: selectedIds.size })}
+              </p>
+            </div>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Button
+                size='sm'
+                variant='outline'
+                disabled={rows.length === 0}
+                onClick={() => {
+                  setSelectedIds((current) => {
+                    const next = new Set(current)
+                    for (const row of rows) next.add(row.id)
+                    return next
+                  })
+                }}
+              >
+                <HugeiconsIcon
+                  icon={CheckListIcon}
+                  strokeWidth={2}
+                  data-icon='inline-start'
+                />
+                {t('Select current page')}
+              </Button>
+              <Button
+                size='sm'
+                variant='outline'
+                disabled={rows.length === 0}
+                onClick={() => {
+                  setSelectedIds((current) => {
+                    const next = new Set(current)
+                    for (const row of rows) {
+                      if (next.has(row.id)) next.delete(row.id)
+                      else next.add(row.id)
+                    }
+                    return next
+                  })
+                }}
+              >
+                <HugeiconsIcon
+                  icon={ArrowReloadHorizontalIcon}
+                  strokeWidth={2}
+                  data-icon='inline-start'
+                />
+                {t('Invert current page')}
+              </Button>
+              <Button
+                size='sm'
+                variant='ghost'
+                disabled={selectedIds.size === 0}
+                onClick={() => setSelectedIds(new Set())}
+              >
+                {t('Clear selection')}
+              </Button>
+            </div>
+          </div>
           <div className='overflow-x-auto rounded-lg border'>
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className='w-12'>
+                    <Checkbox
+                      checked={allRowsOnPageSelected}
+                      indeterminate={someRowsOnPageSelected}
+                      aria-label={t('Select current page')}
+                      onCheckedChange={(checked) => {
+                        setSelectedIds((current) => {
+                          const next = new Set(current)
+                          for (const row of rows) {
+                            if (checked) next.add(row.id)
+                            else next.delete(row.id)
+                          }
+                          return next
+                        })
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>{t('Channel')}</TableHead>
                   <TableHead>{t('Model')}</TableHead>
                   <TableHead>{t('Provider Model')}</TableHead>
@@ -413,7 +444,28 @@ export function PricingAdmin() {
               </TableHeader>
               <TableBody>
                 {rows.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow
+                    key={row.id}
+                    data-state={
+                      selectedIds.has(row.id) ? 'selected' : undefined
+                    }
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(row.id)}
+                        aria-label={t('Select {{model}}', {
+                          model: row.model_name,
+                        })}
+                        onCheckedChange={(checked) => {
+                          setSelectedIds((current) => {
+                            const next = new Set(current)
+                            if (checked) next.add(row.id)
+                            else next.delete(row.id)
+                            return next
+                          })
+                        }}
+                      />
+                    </TableCell>
                     <TableCell>{row.channel_name}</TableCell>
                     <TableCell className='font-medium'>
                       {row.model_name}
@@ -497,7 +549,7 @@ export function PricingAdmin() {
                 {!channelModelsQuery.isLoading && rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={10}
+                      colSpan={11}
                       className='text-muted-foreground h-24 text-center'
                     >
                       {t('No channel models found')}
@@ -507,35 +559,17 @@ export function PricingAdmin() {
               </TableBody>
             </Table>
           </div>
-          <div className='flex items-center justify-between'>
-            <p className='text-muted-foreground text-sm'>
-              {t('{{total}} channel models', { total })}
-            </p>
-            <div className='flex items-center gap-2'>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={page <= 1 || channelModelsQuery.isFetching}
-                onClick={() => setPage((current) => current - 1)}
-              >
-                {t('Previous')}
-              </Button>
-              <span className='text-sm'>
-                {t('Page {{page}} of {{total}}', {
-                  page,
-                  total: totalPages,
-                })}
-              </span>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={page >= totalPages || channelModelsQuery.isFetching}
-                onClick={() => setPage((current) => current + 1)}
-              >
-                {t('Next')}
-              </Button>
-            </div>
-          </div>
+          <ChannelModelPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            isFetching={channelModelsQuery.isFetching}
+            onPageChange={setPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize)
+              setPage(1)
+            }}
+          />
           <PriceEditorSheet
             channelModel={selectedChannelModel}
             canWrite={canWrite}

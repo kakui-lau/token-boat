@@ -9,8 +9,14 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
+	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
@@ -26,6 +32,136 @@ type officialExpressionConfig struct {
 	SourceVersion   string `yaml:"source_version"`
 	SourceUpdatedAt int64  `yaml:"source_updated_at"`
 	Remark          string `yaml:"remark"`
+}
+
+func auditModelPricing(logicalModel string, selectedChannelID int) error {
+	var logical model.Model
+	if err := model.DB.Where("model_name = ?", logicalModel).First(&logical).Error; err != nil {
+		return err
+	}
+	if err := pricingruntime.RefreshCatalog(); err != nil {
+		return err
+	}
+
+	type routeRow struct {
+		ChannelModelID int    `gorm:"column:channel_model_id"`
+		ChannelID      int    `gorm:"column:channel_id"`
+		ChannelName    string `gorm:"column:channel_name"`
+		ChannelStatus  int    `gorm:"column:channel_status"`
+		UpstreamModel  string `gorm:"column:upstream_model"`
+		ChannelModelOK int    `gorm:"column:channel_model_status"`
+		RuntimeMode    string `gorm:"column:runtime_mode"`
+		Group          string `gorm:"column:ability_group"`
+		AbilityEnabled bool   `gorm:"column:ability_enabled"`
+	}
+	var routes []routeRow
+	if err := model.DB.Table("channel_models").
+		Select(
+			"channel_models.id AS channel_model_id, channel_models.channel_id, channels.name AS channel_name, "+
+				"channels.status AS channel_status, channel_models.upstream_model_name AS upstream_model, "+
+				"channel_models.status AS channel_model_status, channel_models.runtime_mode, "+
+				"abilities.group AS ability_group, abilities.enabled AS ability_enabled",
+		).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("LEFT JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = ?", logicalModel).
+		Where("channel_models.model_id = ?", logical.Id).
+		Order("channel_models.channel_id ASC, abilities.group ASC").
+		Scan(&routes).Error; err != nil {
+		return err
+	}
+
+	fmt.Printf("model id=%d logical=%q status=%d\n", logical.Id, logicalModel, logical.Status)
+	groups := make(map[string]struct{})
+	seenChannelModels := make(map[int]struct{})
+	for _, route := range routes {
+		if route.AbilityEnabled && route.ChannelStatus == common.ChannelStatusEnabled {
+			groups[route.Group] = struct{}{}
+		}
+		if _, seen := seenChannelModels[route.ChannelModelID]; seen {
+			fmt.Printf("ability channel_id=%d group=%q enabled=%t\n", route.ChannelID, route.Group, route.AbilityEnabled)
+			continue
+		}
+		seenChannelModels[route.ChannelModelID] = struct{}{}
+		bundle, err := pricingruntime.ValidateV2Activation(route.ChannelModelID)
+		if err != nil {
+			fmt.Printf(
+				"route channel_id=%d channel=%q channel_status=%d channel_model_id=%d upstream=%q channel_model_status=%d runtime=%q v2_valid=false error=%q\n",
+				route.ChannelID, route.ChannelName, route.ChannelStatus, route.ChannelModelID, route.UpstreamModel,
+				route.ChannelModelOK, route.RuntimeMode, err.Error(),
+			)
+		} else {
+			fmt.Printf(
+				"route channel_id=%d channel=%q channel_status=%d channel_model_id=%d upstream=%q channel_model_status=%d runtime=%q v2_valid=true purchase_id=%d retail_id=%d discount=%q variable_cost=%q tax=%q target_margin=%q minimum_margin=%q ability_group=%q ability_enabled=%t\n",
+				route.ChannelID, route.ChannelName, route.ChannelStatus, route.ChannelModelID, route.UpstreamModel,
+				route.ChannelModelOK, route.RuntimeMode, bundle.Purchase.Id, bundle.Retail.Id,
+				bundle.Purchase.PurchaseDiscount, bundle.Retail.TotalVariableCostRate,
+				bundle.Retail.EffectiveTaxRate, bundle.Retail.TargetNetMargin,
+				bundle.Retail.MinimumMarginRate, route.Group, route.AbilityEnabled,
+			)
+		}
+	}
+
+	legacyMode, legacyModeConfigured := billing_setting.GetConfiguredBillingMode(logicalModel)
+	legacyExpr, legacyExprConfigured := billing_setting.GetBillingExpr(logicalModel)
+	legacyModelPrice, legacyModelPriceConfigured := ratio_setting.GetModelPriceCopy()[logicalModel]
+	legacyModelRatio, legacyModelRatioConfigured := ratio_setting.GetModelRatioCopy()[logicalModel]
+	legacyCompletionRatio, legacyCompletionRatioConfigured := ratio_setting.GetCompletionRatioCopy()[logicalModel]
+	legacyCacheRatio, legacyCacheRatioConfigured := ratio_setting.GetCacheRatioCopy()[logicalModel]
+	legacyCreateCacheRatio, legacyCreateCacheRatioConfigured := ratio_setting.GetCreateCacheRatioCopy()[logicalModel]
+	fmt.Printf(
+		"legacy model_price=%g configured=%t model_ratio=%g configured=%t completion_ratio=%g configured=%t cache_ratio=%g configured=%t create_cache_ratio=%g configured=%t billing_mode=%q configured=%t billing_expr=%q configured=%t\n",
+		legacyModelPrice, legacyModelPriceConfigured, legacyModelRatio, legacyModelRatioConfigured,
+		legacyCompletionRatio, legacyCompletionRatioConfigured, legacyCacheRatio, legacyCacheRatioConfigured,
+		legacyCreateCacheRatio, legacyCreateCacheRatioConfigured, legacyMode, legacyModeConfigured,
+		legacyExpr, legacyExprConfigured,
+	)
+
+	for group := range groups {
+		bundles := pricingruntime.GetCandidateBundles(group, logicalModel)
+		candidateIDs := make([]string, 0, len(bundles))
+		candidateChannelIDs := make([]string, 0, len(bundles))
+		for _, bundle := range bundles {
+			candidateIDs = append(candidateIDs, fmt.Sprintf("%d", bundle.ChannelModel.Id))
+			candidateChannelIDs = append(candidateChannelIDs, fmt.Sprintf("%d", bundle.ChannelModel.ChannelId))
+		}
+		fmt.Printf(
+			"catalog group=%q complete=%t candidate_channel_model_ids=%q candidate_channel_ids=%q\n",
+			group, len(bundles) > 0, strings.Join(candidateIDs, ","), strings.Join(candidateChannelIDs, ","),
+		)
+		if selectedChannelID <= 0 {
+			continue
+		}
+		groupRatio := ratio_setting.GetGroupRatio(group)
+		info := &relaycommon.RelayInfo{OriginModelName: logicalModel, UsingGroup: group}
+		_, usesV2, err := pricingruntime.PrepareRelayPricing(
+			info,
+			group,
+			selectedChannelID,
+			1,
+			4096,
+			hosttypes.GroupRatioInfo{GroupRatio: groupRatio},
+			billingexpr.RequestInput{},
+			pricingengine.Usage{RequestCount: 1},
+		)
+		if err != nil {
+			fmt.Printf("estimate group=%q selected_channel_id=%d uses_v2=%t error=%q\n", group, selectedChannelID, usesV2, err.Error())
+			continue
+		}
+		routeChannelIDs := ""
+		if info.DynamicPricingSnapshot != nil {
+			ids := make([]string, 0, len(info.DynamicPricingSnapshot.RouteChannelIds))
+			for _, channelID := range info.DynamicPricingSnapshot.RouteChannelIds {
+				ids = append(ids, fmt.Sprintf("%d", channelID))
+			}
+			routeChannelIDs = strings.Join(ids, ",")
+		}
+		fmt.Printf(
+			"estimate group=%q selected_channel_id=%d uses_v2=%t group_ratio=%g route_channel_ids=%q reservation_quota=%d selected_quota=%d\n",
+			group, selectedChannelID, usesV2, groupRatio, routeChannelIDs,
+			info.PriceData.QuotaToPreConsume, info.PriceData.Quota,
+		)
+	}
+	return nil
 }
 
 func cloneChannelModelForStaging(sourceChannelID int, logicalModel string, channelName string, stagingGroup string) error {
@@ -151,12 +287,30 @@ func publishOfficialExpression(path string) error {
 	return nil
 }
 
-func repriceActiveChannelModel(channelModelID int, purchaseDiscountOverride string) error {
+func repriceActiveChannelModel(
+	channelModelID int,
+	purchaseDiscountOverride string,
+	variableCostRateOverride string,
+	taxRateOverride string,
+	targetMarginOverride string,
+) error {
 	if channelModelID <= 0 {
 		return errors.New("channel-model-id is required")
 	}
-	if purchaseDiscountOverride != "" {
-		if err := validateUnitRate("purchase-discount", purchaseDiscountOverride, true); err != nil {
+	for _, rate := range []struct {
+		name     string
+		value    string
+		positive bool
+	}{
+		{name: "purchase-discount", value: purchaseDiscountOverride, positive: true},
+		{name: "variable-cost-rate", value: variableCostRateOverride},
+		{name: "tax-rate", value: taxRateOverride},
+		{name: "target-margin", value: targetMarginOverride, positive: true},
+	} {
+		if rate.value == "" {
+			continue
+		}
+		if err := validateUnitRate(rate.name, rate.value, rate.positive); err != nil {
 			return err
 		}
 	}
@@ -185,6 +339,20 @@ func repriceActiveChannelModel(channelModelID int, purchaseDiscountOverride stri
 	if purchaseDiscountOverride != "" {
 		purchaseDiscount = purchaseDiscountOverride
 	}
+	variableCostRate := current.Retail.TotalVariableCostRate
+	if variableCostRateOverride != "" {
+		variableCostRate = variableCostRateOverride
+	}
+	taxRate := current.Retail.EffectiveTaxRate
+	if taxRateOverride != "" {
+		taxRate = taxRateOverride
+	}
+	targetMargin := current.Retail.TargetNetMargin
+	minimumMargin := current.Retail.MinimumMarginRate
+	if targetMarginOverride != "" {
+		targetMargin = targetMarginOverride
+		minimumMargin = targetMarginOverride
+	}
 	purchase, err := pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{
 		ChannelModelId: channelModelID, OfficialPriceVersionId: &officialID,
 		PricingMode: current.Purchase.PricingMode, Currency: official.Currency,
@@ -198,10 +366,10 @@ func repriceActiveChannelModel(channelModelID int, purchaseDiscountOverride stri
 	}
 	retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
 		ChannelModelId: channelModelID, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: current.Retail.TotalVariableCostRate,
-		EffectiveTaxRate:      current.Retail.EffectiveTaxRate,
-		TargetNetMargin:       current.Retail.TargetNetMargin,
-		MinimumMarginRate:     current.Retail.MinimumMarginRate,
+		TotalVariableCostRate: variableCostRate,
+		EffectiveTaxRate:      taxRate,
+		TargetNetMargin:       targetMargin,
+		MinimumMarginRate:     minimumMargin,
 		Remark:                "Recreated from current purchase price",
 	}, 1)
 	if err != nil {
@@ -212,8 +380,9 @@ func repriceActiveChannelModel(channelModelID int, purchaseDiscountOverride stri
 	}
 	pricingruntime.InvalidateCatalog()
 	fmt.Printf(
-		"repriced production channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s\n",
+		"repriced production channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s variable_cost=%s tax=%s target_margin=%s minimum_margin=%s\n",
 		channelModelID, official.Id, purchase.Id, retail.Id, purchase.PurchaseDiscount,
+		retail.TotalVariableCostRate, retail.EffectiveTaxRate, retail.TargetNetMargin, retail.MinimumMarginRate,
 	)
 	return nil
 }

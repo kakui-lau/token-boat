@@ -523,6 +523,10 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
     label: t('Output Tokens'),
     value: completionTokens.toLocaleString(),
   })
+  rows.push({
+    label: t('Total Tokens'),
+    value: (promptTokens + completionTokens).toLocaleString(),
+  })
 
   if (cacheRead > 0) {
     rows.push({

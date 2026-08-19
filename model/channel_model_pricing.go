@@ -187,8 +187,8 @@ type RequestPricingSnapshot struct {
 	EstimatedUsage          string  `json:"estimated_usage" gorm:"type:text"`
 	ActualUsage             string  `json:"actual_usage" gorm:"type:text"`
 	ReservedQuota           int64   `json:"reserved_quota" gorm:"bigint;not null"`
-	ActualPreConsumedQuota  int64   `json:"actual_pre_consumed_quota" gorm:"bigint;not null"`
-	TokenPreConsumedQuota   int64   `json:"token_pre_consumed_quota" gorm:"bigint;not null"`
+	ActualPreConsumedQuota  int64   `json:"actual_pre_consumed_quota" gorm:"bigint;not null;default:0"`
+	TokenPreConsumedQuota   int64   `json:"token_pre_consumed_quota" gorm:"bigint;not null;default:0"`
 	PreConsumeCaptured      bool    `json:"pre_consume_captured" gorm:"index"`
 	TokenId                 int     `json:"token_id" gorm:"index"`
 	SettledQuota            int64   `json:"settled_quota" gorm:"bigint;not null"`

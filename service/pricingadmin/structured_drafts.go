@@ -369,6 +369,15 @@ func buildRetailDraft(input RetailDraftInput) (model.ChannelModelRetailPriceVers
 	if err := model.DB.First(&purchase, input.PurchasePriceVersionId).Error; err != nil {
 		return model.ChannelModelRetailPriceVersion{}, err
 	}
+	return BuildRetailPricePreview(input, purchase)
+}
+
+// BuildRetailPricePreview applies the same retail pricing rules used by draft
+// creation without persisting a new price version.
+func BuildRetailPricePreview(
+	input RetailDraftInput,
+	purchase model.ChannelModelPurchasePriceVersion,
+) (model.ChannelModelRetailPriceVersion, error) {
 	if purchase.ChannelModelId != input.ChannelModelId {
 		return model.ChannelModelRetailPriceVersion{}, errors.New(
 			"purchase and retail versions belong to different channel models",

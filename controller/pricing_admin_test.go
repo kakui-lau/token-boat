@@ -179,7 +179,9 @@ func TestAdminDeleteSelectedChannelModelsDeletesRemovedInventory(t *testing.T) {
 	}).Error)
 
 	context, recorder := newPricingAdminJSONContext(
-		t, http.MethodPost, "/api/pricing-admin/channel-models/delete-selected",
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models/delete-selected",
 		channelModelSelectionInput{ChannelModelIds: []int{70}},
 	)
 	AdminDeleteSelectedChannelModels(context)
@@ -213,7 +215,9 @@ func TestAdminDeleteSelectedChannelModelsRejectsRoutableInventory(t *testing.T) 
 	}).Error)
 
 	context, recorder := newPricingAdminJSONContext(
-		t, http.MethodPost, "/api/pricing-admin/channel-models/delete-selected",
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/channel-models/delete-selected",
 		channelModelSelectionInput{ChannelModelIds: []int{73}},
 	)
 	AdminDeleteSelectedChannelModels(context)

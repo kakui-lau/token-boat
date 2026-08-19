@@ -52,6 +52,7 @@ import {
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
+import { downloadCSV } from '@/lib/download-csv'
 import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -76,18 +77,6 @@ import {
   type ChannelModelFilterValues,
 } from './lib/channel-model-filters'
 import type { ChannelModel } from './types'
-
-function downloadCSV(blob: Blob, filenamePrefix: string) {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${filenamePrefix}-${new Date()
-    .toISOString()
-    .slice(0, 10)
-    .replaceAll('-', '')}.csv`
-  anchor.click()
-  URL.revokeObjectURL(url)
-}
 
 export function PricingAdmin() {
   const { t } = useTranslation()

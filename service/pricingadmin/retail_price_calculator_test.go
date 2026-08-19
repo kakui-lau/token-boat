@@ -3,6 +3,7 @@ package pricingadmin
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,4 +40,27 @@ func TestRetailPriceCalculatorRejectsExtremeSellingFactor(t *testing.T) {
 
 	_, err = calculator.SellingFactor()
 	require.ErrorContains(t, err, "selling factor exceeds the supported maximum")
+}
+
+func TestBuildRetailPricePreviewUsesDraftCalculationWithoutPersistence(t *testing.T) {
+	purchase := model.ChannelModelPurchasePriceVersion{
+		Id: 41, ChannelModelId: 42,
+		BillingMode: "token", PriceStructure: "flat",
+		PriceComponents:     `{"input_unit_price":"1.5","output_unit_price":"9"}`,
+		PurchaseBillingExpr: `v2:(p * 1.5 + c * 9) / 1000000`,
+		Currency:            "USD", PriceUnit: "million_tokens",
+	}
+
+	preview, err := BuildRetailPricePreview(RetailDraftInput{
+		ChannelModelId: 42, PurchasePriceVersionId: 41,
+		TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.16",
+		TargetNetMargin: "0.03", MinimumMarginRate: "0.03",
+	}, purchase)
+	require.NoError(t, err)
+
+	assert.Equal(t, "1.75586", preview.InputUnitPrice)
+	assert.Equal(t, "10.53512", preview.OutputUnitPrice)
+	assert.Equal(t, "0.11", preview.TotalVariableCostRate)
+	assert.Equal(t, "0.16", preview.EffectiveTaxRate)
+	assert.Equal(t, "0.03", preview.TargetNetMargin)
 }

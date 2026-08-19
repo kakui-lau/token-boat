@@ -29,10 +29,12 @@ type channelModelAdminRow struct {
 }
 
 type channelPricingExportRow struct {
+	ChannelModelId             int
 	ModelId                    int
 	ModelName                  string
 	ChannelName                string
 	UpstreamModelName          string
+	RuntimeMode                string
 	OfficialPriceComponents    string
 	OfficialBillingExpr        string
 	OfficialCurrency           string
@@ -43,6 +45,12 @@ type channelPricingExportRow struct {
 	PurchasePricingMode        string
 	PurchaseDiscount           string
 	PurchaseQuoteSpec          string
+	PurchaseBillingMode        string
+	PurchasePriceStructure     string
+	PurchasePriceComponents    string
+	PurchaseBillingExpr        string
+	PurchaseCurrency           string
+	PurchasePriceUnit          string
 	RetailPriceVersionId       sql.NullInt64
 	RetailPriceVersion         sql.NullInt64
 	RetailPriceComponents      string
@@ -73,6 +81,27 @@ type channelPricingComparisonGroup struct {
 	ModelId   int
 	ModelName string
 	Channels  []channelPricingExportRow
+}
+
+type pricingComparisonChannelResult struct {
+	ChannelModelId   int    `json:"channel_model_id"`
+	ChannelName      string `json:"channel_name"`
+	PurchaseDiscount string `json:"purchase_discount"`
+	RetailDiscount   string `json:"retail_discount"`
+}
+
+type pricingComparisonRowResult struct {
+	ModelId                 int                              `json:"model_id"`
+	ModelName               string                           `json:"model_name"`
+	EffectiveRateDetails    string                           `json:"effective_rate_details"`
+	MinimumRetailDiscount   string                           `json:"minimum_retail_discount"`
+	MinimumPurchaseDiscount string                           `json:"minimum_purchase_discount"`
+	Channels                []pricingComparisonChannelResult `json:"channels"`
+}
+
+type pricingComparisonResult struct {
+	Items               []pricingComparisonRowResult `json:"items"`
+	MaximumChannelCount int                          `json:"maximum_channel_count"`
 }
 
 var pricingCSVFlatComponents = []struct {
@@ -530,8 +559,9 @@ func channelPricingExportQuery(c *gin.Context) (*gorm.DB, error) {
 		return nil, err
 	}
 	return joinChannelPurchasePrices(query).
-		Select(`models.id AS model_id, models.model_name, channels.name AS channel_name,
-			channel_models.upstream_model_name,
+		Select(`channel_models.id AS channel_model_id, models.id AS model_id,
+			models.model_name, channels.name AS channel_name,
+			channel_models.upstream_model_name, channel_models.runtime_mode,
 			COALESCE(linked_official.price_components, current_official.price_components, '') AS official_price_components,
 			COALESCE(linked_official.billing_expr, current_official.billing_expr, '') AS official_billing_expr,
 			COALESCE(linked_official.currency, current_official.currency, '') AS official_currency,
@@ -542,6 +572,12 @@ func channelPricingExportQuery(c *gin.Context) (*gorm.DB, error) {
 			COALESCE(selected_purchase.pricing_mode, '') AS purchase_pricing_mode,
 			COALESCE(selected_purchase.purchase_discount, '') AS purchase_discount,
 			COALESCE(selected_purchase.quote_spec, '') AS purchase_quote_spec,
+			COALESCE(selected_purchase.billing_mode, '') AS purchase_billing_mode,
+			COALESCE(selected_purchase.price_structure, '') AS purchase_price_structure,
+			COALESCE(selected_purchase.price_components, '') AS purchase_price_components,
+			COALESCE(selected_purchase.purchase_billing_expr, '') AS purchase_billing_expr,
+			COALESCE(selected_purchase.currency, '') AS purchase_currency,
+			COALESCE(selected_purchase.price_unit, '') AS purchase_price_unit,
 			active_retail_detail.id AS retail_price_version_id,
 			active_retail_detail.version AS retail_price_version,
 			COALESCE(active_retail_detail.price_components, '') AS retail_price_components,
@@ -647,6 +683,14 @@ func writeSelectedPurchaseDiscountsCSV(c *gin.Context, rows []channelPricingExpo
 }
 
 func writeSelectedPricingComparisonCSV(c *gin.Context, rows []channelPricingExportRow) {
+	writePricingComparisonCSV(
+		c,
+		"selected-pricing-comparison",
+		buildPricingComparisonResult(rows),
+	)
+}
+
+func buildPricingComparisonResult(rows []channelPricingExportRow) pricingComparisonResult {
 	groups := make([]channelPricingComparisonGroup, 0)
 	groupIndexes := make(map[int]int)
 	maximumChannelCount := 0
@@ -663,29 +707,10 @@ func writeSelectedPricingComparisonCSV(c *gin.Context, rows []channelPricingExpo
 		maximumChannelCount = max(maximumChannelCount, len(groups[groupIndex].Channels))
 	}
 
-	filename := "selected-pricing-comparison-" + time.Now().UTC().Format("20060102-150405") + ".csv"
-	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	c.Status(200)
-	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
-	writer := csv.NewWriter(c.Writer)
-	header := []string{
-		"模型名称",
-		"生效费率详情（变动成本率VCR，利得税率TR，目标净利率TM）",
-		"最低销售折扣",
-		"最低采购折扣",
+	result := pricingComparisonResult{
+		Items:               make([]pricingComparisonRowResult, 0, len(groups)),
+		MaximumChannelCount: maximumChannelCount,
 	}
-	for channelIndex := 0; channelIndex < maximumChannelCount; channelIndex++ {
-		channelLabel := pricingComparisonChannelLabel(channelIndex)
-		header = append(
-			header,
-			"渠道"+channelLabel+"名称",
-			"渠道"+channelLabel+"采购折扣",
-			"渠道"+channelLabel+"售出折扣",
-		)
-	}
-	_ = writer.Write(header)
-
 	for _, group := range groups {
 		hasMinimumPurchaseDiscount := false
 		hasMinimumRetailDiscount := false
@@ -742,29 +767,78 @@ func writeSelectedPricingComparisonCSV(c *gin.Context, rows []channelPricingExpo
 		if hasMinimumPurchaseDiscount {
 			minimumPurchaseDiscountText = formatPurchaseDiscountMultiplierForCSV(minimumPurchaseDiscount.String(), false)
 		}
-		record := []string{
-			spreadsheetSafeCSVCell(group.ModelName),
-			spreadsheetSafeCSVCell(effectiveRateDetails),
-			minimumRetailDiscountText,
-			minimumPurchaseDiscountText,
+		item := pricingComparisonRowResult{
+			ModelId:                 group.ModelId,
+			ModelName:               group.ModelName,
+			EffectiveRateDetails:    effectiveRateDetails,
+			MinimumRetailDiscount:   minimumRetailDiscountText,
+			MinimumPurchaseDiscount: minimumPurchaseDiscountText,
+			Channels:                make([]pricingComparisonChannelResult, 0, len(group.Channels)),
 		}
 		for _, row := range group.Channels {
-			record = append(
-				record,
-				spreadsheetSafeCSVCell(row.ChannelName),
-				formatPurchaseDiscountForCSV(
-					row.PurchasePricingMode,
-					row.PurchaseDiscount,
-					row.PurchaseQuoteSpec,
-				),
-				formatRetailOfficialDiscountForCSV(
-					row.PurchasePricingMode,
-					row.OfficialPriceComponents,
-					row.RetailPriceComponents,
-				),
+			item.Channels = append(
+				item.Channels,
+				pricingComparisonChannelResult{
+					ChannelModelId: row.ChannelModelId,
+					ChannelName:    row.ChannelName,
+					PurchaseDiscount: formatPurchaseDiscountForCSV(
+						row.PurchasePricingMode,
+						row.PurchaseDiscount,
+						row.PurchaseQuoteSpec,
+					),
+					RetailDiscount: formatRetailOfficialDiscountForCSV(
+						row.PurchasePricingMode,
+						row.OfficialPriceComponents,
+						row.RetailPriceComponents,
+					),
+				},
 			)
 		}
-		for len(record) < 4+maximumChannelCount*3 {
+		result.Items = append(result.Items, item)
+	}
+	return result
+}
+
+func writePricingComparisonCSV(c *gin.Context, filenamePrefix string, result pricingComparisonResult) {
+	filename := filenamePrefix + "-" + time.Now().UTC().Format("20060102-150405") + ".csv"
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Status(200)
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+	writer := csv.NewWriter(c.Writer)
+	header := []string{
+		"模型名称",
+		"生效费率详情（变动成本率VCR，利得税率TR，目标净利率TM）",
+		"最低销售折扣",
+		"最低采购折扣",
+	}
+	for channelIndex := 0; channelIndex < result.MaximumChannelCount; channelIndex++ {
+		channelLabel := pricingComparisonChannelLabel(channelIndex)
+		header = append(
+			header,
+			"渠道"+channelLabel+"名称",
+			"渠道"+channelLabel+"采购折扣",
+			"渠道"+channelLabel+"售出折扣",
+		)
+	}
+	_ = writer.Write(header)
+
+	for _, item := range result.Items {
+		record := []string{
+			spreadsheetSafeCSVCell(item.ModelName),
+			spreadsheetSafeCSVCell(item.EffectiveRateDetails),
+			item.MinimumRetailDiscount,
+			item.MinimumPurchaseDiscount,
+		}
+		for _, channel := range item.Channels {
+			record = append(
+				record,
+				spreadsheetSafeCSVCell(channel.ChannelName),
+				channel.PurchaseDiscount,
+				channel.RetailDiscount,
+			)
+		}
+		for len(record) < 4+result.MaximumChannelCount*3 {
 			record = append(record, "")
 		}
 		_ = writer.Write(record)

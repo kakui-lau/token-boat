@@ -187,7 +187,7 @@ func ListChannelDailyUsages(filter ChannelDailyUsageFilter, offset, limit int) (
 		return nil, 0, err
 	}
 	var rows []ChannelDailyUsage
-	err := tx.Order(channelDailyUsageOrder(filter, "usage_date DESC") + ", usage_date DESC, channel_id ASC, model_name ASC, upstream_model ASC").
+	err := tx.Order(channelDailyUsageOrder(filter, "total_tokens DESC") + ", usage_date DESC, channel_id ASC, model_name ASC, upstream_model ASC").
 		Offset(offset).Limit(limit).Find(&rows).Error
 	return rows, total, err
 }

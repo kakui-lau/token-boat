@@ -112,7 +112,7 @@ export function ChannelDailyUsagePage() {
   const [settlementMonth, setSettlementMonth] = useState(previousUtcMonth)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [page, setPage] = useState(1)
-  const [sortBy, setSortBy] = useState<ChannelUsageSortBy>('usage_date')
+  const [sortBy, setSortBy] = useState<ChannelUsageSortBy>('total_tokens')
   const [sortOrder, setSortOrder] = useState<ChannelUsageSortOrder>('desc')
   const startMonth = startDate.slice(0, 7)
   const endMonth = endDate.slice(0, 7)

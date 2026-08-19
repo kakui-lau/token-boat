@@ -401,6 +401,16 @@ func TestListChannelMonthlyUsagesAggregatesFilteredDailyRows(t *testing.T) {
 	assert.Equal(t, int64(25), sortedDaily[0].TotalTokens)
 	assert.Equal(t, int64(37), sortedDaily[1].TotalTokens)
 	assert.Equal(t, int64(44), sortedDaily[2].TotalTokens)
+
+	defaultDaily, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-01", EndDate: "2026-07-31",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, defaultDaily, 3)
+	assert.Equal(t, int64(44), defaultDaily[0].TotalTokens)
+	assert.Equal(t, int64(37), defaultDaily[1].TotalTokens)
+	assert.Equal(t, int64(25), defaultDaily[2].TotalTokens)
 }
 
 func TestListChannelMonthlyUsageSummaryGroupsBySelectedModelDimension(t *testing.T) {

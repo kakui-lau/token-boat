@@ -178,7 +178,7 @@ describe('Channel daily usage report filters', () => {
     fireEvent.click(monthly)
 
     expect(
-      screen.getByRole('button', { name: 'UTC Month: Descending' })
+      screen.getByRole('button', { name: 'Total Tokens: Descending' })
     ).toBeVisible()
     expect(screen.getByLabelText('Start Month')).toHaveAttribute(
       'type',
@@ -190,6 +190,16 @@ describe('Channel daily usage report filters', () => {
 
   test('sorts all matching records from an accessible column header', () => {
     render(<ChannelDailyUsagePage />)
+
+    expect(latestUsageFilters).toMatchObject({
+      sort_by: 'total_tokens',
+      sort_order: 'desc',
+    })
+    expect(
+      screen
+        .getByRole('button', { name: 'Total Tokens: Descending' })
+        .closest('th')
+    ).toHaveAttribute('aria-sort', 'descending')
 
     const requestCount = screen.getByRole('button', {
       name: 'Request Count: Not sorted',

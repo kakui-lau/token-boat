@@ -47,6 +47,47 @@ func CaptureUpstreamRequestID(c *gin.Context, header http.Header) string {
 	return ""
 }
 
+// CaptureUpstreamResponseID records the provider-generated response object ID.
+// This is the ID returned in JSON/SSE payloads (for example, chatcmpl-...) and
+// intentionally takes precedence over a transport-level request header ID.
+func CaptureUpstreamResponseID(c *gin.Context, data []byte) string {
+	if c == nil || len(data) == 0 {
+		return ""
+	}
+	var payload struct {
+		ID         string `json:"id"`
+		ResponseID string `json:"response_id"`
+		Response   *struct {
+			ID string `json:"id"`
+		} `json:"response"`
+		Message *struct {
+			ID string `json:"id"`
+		} `json:"message"`
+	}
+	if err := common.Unmarshal(data, &payload); err != nil {
+		return ""
+	}
+	value := payload.ID
+	if value == "" {
+		value = payload.ResponseID
+	}
+	if value == "" && payload.Response != nil {
+		value = payload.Response.ID
+	}
+	if value == "" && payload.Message != nil {
+		value = payload.Message.ID
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) > 128 {
+		value = value[:128]
+	}
+	c.Set(common.UpstreamRequestIdKey, value)
+	return value
+}
+
 func CloseResponseBodyGracefully(httpResponse *http.Response) {
 	if httpResponse == nil || httpResponse.Body == nil {
 		return
@@ -77,6 +118,7 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	if c.Writer == nil {
 		return
 	}
+	CaptureUpstreamResponseID(c, data)
 
 	body := io.NopCloser(bytes.NewBuffer(data))
 

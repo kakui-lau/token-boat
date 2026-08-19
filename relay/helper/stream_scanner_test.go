@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -136,6 +137,15 @@ func TestStreamScannerHandler_OrderPreserved(t *testing.T) {
 		expected := fmt.Sprintf("{\"id\":%d,\"choices\":[{\"delta\":{\"content\":\"token_%d\"}}]}", i, i)
 		assert.Equal(t, expected, received[i], "chunk %d out of order", i)
 	}
+}
+
+func TestStreamScannerHandlerCapturesProviderResponseID(t *testing.T) {
+	body := "data: {\"id\":\"chatcmpl-provider-stream\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n"
+	c, resp, info := setupStreamTest(t, strings.NewReader(body))
+
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+
+	assert.Equal(t, "chatcmpl-provider-stream", c.GetString(common.UpstreamRequestIdKey))
 }
 
 func TestStreamScannerHandler_DoneStopsScanner(t *testing.T) {

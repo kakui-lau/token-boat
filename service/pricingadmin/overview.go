@@ -50,40 +50,42 @@ type ProviderPriceEndpoint struct {
 }
 
 type OfficialPriceOverview struct {
-	ModelId              int    `json:"model_id"`
-	ModelName            string `json:"model_name"`
-	Status               string `json:"status"`
-	Currency             string `json:"currency"`
-	BillingMode          string `json:"billing_mode"`
-	PriceStructure       string `json:"price_structure"`
-	Version              int64  `json:"version"`
-	VersionCount         int    `json:"version_count"`
-	DraftCount           int    `json:"draft_count"`
-	LatestDraftId        int    `json:"latest_draft_id"`
-	EffectiveFrom        int64  `json:"effective_from"`
-	InputUnitPrice       string `json:"input_unit_price"`
-	OutputUnitPrice      string `json:"output_unit_price"`
-	CacheReadUnitPrice   string `json:"cache_read_unit_price"`
-	CacheWriteUnitPrice  string `json:"cache_write_unit_price"`
-	ImageInputUnitPrice  string `json:"image_input_unit_price"`
-	ImageOutputUnitPrice string `json:"image_output_unit_price"`
-	AudioInputUnitPrice  string `json:"audio_input_unit_price"`
-	AudioOutputUnitPrice string `json:"audio_output_unit_price"`
-	RequestUnitPrice     string `json:"request_unit_price"`
-	VideoSecondUnitPrice string `json:"video_second_unit_price"`
+	ModelId               int    `json:"model_id"`
+	ModelName             string `json:"model_name"`
+	Status                string `json:"status"`
+	Currency              string `json:"currency"`
+	BillingMode           string `json:"billing_mode"`
+	PriceStructure        string `json:"price_structure"`
+	Version               int64  `json:"version"`
+	VersionCount          int    `json:"version_count"`
+	DraftCount            int    `json:"draft_count"`
+	LatestDraftId         int    `json:"latest_draft_id"`
+	EffectiveFrom         int64  `json:"effective_from"`
+	InputUnitPrice        string `json:"input_unit_price"`
+	OutputUnitPrice       string `json:"output_unit_price"`
+	CacheReadUnitPrice    string `json:"cache_read_unit_price"`
+	CacheWriteUnitPrice   string `json:"cache_write_unit_price"`
+	CacheWrite1HUnitPrice string `json:"cache_write_1h_unit_price"`
+	ImageInputUnitPrice   string `json:"image_input_unit_price"`
+	ImageOutputUnitPrice  string `json:"image_output_unit_price"`
+	AudioInputUnitPrice   string `json:"audio_input_unit_price"`
+	AudioOutputUnitPrice  string `json:"audio_output_unit_price"`
+	RequestUnitPrice      string `json:"request_unit_price"`
+	VideoSecondUnitPrice  string `json:"video_second_unit_price"`
 }
 
 type officialOverviewComponents struct {
-	InputUnitPrice       string `json:"input_unit_price"`
-	OutputUnitPrice      string `json:"output_unit_price"`
-	CacheReadUnitPrice   string `json:"cache_read_unit_price"`
-	CacheWriteUnitPrice  string `json:"cache_write_unit_price"`
-	ImageInputUnitPrice  string `json:"image_input_unit_price"`
-	ImageOutputUnitPrice string `json:"image_output_unit_price"`
-	AudioInputUnitPrice  string `json:"audio_input_unit_price"`
-	AudioOutputUnitPrice string `json:"audio_output_unit_price"`
-	RequestUnitPrice     string `json:"request_unit_price"`
-	VideoSecondUnitPrice string `json:"video_second_unit_price"`
+	InputUnitPrice        string `json:"input_unit_price"`
+	OutputUnitPrice       string `json:"output_unit_price"`
+	CacheReadUnitPrice    string `json:"cache_read_unit_price"`
+	CacheWriteUnitPrice   string `json:"cache_write_unit_price"`
+	CacheWrite1HUnitPrice string `json:"cache_write_1h_unit_price"`
+	ImageInputUnitPrice   string `json:"image_input_unit_price"`
+	ImageOutputUnitPrice  string `json:"image_output_unit_price"`
+	AudioInputUnitPrice   string `json:"audio_input_unit_price"`
+	AudioOutputUnitPrice  string `json:"audio_output_unit_price"`
+	RequestUnitPrice      string `json:"request_unit_price"`
+	VideoSecondUnitPrice  string `json:"video_second_unit_price"`
 }
 
 type modelPriceCandidate struct {
@@ -261,6 +263,7 @@ func ListOfficialPriceOverview(keyword string) ([]OfficialPriceOverview, error) 
 				overview.OutputUnitPrice = components.OutputUnitPrice
 				overview.CacheReadUnitPrice = components.CacheReadUnitPrice
 				overview.CacheWriteUnitPrice = components.CacheWriteUnitPrice
+				overview.CacheWrite1HUnitPrice = components.CacheWrite1HUnitPrice
 				overview.ImageInputUnitPrice = components.ImageInputUnitPrice
 				overview.ImageOutputUnitPrice = components.ImageOutputUnitPrice
 				overview.AudioInputUnitPrice = components.AudioInputUnitPrice

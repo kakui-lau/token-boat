@@ -364,7 +364,8 @@ func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
 	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
 		ModelId: 23, Currency: "USD",
 		Prices: FlatTokenPriceInput{
-			ImageInputUnitPrice: "2", ImageOutputUnitPrice: "8",
+			CacheWrite1HUnitPrice: "4",
+			ImageInputUnitPrice:   "2", ImageOutputUnitPrice: "8",
 			AudioInputUnitPrice: "3", AudioOutputUnitPrice: "12",
 		},
 	}, 1)
@@ -373,6 +374,7 @@ func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
 	assert.Contains(t, official.BillingExpr, "img_o * 8")
 	assert.Contains(t, official.BillingExpr, "ai * 3")
 	assert.Contains(t, official.BillingExpr, "ao * 12")
+	assert.Contains(t, official.BillingExpr, "cc1h * 4")
 	require.NoError(t, PublishOfficialPriceVersion(official.Id))
 
 	officialId := official.Id
@@ -383,6 +385,9 @@ func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, purchase.PriceComponents, `"image_input_unit_price":"1"`)
 	assert.Contains(t, purchase.PriceComponents, `"audio_output_unit_price":"6"`)
+	assert.Contains(t, purchase.PriceComponents, `"cache_write_1h_unit_price":"2"`)
+	assert.Contains(t, purchase.PurchaseBillingExpr, "cc1h * 4")
+	assert.Contains(t, purchase.PurchaseBillingExpr, "* 0.5")
 	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
 
 	retail, err := CreateRetailDraft(RetailDraftInput{
@@ -393,6 +398,8 @@ func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, retail.PriceComponents, `"image_input_unit_price":"1.66667"`)
 	assert.Contains(t, retail.PriceComponents, `"audio_output_unit_price":"10.00001"`)
+	assert.Contains(t, retail.PriceComponents, `"cache_write_1h_unit_price":"3.33334"`)
+	assert.Contains(t, retail.RetailBillingExpr, "cc1h * 3.33334")
 }
 
 func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.T) {

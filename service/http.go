@@ -13,6 +13,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var upstreamRequestIDHeaderNames = []string{
+	common.RequestIdKey,
+	"X-Request-Id",
+	"Request-Id",
+	"X-Amzn-RequestId",
+	"X-Goog-Request-Id",
+	"X-Ms-Request-Id",
+	"X-Trace-Id",
+	"Trace-Id",
+}
+
+// CaptureUpstreamRequestID stores the first recognized provider request ID for
+// usage-log correlation. The value is capped to the database column length.
+func CaptureUpstreamRequestID(c *gin.Context, header http.Header) string {
+	if c == nil || header == nil {
+		return ""
+	}
+	if existing := c.GetString(common.UpstreamRequestIdKey); existing != "" {
+		return existing
+	}
+	for _, name := range upstreamRequestIDHeaderNames {
+		value := strings.TrimSpace(header.Get(name))
+		if value == "" {
+			continue
+		}
+		if len(value) > 128 {
+			value = value[:128]
+		}
+		c.Set(common.UpstreamRequestIdKey, value)
+		return value
+	}
+	return ""
+}
+
 func CloseResponseBodyGracefully(httpResponse *http.Response) {
 	if httpResponse == nil || httpResponse.Body == nil {
 		return
@@ -33,9 +67,7 @@ func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 		return false
 	}
 	if strings.EqualFold(k, common.RequestIdKey) {
-		if c != nil && len(v) > 0 {
-			c.Set(common.UpstreamRequestIdKey, v[0])
-		}
+		CaptureUpstreamRequestID(c, http.Header{k: v})
 		return false
 	}
 	return true

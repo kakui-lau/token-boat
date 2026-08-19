@@ -909,6 +909,10 @@ func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T)
 		PurchaseCost: "0.04", RetailAmount: "0.08", Currency: "USD",
 		Status: pricingruntime.PricingSnapshotStatusPending,
 	}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{
+		RequestId: "+request", UpstreamRequestId: "provider-request-123",
+		Type: model.LogTypeConsume,
+	}).Error)
 	require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
 		RequestId: "settled-not-exported", UserId: 1, ModelId: 132, ChannelModelId: 133,
 		PurchasePriceVersionId: 1, RetailPriceVersionId: 2,
@@ -919,7 +923,7 @@ func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T)
 	context, recorder := newPricingAdminJSONContext(
 		t,
 		http.MethodGet,
-		"/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true",
+		"/api/pricing-admin/request-pricing-snapshots/export?reconciliation=true&keyword=provider-request-123",
 		nil,
 	)
 
@@ -932,14 +936,15 @@ func TestAdminExportRequestPricingSnapshotsProducesSafeFilteredCSV(t *testing.T)
 	require.NoError(t, err)
 	require.Len(t, records, 2)
 	assert.Equal(t, "'+request", records[1][0])
-	assert.Equal(t, "'=model", records[1][1])
-	assert.Equal(t, "'@provider", records[1][2])
-	assert.Equal(t, model.ProviderCostModeEstimated, records[1][8])
-	assert.Equal(t, model.ProviderCostStatusEstimated, records[1][9])
-	assert.Equal(t, "0.08", records[1][16])
+	assert.Equal(t, "provider-request-123", records[1][1])
+	assert.Equal(t, "'=model", records[1][2])
+	assert.Equal(t, "'@provider", records[1][3])
+	assert.Equal(t, model.ProviderCostModeEstimated, records[1][9])
+	assert.Equal(t, model.ProviderCostStatusEstimated, records[1][10])
 	assert.Equal(t, "0.08", records[1][17])
-	assert.Empty(t, records[1][18])
-	assert.Equal(t, "pending", records[1][23])
+	assert.Equal(t, "0.08", records[1][18])
+	assert.Empty(t, records[1][19])
+	assert.Equal(t, "pending", records[1][24])
 }
 
 func TestAdminConfirmRequestPricingSnapshotRefundedFinalizesPendingOnly(t *testing.T) {

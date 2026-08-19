@@ -31,6 +31,24 @@ export type ChannelDailyUsage = {
   status: string
 }
 
+export type ChannelUsageSortBy =
+  | 'usage_date'
+  | 'channel_name'
+  | 'model_name'
+  | 'upstream_model'
+  | 'billed_request_count'
+  | 'prompt_tokens'
+  | 'cache_read_tokens'
+  | 'cache_write_tokens'
+  | 'completion_tokens'
+  | 'total_tokens'
+  | 'customer_revenue_usd'
+  | 'provider_reported_cost_usd'
+  | 'cost_coverage'
+  | 'exceptions'
+
+export type ChannelUsageSortOrder = 'asc' | 'desc'
+
 export type ChannelDailyUsageFilters = {
   start_date: string
   end_date: string
@@ -39,6 +57,8 @@ export type ChannelDailyUsageFilters = {
   model_name?: string
   upstream_model?: string
   status?: 'open' | 'locked'
+  sort_by: ChannelUsageSortBy
+  sort_order: ChannelUsageSortOrder
   page: number
   page_size: number
 }

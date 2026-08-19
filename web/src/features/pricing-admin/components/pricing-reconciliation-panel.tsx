@@ -535,8 +535,12 @@ export function PricingReconciliationPanel() {
       >
         <Input
           className='max-w-sm'
-          aria-label={t('Search request ID, model, or channel')}
-          placeholder={t('Search request ID, model, or channel')}
+          aria-label={t(
+            'Search request ID, upstream request ID, model, or channel'
+          )}
+          placeholder={t(
+            'Search request ID, upstream request ID, model, or channel'
+          )}
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
         />
@@ -549,6 +553,7 @@ export function PricingReconciliationPanel() {
           <TableHeader>
             <TableRow>
               <TableHead>{t('Request ID')}</TableHead>
+              <TableHead>{t('Upstream Request ID')}</TableHead>
               <TableHead>{t('Model')}</TableHead>
               <TableHead>{t('Channel')}</TableHead>
               <TableHead>{t('Billing mode')}</TableHead>
@@ -583,6 +588,12 @@ export function PricingReconciliationPanel() {
                 <TableRow key={row.id}>
                   <TableCell className='max-w-56 truncate font-mono text-xs'>
                     {row.request_id}
+                  </TableCell>
+                  <TableCell
+                    className='max-w-56 truncate font-mono text-xs'
+                    title={row.upstream_request_id || undefined}
+                  >
+                    {row.upstream_request_id || '—'}
                   </TableCell>
                   <TableCell>{row.model_name}</TableCell>
                   <TableCell>{row.channel_name}</TableCell>
@@ -696,7 +707,7 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={19}
+                  colSpan={20}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}
@@ -716,6 +727,14 @@ export function PricingReconciliationPanel() {
                 </div>
                 <div className='font-mono text-xs break-all'>
                   {selectedSnapshot.request_id}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Upstream Request ID')}
+                </div>
+                <div className='font-mono text-xs break-all'>
+                  {selectedSnapshot.upstream_request_id || '—'}
                 </div>
               </div>
               <div>

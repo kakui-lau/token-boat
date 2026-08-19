@@ -108,6 +108,7 @@ export type ChannelCircuitEventListResponse = {
 export type RequestPricingSnapshot = {
   id: number
   request_id: string
+  upstream_request_id?: string
   model_name: string
   channel_id: number
   channel_name: string

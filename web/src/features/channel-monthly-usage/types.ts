@@ -6,6 +6,10 @@ it under the terms of the GNU Affero General Public License as
 published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 */
+import type {
+  ChannelUsageSortBy,
+  ChannelUsageSortOrder,
+} from '../channel-daily-usage/types'
 
 export type ChannelMonthlyUsageGroupBy = 'model_name' | 'upstream_model'
 
@@ -13,6 +17,8 @@ export type ChannelMonthlyUsageFilters = {
   month: string
   group_by: ChannelMonthlyUsageGroupBy
   channel_id?: number
+  sort_by: ChannelUsageSortBy
+  sort_order: ChannelUsageSortOrder
   page: number
   page_size: number
 }

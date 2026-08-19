@@ -73,6 +73,8 @@ type ChannelDailyUsageFilter struct {
 	ModelName     string
 	UpstreamModel string
 	Status        string
+	SortBy        string
+	SortOrder     string
 }
 
 type ChannelDailyUsageChannelOption struct {
@@ -150,6 +152,34 @@ func channelDailyUsageQuery(filter ChannelDailyUsageFilter) *gorm.DB {
 	return tx
 }
 
+func channelDailyUsageOrder(filter ChannelDailyUsageFilter, fallback string) string {
+	columns := map[string]string{
+		"usage_date":                 "usage_date",
+		"channel_name":               "channel_name",
+		"model_name":                 "model_name",
+		"upstream_model":             "upstream_model",
+		"billed_request_count":       "billed_request_count",
+		"prompt_tokens":              "prompt_tokens",
+		"cache_read_tokens":          "cache_read_tokens",
+		"cache_write_tokens":         "cache_write_tokens",
+		"completion_tokens":          "completion_tokens",
+		"total_tokens":               "total_tokens",
+		"customer_revenue_usd":       "customer_revenue_usd",
+		"provider_reported_cost_usd": "provider_reported_cost_usd",
+		"cost_coverage":              "CASE WHEN billed_request_count > 0 THEN (provider_cost_known_count * 1.0 / billed_request_count) ELSE 0 END",
+		"exceptions":                 "(missing_usage_count + pending_task_count + manual_review_count)",
+	}
+	column, ok := columns[filter.SortBy]
+	if !ok {
+		return fallback
+	}
+	direction := "DESC"
+	if strings.EqualFold(filter.SortOrder, "asc") {
+		direction = "ASC"
+	}
+	return column + " " + direction
+}
+
 func ListChannelDailyUsages(filter ChannelDailyUsageFilter, offset, limit int) ([]ChannelDailyUsage, int64, error) {
 	var total int64
 	tx := channelDailyUsageQuery(filter)
@@ -157,7 +187,7 @@ func ListChannelDailyUsages(filter ChannelDailyUsageFilter, offset, limit int) (
 		return nil, 0, err
 	}
 	var rows []ChannelDailyUsage
-	err := tx.Order("usage_date desc, channel_id asc, model_name asc, upstream_model asc").
+	err := tx.Order(channelDailyUsageOrder(filter, "usage_date DESC") + ", usage_date DESC, channel_id ASC, model_name ASC, upstream_model ASC").
 		Offset(offset).Limit(limit).Find(&rows).Error
 	return rows, total, err
 }
@@ -206,7 +236,7 @@ func ListChannelMonthlyUsages(filter ChannelDailyUsageFilter, offset, limit int)
 
 	var rows []ChannelDailyUsage
 	err := DB.Table("(?) AS channel_monthly_usages", grouped).
-		Order("usage_date DESC, channel_id ASC, model_name ASC, upstream_model ASC").
+		Order(channelDailyUsageOrder(filter, "usage_date DESC") + ", usage_date DESC, channel_id ASC, model_name ASC, upstream_model ASC").
 		Offset(offset).Limit(limit).Scan(&rows).Error
 	return rows, total, err
 }
@@ -282,8 +312,13 @@ func ListChannelMonthlyUsageSummary(filter ChannelDailyUsageFilter, month, group
 		return nil, 0, err
 	}
 	var rows []ChannelMonthlyUsage
+	if filter.SortBy == "usage_date" ||
+		(filter.SortBy == "model_name" && groupColumn != "model_name") ||
+		(filter.SortBy == "upstream_model" && groupColumn != "upstream_model") {
+		filter.SortBy = ""
+	}
 	err = DB.Table("(?) AS channel_monthly_summary", grouped).
-		Order("total_tokens DESC, channel_id ASC, " + groupColumn + " ASC").
+		Order(channelDailyUsageOrder(filter, "total_tokens DESC") + ", channel_id ASC, " + groupColumn + " ASC").
 		Offset(offset).Limit(limit).Scan(&rows).Error
 	return rows, total, err
 }

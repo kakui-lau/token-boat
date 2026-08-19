@@ -130,9 +130,10 @@ type pricingModelRuntimeInput struct {
 
 type requestPricingSnapshotAdminRow struct {
 	model.RequestPricingSnapshot
-	ModelName   string `json:"model_name"`
-	ChannelId   int    `json:"channel_id"`
-	ChannelName string `json:"channel_name"`
+	ModelName         string `json:"model_name"`
+	ChannelId         int    `json:"channel_id"`
+	ChannelName       string `json:"channel_name"`
+	UpstreamRequestId string `json:"upstream_request_id,omitempty"`
 }
 
 type pricingCircuitChannelAdminRow struct {
@@ -625,6 +626,10 @@ func AdminListRequestPricingSnapshots(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := hydrateSnapshotUpstreamRequestIDs(rows); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, gin.H{
 		"items":     rows,
 		"total":     total,
@@ -647,13 +652,17 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := hydrateSnapshotUpstreamRequestIDs(rows); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	filename := "pricing-reconciliation-" + time.Now().UTC().Format("20060102-150405") + ".csv"
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	c.Status(200)
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
-		"request_id", "model", "channel", "billing_mode", "currency",
+		"request_id", "upstream_request_id", "model", "channel", "billing_mode", "currency",
 		"reserved_quota", "settled_quota", "purchase_cost",
 		"provider_cost_mode", "provider_cost_status", "provider_cost_source",
 		"provider_reported_cost", "provider_cost_scope", "cost_variance",
@@ -665,6 +674,7 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 	for _, row := range rows {
 		_ = writer.Write([]string{
 			spreadsheetSafeCSVCell(row.RequestId),
+			spreadsheetSafeCSVCell(row.UpstreamRequestId),
 			spreadsheetSafeCSVCell(row.ModelName),
 			spreadsheetSafeCSVCell(row.ChannelName),
 			row.BillingMode,
@@ -693,6 +703,23 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 		})
 	}
 	writer.Flush()
+}
+
+func hydrateSnapshotUpstreamRequestIDs(rows []requestPricingSnapshotAdminRow) error {
+	requestIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.RequestId != "" {
+			requestIDs = append(requestIDs, row.RequestId)
+		}
+	}
+	upstreamIDs, err := model.GetUpstreamRequestIDsByRequestIDs(requestIDs)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].UpstreamRequestId = upstreamIDs[rows[i].RequestId]
+	}
+	return nil
 }
 
 func nullablePricingString(value *string) string {
@@ -1063,12 +1090,26 @@ func requestPricingSnapshotAdminQuery(c *gin.Context) (*gorm.DB, error) {
 	}
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
 		like := "%" + keyword + "%"
-		query = query.Where(
-			"request_pricing_snapshots.request_id LIKE ? OR models.model_name LIKE ? OR channels.name LIKE ?",
-			like,
-			like,
-			like,
-		)
+		upstreamRequestIDs, err := model.FindRequestIDsByUpstreamRequestIDKeyword(keyword, 1000)
+		if err != nil {
+			return nil, err
+		}
+		if len(upstreamRequestIDs) > 0 {
+			query = query.Where(
+				"request_pricing_snapshots.request_id LIKE ? OR models.model_name LIKE ? OR channels.name LIKE ? OR request_pricing_snapshots.request_id IN ?",
+				like,
+				like,
+				like,
+				upstreamRequestIDs,
+			)
+		} else {
+			query = query.Where(
+				"request_pricing_snapshots.request_id LIKE ? OR models.model_name LIKE ? OR channels.name LIKE ?",
+				like,
+				like,
+				like,
+			)
+		}
 	}
 	return query, nil
 }

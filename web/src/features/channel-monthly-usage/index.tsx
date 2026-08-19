@@ -17,6 +17,7 @@ import {
   Card,
   CardAction,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -36,11 +37,15 @@ import {
   TableBody,
   TableCell,
   TableFooter,
-  TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
 
+import { SortableUsageTableHead } from '../channel-daily-usage/components/sortable-usage-table-head'
+import type {
+  ChannelUsageSortBy,
+  ChannelUsageSortOrder,
+} from '../channel-daily-usage/types'
 import { getChannelMonthlyUsageChannels, getChannelMonthlyUsages } from './api'
 import type {
   ChannelMonthlyUsageFilters,
@@ -90,6 +95,8 @@ export function ChannelMonthlyUsagePage() {
     useState<ChannelMonthlyUsageGroupBy>('upstream_model')
   const [channelId, setChannelId] = useState('')
   const [page, setPage] = useState(1)
+  const [sortBy, setSortBy] = useState<ChannelUsageSortBy>('total_tokens')
+  const [sortOrder, setSortOrder] = useState<ChannelUsageSortOrder>('desc')
   const dateRange = monthDateRange(month)
 
   const filters = useMemo<ChannelMonthlyUsageFilters>(
@@ -97,10 +104,12 @@ export function ChannelMonthlyUsagePage() {
       month,
       group_by: groupBy,
       channel_id: channelId ? Number(channelId) : undefined,
+      sort_by: sortBy,
+      sort_order: sortOrder,
       page,
       page_size: PAGE_SIZE,
     }),
-    [channelId, groupBy, month, page]
+    [channelId, groupBy, month, page, sortBy, sortOrder]
   )
 
   const usageQuery = useQuery({
@@ -134,6 +143,16 @@ export function ChannelMonthlyUsagePage() {
   const groupLabel =
     groupBy === 'upstream_model' ? t('Upstream Model') : t('Platform Model')
 
+  const handleSort = (nextSortBy: ChannelUsageSortBy) => {
+    if (nextSortBy === sortBy) {
+      setSortOrder((current) => (current === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortBy(nextSortBy)
+      setSortOrder('desc')
+    }
+    setPage(1)
+  }
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>
@@ -145,7 +164,8 @@ export function ChannelMonthlyUsagePage() {
             <CardHeader>
               <CardTitle>{t('UTC monthly channel reconciliation')}</CardTitle>
               <CardAction className='text-muted-foreground text-sm font-normal'>
-                {t('Last updated:')} {formatTimestamp(summary?.last_calculated_at)}
+                {t('Last updated:')}{' '}
+                {formatTimestamp(summary?.last_calculated_at)}
               </CardAction>
             </CardHeader>
             <CardContent className='text-muted-foreground'>
@@ -188,7 +208,14 @@ export function ChannelMonthlyUsagePage() {
                   value={groupBy}
                   onValueChange={(value) => {
                     if (value) {
-                      setGroupBy(value as ChannelMonthlyUsageGroupBy)
+                      const nextGroupBy = value as ChannelMonthlyUsageGroupBy
+                      setGroupBy(nextGroupBy)
+                      if (
+                        sortBy === 'model_name' ||
+                        sortBy === 'upstream_model'
+                      ) {
+                        setSortBy(nextGroupBy)
+                      }
                       setPage(1)
                     }
                   }}
@@ -227,7 +254,7 @@ export function ChannelMonthlyUsagePage() {
           <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
             <Card>
               <CardHeader>
-                <CardTitle>{t('Billed Requests')}</CardTitle>
+                <CardTitle>{t('Request Count')}</CardTitle>
                 <CardAction>
                   <Gauge className='text-muted-foreground size-4' />
                 </CardAction>
@@ -289,159 +316,238 @@ export function ChannelMonthlyUsagePage() {
             </Card>
           </div>
 
-          <div className='overflow-hidden rounded-lg border'>
-            <div className='overflow-x-auto'>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('Channel')}</TableHead>
-                    <TableHead>{groupLabel}</TableHead>
-                    <TableHead className='text-right'>
-                      {t('Billed Requests')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Input Tokens')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Cached Tokens')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Output Tokens')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Total Tokens')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Billed Amount')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Reported Provider Cost')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Cost Coverage')}
-                    </TableHead>
-                    <TableHead className='text-right'>
-                      {t('Exceptions')}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow
-                      key={`${row.channel_id}:${row.model_name ?? ''}:${row.upstream_model ?? ''}`}
-                    >
-                      <TableCell>
-                        {row.channel_name || `#${row.channel_id}`}
-                      </TableCell>
-                      <TableCell>
-                        {groupBy === 'upstream_model'
-                          ? row.upstream_model
-                          : row.model_name}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(row.billed_request_count)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(row.prompt_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(row.cache_read_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(row.completion_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(row.total_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatUsd(row.customer_revenue_usd)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatUsd(row.provider_reported_cost_usd)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(row.provider_cost_known_count)} /{' '}
-                        {formatInteger(row.billed_request_count)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(
-                          row.missing_usage_count +
-                            row.pending_task_count +
-                            row.manual_review_count
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!usageQuery.isLoading && rows.length === 0 && (
+          <Card className='overflow-hidden'>
+            <CardHeader>
+              <CardTitle>{t('Usage Details')}</CardTitle>
+              <CardDescription>
+                {t('Click a column header to sort all matching records.')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='p-0'>
+              <div className='overflow-x-auto'>
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell
-                        colSpan={11}
-                        className='text-muted-foreground h-24 text-center'
+                      <SortableUsageTableHead
+                        label={t('Channel')}
+                        sortBy='channel_name'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={groupLabel}
+                        sortBy={groupBy}
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Request Count')}
+                        sortBy='billed_request_count'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Input Tokens')}
+                        sortBy='prompt_tokens'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Cache Read Tokens')}
+                        sortBy='cache_read_tokens'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Cache Write Tokens')}
+                        sortBy='cache_write_tokens'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Output Tokens')}
+                        sortBy='completion_tokens'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Total Tokens')}
+                        sortBy='total_tokens'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Billed Amount')}
+                        sortBy='customer_revenue_usd'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Reported Provider Cost')}
+                        sortBy='provider_reported_cost_usd'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Cost Coverage')}
+                        sortBy='cost_coverage'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                      <SortableUsageTableHead
+                        label={t('Exceptions')}
+                        sortBy='exceptions'
+                        activeSortBy={sortBy}
+                        sortOrder={sortOrder}
+                        align='right'
+                        onSort={handleSort}
+                      />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow
+                        key={`${row.channel_id}:${row.model_name ?? ''}:${row.upstream_model ?? ''}`}
                       >
-                        {t('No monthly channel usage data found')}
-                      </TableCell>
-                    </TableRow>
+                        <TableCell>
+                          {row.channel_name || `#${row.channel_id}`}
+                        </TableCell>
+                        <TableCell>
+                          {groupBy === 'upstream_model'
+                            ? row.upstream_model
+                            : row.model_name}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.billed_request_count)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.prompt_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.cache_read_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.cache_write_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.completion_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.total_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatUsd(row.customer_revenue_usd)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatUsd(row.provider_reported_cost_usd)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(row.provider_cost_known_count)} /{' '}
+                          {formatInteger(row.billed_request_count)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(
+                            row.missing_usage_count +
+                              row.pending_task_count +
+                              row.manual_review_count
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!usageQuery.isLoading && rows.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={12}
+                          className='text-muted-foreground h-24 text-center'
+                        >
+                          {t('No monthly channel usage data found')}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  {summary && (
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={2}>{t('Total')}</TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.billed_request_count)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.prompt_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.cache_read_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.cache_write_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.completion_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.total_tokens)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatUsd(summary.customer_revenue_usd)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatUsd(summary.provider_reported_cost_usd)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(summary.provider_cost_known_count)} /{' '}
+                          {formatInteger(summary.billed_request_count)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          {formatInteger(exceptionCount)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
                   )}
-                </TableBody>
-                {summary && (
-                  <TableFooter>
-                    <TableRow>
-                      <TableCell colSpan={2}>{t('Total')}</TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(summary.billed_request_count)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(summary.prompt_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(summary.cache_read_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(summary.completion_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(summary.total_tokens)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatUsd(summary.customer_revenue_usd)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatUsd(summary.provider_reported_cost_usd)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(summary.provider_cost_known_count)} /{' '}
-                        {formatInteger(summary.billed_request_count)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        {formatInteger(exceptionCount)}
-                      </TableCell>
-                    </TableRow>
-                  </TableFooter>
-                )}
-              </Table>
-            </div>
-            <div className='flex items-center justify-between border-t px-4 py-3 text-sm'>
-              <span>{t('{{count}} records', { count: total })}</span>
-              <div className='flex gap-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  disabled={page <= 1}
-                  onClick={() => setPage((value) => value - 1)}
-                >
-                  {t('Previous')}
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  disabled={page * PAGE_SIZE >= total}
-                  onClick={() => setPage((value) => value + 1)}
-                >
-                  {t('Next')}
-                </Button>
+                </Table>
               </div>
-            </div>
-          </div>
+              <div className='flex items-center justify-between border-t px-4 py-3 text-sm'>
+                <span>{t('{{count}} records', { count: total })}</span>
+                <div className='flex gap-2'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={page <= 1}
+                    onClick={() => setPage((value) => value - 1)}
+                  >
+                    {t('Previous')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={page * PAGE_SIZE >= total}
+                    onClick={() => setPage((value) => value + 1)}
+                  >
+                    {t('Next')}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

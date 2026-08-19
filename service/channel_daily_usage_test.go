@@ -378,6 +378,29 @@ func TestListChannelMonthlyUsagesAggregatesFilteredDailyRows(t *testing.T) {
 	providerCost, err := decimal.NewFromString(row.ProviderReportedCostUSD)
 	require.NoError(t, err)
 	assert.True(t, providerCost.Equal(decimal.RequireFromString("1.25")))
+
+	sortedMonthly, total, err := model.ListChannelMonthlyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-01", EndDate: "2026-07-31",
+		SortBy: "billed_request_count", SortOrder: "asc",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, sortedMonthly, 2)
+	assert.Equal(t, 20, sortedMonthly[0].ChannelID)
+	assert.Equal(t, int64(4), sortedMonthly[0].BilledRequestCount)
+	assert.Equal(t, 10, sortedMonthly[1].ChannelID)
+	assert.Equal(t, int64(5), sortedMonthly[1].BilledRequestCount)
+
+	sortedDaily, total, err := model.ListChannelDailyUsages(model.ChannelDailyUsageFilter{
+		StartDate: "2026-07-01", EndDate: "2026-07-31",
+		SortBy: "total_tokens", SortOrder: "asc",
+	}, 0, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, sortedDaily, 3)
+	assert.Equal(t, int64(25), sortedDaily[0].TotalTokens)
+	assert.Equal(t, int64(37), sortedDaily[1].TotalTokens)
+	assert.Equal(t, int64(44), sortedDaily[2].TotalTokens)
 }
 
 func TestListChannelMonthlyUsageSummaryGroupsBySelectedModelDimension(t *testing.T) {
@@ -426,6 +449,17 @@ func TestListChannelMonthlyUsageSummaryGroupsBySelectedModelDimension(t *testing
 	assert.Equal(t, int64(60), byUpstream[0].TotalTokens)
 	assert.Equal(t, int64(0), byUpstream[0].MissingUsageCount)
 	assert.Equal(t, int64(50), byUpstream[1].TotalTokens)
+
+	byRequests, total, err := model.ListChannelMonthlyUsageSummary(
+		model.ChannelDailyUsageFilter{SortBy: "billed_request_count", SortOrder: "desc"}, "2026-07",
+		model.ChannelMonthlyUsageGroupByUpstreamModel, 0, 10,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, byRequests, 2)
+	assert.Equal(t, int64(5), byRequests[0].BilledRequestCount)
+	assert.Equal(t, "upstream-shared", byRequests[0].UpstreamModel)
+	assert.Equal(t, int64(4), byRequests[1].BilledRequestCount)
 
 	byPlatform, total, err := model.ListChannelMonthlyUsageSummary(
 		model.ChannelDailyUsageFilter{ChannelID: 10}, "2026-07",

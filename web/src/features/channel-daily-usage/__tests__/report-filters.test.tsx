@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { ChannelDailyUsagePage } from '../index'
 
 let usageRows: Array<Record<string, unknown>> = []
+let latestUsageFilters: Record<string, unknown> = {}
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -49,6 +50,7 @@ vi.mock('@tanstack/react-query', () => ({
       }
     }
     if (queryName === 'channel-daily-usages') {
+      latestUsageFilters = options.queryKey[1] as Record<string, unknown>
       return {
         data: { data: { items: usageRows, total: usageRows.length } },
         isLoading: false,
@@ -96,6 +98,7 @@ vi.mock('@/components/confirm-dialog', () => ({
 describe('Channel daily usage report filters', () => {
   afterEach(() => {
     usageRows = []
+    latestUsageFilters = {}
     cleanup()
   })
 
@@ -174,12 +177,36 @@ describe('Channel daily usage report filters', () => {
     fireEvent.pointerUp(monthly, { button: 0 })
     fireEvent.click(monthly)
 
-    expect(screen.getByText('UTC Month', { selector: 'th' })).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'UTC Month: Descending' })
+    ).toBeVisible()
     expect(screen.getByLabelText('Start Month')).toHaveAttribute(
       'type',
       'month'
     )
     expect(screen.getByLabelText('End Month')).toHaveAttribute('type', 'month')
     expect(screen.getByText('No monthly usage data found')).toBeVisible()
+  })
+
+  test('sorts all matching records from an accessible column header', () => {
+    render(<ChannelDailyUsagePage />)
+
+    const requestCount = screen.getByRole('button', {
+      name: 'Request Count: Not sorted',
+    })
+    expect(requestCount.closest('th')).toHaveAttribute('aria-sort', 'none')
+
+    fireEvent.click(requestCount)
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Request Count: Descending' })
+        .closest('th')
+    ).toHaveAttribute('aria-sort', 'descending')
+    expect(latestUsageFilters).toMatchObject({
+      sort_by: 'billed_request_count',
+      sort_order: 'desc',
+      page: 1,
+    })
   })
 })

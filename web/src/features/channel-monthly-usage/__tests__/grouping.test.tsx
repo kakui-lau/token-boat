@@ -5,6 +5,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ChannelMonthlyUsagePage } from '../index'
 
+let latestMonthlyFilters: Record<string, unknown> = {}
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
@@ -39,6 +41,7 @@ vi.mock('@tanstack/react-query', () => ({
         },
       }
     }
+    latestMonthlyFilters = options.queryKey[1] as Record<string, unknown>
     return {
       isLoading: false,
       data: {
@@ -72,6 +75,7 @@ describe('Channel monthly usage grouping', () => {
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
+    latestMonthlyFilters = {}
   })
 
   test('selects the current UTC month by default and allows querying it', () => {
@@ -94,7 +98,7 @@ describe('Channel monthly usage grouping', () => {
       screen.getByText('Report filters').closest('[data-slot="card"]')
     ).toHaveClass('overflow-visible')
     expect(
-      screen.getByRole('columnheader', { name: 'Upstream Model' })
+      screen.getByRole('button', { name: 'Upstream Model: Not sorted' })
     ).toBeVisible()
     expect(screen.getByText('Total')).toBeVisible()
     expect(screen.getByText('10 / 12')).toBeVisible()
@@ -109,7 +113,26 @@ describe('Channel monthly usage grouping', () => {
     fireEvent.click(platformModel)
 
     expect(
-      screen.getByRole('columnheader', { name: 'Platform Model' })
+      screen.getByRole('button', { name: 'Platform Model: Not sorted' })
     ).toBeVisible()
+  })
+
+  test('sorts the complete monthly result by request count', () => {
+    render(<ChannelMonthlyUsagePage />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request Count: Not sorted' })
+    )
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Request Count: Descending' })
+        .closest('th')
+    ).toHaveAttribute('aria-sort', 'descending')
+    expect(latestMonthlyFilters).toMatchObject({
+      sort_by: 'billed_request_count',
+      sort_order: 'desc',
+      page: 1,
+    })
   })
 })

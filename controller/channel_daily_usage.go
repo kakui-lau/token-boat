@@ -23,6 +23,8 @@ func channelDailyUsageFilter(c *gin.Context) model.ChannelDailyUsageFilter {
 		ModelName:     c.Query("model_name"),
 		UpstreamModel: c.Query("upstream_model"),
 		Status:        c.Query("status"),
+		SortBy:        c.Query("sort_by"),
+		SortOrder:     c.Query("sort_order"),
 	}
 }
 
@@ -103,6 +105,8 @@ func AdminListChannelMonthlyUsageSummary(c *gin.Context) {
 		StartDate: start.Format("2006-01-02"),
 		EndDate:   end.Format("2006-01-02"),
 		ChannelID: channelID,
+		SortBy:    c.Query("sort_by"),
+		SortOrder: c.Query("sort_order"),
 	}
 	pageInfo := common.GetPageQuery(c)
 	rows, total, err := model.ListChannelMonthlyUsageSummary(

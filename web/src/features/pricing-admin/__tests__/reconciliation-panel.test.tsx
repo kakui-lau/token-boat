@@ -420,7 +420,7 @@ test('searches reconciliation records and applies the keyword to CSV export', as
   )
 
   const searchInput = await screen.findByLabelText(
-    'Search request ID, model, or channel'
+    'Search request ID, upstream request ID, model, or channel'
   )
   fireEvent.change(searchInput, { target: { value: ' request/seedance ' } })
   fireEvent.submit(screen.getByRole('search'))

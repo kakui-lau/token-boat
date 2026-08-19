@@ -626,9 +626,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		logFailedUpstreamRequest(c, req, requestBody, resp.Status, info)
 	}
 
-	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
-		c.Set(common2.UpstreamRequestIdKey, upID)
-	}
+	service.CaptureUpstreamRequestID(c, resp.Header)
 
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()

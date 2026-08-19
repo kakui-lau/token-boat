@@ -744,6 +744,49 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	return logs, total, err
 }
 
+func GetUpstreamRequestIDsByRequestIDs(requestIDs []string) (map[string]string, error) {
+	result := make(map[string]string)
+	if len(requestIDs) == 0 {
+		return result, nil
+	}
+	var rows []struct {
+		RequestId         string `gorm:"column:request_id"`
+		UpstreamRequestId string `gorm:"column:upstream_request_id"`
+	}
+	query := LOG_DB.Model(&Log{}).
+		Select("request_id, upstream_request_id").
+		Where("request_id IN ? AND upstream_request_id <> ?", requestIDs, "")
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		query = query.Order(clickHouseLogOrder(""))
+	} else {
+		query = query.Order("created_at DESC, id DESC")
+	}
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if _, exists := result[row.RequestId]; !exists {
+			result[row.RequestId] = row.UpstreamRequestId
+		}
+	}
+	return result, nil
+}
+
+func FindRequestIDsByUpstreamRequestIDKeyword(keyword string, limit int) ([]string, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" || limit <= 0 {
+		return nil, nil
+	}
+	var requestIDs []string
+	err := LOG_DB.Model(&Log{}).
+		Distinct("request_id").
+		Where("upstream_request_id LIKE ?", "%"+keyword+"%").
+		Where("request_id <> ?", "").
+		Limit(limit).
+		Pluck("request_id", &requestIDs).Error
+	return requestIDs, err
+}
+
 const logSearchCountLimit = 10000
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {

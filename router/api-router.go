@@ -410,6 +410,7 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.GET("/official-price-overview", middleware.RequirePermission(authz.PricingRead), controller.AdminListOfficialPriceOverview)
 			pricingAdminRoute.POST("/channel-models", middleware.RequirePermission(authz.PricingWrite), controller.AdminCreateChannelModel)
 			pricingAdminRoute.PUT("/channel-models/:id", middleware.RequirePermission(authz.PricingWrite), controller.AdminUpdateChannelModel)
+			pricingAdminRoute.POST("/channel-models/delete-selected", middleware.RequirePermission(authz.PricingWrite), controller.AdminDeleteSelectedChannelModels)
 			pricingAdminRoute.POST("/channel-models/sync-legacy", middleware.RequirePermission(authz.PricingWrite), controller.AdminSyncLegacyChannelModels)
 			pricingAdminRoute.GET("/official-prices", middleware.RequirePermission(authz.PricingRead), controller.AdminListOfficialPriceVersions)
 			pricingAdminRoute.POST("/official-prices", middleware.RequirePermission(authz.PricingWrite), controller.AdminCreateOfficialPriceVersion)

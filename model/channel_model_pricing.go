@@ -427,6 +427,12 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for _, item := range candidates {
+			// Disabled abilities are retained as routing history, not active
+			// inventory. Do not recreate a channel model that an administrator
+			// deliberately removed from the pricing catalog.
+			if !item.enabled {
+				continue
+			}
 			var existing ChannelModel
 			err := tx.Where(
 				"channel_id = ? AND model_id = ? AND upstream_model_name = ?",

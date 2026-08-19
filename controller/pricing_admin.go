@@ -2107,6 +2107,51 @@ func AdminUpdateChannelModel(c *gin.Context) {
 	common.ApiSuccess(c, &current)
 }
 
+func AdminDeleteSelectedChannelModels(c *gin.Context) {
+	channelModelIds, ok := selectedChannelModelIds(c)
+	if !ok {
+		return
+	}
+
+	var deleted int64
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var channelModels []model.ChannelModel
+		if err := tx.Where("id IN ?", channelModelIds).Find(&channelModels).Error; err != nil {
+			return err
+		}
+		if len(channelModels) != len(channelModelIds) {
+			return errors.New("部分所选渠道模型已不存在，请刷新后重试")
+		}
+
+		var activeRoutingCount int64
+		if err := tx.Table("channel_models").
+			Joins("JOIN models ON models.id = channel_models.model_id").
+			Joins("JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name").
+			Where("channel_models.id IN ? AND abilities.enabled = ?", channelModelIds, true).
+			Count(&activeRoutingCount).Error; err != nil {
+			return err
+		}
+		if activeRoutingCount > 0 {
+			return errors.New("所选项包含仍可路由的渠道模型，请先从渠道移除后再删除")
+		}
+
+		result := tx.Where("id IN ?", channelModelIds).Delete(&model.ChannelModel{})
+		deleted = result.RowsAffected
+		return result.Error
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pricingruntime.InvalidateCatalog()
+	if err := pricingruntime.RefreshCatalog(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": deleted})
+}
+
 func AdminSyncLegacyChannelModels(c *gin.Context) {
 	result, err := model.InitializeChannelModelsFromAbilities()
 	if err != nil {

@@ -163,6 +163,16 @@ export async function exportSelectedPricingComparison(
   return response.data
 }
 
+export async function deleteSelectedChannelModels(
+  channelModelIds: number[]
+): Promise<PriceVersionResponse<{ deleted: number }>> {
+  const response = await api.post(
+    '/api/pricing-admin/channel-models/delete-selected',
+    { channel_model_ids: channelModelIds }
+  )
+  return requirePricingSuccess(response.data)
+}
+
 export async function getRequestPricingSnapshots(params: {
   status?: 'reserved' | 'pending' | 'settled' | 'refunded' | 'archived'
   reconciliation?: boolean

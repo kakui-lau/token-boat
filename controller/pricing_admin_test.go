@@ -168,6 +168,69 @@ func TestAdminUpdateChannelModelRejectsIndividualRuntimeSwitch(t *testing.T) {
 	assert.Equal(t, "legacy", stored.RuntimeMode)
 }
 
+func TestAdminDeleteSelectedChannelModelsDeletesRemovedInventory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 68, Name: "removed-channel"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 69, ModelName: "removed-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 70, ChannelId: 68, ModelId: 69, UpstreamModelName: "removed-model",
+		Status: 0, RuntimeMode: "legacy",
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodPost, "/api/pricing-admin/channel-models/delete-selected",
+		channelModelSelectionInput{ChannelModelIds: []int{70}},
+	)
+	AdminDeleteSelectedChannelModels(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Deleted int64 `json:"deleted"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.EqualValues(t, 1, response.Data.Deleted)
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestAdminDeleteSelectedChannelModelsRejectsRoutableInventory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 71, Name: "active-channel"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 72, ModelName: "active-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 73, ChannelId: 71, ModelId: 72, UpstreamModelName: "active-model",
+		Status: 1, RuntimeMode: "legacy",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "active-model", ChannelId: 71, Enabled: true,
+	}).Error)
+
+	context, recorder := newPricingAdminJSONContext(
+		t, http.MethodPost, "/api/pricing-admin/channel-models/delete-selected",
+		channelModelSelectionInput{ChannelModelIds: []int{73}},
+	)
+	AdminDeleteSelectedChannelModels(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Contains(t, response.Message, "仍可路由")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+}
+
 func TestAdminSetPricingModelRuntimeRejectsLegacyRollback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)

@@ -217,6 +217,24 @@ func TestInitializeChannelModelsFromAbilitiesRepairsLegacyUpstreamModelName(t *t
 	assert.Equal(t, "provider-gpt-test", channelModels[0].UpstreamModelName)
 }
 
+func TestInitializeChannelModelsFromAbilitiesDoesNotRecreateDisabledInventory(t *testing.T) {
+	resetChannelModelPricingTestTables(t)
+
+	require.NoError(t, DB.Create(&Channel{Id: 202, Name: "removed-channel"}).Error)
+	require.NoError(t, DB.Create(&Model{Id: 102, ModelName: "removed-model"}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		Group: "default", Model: "removed-model", ChannelId: 202, Enabled: false,
+	}).Error)
+
+	result, err := InitializeChannelModelsFromAbilities()
+	require.NoError(t, err)
+	assert.Zero(t, result.Created)
+
+	var count int64
+	require.NoError(t, DB.Model(&ChannelModel{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
 func TestPublishedOfficialPriceVersionCannotBeMutated(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 

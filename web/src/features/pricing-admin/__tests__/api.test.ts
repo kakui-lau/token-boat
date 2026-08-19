@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 
 import {
   createPurchaseDraft,
+  deleteSelectedChannelModels,
   exportSelectedChannelModelPrices,
   exportSelectedPricingComparison,
   exportSelectedPurchaseDiscounts,
@@ -94,6 +95,19 @@ test('posts selected channel model ids to the pricing comparison export', async 
     '/api/pricing-admin/channel-models/export-selected-pricing-comparison',
     { channel_model_ids: [12, 34] },
     { responseType: 'blob' }
+  )
+})
+
+test('posts selected channel model ids to the bulk delete endpoint', async () => {
+  vi.mocked(api.post).mockResolvedValue({
+    data: { success: true, data: { deleted: 2 } },
+  })
+
+  await deleteSelectedChannelModels([12, 34])
+
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/pricing-admin/channel-models/delete-selected',
+    { channel_model_ids: [12, 34] }
   )
 })
 

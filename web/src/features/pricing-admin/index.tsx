@@ -23,7 +23,13 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { BadgeDollarSign, Download, Plus, RefreshCw } from 'lucide-react'
+import {
+  BadgeDollarSign,
+  Download,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -50,6 +56,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  deleteSelectedChannelModels,
   exportChannelModelPrices,
   exportSelectedChannelModelPrices,
   exportSelectedPricingComparison,
@@ -112,6 +119,7 @@ export function PricingAdmin() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingChannelModel, setEditingChannelModel] =
     useState<ChannelModel | null>(null)
+  const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false)
   const [pendingV2ModelName, setPendingV2ModelName] = useState<string | null>(
     null
   )
@@ -242,6 +250,28 @@ export function PricingAdmin() {
     onSuccess: (blob) => downloadCSV(blob, 'selected-pricing-comparison'),
     onError: handleServerError,
   })
+  const deleteSelectedMutation = useMutation({
+    mutationFn: (channelModelIds: number[]) =>
+      deleteSelectedChannelModels(channelModelIds),
+    onSuccess: async (response) => {
+      setDeleteSelectedOpen(false)
+      setSelectedIds(new Set())
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['pricing-admin', 'channel-models'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['pricing-admin', 'runtime-status'],
+        }),
+      ])
+      toast.success(
+        t('{{count}} channel model(s) deleted', {
+          count: response.data.deleted,
+        })
+      )
+    },
+    onError: handleServerError,
+  })
   const rows = channelModelsQuery.data?.data.items ?? []
   const total = channelModelsQuery.data?.data.total ?? 0
   let selectedOnPage = 0
@@ -311,6 +341,18 @@ export function PricingAdmin() {
               {t('Export selected pricing comparison')}
             </Button>
           </>
+        ) : null}
+        {canWrite ? (
+          <Button
+            variant='destructive'
+            disabled={
+              selectedIds.size === 0 || deleteSelectedMutation.isPending
+            }
+            onClick={() => setDeleteSelectedOpen(true)}
+          >
+            <Trash2 data-icon='inline-start' />
+            {t('Delete selected ({{count}})', { count: selectedIds.size })}
+          </Button>
         ) : null}
         <Button
           variant='outline'
@@ -591,6 +633,36 @@ export function PricingAdmin() {
             }}
             onCreated={async () => {
               await channelModelsQuery.refetch()
+            }}
+          />
+          <ConfirmDialog
+            open={canWrite && deleteSelectedOpen}
+            onOpenChange={(open) => {
+              if (!deleteSelectedMutation.isPending) {
+                setDeleteSelectedOpen(open)
+              }
+            }}
+            title={t('Delete selected channel models?')}
+            desc={
+              <div className='space-y-2'>
+                <p>
+                  {t(
+                    'You are about to delete {{count}} channel model(s). Only models removed from routing can be deleted.',
+                    { count: selectedIds.size }
+                  )}
+                </p>
+                <p>{t('This action cannot be undone.')}</p>
+              </div>
+            }
+            confirmText={t('Delete selected ({{count}})', {
+              count: selectedIds.size,
+            })}
+            destructive
+            isLoading={deleteSelectedMutation.isPending}
+            handleConfirm={() => {
+              deleteSelectedMutation.mutate(
+                [...selectedIds].sort((left, right) => left - right)
+              )
             }}
           />
           <ConfirmDialog

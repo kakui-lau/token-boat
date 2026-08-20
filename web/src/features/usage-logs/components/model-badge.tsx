@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 interface ModelBadgeProps {
   modelName: string
   actualModel?: string
+  showActual?: boolean
   className?: string
 }
 
@@ -155,8 +156,9 @@ function ModelBadgeContent(props: ModelBadgeProps) {
 
 export function ModelBadge(props: ModelBadgeProps) {
   const { t } = useTranslation()
+  const showActual = !!props.showActual && !!props.actualModel
 
-  if (!props.actualModel) {
+  if (!showActual) {
     return <ModelBadgeContent {...props} />
   }
 

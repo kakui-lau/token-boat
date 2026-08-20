@@ -762,7 +762,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
               mono
             />
           )}
-          {props.log.upstream_request_id && (
+          {props.isAdmin && props.log.upstream_request_id && (
             <DetailRow
               label={t('Upstream Request ID')}
               value={props.log.upstream_request_id}
@@ -1165,11 +1165,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
               value={props.log.model_name}
               mono
             />
-            <DetailRow
-              label={t('Actual Model')}
-              value={other.upstream_model_name}
-              mono
-            />
+            {props.isAdmin && (
+              <DetailRow
+                label={t('Actual Model')}
+                value={other.upstream_model_name}
+                mono
+              />
+            )}
           </DetailSection>
         )}
 

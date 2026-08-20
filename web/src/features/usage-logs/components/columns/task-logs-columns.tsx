@@ -252,7 +252,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
               <span className='truncate font-medium' title={model}>
                 {model || '-'}
               </span>
-              {upstreamModel && upstreamModel !== model ? (
+              {isAdmin && upstreamModel && upstreamModel !== model ? (
                 <span
                   className='text-muted-foreground truncate font-mono text-[11px]'
                   title={upstreamModel}

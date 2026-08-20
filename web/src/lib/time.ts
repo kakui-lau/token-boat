@@ -201,3 +201,64 @@ export function addTimeToDate(
 
   return result
 }
+
+/**
+ * Rolling quick-range preset unit.
+ * `minute` and `hour` produce sub-day rolling windows ending at the current
+ * moment. `day` behaves exactly like getRollingDateRange (last N×24 hours).
+ */
+export type RollingRangeUnit = 'minute' | 'hour' | 'day'
+
+/**
+ * Calculate a rolling date range ending at the current moment using a
+ * variable unit/amount. Accepts minutes / hours / days so that callers can
+ * build short-range presets (e.g. 15 minutes) without manual arithmetic.
+ */
+export function getRollingDateTimeRange(
+  amount: number,
+  unit: RollingRangeUnit,
+  fromDate: Date = new Date()
+): { start: Date; end: Date } {
+  const end = new Date(fromDate)
+  let startMs = end.getTime()
+  switch (unit) {
+    case 'minute':
+      startMs -= amount * 60 * 1000
+      break
+    case 'hour':
+      startMs -= amount * 60 * 60 * 1000
+      break
+    case 'day':
+      startMs -= amount * 24 * 60 * 60 * 1000
+      break
+  }
+  return { start: new Date(startMs), end }
+}
+
+/**
+ * Compute a calendar-aligned range: today, this week, this month.
+ * Start/end are normalized to the first/last instant of the period.
+ */
+export function getCalendarRange(
+  kind: 'today' | 'week' | 'month',
+  fromDate: Date = new Date()
+): { start: Date; end: Date } {
+  const now = dayjs(fromDate)
+  switch (kind) {
+    case 'today':
+      return {
+        start: now.startOf('day').toDate(),
+        end: now.endOf('day').toDate(),
+      }
+    case 'week':
+      return {
+        start: now.startOf('week').toDate(),
+        end: now.endOf('week').toDate(),
+      }
+    case 'month':
+      return {
+        start: now.startOf('month').toDate(),
+        end: now.endOf('month').toDate(),
+      }
+  }
+}

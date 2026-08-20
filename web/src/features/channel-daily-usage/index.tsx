@@ -64,7 +64,34 @@ import {
   unlockChannelDailyUsageMonth,
 } from './api'
 import { SortableUsageTableHead } from './components/sortable-usage-table-head'
-import { getDefaultUtcWeekRange, getUtcMonthRange } from './lib/date-range'
+import {
+  getDefaultUtcWeekRange,
+  getUtcDate,
+  getUtcMonthRange,
+} from './lib/date-range'
+
+const DAILY_USAGE_DATE_PRESETS: Array<{
+  label: string
+  startOffset: number
+  endOffset?: number
+}> = [
+  { label: 'Today', startOffset: 0 },
+  { label: 'Yesterday', startOffset: -1, endOffset: -1 },
+  { label: 'Last 3 Days', startOffset: -2 },
+  { label: 'Last 7 Days', startOffset: -6 },
+  { label: 'Last 14 Days', startOffset: -13 },
+  { label: 'Last 30 Days', startOffset: -29 },
+]
+
+function presetUtcRange(preset: (typeof DAILY_USAGE_DATE_PRESETS)[number]): {
+  start_date: string
+  end_date: string
+} {
+  return {
+    start_date: getUtcDate(preset.startOffset),
+    end_date: getUtcDate(preset.endOffset ?? 0),
+  }
+}
 import type {
   ChannelDailyUsageFilters,
   ChannelUsageSortBy,
@@ -506,6 +533,30 @@ export function ChannelDailyUsagePage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {granularity === 'day' && (
+                  <div className='col-span-full mt-1 flex flex-wrap items-center gap-1.5'>
+                    <span className='text-muted-foreground pr-1 text-xs font-medium uppercase tracking-wide'>
+                      {t('Quick Range')}
+                    </span>
+                    {DAILY_USAGE_DATE_PRESETS.map((preset) => (
+                      <Button
+                        key={preset.label}
+                        type='button'
+                        variant='secondary'
+                        size='sm'
+                        className='h-7 px-2 text-xs'
+                        onClick={() => {
+                          const range = presetUtcRange(preset)
+                          setStartDate(range.start_date)
+                          setEndDate(range.end_date)
+                          setPage(1)
+                        }}
+                      >
+                        {t(preset.label)}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 

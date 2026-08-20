@@ -31,11 +31,25 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
+import dayjs from '@/lib/dayjs'
 
 import { getUserModelUsage } from './api'
 import type { UserModelUsageFilters } from './types'
 
 const PAGE_SIZE = 50
+
+const DATE_RANGE_PRESETS: Array<{
+  label: string
+  startDaysAgo: number
+  endDaysAgo?: number
+}> = [
+  { label: 'Today', startDaysAgo: 0 },
+  { label: 'Yesterday', startDaysAgo: 1, endDaysAgo: 1 },
+  { label: 'Last 3 Days', startDaysAgo: 2 },
+  { label: 'Last 7 Days', startDaysAgo: 6 },
+  { label: 'Last 14 Days', startDaysAgo: 13 },
+  { label: 'Last 30 Days', startDaysAgo: 29 },
+]
 
 function dateInputValue(date: Date): string {
   const offset = date.getTimezoneOffset() * 60 * 1000
@@ -46,6 +60,19 @@ function defaultDateRange(): { start: string; end: string } {
   const end = new Date()
   const start = new Date(end)
   start.setDate(start.getDate() - 6)
+  return { start: dateInputValue(start), end: dateInputValue(end) }
+}
+
+function presetDateRange(preset: (typeof DATE_RANGE_PRESETS)[number]): {
+  start: string
+  end: string
+} {
+  const now = dayjs()
+  const start = now.subtract(preset.startDaysAgo, 'day').startOf('day').toDate()
+  const end = now
+    .subtract(preset.endDaysAgo ?? 0, 'day')
+    .endOf('day')
+    .toDate()
   return { start: dateInputValue(start), end: dateInputValue(end) }
 }
 
@@ -227,6 +254,27 @@ export function UserModelUsagePage() {
                     }}
                   />
                 </div>
+              </div>
+              <div className='mt-3 flex flex-wrap items-center gap-1.5'>
+                <span className='text-muted-foreground pr-1 text-xs font-medium uppercase tracking-wide'>
+                  {t('Quick Range')}
+                </span>
+                {DATE_RANGE_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type='button'
+                    variant='secondary'
+                    size='sm'
+                    className='h-7 px-2 text-xs'
+                    onClick={() => {
+                      const range = presetDateRange(preset)
+                      setDraftStartDate(range.start)
+                      setDraftEndDate(range.end)
+                    }}
+                  >
+                    {t(preset.label)}
+                  </Button>
+                ))}
               </div>
               <div className='mt-4 flex justify-end gap-2'>
                 <Button variant='outline' onClick={resetFilters}>

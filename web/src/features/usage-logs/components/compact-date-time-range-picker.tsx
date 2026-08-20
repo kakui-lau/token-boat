@@ -28,6 +28,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import dayjs from '@/lib/dayjs'
+import {
+  getCalendarRange,
+  getRollingDateTimeRange,
+  type RollingRangeUnit,
+} from '@/lib/time'
 import { cn } from '@/lib/utils'
 
 interface CompactDateTimeRangePickerProps {
@@ -36,6 +41,24 @@ interface CompactDateTimeRangePickerProps {
   onChange: (range: { start?: Date; end?: Date }) => void
   className?: string
 }
+
+interface RollingPreset {
+  label: string
+  amount: number
+  unit: RollingRangeUnit
+}
+
+const ROLLING_PRESETS: RollingPreset[] = [
+  { label: 'Last 5 minutes', amount: 5, unit: 'minute' },
+  { label: 'Last 15 minutes', amount: 15, unit: 'minute' },
+  { label: 'Last 30 minutes', amount: 30, unit: 'minute' },
+  { label: 'Last 1 hour', amount: 1, unit: 'hour' },
+  { label: 'Last 3 hours', amount: 3, unit: 'hour' },
+  { label: 'Last 6 hours', amount: 6, unit: 'hour' },
+  { label: 'Last 1 day', amount: 1, unit: 'day' },
+  { label: 'Last 3 days', amount: 3, unit: 'day' },
+  { label: 'Last 7 days', amount: 7, unit: 'day' },
+]
 
 function toInputValue(date?: Date): string {
   return date ? dayjs(date).format('YYYY-MM-DDTHH:mm') : ''
@@ -85,31 +108,16 @@ export function CompactDateTimeRangePicker({
     setOpen(false)
   }
 
-  const applyPreset = (kind: 'today' | '7d' | 'week' | '30d' | 'month') => {
-    const now = dayjs()
-    const presets = {
-      today: {
-        start: now.startOf('day').toDate(),
-        end: now.endOf('day').toDate(),
-      },
-      '7d': {
-        start: now.subtract(6, 'day').startOf('day').toDate(),
-        end: now.endOf('day').toDate(),
-      },
-      week: {
-        start: now.startOf('week').toDate(),
-        end: now.endOf('week').toDate(),
-      },
-      '30d': {
-        start: now.subtract(29, 'day').startOf('day').toDate(),
-        end: now.endOf('day').toDate(),
-      },
-      month: {
-        start: now.startOf('month').toDate(),
-        end: now.endOf('month').toDate(),
-      },
-    }
-    const range = presets[kind]
+  const applyRollingPreset = (preset: RollingPreset) => {
+    const range = getRollingDateTimeRange(preset.amount, preset.unit)
+    setDraftStart(toInputValue(range.start))
+    setDraftEnd(toInputValue(range.end))
+    onChange(range)
+    setOpen(false)
+  }
+
+  const applyCalendarPreset = (kind: 'today' | 'week' | 'month') => {
+    const range = getCalendarRange(kind)
     setDraftStart(toInputValue(range.start))
     setDraftEnd(toInputValue(range.end))
     onChange(range)
@@ -136,7 +144,7 @@ export function CompactDateTimeRangePicker({
       </PopoverTrigger>
       <PopoverContent
         align='start'
-        className='w-[min(520px,calc(100vw-2rem))] p-3'
+        className='w-[min(560px,calc(100vw-2rem))] p-3'
       >
         <div className='space-y-3'>
           <div className='grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-end'>
@@ -167,52 +175,61 @@ export function CompactDateTimeRangePicker({
             </div>
           </div>
 
-          <div className='flex flex-wrap gap-1.5'>
-            <Button
-              type='button'
-              variant='secondary'
-              size='sm'
-              className='h-7 flex-1 px-2 text-xs'
-              onClick={() => applyPreset('today')}
-            >
-              {t('Today')}
-            </Button>
-            <Button
-              type='button'
-              variant='secondary'
-              size='sm'
-              className='h-7 flex-1 px-2 text-xs'
-              onClick={() => applyPreset('7d')}
-            >
-              {t('7 Days')}
-            </Button>
-            <Button
-              type='button'
-              variant='secondary'
-              size='sm'
-              className='h-7 flex-1 px-2 text-xs'
-              onClick={() => applyPreset('week')}
-            >
-              {t('This week')}
-            </Button>
-            <Button
-              type='button'
-              variant='secondary'
-              size='sm'
-              className='h-7 flex-1 px-2 text-xs'
-              onClick={() => applyPreset('30d')}
-            >
-              {t('30 Days')}
-            </Button>
-            <Button
-              type='button'
-              variant='secondary'
-              size='sm'
-              className='h-7 flex-1 px-2 text-xs'
-              onClick={() => applyPreset('month')}
-            >
-              {t('This month')}
-            </Button>
+          <div className='space-y-2'>
+            <div className='grid gap-1.5'>
+              <div className='text-muted-foreground text-[11px] font-medium uppercase tracking-wide'>
+                {t('Recent')}
+              </div>
+              <div className='flex flex-wrap gap-1.5'>
+                {ROLLING_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type='button'
+                    variant='secondary'
+                    size='sm'
+                    className='h-7 px-2 text-xs'
+                    onClick={() => applyRollingPreset(preset)}
+                  >
+                    {t(preset.label)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className='grid gap-1.5'>
+              <div className='text-muted-foreground text-[11px] font-medium uppercase tracking-wide'>
+                {t('Calendar')}
+              </div>
+              <div className='flex flex-wrap gap-1.5'>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  size='sm'
+                  className='h-7 px-2 text-xs'
+                  onClick={() => applyCalendarPreset('today')}
+                >
+                  {t('Today')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  size='sm'
+                  className='h-7 px-2 text-xs'
+                  onClick={() => applyCalendarPreset('week')}
+                >
+                  {t('This week')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  size='sm'
+                  className='h-7 px-2 text-xs'
+                  onClick={() => applyCalendarPreset('month')}
+                >
+                  {t('This month')}
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className='flex justify-end'>

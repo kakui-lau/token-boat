@@ -874,6 +874,9 @@ func peakTimeBucketExpr() string {
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	// 构建带统一过滤条件的基础查询。
 	base := LOG_DB.Table("logs")
+	if logType != LogTypeUnknown {
+		base = base.Where("type = ?", logType)
+	}
 	if base, err = applyExplicitLogTextFilter(base, "username", username); err != nil {
 		return stat, err
 	}

@@ -20,6 +20,11 @@ import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   formatCompactNumber,
@@ -36,19 +41,79 @@ import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
+type StatAccent =
+  | 'quota'
+  | 'rpm'
+  | 'tpm'
+  | 'request'
+  | 'token'
+  | 'failure'
+  | 'cache'
+
+const accentBarMap: Record<StatAccent, string> = {
+  quota: 'bg-cyan-500',
+  rpm: 'bg-rose-500',
+  tpm: 'bg-sky-500',
+  request: 'bg-violet-500',
+  token: 'bg-emerald-500',
+  failure: 'bg-red-500',
+  cache: 'bg-amber-500',
+}
+
+const accentValueMap: Record<StatAccent, string | undefined> = {
+  quota: undefined,
+  rpm: undefined,
+  tpm: undefined,
+  request: undefined,
+  token: undefined,
+  failure: 'text-red-600',
+  cache: undefined,
+}
+
 function StatItem(props: {
   label: string
   value: string
-  accent?: 'danger'
+  subLabel?: string
+  accent?: StatAccent
   hidden?: boolean
 }) {
-  return (
-    <div className='flex items-center gap-1.5 text-sm'>
+  const barClass = props.accent ? accentBarMap[props.accent] : 'bg-border'
+  const valueAccentClass = props.accent
+    ? accentValueMap[props.accent]
+    : undefined
+
+  const labelContent = (
+    <div className='flex items-center gap-1'>
       <span className='text-muted-foreground'>{props.label}</span>
+      {props.subLabel && (
+        <span className='text-muted-foreground/60 text-xs'>
+          ({props.subLabel})
+        </span>
+      )}
+    </div>
+  )
+
+  return (
+    <div className='flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm shadow-sm'>
+      <span className={cn('h-4 w-0.5 shrink-0 rounded-sm', barClass)} />
+      {props.subLabel ? (
+        <Tooltip>
+          <TooltipTrigger className='cursor-default'>
+            {labelContent}
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className='text-xs'>
+              {props.label} — {props.subLabel}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        labelContent
+      )}
       <span
         className={cn(
           'font-mono font-semibold tabular-nums',
-          props.accent === 'danger' && 'text-red-600'
+          valueAccentClass
         )}
       >
         {props.hidden ? '••••' : props.value}
@@ -100,36 +165,61 @@ export function CommonLogsStats() {
   }
 
   return (
-    <div className='flex flex-wrap items-center gap-x-5 gap-y-1.5'>
+    <div className='flex flex-wrap items-center gap-2'>
       <StatItem
         label={t('Requests')}
+        subLabel={t('Request Count')}
         value={formatNumber(stats?.request_count ?? 0)}
+        accent='request'
+      />
+      <StatItem
+        label={t('Failures')}
+        subLabel={t('Failed Requests')}
+        value={formatNumber(stats?.failure_count ?? 0)}
+        accent='failure'
       />
       <StatItem
         label={t('Failure Rate')}
+        subLabel={t('Failure Proportion')}
         value={formatPercent((stats?.failure_rate ?? 0) * 100)}
-        accent='danger'
+        accent='failure'
       />
       <StatItem
         label={t('Peak RPM')}
+        subLabel={t('Requests Per Minute Peak')}
         value={formatCompactNumber(stats?.peak_rpm ?? 0)}
+        accent='rpm'
       />
       <StatItem
         label={t('Peak TPM')}
+        subLabel={t('Tokens Per Minute Peak')}
         value={formatCompactNumber(stats?.peak_tpm ?? 0)}
+        accent='tpm'
       />
       <StatItem
         label={t('Tokens')}
+        subLabel={t('Total Tokens')}
         value={formatCompactNumber(stats?.total_tokens ?? 0)}
+        accent='token'
       />
       <StatItem
-        label={t('Cost')}
-        value={formatLogQuota(stats?.quota ?? 0)}
-        hidden={!sensitiveVisible}
+        label={t('Cache Hit')}
+        subLabel={t('Cached Tokens')}
+        value={formatCompactNumber(stats?.cache_hit_tokens ?? 0)}
+        accent='cache'
       />
       <StatItem
         label={t('Cache')}
+        subLabel={t('Cache Hit Rate')}
         value={formatPercent((stats?.cache_hit_rate ?? 0) * 100)}
+        accent='cache'
+      />
+      <StatItem
+        label={t('Cost')}
+        subLabel={t('Quota Used')}
+        value={formatLogQuota(stats?.quota ?? 0)}
+        accent='quota'
+        hidden={!sensitiveVisible}
       />
     </div>
   )

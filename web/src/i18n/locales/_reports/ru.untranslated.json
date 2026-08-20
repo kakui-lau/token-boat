@@ -1,9 +1,13 @@
 {
   "Anitix": "Anitix",
+  "Failure rate": "Failure rate",
+  "Failure Rate": "Failure Rate",
   "footer.columns.related.links.newApiKeyTool": "token-boat-key-tool",
   "New API": "token boat",
   "New API &lt;noreply@example.com&gt;": "token boat &lt;noreply@example.com&gt;",
   "NewAPI": "token boat",
+  "Peak RPM": "Peak RPM",
+  "Peak TPM": "Peak TPM",
   "prod_xxx": "prod_xxx",
   "token boat": "token boat",
   "Token Boat": "Token Boat",

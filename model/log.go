@@ -932,6 +932,10 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 
 	// 3. 峰值 RPM / TPM：按分钟桶聚合后取最大值。
+	//    注意：子查询 peakSub 本身已经从 base 继承了全部过滤条件（时间范围、
+	//    type、用户、模型、渠道、group 等），外层不能再从 base 开始加 WHERE，
+	//    否则会在 (subquery) AS peak 外层错误地引用不存在的 created_at 等列，
+	//    这在 PostgreSQL 上会报 SQLSTATE 42703。
 	bucketExpr := peakTimeBucketExpr()
 	peakSub := base.Session(&gorm.Session{}).Select(
 		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tpm",
@@ -940,7 +944,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		PeakRpm int64 `gorm:"column:peak_rpm"`
 		PeakTpm int64 `gorm:"column:peak_tpm"`
 	}{}
-	if err := base.Session(&gorm.Session{}).Table("(?) AS peak", peakSub).Select(
+	if err := LOG_DB.Table("(?) AS peak", peakSub).Select(
 		"COALESCE(MAX(rpm), 0) AS peak_rpm, COALESCE(MAX(tpm), 0) AS peak_tpm",
 	).Scan(&peak).Error; err != nil {
 		common.SysError("failed to query log peak stat: " + err.Error())

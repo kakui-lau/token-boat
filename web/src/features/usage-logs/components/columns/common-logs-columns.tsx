@@ -479,6 +479,50 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         },
       },
       {
+        id: 'ip',
+        header: t('Client IP'),
+        accessorFn: (row) => row.ip,
+        cell: function IpCell({ row }) {
+          const { sensitiveVisible } = useUsageLogsContext()
+          const log = row.original
+          if (!isDisplayableLogType(log.type)) return null
+
+          const rawIp = row.getValue('ip') as string | undefined
+          const ip = rawIp?.trim()
+          if (!ip) {
+            return <span className='text-muted-foreground/70 text-xs'>-</span>
+          }
+
+          const displayIp = sensitiveVisible ? ip : '••••••••'
+
+          return (
+            <TooltipProvider delay={300}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className='text-muted-foreground max-w-[140px] truncate font-mono text-xs tabular-nums hover:text-foreground' />
+                  }
+                >
+                  <StatusBadge
+                    label={displayIp}
+                    copyText={sensitiveVisible ? ip : undefined}
+                    size='sm'
+                    showDot={false}
+                    className='border-border/60 bg-muted/20 text-foreground h-6 min-w-0 max-w-[140px] overflow-hidden rounded-md border px-2 py-0.5 font-mono'
+                  />
+                </TooltipTrigger>
+                {sensitiveVisible && (
+                  <TooltipContent side='top' className='font-mono break-all'>
+                    {ip}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )
+        },
+        size: 160,
+      },
+      {
         id: 'user',
         header: t('User'),
         accessorFn: (row) => row.username,

@@ -47,6 +47,8 @@ type StatAccent =
   | 'tpm'
   | 'request'
   | 'token'
+  | 'prompt'
+  | 'completion'
   | 'failure'
   | 'cache'
 
@@ -56,6 +58,8 @@ const accentBarMap: Record<StatAccent, string> = {
   tpm: 'bg-sky-500',
   request: 'bg-violet-500',
   token: 'bg-emerald-500',
+  prompt: 'bg-teal-500',
+  completion: 'bg-lime-500',
   failure: 'bg-red-500',
   cache: 'bg-amber-500',
 }
@@ -66,6 +70,8 @@ const accentValueMap: Record<StatAccent, string | undefined> = {
   tpm: undefined,
   request: undefined,
   token: undefined,
+  prompt: undefined,
+  completion: undefined,
   failure: 'text-red-600',
   cache: undefined,
 }
@@ -201,6 +207,18 @@ export function CommonLogsStats() {
         subLabel={t('Total Tokens')}
         value={formatCompactNumber(stats?.total_tokens ?? 0)}
         accent='token'
+      />
+      <StatItem
+        label={t('Input Tokens')}
+        subLabel={t('Prompt Tokens')}
+        value={formatCompactNumber(stats?.prompt_tokens ?? 0)}
+        accent='prompt'
+      />
+      <StatItem
+        label={t('Output Tokens')}
+        subLabel={t('Completion Tokens')}
+        value={formatCompactNumber(stats?.completion_tokens ?? 0)}
+        accent='completion'
       />
       <StatItem
         label={t('Cache Hit')}

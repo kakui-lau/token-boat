@@ -64,6 +64,11 @@ type taskResponse struct {
 	Result          struct {
 		Videos []string `json:"videos"`
 	} `json:"result,omitempty"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens,omitempty"`
+		CompletionTokens int `json:"completion_tokens,omitempty"`
+		TotalTokens      int `json:"total_tokens,omitempty"`
+	} `json:"usage,omitempty"`
 	Error        any    `json:"error,omitempty"`
 	Code         any    `json:"code,omitempty"`
 	Message      string `json:"message,omitempty"`
@@ -374,6 +379,14 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 		if len(upstream.Result.Videos) > 0 {
 			result.RemoteUrl = upstream.Result.Videos[0]
 			result.RemoteUrls = append([]string(nil), upstream.Result.Videos...)
+		}
+		if upstream.Usage.TotalTokens > 0 {
+			result.TotalTokens = upstream.Usage.TotalTokens
+			if upstream.Usage.CompletionTokens > 0 {
+				result.CompletionTokens = upstream.Usage.CompletionTokens
+			} else {
+				result.CompletionTokens = upstream.Usage.TotalTokens
+			}
 		}
 	case "failed", "error":
 		result.Status = string(model.TaskStatusFailure)

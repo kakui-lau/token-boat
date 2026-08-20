@@ -625,10 +625,63 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			task.FinishTime = now
 		}
 		task.FailReason = taskResult.Reason
+		failMsg := task.FailReason
+		if failMsg == "" {
+			failMsg = fmt.Sprintf("task %s", string(task.Status))
+		}
+		recordErrorBody := fmt.Sprintf("Task %s: %s", string(task.Status), failMsg)
 		logger.LogInfo(ctx, fmt.Sprintf("Task %s failed: %s", task.TaskID, task.FailReason))
 		taskResult.Progress = taskcommon.ProgressComplete
 		if quota != 0 {
 			shouldRefund = true
+		}
+		// 在 worker 轮询 goroutine（无 gin.Context）里也记录错误日志，
+		// 确保「提交成功但轮询发现上游失败」的异步场景错误可见。
+		if constant.ErrorLogEnabled {
+			useTimeSec := 0
+			if task.SubmitTime > 0 {
+				useTimeSec = int(task.FinishTime - task.SubmitTime)
+				if useTimeSec < 0 {
+					useTimeSec = 0
+				}
+			}
+			modelName := task.Properties.OriginModelName
+			if modelName == "" {
+				modelName = task.Properties.UpstreamModelName
+			}
+			other := make(map[string]interface{})
+			other["task_id"] = task.TaskID
+			other["task_status"] = string(task.Status)
+			other["task_platform"] = string(task.Platform)
+			other["task_action"] = task.Action
+			if task.TaskID != "" {
+				other["upstream_task_id"] = task.TaskID
+			}
+			if task.FinishTime > 0 && task.SubmitTime > 0 {
+				other["task_duration_sec"] = task.FinishTime - task.SubmitTime
+			}
+			if task.Quota > 0 {
+				other["precharged_quota"] = task.Quota
+			}
+			other["admin_info"] = map[string]interface{}{
+				"fail_reason": failMsg,
+			}
+			model.RecordTaskFailureErrorLog(
+				task.UserId,
+				task.ChannelId,
+				modelName,
+				"", // tokenName: Task 结构体里没有，不填
+				0,  // tokenId: Task 结构体里没有，不填
+				useTimeSec,
+				false,
+				task.Group,
+				task.Username,
+				"", // requestId
+				task.TaskID,
+				"", // ip
+				recordErrorBody,
+				other,
+			)
 		}
 	default:
 		return fmt.Errorf("unknown task status %s for task %s", taskResult.Status, task.TaskID)
@@ -787,6 +840,15 @@ func truncateBase64(s string) string {
 //  2. taskResult.TotalTokens > 0 → 按 token 重算
 //  3. 都不满足 → 保持预扣额度不变
 func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) bool {
+	promptTokens := 0
+	completionTokens := taskResult.TotalTokens
+	if taskResult.CompletionTokens > 0 && taskResult.CompletionTokens <= taskResult.TotalTokens {
+		completionTokens = taskResult.CompletionTokens
+		promptTokens = taskResult.TotalTokens - completionTokens
+		if promptTokens < 0 {
+			promptTokens = 0
+		}
+	}
 	// 0. 表达式计费必须使用提交时冻结的表达式、分组倍率和请求参数。
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.TieredSnapshot != nil {
 		actualQuota, result, ok := computeTieredTaskQuota(task, taskResult)
@@ -794,7 +856,7 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 			logger.LogError(ctx, fmt.Sprintf("任务 %s 表达式计费结算失败，保持预扣额度", task.TaskID))
 			return false
 		}
-		RecalculateTaskQuota(ctx, task, actualQuota, "表达式计费重算", 0, 0, result.Clamp)
+		RecalculateTaskQuota(ctx, task, actualQuota, "表达式计费重算", promptTokens, completionTokens, result.Clamp)
 		return true
 	}
 	// 0. 按次计费的任务不做差额结算
@@ -804,12 +866,12 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	}
 	// 1. 优先让 adaptor 决定最终额度
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
-		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", 0, 0, taskResult.QuotaClamp)
+		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", promptTokens, completionTokens, taskResult.QuotaClamp)
 		return true
 	}
 	// 2. 回退到 token 重算
 	if taskResult.TotalTokens > 0 {
-		RecalculateTaskQuotaByTokens(ctx, task, taskResult.TotalTokens)
+		RecalculateTaskQuotaByTokens(ctx, task, taskResult.TotalTokens, promptTokens, completionTokens)
 		return true
 	}
 	// 3. 无调整，保持预扣额度

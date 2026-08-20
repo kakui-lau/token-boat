@@ -54,8 +54,11 @@ var seedanceSizes = map[string]map[string]bool{
 }
 
 type videoUsage struct {
-	Cost float64 `json:"cost"`
-	Byok bool    `json:"is_byok"`
+	Cost             float64 `json:"cost"`
+	Byok             bool    `json:"is_byok"`
+	PromptTokens     int     `json:"prompt_tokens,omitempty"`
+	CompletionTokens int     `json:"completion_tokens,omitempty"`
+	TotalTokens      int     `json:"total_tokens,omitempty"`
 }
 
 type videoResponse struct {
@@ -304,6 +307,14 @@ func (a *TaskAdaptor) ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error
 		result.Cost = response.Usage.Cost
 		result.CostKnown = true
 		result.IsByok = response.Usage.Byok
+		if response.Usage.TotalTokens > 0 {
+			result.TotalTokens = response.Usage.TotalTokens
+			if response.Usage.CompletionTokens > 0 {
+				result.CompletionTokens = response.Usage.CompletionTokens
+			} else {
+				result.CompletionTokens = response.Usage.TotalTokens
+			}
+		}
 	}
 	switch response.Status {
 	case "pending", "queued":

@@ -272,6 +272,8 @@ export interface LogStatistics {
   peak_rpm: number
   peak_tpm: number
   total_tokens: number
+  prompt_tokens: number
+  completion_tokens: number
   cache_hit_tokens: number
   cache_hit_rate: number
 }

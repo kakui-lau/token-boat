@@ -419,6 +419,10 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 			needRecordIp = true
 		}
 	}
+	var ip string
+	if needRecordIp {
+		ip = c.ClientIP()
+	}
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -435,12 +439,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		UseTime:          useTimeSeconds,
 		IsStream:         isStream,
 		Group:            group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		Ip:               ip,
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
@@ -448,6 +447,40 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	err := createLog(log)
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
+	}
+}
+
+// RecordTaskFailureErrorLog 在异步任务轮询（无 gin.Context）时写错误日志。
+// 所有可选字段（ip/requestId/upstreamRequestId/taskId 等）统一放进 other，
+// 失败的任务没有实际 Token 消耗，Prompt/Completion/Quota 全部填 0。
+func RecordTaskFailureErrorLog(userId int, channelId int, modelName string, tokenName string,
+	tokenId int, useTimeSeconds int, isStream bool, group string,
+	username string, requestId string, upstreamRequestId string, ip string,
+	content string, other map[string]interface{}) {
+	otherStr := common.MapToJsonStr(other)
+	log := &Log{
+		UserId:            userId,
+		Username:          username,
+		CreatedAt:         common.GetTimestamp(),
+		Type:              LogTypeError,
+		Content:           content,
+		PromptTokens:      0,
+		CompletionTokens:  0,
+		TokenName:         tokenName,
+		ModelName:         modelName,
+		Quota:             0,
+		ChannelId:         channelId,
+		TokenId:           tokenId,
+		UseTime:           useTimeSeconds,
+		IsStream:          isStream,
+		Group:             group,
+		Ip:                ip,
+		RequestId:         requestId,
+		UpstreamRequestId: upstreamRequestId,
+		Other:             otherStr,
+	}
+	if err := createLog(log); err != nil {
+		common.SysError(fmt.Sprintf("failed to record task failure error log: userId=%d, channelId=%d, modelName=%s, err=%s", userId, channelId, modelName, err.Error()))
 	}
 }
 

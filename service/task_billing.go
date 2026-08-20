@@ -552,7 +552,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
-func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
+func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens, promptTokens, completionTokens int) {
 	if totalTokens <= 0 {
 		return
 	}
@@ -598,5 +598,5 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason, 0, totalTokens, clamp)
+	RecalculateTaskQuota(ctx, task, actualQuota, reason, promptTokens, completionTokens, clamp)
 }

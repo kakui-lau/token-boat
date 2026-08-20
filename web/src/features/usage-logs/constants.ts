@@ -38,6 +38,8 @@ export const DEFAULT_LOG_STATS: LogStatistics = {
   peak_rpm: 0,
   peak_tpm: 0,
   total_tokens: 0,
+  prompt_tokens: 0,
+  completion_tokens: 0,
   cache_hit_tokens: 0,
   cache_hit_rate: 0,
 }

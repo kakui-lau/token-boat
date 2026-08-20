@@ -2,12 +2,14 @@ package model
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -405,6 +407,30 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	}
 }
 
+func shouldRecordIp(userId int) bool {
+	if constant.AlwaysRecordIp {
+		return true
+	}
+	var settingRaw sql.NullString
+	err := DB.Model(&User{}).Where("id = ?", userId).Select("setting").Find(&settingRaw).Error
+	if err != nil || !settingRaw.Valid || settingRaw.String == "" {
+		return true
+	}
+	var rawMap map[string]interface{}
+	if parseErr := common.Unmarshal([]byte(settingRaw.String), &rawMap); parseErr != nil {
+		return true
+	}
+	v, exists := rawMap["record_ip_log"]
+	if !exists {
+		return true
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return true
+	}
+	return b
+}
+
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
@@ -412,15 +438,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	var ip string
-	if needRecordIp {
+	if shouldRecordIp(userId) {
 		ip = c.ClientIP()
 	}
 	log := &Log{
@@ -516,12 +535,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
+	var ip string
+	if shouldRecordIp(userId) {
+		ip = c.ClientIP()
 	}
 	log := &Log{
 		UserId:           userId,
@@ -539,12 +555,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
 		Group:            params.Group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		Ip:               ip,
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		TaskId:            params.TaskId,

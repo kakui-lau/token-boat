@@ -45,7 +45,8 @@ export function formatCompactNumber(
   if (value == null || Number.isNaN(value as number)) return '-'
   return Intl.NumberFormat(locales, {
     notation: 'compact',
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value as number)
 }
 

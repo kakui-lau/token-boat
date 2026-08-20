@@ -196,7 +196,46 @@ func CreatePurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelMod
 	return version, nil
 }
 
+// ensurePurchaseEvidenceReferences 在创建/更新采购价草稿时，若前端未填写报价/合同引用，
+// 优先继承当前 active 版本的证据；无历史版本则按与 cmd/model-commercialization 一致的
+// 格式自动生成报价引用。避免"生产在用"渠道模型发布时因证据为空被 readiness 拦截。
+func ensurePurchaseEvidenceReferences(input *PurchaseDraftInput) error {
+	if strings.TrimSpace(input.QuoteReference) != "" ||
+		strings.TrimSpace(input.ContractReference) != "" {
+		return nil
+	}
+	var active model.ChannelModelPurchasePriceVersion
+	err := model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("channel_model_id = ? AND status = ?", input.ChannelModelId, model.PricingVersionStatusActive).
+		Order("id DESC").
+		First(&active).Error
+	if err == nil {
+		if strings.TrimSpace(active.QuoteReference) != "" || strings.TrimSpace(active.ContractReference) != "" {
+			input.QuoteReference = active.QuoteReference
+			input.ContractReference = active.ContractReference
+			return nil
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) && !ignoreMissingTable(err) {
+		return err
+	}
+	if strings.TrimSpace(input.QuoteReference) == "" {
+		discount := strings.TrimSpace(input.PurchaseDiscount)
+		if discount == "" {
+			discount = "official"
+		}
+		input.QuoteReference = fmt.Sprintf(
+			"channel %d official price %s",
+			input.ChannelModelId,
+			discount,
+		)
+	}
+	return nil
+}
+
 func buildPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
+	if err := ensurePurchaseEvidenceReferences(&input); err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, err
+	}
 	switch input.PricingMode {
 	case "official_ratio":
 		return buildOfficialRatioPurchaseDraft(input)

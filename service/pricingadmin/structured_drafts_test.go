@@ -589,3 +589,45 @@ func TestPurchaseCanReferenceAnExpiredOfficialRevision(t *testing.T) {
 	assert.Equal(t, "4", purchase.OutputUnitPrice)
 	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
 }
+
+func TestEnsurePurchaseEvidenceReferencesInheritsActiveOrGenerates(t *testing.T) {
+	setupPricingAdminTestDB(t)
+
+	// 1. 显式传入引用 → 不改动
+	input := PurchaseDraftInput{
+		ChannelModelId:    50,
+		QuoteReference:    "Q-100",
+		ContractReference: "C-200",
+	}
+	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
+	assert.Equal(t, "Q-100", input.QuoteReference)
+	assert.Equal(t, "C-200", input.ContractReference)
+
+	// 2. 前端留空 + 存在带证据的 active 版本 → 继承
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 51,
+		Status:         model.PricingVersionStatusActive,
+		QuoteReference: "prod-ch-16-ratio-0.5-backfill",
+	}).Error)
+	input = PurchaseDraftInput{ChannelModelId: 51, PurchaseDiscount: "0.5"}
+	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
+	assert.Equal(t, "prod-ch-16-ratio-0.5-backfill", input.QuoteReference)
+
+	// 3. 前端留空 + active 版本也无证据 → 自动生成
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 52,
+		Status:         model.PricingVersionStatusActive,
+	}).Error)
+	input = PurchaseDraftInput{ChannelModelId: 52, PurchaseDiscount: "0.5"}
+	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
+	assert.Equal(t, "channel 52 official price 0.5", input.QuoteReference)
+
+	// 4. 无任何 active 版本 → 自动生成（折扣为空时用 official 兜底）
+	input = PurchaseDraftInput{ChannelModelId: 53, PurchaseDiscount: "0.7"}
+	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
+	assert.Equal(t, "channel 53 official price 0.7", input.QuoteReference)
+
+	input = PurchaseDraftInput{ChannelModelId: 54}
+	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
+	assert.Equal(t, "channel 54 official price official", input.QuoteReference)
+}

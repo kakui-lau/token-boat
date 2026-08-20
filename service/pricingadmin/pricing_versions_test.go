@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -793,4 +795,61 @@ func TestCreateOfficialPriceDraftAcceptsValidatedBusinessRules(t *testing.T) {
 	}
 	require.NoError(t, CreateOfficialPriceVersion(&version, 1))
 	assert.NotZero(t, version.Id)
+}
+
+func TestValidateProductionEvidenceOnPublish(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Channel{}, &model.Ability{}))
+
+	// 生产在用渠道模型：channel 60（启用）+ model 60 + ability enabled + cm 60 (v2)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 60, Name: "prod-ch", Key: "k", Type: 1, Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 60, ModelName: "prod-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 60, ChannelId: 60, ModelId: 60, UpstreamModelName: "prod-model",
+		Status: 1, RuntimeMode: pricingruntime.RuntimeModeV2,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		ChannelId: 60, Model: "prod-model", Enabled: true, Group: "default",
+	}).Error)
+
+	official := model.OfficialModelPriceVersion{
+		ModelId:                 60,
+		BillingMode:             "token",
+		PriceStructure:          "flat",
+		BillingExpr:             `v2:tier("base", p / 1000000)`,
+		ExpressionSchemaVersion: "v2",
+		Currency:                "usd",
+		Source:                  "vendor-official",
+		SourceVersion:           "official-2026-08-20",
+		SourceUpdatedAt:         1,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+
+	newDraft := func(quoteReference string) model.ChannelModelPurchasePriceVersion {
+		return model.ChannelModelPurchasePriceVersion{
+			ChannelModelId:         60,
+			PricingMode:            "official_ratio",
+			BillingMode:            "token",
+			PriceStructure:         "flat",
+			Currency:               "usd",
+			PurchaseBillingExpr:    `v2:tier("base", p / 1000000)`,
+			ExpressionSchemaVersion: "v2",
+			OfficialPriceVersionId: &official.Id,
+			QuoteReference:         quoteReference,
+			Status:                 model.PricingVersionStatusDraft,
+		}
+	}
+
+	// 场景 1：生产在用 + 证据全空 → 拒绝
+	err := validateProductionEvidenceOnPublish(model.DB, newDraft(""))
+	require.ErrorContains(t, err, "channel model 60 purchase price lacks quote or contract evidence")
+
+	// 场景 2：补上引用 → 通过
+	require.NoError(t, validateProductionEvidenceOnPublish(model.DB, newDraft("prod-ch-60-ratio-1.0")))
+
+	// 场景 3：非生产在用（ability 禁用）→ 空证据也放行
+	require.NoError(t, model.DB.Model(&model.Ability{}).Where("channel_id = ?", 60).Update("enabled", false).Error)
+	require.NoError(t, validateProductionEvidenceOnPublish(model.DB, newDraft("")))
 }

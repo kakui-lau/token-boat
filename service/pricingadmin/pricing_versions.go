@@ -538,6 +538,93 @@ func sameBillingContract(
 		leftCurrency == rightCurrency
 }
 
+// ignoreMissingTable 判断错误是否因查询的关联表不存在引起（sqlite: "no such table"，
+// postgres: "relation ... does not exist"）。测试环境通常只建部分表，此时跳过需要
+// 关联表的判断；生产库所有表齐全，不会走这条路径。
+func ignoreMissingTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such table") ||
+		strings.Contains(msg, "does not exist")
+}
+
+// validateProductionEvidenceOnPublish 在采购价发布时对"生产在用"渠道模型做证据完整性校验，
+// 规则与 cmd/local-pricing-bootstrap 的 readiness 校验（validateProductionPriceEvidence）
+// 保持一致，把失败从部署阶段提前到发布阶段，避免上线后才被 readiness 拦截。
+// "生产在用"判定：渠道模型未禁用 + V2 runtime + 渠道启用 + ability 启用。
+func validateProductionEvidenceOnPublish(
+	tx *gorm.DB,
+	version model.ChannelModelPurchasePriceVersion,
+) error {
+	var inUse int64
+	if err := tx.Model(&model.ChannelModel{}).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins(
+			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
+		).
+		Where(
+			"channel_models.id = ? AND channel_models.status <> ? AND channel_models.runtime_mode = ? AND channels.status = ? AND abilities.enabled = ?",
+			version.ChannelModelId,
+			0,
+			pricingruntime.RuntimeModeV2,
+			common.ChannelStatusEnabled,
+			true,
+		).
+		Count(&inUse).Error; err != nil {
+		if ignoreMissingTable(err) {
+			return nil
+		}
+		return err
+	}
+	if inUse == 0 {
+		return nil
+	}
+
+	requiresOfficial := version.PricingMode == "official_ratio" ||
+		version.PricingMode == "component_ratio" ||
+		version.PricingMode == "hybrid"
+	if requiresOfficial && version.OfficialPriceVersionId != nil {
+		var official model.OfficialModelPriceVersion
+		if err := tx.First(&official, *version.OfficialPriceVersionId).Error; err != nil {
+			return err
+		}
+		source := strings.ToLower(strings.TrimSpace(official.Source))
+		if source == "" || source == "local_bootstrap" || source == "legacy_import" {
+			return fmt.Errorf(
+				"channel model %d uses non-production official source %q",
+				version.ChannelModelId,
+				official.Source,
+			)
+		}
+		if strings.TrimSpace(official.SourceVersion) == "" || official.SourceUpdatedAt <= 0 {
+			return fmt.Errorf(
+				"channel model %d official price lacks source version or source timestamp",
+				version.ChannelModelId,
+			)
+		}
+	}
+
+	quoteReference := strings.ToLower(strings.TrimSpace(version.QuoteReference))
+	contractReference := strings.TrimSpace(version.ContractReference)
+	if quoteReference == "" && contractReference == "" {
+		return fmt.Errorf(
+			"channel model %d purchase price lacks quote or contract evidence",
+			version.ChannelModelId,
+		)
+	}
+	if strings.Contains(quoteReference, "local-test") ||
+		strings.Contains(strings.ToLower(version.Remark), "local v2") {
+		return fmt.Errorf(
+			"channel model %d still uses local-test purchase evidence",
+			version.ChannelModelId,
+		)
+	}
+	return nil
+}
+
 func PublishPurchasePriceVersion(id int) error {
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetPurchasePriceVersionForUpdate(tx, id)
@@ -548,6 +635,9 @@ func PublishPurchasePriceVersion(id int) error {
 			return errors.New("only draft purchase prices can be published")
 		}
 		if err := validatePurchasePricePublication(tx, version); err != nil {
+			return err
+		}
+		if err := validateProductionEvidenceOnPublish(tx, version); err != nil {
 			return err
 		}
 		var activeRetailCount int64
@@ -613,6 +703,9 @@ func PublishRetailPriceVersion(id int) error {
 		}
 		if purchase.Status == model.PricingVersionStatusDraft {
 			if err := validatePurchasePricePublication(tx, purchase); err != nil {
+				return err
+			}
+			if err := validateProductionEvidenceOnPublish(tx, purchase); err != nil {
 				return err
 			}
 		}

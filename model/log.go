@@ -896,15 +896,17 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota          int64   `json:"quota"`
-	RequestCount   int64   `json:"request_count"`
-	FailureCount   int64   `json:"failure_count"`
-	FailureRate    float64 `json:"failure_rate"`
-	PeakRpm        int64   `json:"peak_rpm"`
-	PeakTpm        int64   `json:"peak_tpm"`
-	TotalTokens    int64   `json:"total_tokens"`
-	CacheHitTokens int64   `json:"cache_hit_tokens"`
-	CacheHitRate   float64 `json:"cache_hit_rate"`
+	Quota            int64   `json:"quota"`
+	RequestCount     int64   `json:"request_count"`
+	FailureCount     int64   `json:"failure_count"`
+	FailureRate      float64 `json:"failure_rate"`
+	PeakRpm          int64   `json:"peak_rpm"`
+	PeakTpm          int64   `json:"peak_tpm"`
+	TotalTokens      int64   `json:"total_tokens"`
+	PromptTokens     int64   `json:"prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens"`
+	CacheHitTokens   int64   `json:"cache_hit_tokens"`
+	CacheHitRate     float64 `json:"cache_hit_rate"`
 }
 
 func cacheTokensSQLExpr() string {
@@ -967,12 +969,18 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		return stat, errors.New("查询统计数据失败")
 	}
 
-	// 2. 请求数、失败数、总 Token、缓存命中 Token。
+	// 2. 请求数、失败数、输入 Token、输出 Token、缓存命中 Token。
+	//    注意：输入/输出 Token 列在旧日志中可能为 NULL，CASE THEN 里再包一层 COALESCE，
+	//    避免把 NULL 漏给 SUM（SUM 会忽略 NULL → 被 CASE 返回的 NULL 相当于没加，但
+	//    如果另一列有值，SQL 里算 prompt+completion 会得到 NULL → 汇总不一致）。
+	//    为保证 total_tokens ≡ prompt_tokens + completion_tokens，总 Token 不在 SQL 里
+	//    求和，而是 Scan 之后在派生比率处相加得到。
 	cacheExpr := cacheTokensSQLExpr()
 	selects := []string{
 		"COUNT(CASE WHEN type = ? THEN 1 END) AS request_count",
 		"COUNT(CASE WHEN type = ? THEN 1 END) AS failure_count",
-		"COALESCE(SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END), 0) AS total_tokens",
+		"COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(prompt_tokens, 0) ELSE 0 END), 0) AS prompt_tokens",
+		"COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(completion_tokens, 0) ELSE 0 END), 0) AS completion_tokens",
 	}
 	if cacheExpr != "" {
 		selects = append(selects, cacheExpr+" AS cache_hit_tokens")
@@ -981,13 +989,18 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	summaryTx := base.Session(&gorm.Session{}).Select(
 		strings.Join(selects, ", "),
-		LogTypeConsume, LogTypeError, LogTypeConsume,
+		LogTypeConsume, LogTypeError,
+		LogTypeConsume, // prompt_tokens
+		LogTypeConsume, // completion_tokens
 	)
 	summaryTx = summaryTx.Where("type IN ?", []int{LogTypeConsume, LogTypeError})
 	if err := summaryTx.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log summary stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+	// 派生：总 Token ≡ 输入 + 输出，保证数学上永远一致（旧日志某列为 NULL 时，上面的
+	// COALESCE 已经把 NULL 转成 0 参与求和，所以这里直接相加即得到正确的总数）。
+	stat.TotalTokens = stat.PromptTokens + stat.CompletionTokens
 
 	// 3. 峰值 RPM / TPM：按分钟桶聚合后取最大值。
 	//    注意：子查询 peakSub 本身已经从 base 继承了全部过滤条件（时间范围、
@@ -996,7 +1009,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	//    这在 PostgreSQL 上会报 SQLSTATE 42703。
 	bucketExpr := peakTimeBucketExpr()
 	peakSub := base.Session(&gorm.Session{}).Select(
-		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tpm",
+		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) AS tpm",
 	).Where("type = ?", LogTypeConsume).Group(bucketExpr)
 	peak := struct {
 		PeakRpm int64 `gorm:"column:peak_rpm"`

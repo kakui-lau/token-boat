@@ -139,7 +139,7 @@ func TestSumUsedQuotaSubtractsRefunds(t *testing.T) {
 		CreatedAt: 101,
 	}))
 
-	stat, err := SumUsedQuota(LogTypeUnknown, 0, 0, "billing-model", "net-usage-user", "", 0, "")
+	stat, err := SumUsedQuota(LogTypeUnknown, 0, 0, "billing-model", "net-usage-user", "", 0, "", "", "")
 
 	require.NoError(t, err)
 	require.Equal(t, 60, stat.Quota)

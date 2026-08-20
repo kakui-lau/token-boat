@@ -931,7 +931,7 @@ func peakTimeBucketExpr() string {
 	return "created_at / 60"
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string) (stat Stat, err error) {
 	// 构建带统一过滤条件的基础查询。
 	base := LOG_DB.Table("logs")
 	if logType != LogTypeUnknown {
@@ -957,6 +957,12 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	if group != "" {
 		base = base.Where(logGroupCol + " = ?", group)
+	}
+	if requestId != "" {
+		base = base.Where("request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		base = base.Where("upstream_request_id = ?", upstreamRequestId)
 	}
 
 	// 1. 费用（消费为正，退款为负）。

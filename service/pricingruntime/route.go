@@ -14,6 +14,7 @@ import (
 type RouteCandidate struct {
 	ChannelId      int
 	ChannelModelId int
+	ModelId        int
 	Priority       int64
 	Weight         uint
 	PurchaseCost   decimal.Decimal
@@ -154,7 +155,10 @@ func scoreRouteCandidates(candidates []RouteCandidate) {
 		}
 	}
 	for index := range candidates {
-		metrics := GetChannelRouteMetrics(candidates[index].ChannelId)
+		metrics := GetChannelRouteMetrics(
+			candidates[index].ChannelId,
+			candidates[index].ModelId,
+		)
 		candidates[index].SuccessRate = metrics.SuccessRate
 		candidates[index].LatencyMs = metrics.AverageLatencyMs
 		costScore := 1.0

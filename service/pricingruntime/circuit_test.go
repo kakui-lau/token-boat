@@ -26,7 +26,7 @@ func useCircuitMiniRedis(t *testing.T) {
 
 func resetChannelCircuits() {
 	channelCircuits.Lock()
-	channelCircuits.byChannelId = make(map[int]channelCircuitState)
+	channelCircuits.byChannelId = make(map[int]map[int]channelCircuitState)
 	channelCircuits.events = nil
 	channelCircuits.nextEventId = 0
 	channelCircuits.Unlock()
@@ -37,16 +37,35 @@ func TestChannelCircuitOpensAfterConsecutiveFailuresAndRecovers(t *testing.T) {
 	t.Cleanup(resetChannelCircuits)
 	now := time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC)
 
-	recordChannelFailureAt(11, 500, now)
-	recordChannelFailureAt(11, 502, now)
-	assert.True(t, tryAcquireChannelAt(11, now))
-	recordChannelFailureAt(11, 0, now)
-	assert.False(t, tryAcquireChannelAt(11, now))
-	assert.True(t, tryAcquireChannelAt(11, now.Add(channelFailureCooldown)))
-	assert.False(t, tryAcquireChannelAt(11, now.Add(channelFailureCooldown)))
+	recordChannelFailureAt(11, 1, 500, now)
+	recordChannelFailureAt(11, 1, 502, now)
+	assert.True(t, tryAcquireChannelAt(11, 1, now))
+	recordChannelFailureAt(11, 1, 0, now)
+	assert.False(t, tryAcquireChannelAt(11, 1, now))
+	assert.True(t, tryAcquireChannelAt(11, 1, now.Add(channelFailureCooldown)))
+	assert.False(t, tryAcquireChannelAt(11, 1, now.Add(channelFailureCooldown)))
 
-	RecordChannelSuccess(11)
-	assert.True(t, tryAcquireChannelAt(11, now))
+	RecordChannelSuccess(11, 1)
+	assert.True(t, tryAcquireChannelAt(11, 1, now))
+}
+
+func TestChannelCircuitIsModelScopedWithinSameChannel(t *testing.T) {
+	resetChannelCircuits()
+	t.Cleanup(resetChannelCircuits)
+	now := time.Now()
+
+	// Model 2 on channel 11 trips, model 1 on the same channel must stay open.
+	recordChannelFailureAt(11, 2, 500, now)
+	recordChannelFailureAt(11, 2, 502, now)
+	recordChannelFailureAt(11, 2, 503, now)
+	assert.False(t, tryAcquireChannelAt(11, 2, now))
+	assert.True(t, tryAcquireChannelAt(11, 1, now))
+
+	overview := GetChannelCircuitOverview()
+	require.Len(t, overview.Channels, 1)
+	assert.Equal(t, 11, overview.Channels[0].ChannelId)
+	assert.Equal(t, 2, overview.Channels[0].ModelId)
+	assert.Equal(t, "open", overview.Channels[0].State)
 }
 
 func TestChannelCircuitUsesIndependentRateLimitCooldown(t *testing.T) {
@@ -54,9 +73,9 @@ func TestChannelCircuitUsesIndependentRateLimitCooldown(t *testing.T) {
 	t.Cleanup(resetChannelCircuits)
 	now := time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC)
 
-	recordChannelFailureAt(12, 429, now)
-	assert.False(t, tryAcquireChannelAt(12, now.Add(channelRateLimitCooldown-time.Millisecond)))
-	assert.True(t, tryAcquireChannelAt(12, now.Add(channelRateLimitCooldown)))
+	recordChannelFailureAt(12, 1, 429, now)
+	assert.False(t, tryAcquireChannelAt(12, 1, now.Add(channelRateLimitCooldown-time.Millisecond)))
+	assert.True(t, tryAcquireChannelAt(12, 1, now.Add(channelRateLimitCooldown)))
 }
 
 func TestChannelCircuitIgnoresClientErrors(t *testing.T) {
@@ -64,8 +83,8 @@ func TestChannelCircuitIgnoresClientErrors(t *testing.T) {
 	t.Cleanup(resetChannelCircuits)
 	now := time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC)
 
-	recordChannelFailureAt(13, 400, now)
-	assert.True(t, tryAcquireChannelAt(13, now))
+	recordChannelFailureAt(13, 1, 400, now)
+	assert.True(t, tryAcquireChannelAt(13, 1, now))
 }
 
 func TestChannelCircuitOverviewExposesStateAndTransitionHistory(t *testing.T) {
@@ -73,13 +92,14 @@ func TestChannelCircuitOverviewExposesStateAndTransitionHistory(t *testing.T) {
 	t.Cleanup(resetChannelCircuits)
 	now := time.Now()
 
-	recordChannelFailureAt(21, 500, now)
-	recordChannelFailureAt(21, 502, now)
-	recordChannelFailureAt(21, 503, now)
+	recordChannelFailureAt(21, 1, 500, now)
+	recordChannelFailureAt(21, 1, 502, now)
+	recordChannelFailureAt(21, 1, 503, now)
 
 	overview := GetChannelCircuitOverview()
 	require.Len(t, overview.Channels, 1)
 	assert.Equal(t, 21, overview.Channels[0].ChannelId)
+	assert.Equal(t, 1, overview.Channels[0].ModelId)
 	assert.Equal(t, "open", overview.Channels[0].State)
 	assert.Equal(t, 3, overview.Channels[0].ConsecutiveFailures)
 	require.Len(t, overview.Events, 3)
@@ -93,7 +113,7 @@ func TestChannelCircuitEventHistoryKeepsNewestBoundedEvents(t *testing.T) {
 	now := time.Now()
 
 	for i := 0; i < channelCircuitEventLimit+3; i++ {
-		recordChannelFailureAt(30+i, 429, now.Add(time.Duration(i)*time.Second))
+		recordChannelFailureAt(30+i, 1, 429, now.Add(time.Duration(i)*time.Second))
 	}
 
 	overview := GetChannelCircuitOverview()
@@ -106,11 +126,11 @@ func TestResetChannelCircuitClearsActiveStateAndRecordsAuditEvent(t *testing.T) 
 	resetChannelCircuits()
 	t.Cleanup(resetChannelCircuits)
 	now := time.Now()
-	recordChannelFailureAt(41, 429, now)
+	recordChannelFailureAt(41, 1, 429, now)
 
-	assert.True(t, ResetChannelCircuit(41))
-	assert.True(t, tryAcquireChannelAt(41, now))
-	assert.False(t, ResetChannelCircuit(41))
+	assert.True(t, ResetChannelCircuit(41, 1))
+	assert.True(t, tryAcquireChannelAt(41, 1, now))
+	assert.False(t, ResetChannelCircuit(41, 1))
 
 	overview := GetChannelCircuitOverview()
 	require.Len(t, overview.Channels, 1)
@@ -124,8 +144,9 @@ func TestRemoveChannelCircuitDropsLiveState(t *testing.T) {
 	resetChannelCircuits()
 	t.Cleanup(resetChannelCircuits)
 
-	RecordChannelFailure(43, 500)
-	require.Len(t, GetChannelCircuitOverview().Channels, 1)
+	RecordChannelFailure(43, 1, 500)
+	RecordChannelFailure(43, 2, 502)
+	require.Len(t, GetChannelCircuitOverview().Channels, 2)
 
 	RemoveChannelCircuit(43)
 	assert.Empty(t, GetChannelCircuitOverview().Channels)
@@ -134,10 +155,10 @@ func TestRemoveChannelCircuitDropsLiveState(t *testing.T) {
 func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testing.T) {
 	useCircuitMiniRedis(t)
 
-	RecordChannelFailure(51, 500)
-	RecordChannelFailure(51, 502)
-	RecordChannelFailure(51, 503)
-	assert.False(t, TryAcquireChannel(51))
+	RecordChannelFailure(51, 1, 500)
+	RecordChannelFailure(51, 1, 502)
+	RecordChannelFailure(51, 1, 503)
+	assert.False(t, TryAcquireChannel(51, 1))
 
 	overview := GetChannelCircuitOverview()
 	require.Len(t, overview.Channels, 1)
@@ -145,7 +166,7 @@ func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testin
 	assert.Equal(t, int64(3), overview.Channels[0].FailureCount)
 	require.Len(t, overview.Events, 3)
 
-	RecordChannelSuccessWithLatency(51, 240*time.Millisecond)
+	RecordChannelSuccessWithLatency(51, 1, 240*time.Millisecond)
 	overview = GetChannelCircuitOverview()
 	require.Len(t, overview.Channels, 1)
 	assert.Equal(t, "monitoring", overview.Channels[0].State)
@@ -153,7 +174,7 @@ func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testin
 	assert.Equal(t, float64(240), overview.Channels[0].AverageLatencyMs)
 	assert.Equal(t, "recovered", overview.Events[len(overview.Events)-1].Event)
 
-	metrics := GetChannelRouteMetrics(51)
+	metrics := GetChannelRouteMetrics(51, 1)
 	assert.Equal(t, float64(240), metrics.AverageLatencyMs)
 	assert.InDelta(t, float64(100)/104, metrics.SuccessRate, 0.0001)
 
@@ -164,7 +185,7 @@ func TestChannelCircuitRedisSharesStateMetricsAndEventsAcrossInstances(t *testin
 func TestChannelCircuitRedisIgnoresClientErrors(t *testing.T) {
 	useCircuitMiniRedis(t)
 
-	RecordChannelFailure(52, 400)
+	RecordChannelFailure(52, 1, 400)
 
 	overview := GetChannelCircuitOverview()
 	assert.Empty(t, overview.Channels)
@@ -174,10 +195,10 @@ func TestChannelCircuitRedisIgnoresClientErrors(t *testing.T) {
 func TestPersistentCircuitEventsAreRetainedAndPurgedInBatches(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	require.NoError(t, storeCircuitEvent(ChannelCircuitEvent{
-		ChannelId: 81, Event: "opened", StatusCode: 500, OccurredAt: 100,
+		ChannelId: 81, ModelId: 1, Event: "opened", StatusCode: 500, OccurredAt: 100,
 	}))
 	require.NoError(t, storeCircuitEvent(ChannelCircuitEvent{
-		ChannelId: 82, Event: "recovered", OccurredAt: 200,
+		ChannelId: 82, ModelId: 2, Event: "recovered", OccurredAt: 200,
 	}))
 
 	deleted, err := PurgePricingCircuitEvents(150, 1)
@@ -188,5 +209,6 @@ func TestPersistentCircuitEventsAreRetainedAndPurgedInBatches(t *testing.T) {
 	require.NoError(t, model.DB.Order("id ASC").Find(&remaining).Error)
 	require.Len(t, remaining, 1)
 	assert.Equal(t, 82, remaining[0].ChannelId)
+	assert.Equal(t, 2, remaining[0].ModelId)
 	assert.Equal(t, "recovered", remaining[0].Event)
 }

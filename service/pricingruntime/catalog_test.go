@@ -1500,16 +1500,20 @@ func TestPlanV2RouteOrdersByPurchaseCostBeforePriority(t *testing.T) {
 func TestRouteScoringBalancesCostReliabilityLatencyAndQuality(t *testing.T) {
 	channelCircuits.Lock()
 	originalStates := channelCircuits.byChannelId
-	channelCircuits.byChannelId = map[int]channelCircuitState{
+	channelCircuits.byChannelId = map[int]map[int]channelCircuitState{
 		101: {
-			SuccessCount:     20,
-			FailureCount:     30,
-			AverageLatencyMs: 2500,
+			1001: {
+				SuccessCount:     20,
+				FailureCount:     30,
+				AverageLatencyMs: 2500,
+			},
 		},
 		102: {
-			SuccessCount:     500,
-			FailureCount:     2,
-			AverageLatencyMs: 200,
+			1002: {
+				SuccessCount:     500,
+				FailureCount:     2,
+				AverageLatencyMs: 200,
+			},
 		},
 	}
 	channelCircuits.Unlock()
@@ -1520,11 +1524,11 @@ func TestRouteScoringBalancesCostReliabilityLatencyAndQuality(t *testing.T) {
 	})
 	candidates := []RouteCandidate{
 		{
-			ChannelId: 101, PurchaseCost: decimal.RequireFromString("0.8"),
+			ChannelId: 101, ModelId: 1001, PurchaseCost: decimal.RequireFromString("0.8"),
 			QualityScore: 20,
 		},
 		{
-			ChannelId: 102, PurchaseCost: decimal.RequireFromString("1"),
+			ChannelId: 102, ModelId: 1002, PurchaseCost: decimal.RequireFromString("1"),
 			QualityScore: 100,
 		},
 	}

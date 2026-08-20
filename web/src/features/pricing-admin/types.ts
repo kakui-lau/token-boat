@@ -62,7 +62,8 @@ export type PricingRuntimeStatus = {
 export type ChannelCircuitStatus = {
   channel_id: number
   channel_name: string
-  model_names: string[]
+  model_id: number
+  model_name: string
   state: 'monitoring' | 'open' | 'half_open'
   consecutive_failures: number
   open_until: number
@@ -77,6 +78,8 @@ export type ChannelCircuitEvent = {
   id: number
   channel_id: number
   channel_name: string
+  model_id?: number
+  model_name?: string
   event:
     | 'failure'
     | 'opened'

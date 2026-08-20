@@ -51,6 +51,7 @@ func storeCircuitEvent(event ChannelCircuitEvent) error {
 func storeCircuitEventAt(db *gorm.DB, event ChannelCircuitEvent) error {
 	return db.Create(&model.PricingCircuitEvent{
 		ChannelId:  event.ChannelId,
+		ModelId:    event.ModelId,
 		Event:      event.Event,
 		StatusCode: event.StatusCode,
 		OccurredAt: event.OccurredAt,

@@ -8,6 +8,7 @@ import (
 type PricingCircuitEvent struct {
 	Id         int64  `json:"id"`
 	ChannelId  int    `json:"channel_id" gorm:"not null;index"`
+	ModelId    int    `json:"model_id" gorm:"index"`
 	Event      string `json:"event" gorm:"type:varchar(32);not null;index"`
 	StatusCode int    `json:"status_code"`
 	OccurredAt int64  `json:"occurred_at" gorm:"bigint;not null;index"`

@@ -25,8 +25,11 @@ type channelCircuitState struct {
 	AverageLatencyMs    float64
 }
 
+// ChannelCircuitStatus describes circuit state for one channel-model pair.
 type ChannelCircuitStatus struct {
 	ChannelId           int     `json:"channel_id"`
+	ModelId             int     `json:"model_id"`
+	ModelName           string  `json:"model_name,omitempty"`
 	State               string  `json:"state"`
 	ConsecutiveFailures int     `json:"consecutive_failures"`
 	OpenUntil           int64   `json:"open_until"`
@@ -40,6 +43,7 @@ type ChannelCircuitStatus struct {
 type ChannelCircuitEvent struct {
 	Id         int64  `json:"id"`
 	ChannelId  int    `json:"channel_id"`
+	ModelId    int    `json:"model_id"`
 	Event      string `json:"event"`
 	StatusCode int    `json:"status_code"`
 	OccurredAt int64  `json:"occurred_at"`
@@ -51,32 +55,35 @@ type ChannelCircuitOverview struct {
 	Distributed bool                   `json:"distributed"`
 }
 
+// channelCircuits keeps per (channel, model) circuit state. The outer map is
+// keyed by channel id so that removing a channel can drop every model circuit
+// at once; the inner map is keyed by model id.
 var channelCircuits = struct {
 	sync.Mutex
-	byChannelId map[int]channelCircuitState
+	byChannelId map[int]map[int]channelCircuitState
 	events      []ChannelCircuitEvent
 	nextEventId int64
 }{
-	byChannelId: make(map[int]channelCircuitState),
+	byChannelId: make(map[int]map[int]channelCircuitState),
 	events:      make([]ChannelCircuitEvent, 0, channelCircuitEventLimit),
 }
 
-func TryAcquireChannel(channelId int) bool {
+func TryAcquireChannel(channelId int, modelId int) bool {
 	if circuitRedisEnabled() {
-		acquired, err := tryAcquireChannelRedis(channelId, time.Now())
+		acquired, err := tryAcquireChannelRedis(channelId, modelId, time.Now())
 		if err == nil {
 			return acquired
 		}
 		common.SysError("pricing circuit Redis acquire failed: " + err.Error())
 	}
-	return tryAcquireChannelAt(channelId, time.Now())
+	return tryAcquireChannelAt(channelId, modelId, time.Now())
 }
 
-func tryAcquireChannelAt(channelId int, now time.Time) bool {
+func tryAcquireChannelAt(channelId int, modelId int, now time.Time) bool {
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
 
-	state, exists := channelCircuits.byChannelId[channelId]
+	state, exists := channelCircuitStateAt(channelId, modelId)
 	if !exists {
 		return true
 	}
@@ -88,28 +95,28 @@ func tryAcquireChannelAt(channelId int, now time.Time) bool {
 	}
 	if !state.OpenUntil.IsZero() {
 		state.ProbeUntil = now.Add(channelProbeTimeout)
-		channelCircuits.byChannelId[channelId] = state
-		appendChannelCircuitEventLocked(channelId, "half_open_probe", 0, now)
+		channelCircuits.byChannelId[channelId][modelId] = state
+		appendChannelCircuitEventLocked(channelId, modelId, "half_open_probe", 0, now)
 	}
 	return true
 }
 
-func RecordChannelSuccess(channelId int) {
-	RecordChannelSuccessWithLatency(channelId, 0)
+func RecordChannelSuccess(channelId int, modelId int) {
+	RecordChannelSuccessWithLatency(channelId, modelId, 0)
 }
 
-func RecordChannelSuccessWithLatency(channelId int, latency time.Duration) {
+func RecordChannelSuccessWithLatency(channelId int, modelId int, latency time.Duration) {
 	if circuitRedisEnabled() {
-		if err := recordChannelSuccessRedis(channelId, latency, time.Now()); err == nil {
+		if err := recordChannelSuccessRedis(channelId, modelId, latency, time.Now()); err == nil {
 			return
 		} else {
 			common.SysError("pricing circuit Redis success update failed: " + err.Error())
 		}
 	}
 	channelCircuits.Lock()
-	state, exists := channelCircuits.byChannelId[channelId]
+	state, exists := channelCircuitStateAt(channelId, modelId)
 	if exists && (!state.OpenUntil.IsZero() || !state.ProbeUntil.IsZero()) {
-		appendChannelCircuitEventLocked(channelId, "recovered", 0, time.Now())
+		appendChannelCircuitEventLocked(channelId, modelId, "recovered", 0, time.Now())
 	}
 	state.ConsecutiveFailures = 0
 	state.OpenUntil = time.Time{}
@@ -123,16 +130,16 @@ func RecordChannelSuccessWithLatency(channelId int, latency time.Duration) {
 			state.AverageLatencyMs = state.AverageLatencyMs*0.8 + latencyMs*0.2
 		}
 	}
-	channelCircuits.byChannelId[channelId] = state
+	setChannelCircuitState(channelId, modelId, state)
 	channelCircuits.Unlock()
 }
 
-func ResetChannelCircuit(channelId int) bool {
+func ResetChannelCircuit(channelId int, modelId int) bool {
 	if channelId <= 0 {
 		return false
 	}
 	if circuitRedisEnabled() {
-		reset, err := resetChannelCircuitRedis(channelId, time.Now())
+		reset, err := resetChannelCircuitRedis(channelId, modelId, time.Now())
 		if err == nil {
 			return reset
 		}
@@ -140,7 +147,7 @@ func ResetChannelCircuit(channelId int) bool {
 	}
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
-	state, exists := channelCircuits.byChannelId[channelId]
+	state, exists := channelCircuitStateAt(channelId, modelId)
 	if !exists {
 		return false
 	}
@@ -152,8 +159,8 @@ func ResetChannelCircuit(channelId int) bool {
 	state.ConsecutiveFailures = 0
 	state.OpenUntil = time.Time{}
 	state.ProbeUntil = time.Time{}
-	channelCircuits.byChannelId[channelId] = state
-	appendChannelCircuitEventLocked(channelId, "manual_reset", 0, time.Now())
+	setChannelCircuitState(channelId, modelId, state)
+	appendChannelCircuitEventLocked(channelId, modelId, "manual_reset", 0, time.Now())
 	return true
 }
 
@@ -173,47 +180,47 @@ func RemoveChannelCircuit(channelId int) {
 	channelCircuits.Unlock()
 }
 
-func RecordChannelFailure(channelId int, statusCode int) {
+func RecordChannelFailure(channelId int, modelId int, statusCode int) {
 	if circuitRedisEnabled() {
-		if err := recordChannelFailureRedis(channelId, statusCode, time.Now()); err == nil {
+		if err := recordChannelFailureRedis(channelId, modelId, statusCode, time.Now()); err == nil {
 			return
 		} else {
 			common.SysError("pricing circuit Redis failure update failed: " + err.Error())
 		}
 	}
-	recordChannelFailureAt(channelId, statusCode, time.Now())
+	recordChannelFailureAt(channelId, modelId, statusCode, time.Now())
 }
 
-func recordChannelFailureAt(channelId int, statusCode int, now time.Time) {
+func recordChannelFailureAt(channelId int, modelId int, statusCode int, now time.Time) {
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
 
-	state, exists := channelCircuits.byChannelId[channelId]
+	state, exists := channelCircuitStateAt(channelId, modelId)
 	switch {
 	case statusCode == 429:
 		state.ProbeUntil = time.Time{}
 		state.FailureCount++
 		state.ConsecutiveFailures = 0
 		state.OpenUntil = now.Add(channelRateLimitCooldown)
-		appendChannelCircuitEventLocked(channelId, "rate_limited", statusCode, now)
+		appendChannelCircuitEventLocked(channelId, modelId, "rate_limited", statusCode, now)
 	case statusCode == 0 || statusCode == 408 || statusCode >= 500:
 		state.ProbeUntil = time.Time{}
 		state.FailureCount++
 		state.ConsecutiveFailures++
 		if state.ConsecutiveFailures >= channelFailureThreshold || !state.OpenUntil.IsZero() {
 			state.OpenUntil = now.Add(channelFailureCooldown)
-			appendChannelCircuitEventLocked(channelId, "opened", statusCode, now)
+			appendChannelCircuitEventLocked(channelId, modelId, "opened", statusCode, now)
 		} else {
-			appendChannelCircuitEventLocked(channelId, "failure", statusCode, now)
+			appendChannelCircuitEventLocked(channelId, modelId, "failure", statusCode, now)
 		}
 	default:
 		if !exists {
 			return
 		}
-		channelCircuits.byChannelId[channelId] = state
+		setChannelCircuitState(channelId, modelId, state)
 		return
 	}
-	channelCircuits.byChannelId[channelId] = state
+	setChannelCircuitState(channelId, modelId, state)
 }
 
 func GetChannelCircuitOverview() ChannelCircuitOverview {
@@ -229,36 +236,42 @@ func GetChannelCircuitOverview() ChannelCircuitOverview {
 	defer channelCircuits.Unlock()
 
 	channels := make([]ChannelCircuitStatus, 0, len(channelCircuits.byChannelId))
-	for channelId, state := range channelCircuits.byChannelId {
-		status := "monitoring"
-		switch {
-		case now.Before(state.OpenUntil):
-			status = "open"
-		case !state.ProbeUntil.IsZero() && now.Before(state.ProbeUntil):
-			status = "half_open"
+	for channelId, modelStates := range channelCircuits.byChannelId {
+		for modelId, state := range modelStates {
+			status := "monitoring"
+			switch {
+			case now.Before(state.OpenUntil):
+				status = "open"
+			case !state.ProbeUntil.IsZero() && now.Before(state.ProbeUntil):
+				status = "half_open"
+			}
+			openUntil := int64(0)
+			if !state.OpenUntil.IsZero() {
+				openUntil = state.OpenUntil.Unix()
+			}
+			probeUntil := int64(0)
+			if !state.ProbeUntil.IsZero() {
+				probeUntil = state.ProbeUntil.Unix()
+			}
+			channels = append(channels, ChannelCircuitStatus{
+				ChannelId:           channelId,
+				ModelId:             modelId,
+				State:               status,
+				ConsecutiveFailures: state.ConsecutiveFailures,
+				OpenUntil:           openUntil,
+				ProbeUntil:          probeUntil,
+				SuccessCount:        state.SuccessCount,
+				FailureCount:        state.FailureCount,
+				SuccessRate:         channelSuccessRate(state),
+				AverageLatencyMs:    state.AverageLatencyMs,
+			})
 		}
-		openUntil := int64(0)
-		if !state.OpenUntil.IsZero() {
-			openUntil = state.OpenUntil.Unix()
-		}
-		probeUntil := int64(0)
-		if !state.ProbeUntil.IsZero() {
-			probeUntil = state.ProbeUntil.Unix()
-		}
-		channels = append(channels, ChannelCircuitStatus{
-			ChannelId:           channelId,
-			State:               status,
-			ConsecutiveFailures: state.ConsecutiveFailures,
-			OpenUntil:           openUntil,
-			ProbeUntil:          probeUntil,
-			SuccessCount:        state.SuccessCount,
-			FailureCount:        state.FailureCount,
-			SuccessRate:         channelSuccessRate(state),
-			AverageLatencyMs:    state.AverageLatencyMs,
-		})
 	}
 	sort.Slice(channels, func(i, j int) bool {
-		return channels[i].ChannelId < channels[j].ChannelId
+		if channels[i].ChannelId != channels[j].ChannelId {
+			return channels[i].ChannelId < channels[j].ChannelId
+		}
+		return channels[i].ModelId < channels[j].ModelId
 	})
 	events := append([]ChannelCircuitEvent(nil), channelCircuits.events...)
 	return ChannelCircuitOverview{Channels: channels, Events: events}
@@ -269,9 +282,9 @@ type ChannelRouteMetrics struct {
 	AverageLatencyMs float64
 }
 
-func GetChannelRouteMetrics(channelId int) ChannelRouteMetrics {
+func GetChannelRouteMetrics(channelId int, modelId int) ChannelRouteMetrics {
 	if circuitRedisEnabled() {
-		metrics, err := getChannelRouteMetricsRedis(channelId)
+		metrics, err := getChannelRouteMetricsRedis(channelId, modelId)
 		if err == nil {
 			return metrics
 		}
@@ -279,7 +292,7 @@ func GetChannelRouteMetrics(channelId int) ChannelRouteMetrics {
 	}
 	channelCircuits.Lock()
 	defer channelCircuits.Unlock()
-	state := channelCircuits.byChannelId[channelId]
+	state, _ := channelCircuitStateAt(channelId, modelId)
 	latency := state.AverageLatencyMs
 	if latency <= 0 {
 		latency = 1000
@@ -288,6 +301,24 @@ func GetChannelRouteMetrics(channelId int) ChannelRouteMetrics {
 		SuccessRate:      channelSuccessRate(state),
 		AverageLatencyMs: latency,
 	}
+}
+
+func channelCircuitStateAt(channelId int, modelId int) (channelCircuitState, bool) {
+	modelStates, exists := channelCircuits.byChannelId[channelId]
+	if !exists {
+		return channelCircuitState{}, false
+	}
+	state, exists := modelStates[modelId]
+	return state, exists
+}
+
+func setChannelCircuitState(channelId int, modelId int, state channelCircuitState) {
+	modelStates, exists := channelCircuits.byChannelId[channelId]
+	if !exists {
+		modelStates = make(map[int]channelCircuitState)
+		channelCircuits.byChannelId[channelId] = modelStates
+	}
+	modelStates[modelId] = state
 }
 
 func channelSuccessRate(state channelCircuitState) float64 {
@@ -299,6 +330,7 @@ func channelSuccessRate(state channelCircuitState) float64 {
 
 func appendChannelCircuitEventLocked(
 	channelId int,
+	modelId int,
 	event string,
 	statusCode int,
 	occurredAt time.Time,
@@ -306,6 +338,7 @@ func appendChannelCircuitEventLocked(
 	persistedEvent := ChannelCircuitEvent{
 		Id:         channelCircuits.nextEventId + 1,
 		ChannelId:  channelId,
+		ModelId:    modelId,
 		Event:      event,
 		StatusCode: statusCode,
 		OccurredAt: occurredAt.Unix(),

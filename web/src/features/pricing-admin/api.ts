@@ -68,10 +68,15 @@ export async function getPricingCircuitEvents(params: {
 }
 
 export async function resetPricingCircuit(
-  channelId: number
-): Promise<PriceVersionResponse<{ channel_id: number; reset: boolean }>> {
+  channelId: number,
+  modelId?: number
+): Promise<
+  PriceVersionResponse<{ channel_id: number; model_id: number; reset: boolean }>
+> {
   const response = await api.post(
-    `/api/pricing-admin/circuit-overview/${channelId}/reset`
+    `/api/pricing-admin/circuit-overview/${channelId}/reset`,
+    undefined,
+    { params: modelId ? { model_id: modelId } : undefined }
   )
   return requirePricingSuccess(response.data)
 }

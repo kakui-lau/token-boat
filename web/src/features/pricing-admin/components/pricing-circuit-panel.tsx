@@ -98,7 +98,13 @@ export function PricingCircuitPanel() {
       }),
   })
   const resetMutation = useMutation({
-    mutationFn: resetPricingCircuit,
+    mutationFn: ({
+      channelId,
+      modelId,
+    }: {
+      channelId: number
+      modelId?: number
+    }) => resetPricingCircuit(channelId, modelId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'circuit-overview'],
@@ -190,7 +196,7 @@ export function PricingCircuitPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('Channel')}</TableHead>
-                <TableHead>{t('Models')}</TableHead>
+                <TableHead>{t('Model')}</TableHead>
                 <TableHead>{t('State')}</TableHead>
                 <TableHead>{t('Consecutive failures')}</TableHead>
                 <TableHead>{t('Success rate')}</TableHead>
@@ -201,7 +207,9 @@ export function PricingCircuitPanel() {
             </TableHeader>
             <TableBody>
               {channels.map((channel) => (
-                <TableRow key={channel.channel_id}>
+                <TableRow
+                  key={`${channel.channel_id}:${channel.model_id}`}
+                >
                   <TableCell>
                     <div>
                       {channel.channel_name || `#${channel.channel_id}`}
@@ -214,7 +222,7 @@ export function PricingCircuitPanel() {
                   </TableCell>
                   <TableCell className='max-w-64'>
                     <div className='text-muted-foreground line-clamp-3 text-xs'>
-                      {channel.model_names.join(', ') || '—'}
+                      {channel.model_name || '—'}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -249,11 +257,11 @@ export function PricingCircuitPanel() {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>
-                              {t('Reset this channel circuit?')}
+                              {t('Reset this channel-model circuit?')}
                             </AlertDialogTitle>
                             <AlertDialogDescription>
                               {t(
-                                'This only clears the circuit state in the current process. The channel will be eligible for routing immediately.'
+                                'This only clears the circuit state for this channel and model in the current process. The channel-model pair will be eligible for routing immediately.'
                               )}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
@@ -261,7 +269,10 @@ export function PricingCircuitPanel() {
                             <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() =>
-                                resetMutation.mutate(channel.channel_id)
+                                resetMutation.mutate({
+                                  channelId: channel.channel_id,
+                                  modelId: channel.model_id,
+                                })
                               }
                             >
                               {t('Reset')}
@@ -334,6 +345,7 @@ export function PricingCircuitPanel() {
                 <TableRow>
                   <TableHead>{t('Time')}</TableHead>
                   <TableHead>{t('Channel')}</TableHead>
+                  <TableHead>{t('Model')}</TableHead>
                   <TableHead>{t('Event')}</TableHead>
                   <TableHead>{t('Status code')}</TableHead>
                 </TableRow>
@@ -347,6 +359,11 @@ export function PricingCircuitPanel() {
                     <TableCell>
                       {event.channel_name || `#${event.channel_id}`}
                     </TableCell>
+                    <TableCell className='max-w-56'>
+                      <div className='text-muted-foreground line-clamp-2 text-xs'>
+                        {event.model_name || '—'}
+                      </div>
+                    </TableCell>
                     <TableCell>{circuitEventLabel(event.event, t)}</TableCell>
                     <TableCell>
                       {event.status_code > 0 ? event.status_code : '—'}
@@ -356,7 +373,7 @@ export function PricingCircuitPanel() {
                 {!circuitQuery.isLoading && events.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={4}
+                      colSpan={5}
                       className='text-muted-foreground h-20 text-center'
                     >
                       {t('No circuit events')}

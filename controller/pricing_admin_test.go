@@ -974,10 +974,13 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.Channel{
 		Id: 121, Name: "circuit-provider", Models: "model-a,model-b",
 	}).Error)
-	pricingruntime.RecordChannelFailure(121, 500)
-	pricingruntime.RecordChannelFailure(121, 502)
-	pricingruntime.RecordChannelFailure(121, 503)
-	pricingruntime.RecordChannelFailure(999, 500)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 201, ModelName: "model-a",
+	}).Error)
+	pricingruntime.RecordChannelFailure(121, 201, 500)
+	pricingruntime.RecordChannelFailure(121, 201, 502)
+	pricingruntime.RecordChannelFailure(121, 201, 503)
+	pricingruntime.RecordChannelFailure(999, 1, 500)
 	t.Cleanup(func() {
 		pricingruntime.RemoveChannelCircuit(121)
 		pricingruntime.RemoveChannelCircuit(999)
@@ -1001,13 +1004,13 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 	require.True(t, overviewResponse.Success)
 	require.Len(t, overviewResponse.Data.Channels, 1)
 	assert.Equal(t, "circuit-provider", overviewResponse.Data.Channels[0].ChannelName)
-	assert.Equal(t, []string{"model-a", "model-b"}, overviewResponse.Data.Channels[0].ModelNames)
+	assert.Equal(t, "model-a", overviewResponse.Data.Channels[0].ModelName)
 	assert.Equal(t, "open", overviewResponse.Data.Channels[0].State)
 
 	resetContext, resetRecorder := newPricingAdminJSONContext(
 		t,
 		http.MethodPost,
-		"/api/pricing-admin/circuit-overview/121/reset",
+		"/api/pricing-admin/circuit-overview/121/reset?model_id=201",
 		nil,
 	)
 	resetContext.Params = gin.Params{{Key: "channel_id", Value: "121"}}
@@ -1017,6 +1020,7 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 		Success bool `json:"success"`
 		Data    struct {
 			ChannelId int  `json:"channel_id"`
+			ModelId   int  `json:"model_id"`
 			Reset     bool `json:"reset"`
 		} `json:"data"`
 	}
@@ -1024,6 +1028,7 @@ func TestAdminPricingCircuitOverviewNamesAndResetsActiveChannel(t *testing.T) {
 	assert.True(t, resetResponse.Success)
 	assert.True(t, resetResponse.Data.Reset)
 	assert.Equal(t, 121, resetResponse.Data.ChannelId)
+	assert.Equal(t, 201, resetResponse.Data.ModelId)
 }
 
 func TestAdminPricingReconciliationSummarySeparatesBacklogAndRecentOutcomes(t *testing.T) {

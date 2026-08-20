@@ -193,18 +193,19 @@ type requestPricingSnapshotAdminRow struct {
 
 type pricingCircuitChannelAdminRow struct {
 	pricingruntime.ChannelCircuitStatus
-	ChannelName string   `json:"channel_name"`
-	ModelNames  []string `json:"model_names"`
+	ChannelName string `json:"channel_name"`
 }
 
 type pricingCircuitEventAdminRow struct {
 	pricingruntime.ChannelCircuitEvent
 	ChannelName string `json:"channel_name"`
+	ModelName   string `json:"model_name,omitempty"`
 }
 
 type persistentPricingCircuitEventAdminRow struct {
 	model.PricingCircuitEvent
 	ChannelName string `json:"channel_name"`
+	ModelName   string `json:"model_name,omitempty"`
 }
 
 type providerReportedCostInput struct {
@@ -240,14 +241,13 @@ func AdminGetPricingCircuitOverview(c *gin.Context) {
 		}
 	}
 	type channelNameRow struct {
-		Id     int
-		Name   string
-		Models string
+		Id   int
+		Name string
 	}
 	var channelNames []channelNameRow
 	if len(channelIds) > 0 {
 		if err := model.DB.Model(&model.Channel{}).
-			Select("id, name, models").
+			Select("id, name").
 			Where("id IN ? AND status = ?", channelIds, common.ChannelStatusEnabled).
 			Scan(&channelNames).Error; err != nil {
 			common.ApiError(c, err)
@@ -255,14 +255,44 @@ func AdminGetPricingCircuitOverview(c *gin.Context) {
 		}
 	}
 	nameByChannelId := make(map[int]string, len(channelNames))
-	modelsByChannelId := make(map[int][]string, len(channelNames))
 	for _, channel := range channelNames {
 		nameByChannelId[channel.Id] = channel.Name
-		for _, modelName := range strings.Split(channel.Models, ",") {
-			if modelName = strings.TrimSpace(modelName); modelName != "" {
-				modelsByChannelId[channel.Id] = append(modelsByChannelId[channel.Id], modelName)
+	}
+	modelIds := make([]int, 0, len(overview.Channels)+len(overview.Events))
+	seenModelIds := make(map[int]struct{}, len(overview.Channels)+len(overview.Events))
+	for _, channel := range overview.Channels {
+		if channel.ModelId > 0 {
+			if _, exists := seenModelIds[channel.ModelId]; !exists {
+				seenModelIds[channel.ModelId] = struct{}{}
+				modelIds = append(modelIds, channel.ModelId)
 			}
 		}
+	}
+	for _, event := range overview.Events {
+		if event.ModelId > 0 {
+			if _, exists := seenModelIds[event.ModelId]; !exists {
+				seenModelIds[event.ModelId] = struct{}{}
+				modelIds = append(modelIds, event.ModelId)
+			}
+		}
+	}
+	type modelNameRow struct {
+		Id   int
+		Name string
+	}
+	var modelNames []modelNameRow
+	if len(modelIds) > 0 {
+		if err := model.DB.Model(&model.Model{}).
+			Select("id, model_name AS name").
+			Where("id IN ?", modelIds).
+			Scan(&modelNames).Error; err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	nameByModelId := make(map[int]string, len(modelNames))
+	for _, model := range modelNames {
+		nameByModelId[model.Id] = model.Name
 	}
 	channels := make([]pricingCircuitChannelAdminRow, 0, len(overview.Channels))
 	for _, channel := range overview.Channels {
@@ -270,10 +300,10 @@ func AdminGetPricingCircuitOverview(c *gin.Context) {
 		if !exists {
 			continue
 		}
+		channel.ModelName = nameByModelId[channel.ModelId]
 		channels = append(channels, pricingCircuitChannelAdminRow{
 			ChannelCircuitStatus: channel,
 			ChannelName:          channelName,
-			ModelNames:           modelsByChannelId[channel.ChannelId],
 		})
 	}
 	events := make([]pricingCircuitEventAdminRow, 0, len(overview.Events))
@@ -285,6 +315,7 @@ func AdminGetPricingCircuitOverview(c *gin.Context) {
 		events = append(events, pricingCircuitEventAdminRow{
 			ChannelCircuitEvent: event,
 			ChannelName:         channelName,
+			ModelName:           nameByModelId[event.ModelId],
 		})
 	}
 	common.ApiSuccess(c, gin.H{
@@ -299,21 +330,31 @@ func AdminResetPricingCircuit(c *gin.Context) {
 		common.ApiErrorMsg(c, "channel_id 无效")
 		return
 	}
-	reset := pricingruntime.ResetChannelCircuit(channelId)
+	modelId := 0
+	if rawModelId := strings.TrimSpace(c.Query("model_id")); rawModelId != "" {
+		modelId, err = strconv.Atoi(rawModelId)
+		if err != nil || modelId <= 0 {
+			common.ApiErrorMsg(c, "model_id 无效")
+			return
+		}
+	}
+	reset := pricingruntime.ResetChannelCircuit(channelId, modelId)
 	recordManageAudit(c, "pricing.channel_circuit.reset", map[string]interface{}{
 		"channel_id": channelId,
+		"model_id":   modelId,
 		"reset":      reset,
 	})
-	common.ApiSuccess(c, gin.H{"channel_id": channelId, "reset": reset})
+	common.ApiSuccess(c, gin.H{"channel_id": channelId, "model_id": modelId, "reset": reset})
 }
 
 func AdminListPricingCircuitEvents(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	query := model.DB.Table("pricing_circuit_events").
 		Select(
-			"pricing_circuit_events.*, COALESCE(channels.name, '') AS channel_name",
+			"pricing_circuit_events.*, COALESCE(channels.name, '') AS channel_name, COALESCE(models.model_name, '') AS model_name",
 		).
-		Joins("JOIN channels ON channels.id = pricing_circuit_events.channel_id")
+		Joins("JOIN channels ON channels.id = pricing_circuit_events.channel_id").
+		Joins("LEFT JOIN models ON models.id = pricing_circuit_events.model_id")
 	if rawChannelId := strings.TrimSpace(c.Query("channel_id")); rawChannelId != "" {
 		channelId, err := strconv.Atoi(rawChannelId)
 		if err != nil || channelId <= 0 {
@@ -321,6 +362,14 @@ func AdminListPricingCircuitEvents(c *gin.Context) {
 			return
 		}
 		query = query.Where("pricing_circuit_events.channel_id = ?", channelId)
+	}
+	if rawModelId := strings.TrimSpace(c.Query("model_id")); rawModelId != "" {
+		modelId, err := strconv.Atoi(rawModelId)
+		if err != nil || modelId <= 0 {
+			common.ApiErrorMsg(c, "model_id 无效")
+			return
+		}
+		query = query.Where("pricing_circuit_events.model_id = ?", modelId)
 	}
 	if event := strings.TrimSpace(c.Query("event")); event != "" {
 		switch event {

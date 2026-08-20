@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,11 +22,25 @@ func circuitRedisEnabled() bool {
 	return common.RedisEnabled && common.RDB != nil
 }
 
-func circuitRedisChannelKey(channelId int) string {
-	return fmt.Sprintf("pricing:v2:circuit:{shared}:channel:%d", channelId)
+func circuitRedisChannelKey(channelId int, modelId int) string {
+	return fmt.Sprintf("pricing:v2:circuit:{shared}:channel:%d:model:%d", channelId, modelId)
 }
 
-func tryAcquireChannelRedis(channelId int, now time.Time) (bool, error) {
+func circuitRedisChannelModelMember(channelId int, modelId int) string {
+	return fmt.Sprintf("%d:%d", channelId, modelId)
+}
+
+func parseCircuitRedisChannelModelMember(member string) (channelId int, modelId int) {
+	parts := strings.SplitN(member, ":", 2)
+	if len(parts) != 2 {
+		return 0, 0
+	}
+	channelId, _ = strconv.Atoi(parts[0])
+	modelId, _ = strconv.Atoi(parts[1])
+	return channelId, modelId
+}
+
+func tryAcquireChannelRedis(channelId int, modelId int, now time.Time) (bool, error) {
 	result, err := common.RDB.Eval(context.Background(), `
 local open_until = tonumber(redis.call('HGET', KEYS[1], 'open_until_ms') or '0')
 local probe_until = tonumber(redis.call('HGET', KEYS[1], 'probe_until_ms') or '0')
@@ -36,20 +51,20 @@ if open_until > 0 then
   return 2
 end
 return 1
-`, []string{circuitRedisChannelKey(channelId)},
+`, []string{circuitRedisChannelKey(channelId, modelId)},
 		now.UnixMilli(), now.Add(channelProbeTimeout).UnixMilli()).Int()
 	if err != nil {
 		return false, err
 	}
 	if result == 2 {
-		if eventErr := appendChannelCircuitEventRedis(channelId, "half_open_probe", 0, now); eventErr != nil {
+		if eventErr := appendChannelCircuitEventRedis(channelId, modelId, "half_open_probe", 0, now); eventErr != nil {
 			common.SysError("pricing circuit Redis event append failed: " + eventErr.Error())
 		}
 	}
 	return result > 0, nil
 }
 
-func recordChannelSuccessRedis(channelId int, latency time.Duration, now time.Time) error {
+func recordChannelSuccessRedis(channelId int, modelId int, latency time.Duration, now time.Time) error {
 	latencyMs := latency.Milliseconds()
 	recovered, err := common.RDB.Eval(context.Background(), `
 local open_until = tonumber(redis.call('HGET', KEYS[1], 'open_until_ms') or '0')
@@ -67,20 +82,20 @@ redis.call('HSET', KEYS[1],
 redis.call('SADD', KEYS[2], ARGV[2])
 if open_until > 0 or probe_until > 0 then return 1 end
 return 0
-`, []string{circuitRedisChannelKey(channelId), circuitRedisChannelsKey},
-		latencyMs, channelId).Int()
+`, []string{circuitRedisChannelKey(channelId, modelId), circuitRedisChannelsKey},
+		latencyMs, circuitRedisChannelModelMember(channelId, modelId)).Int()
 	if err != nil {
 		return err
 	}
 	if recovered == 1 {
-		if eventErr := appendChannelCircuitEventRedis(channelId, "recovered", 0, now); eventErr != nil {
+		if eventErr := appendChannelCircuitEventRedis(channelId, modelId, "recovered", 0, now); eventErr != nil {
 			common.SysError("pricing circuit Redis event append failed: " + eventErr.Error())
 		}
 	}
 	return nil
 }
 
-func recordChannelFailureRedis(channelId int, statusCode int, now time.Time) error {
+func recordChannelFailureRedis(channelId int, modelId int, statusCode int, now time.Time) error {
 	if statusCode != 0 && statusCode != 408 && statusCode != 429 && statusCode < 500 {
 		return nil
 	}
@@ -106,9 +121,10 @@ end
 redis.call('HSET', KEYS[1], 'consecutive_failures', failures, 'open_until_ms', open_until)
 redis.call('SADD', KEYS[2], ARGV[6])
 return event
-`, []string{circuitRedisChannelKey(channelId), circuitRedisChannelsKey},
+`, []string{circuitRedisChannelKey(channelId, modelId), circuitRedisChannelsKey},
 		statusCode, now.UnixMilli(), channelRateLimitCooldown.Milliseconds(),
-		channelFailureThreshold, channelFailureCooldown.Milliseconds(), channelId).Int()
+		channelFailureThreshold, channelFailureCooldown.Milliseconds(),
+		circuitRedisChannelModelMember(channelId, modelId)).Int()
 	if err != nil {
 		return err
 	}
@@ -118,13 +134,13 @@ return event
 	} else if result == 2 {
 		event = "opened"
 	}
-	if eventErr := appendChannelCircuitEventRedis(channelId, event, statusCode, now); eventErr != nil {
+	if eventErr := appendChannelCircuitEventRedis(channelId, modelId, event, statusCode, now); eventErr != nil {
 		common.SysError("pricing circuit Redis event append failed: " + eventErr.Error())
 	}
 	return nil
 }
 
-func resetChannelCircuitRedis(channelId int, now time.Time) (bool, error) {
+func resetChannelCircuitRedis(channelId int, modelId int, now time.Time) (bool, error) {
 	result, err := common.RDB.Eval(context.Background(), `
 if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
 local failures = tonumber(redis.call('HGET', KEYS[1], 'consecutive_failures') or '0')
@@ -133,11 +149,11 @@ local probe_until = tonumber(redis.call('HGET', KEYS[1], 'probe_until_ms') or '0
 if failures == 0 and open_until == 0 and probe_until == 0 then return 0 end
 redis.call('HSET', KEYS[1], 'consecutive_failures', 0, 'open_until_ms', 0, 'probe_until_ms', 0)
 return 1
-`, []string{circuitRedisChannelKey(channelId)}).Int()
+`, []string{circuitRedisChannelKey(channelId, modelId)}).Int()
 	if err != nil || result == 0 {
 		return result == 1, err
 	}
-	if eventErr := appendChannelCircuitEventRedis(channelId, "manual_reset", 0, now); eventErr != nil {
+	if eventErr := appendChannelCircuitEventRedis(channelId, modelId, "manual_reset", 0, now); eventErr != nil {
 		common.SysError("pricing circuit Redis event append failed: " + eventErr.Error())
 	}
 	return true, nil
@@ -145,19 +161,34 @@ return 1
 
 func removeChannelCircuitRedis(channelId int) error {
 	pipe := common.RDB.TxPipeline()
-	pipe.Del(context.Background(), circuitRedisChannelKey(channelId))
-	pipe.SRem(context.Background(), circuitRedisChannelsKey, channelId)
-	_, err := pipe.Exec(context.Background())
+	// Drop every model circuit belonging to the channel.
+	members, err := common.RDB.SMembers(context.Background(), circuitRedisChannelsKey).Result()
+	if err != nil {
+		return err
+	}
+	for _, member := range members {
+		memberChannelId, _ := parseCircuitRedisChannelModelMember(member)
+		if memberChannelId == channelId {
+			pipe.Del(context.Background(), circuitRedisChannelKeyFromMember(member))
+			pipe.SRem(context.Background(), circuitRedisChannelsKey, member)
+		}
+	}
+	_, err = pipe.Exec(context.Background())
 	return err
 }
 
-func appendChannelCircuitEventRedis(channelId int, event string, statusCode int, occurredAt time.Time) error {
+func circuitRedisChannelKeyFromMember(member string) string {
+	channelId, modelId := parseCircuitRedisChannelModelMember(member)
+	return circuitRedisChannelKey(channelId, modelId)
+}
+
+func appendChannelCircuitEventRedis(channelId int, modelId int, event string, statusCode int, occurredAt time.Time) error {
 	id, err := common.RDB.Incr(context.Background(), circuitRedisEventIdKey).Result()
 	if err != nil {
 		return err
 	}
 	persistedEvent := ChannelCircuitEvent{
-		Id: id, ChannelId: channelId, Event: event,
+		Id: id, ChannelId: channelId, ModelId: modelId, Event: event,
 		StatusCode: statusCode, OccurredAt: occurredAt.Unix(),
 	}
 	payload, err := common.Marshal(persistedEvent)
@@ -175,21 +206,21 @@ func appendChannelCircuitEventRedis(channelId int, event string, statusCode int,
 }
 
 func getChannelCircuitOverviewRedis(now time.Time) (ChannelCircuitOverview, error) {
-	channelIds, err := common.RDB.SMembers(context.Background(), circuitRedisChannelsKey).Result()
+	members, err := common.RDB.SMembers(context.Background(), circuitRedisChannelsKey).Result()
 	if err != nil {
 		return ChannelCircuitOverview{}, err
 	}
-	channels := make([]ChannelCircuitStatus, 0, len(channelIds))
-	for _, value := range channelIds {
-		channelId, parseErr := strconv.Atoi(value)
-		if parseErr != nil {
+	channels := make([]ChannelCircuitStatus, 0, len(members))
+	for _, member := range members {
+		channelId, modelId := parseCircuitRedisChannelModelMember(member)
+		if channelId == 0 || modelId == 0 {
 			continue
 		}
-		fields, readErr := common.RDB.HGetAll(context.Background(), circuitRedisChannelKey(channelId)).Result()
+		fields, readErr := common.RDB.HGetAll(context.Background(), circuitRedisChannelKey(channelId, modelId)).Result()
 		if readErr != nil {
 			return ChannelCircuitOverview{}, readErr
 		}
-		channels = append(channels, circuitStatusFromRedis(channelId, fields, now))
+		channels = append(channels, circuitStatusFromRedis(channelId, modelId, fields, now))
 	}
 	eventPayloads, err := common.RDB.LRange(context.Background(), circuitRedisEventsKey, 0, -1).Result()
 	if err != nil && err != redis.Nil {
@@ -208,8 +239,8 @@ func getChannelCircuitOverviewRedis(now time.Time) (ChannelCircuitOverview, erro
 	}, nil
 }
 
-func getChannelRouteMetricsRedis(channelId int) (ChannelRouteMetrics, error) {
-	fields, err := common.RDB.HGetAll(context.Background(), circuitRedisChannelKey(channelId)).Result()
+func getChannelRouteMetricsRedis(channelId int, modelId int) (ChannelRouteMetrics, error) {
+	fields, err := common.RDB.HGetAll(context.Background(), circuitRedisChannelKey(channelId, modelId)).Result()
 	if err != nil {
 		return ChannelRouteMetrics{}, err
 	}
@@ -223,7 +254,7 @@ func getChannelRouteMetricsRedis(channelId int) (ChannelRouteMetrics, error) {
 	}, nil
 }
 
-func circuitStatusFromRedis(channelId int, fields map[string]string, now time.Time) ChannelCircuitStatus {
+func circuitStatusFromRedis(channelId int, modelId int, fields map[string]string, now time.Time) ChannelCircuitStatus {
 	state := circuitStateFromRedis(fields)
 	openUntilMs, _ := strconv.ParseInt(fields["open_until_ms"], 10, 64)
 	probeUntilMs, _ := strconv.ParseInt(fields["probe_until_ms"], 10, 64)
@@ -234,7 +265,7 @@ func circuitStatusFromRedis(channelId int, fields map[string]string, now time.Ti
 		status = "half_open"
 	}
 	return ChannelCircuitStatus{
-		ChannelId: channelId, State: status,
+		ChannelId: channelId, ModelId: modelId, State: status,
 		ConsecutiveFailures: state.ConsecutiveFailures,
 		OpenUntil:           openUntilMs / 1000, ProbeUntil: probeUntilMs / 1000,
 		SuccessCount: state.SuccessCount, FailureCount: state.FailureCount,
@@ -255,6 +286,9 @@ func circuitStateFromRedis(fields map[string]string) channelCircuitState {
 
 func sortCircuitStatuses(channels []ChannelCircuitStatus) {
 	sort.Slice(channels, func(left int, right int) bool {
-		return channels[left].ChannelId < channels[right].ChannelId
+		if channels[left].ChannelId != channels[right].ChannelId {
+			return channels[left].ChannelId < channels[right].ChannelId
+		}
+		return channels[left].ModelId < channels[right].ModelId
 	})
 }

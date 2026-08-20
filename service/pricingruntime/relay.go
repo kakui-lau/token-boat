@@ -245,6 +245,7 @@ func PrepareRelayPricing(
 		routeCandidates = append(routeCandidates, RouteCandidate{
 			ChannelId:      bundle.ChannelModel.ChannelId,
 			ChannelModelId: bundle.ChannelModel.Id,
+			ModelId:        bundle.ChannelModel.ModelId,
 			Priority:       bundle.ChannelModel.Priority,
 			Weight:         bundle.ChannelModel.Weight,
 			PurchaseCost:   purchaseAmount,

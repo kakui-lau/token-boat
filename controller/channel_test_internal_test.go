@@ -245,7 +245,7 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 		ChannelId: channel.Id, ModelId: 1001, UpstreamModelName: "provider-model", Status: 1,
 	}
 	require.NoError(t, db.Create(&channelModel).Error)
-	pricingruntime.RecordChannelFailure(channel.Id, 500)
+	pricingruntime.RecordChannelFailure(channel.Id, 1001, 500)
 	t.Cleanup(func() { pricingruntime.RemoveChannelCircuit(channel.Id) })
 
 	requestBody, err := common.Marshal(ChannelBatch{Ids: []int{channel.Id, 999999}})

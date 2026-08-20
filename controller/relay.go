@@ -223,7 +223,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					c.Request.URL.Path,
 					relayInfo.OriginModelName,
 				) ||
-				!pricingruntime.TryAcquireChannel(channel.Id) {
+				!pricingruntime.TryAcquireChannel(
+					channel.Id,
+					circuitModelIdForChannel(relayInfo, channel.Id),
+				) {
 				continue
 			}
 			if setupErr := middleware.SetupContextForSelectedChannel(
@@ -368,6 +371,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if relayInfo.DynamicPricingSnapshot != nil {
 				pricingruntime.RecordChannelSuccessWithLatency(
 					channel.Id,
+					circuitModelIdForChannel(relayInfo, channel.Id),
 					time.Since(attemptStartedAt),
 				)
 			}
@@ -380,7 +384,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 		if relayInfo.DynamicPricingSnapshot != nil {
-			pricingruntime.RecordChannelFailure(channel.Id, newAPIError.StatusCode)
+			pricingruntime.RecordChannelFailure(
+				channel.Id,
+				circuitModelIdForChannel(relayInfo, channel.Id),
+				newAPIError.StatusCode,
+			)
 		}
 
 		if !shouldRetry(c, newAPIError, retryLimit-retryParam.GetRetry()) {
@@ -422,6 +430,24 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
 	c.Set("use_channel", useChannel)
+}
+
+// circuitModelIdForChannel returns the model id bound to the channel in the
+// V2 dynamic pricing snapshot, or 0 when no snapshot/model is known. Circuit
+// state is tracked per (channel, model) pair so that one failing model does
+// not trip the whole channel.
+func circuitModelIdForChannel(
+	info *relaycommon.RelayInfo,
+	channelId int,
+) int {
+	if info == nil || info.DynamicPricingSnapshot == nil {
+		return 0
+	}
+	if candidate, exists := info.DynamicPricingSnapshot.
+		CandidatesByChannelId[channelId]; exists {
+		return candidate.ModelId
+	}
+	return 0
 }
 
 func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
@@ -535,7 +561,10 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 					c.Request.URL.Path,
 					info.OriginModelName,
 				) ||
-				!pricingruntime.TryAcquireChannel(channel.Id) {
+				!pricingruntime.TryAcquireChannel(
+					channel.Id,
+					circuitModelIdForChannel(info, channel.Id),
+				) {
 				continue
 			}
 			if newAPIError := middleware.SetupContextForSelectedChannel(
@@ -853,6 +882,7 @@ func RelayTask(c *gin.Context) {
 			if relayInfo.DynamicPricingSnapshot != nil {
 				pricingruntime.RecordChannelSuccessWithLatency(
 					channel.Id,
+					circuitModelIdForChannel(relayInfo, channel.Id),
 					time.Since(attemptStartedAt),
 				)
 			}
@@ -872,7 +902,11 @@ func RelayTask(c *gin.Context) {
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
 		if relayInfo.DynamicPricingSnapshot != nil {
-			pricingruntime.RecordChannelFailure(channel.Id, taskErr.StatusCode)
+			pricingruntime.RecordChannelFailure(
+				channel.Id,
+				circuitModelIdForChannel(relayInfo, channel.Id),
+				taskErr.StatusCode,
+			)
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {

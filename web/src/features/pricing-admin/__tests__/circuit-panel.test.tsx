@@ -48,6 +48,8 @@ test('shows open channels and recent circuit transitions', async () => {
           id: 1,
           channel_id: 12,
           channel_name: 'video-provider',
+          model_id: 201,
+          model_name: 'byteplus/seedance-2.0-ep',
           event: 'opened',
           status_code: 503,
           occurred_at: 1_800_000_000,
@@ -66,7 +68,8 @@ test('shows open channels and recent circuit transitions', async () => {
         {
           channel_id: 12,
           channel_name: 'video-provider',
-          model_names: ['byteplus/seedance-2.0-ep'],
+          model_id: 201,
+          model_name: 'byteplus/seedance-2.0-ep',
           state: 'open',
           consecutive_failures: 3,
           open_until: 1_800_000_030,
@@ -82,6 +85,8 @@ test('shows open channels and recent circuit transitions', async () => {
           id: 1,
           channel_id: 12,
           channel_name: 'video-provider',
+          model_id: 201,
+          model_name: 'byteplus/seedance-2.0-ep',
           event: 'opened',
           status_code: 503,
           occurred_at: 1_800_000_000,
@@ -101,7 +106,7 @@ test('shows open channels and recent circuit transitions', async () => {
 
   await waitFor(() => expect(screen.getByText('#12')).toBeInTheDocument())
   expect(screen.getAllByText('video-provider')).toHaveLength(3)
-  expect(screen.getByText('byteplus/seedance-2.0-ep')).toBeInTheDocument()
+  expect(screen.getAllByText('byteplus/seedance-2.0-ep')).toHaveLength(2)
   expect(screen.getAllByText('Circuit opened')).toHaveLength(2)
   expect(screen.getByText('503')).toBeInTheDocument()
   expect(screen.getByText('3')).toBeInTheDocument()
@@ -118,7 +123,8 @@ test('requires confirmation before manually resetting a channel circuit', async 
         {
           channel_id: 15,
           channel_name: 'recoverable-provider',
-          model_names: ['test-model'],
+          model_id: 202,
+          model_name: 'test-model',
           state: 'open',
           consecutive_failures: 3,
           open_until: 1_800_000_030,
@@ -134,7 +140,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
   })
   vi.mocked(resetPricingCircuit).mockResolvedValue({
     success: true,
-    data: { channel_id: 15, reset: true },
+    data: { channel_id: 15, model_id: 202, reset: true },
   })
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -149,7 +155,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
   expect(resetPricingCircuit).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
   await waitFor(() =>
-    expect(vi.mocked(resetPricingCircuit).mock.calls[0]?.[0]).toBe(15)
+    expect(vi.mocked(resetPricingCircuit).mock.calls[0]).toEqual([15, 202])
   )
 })
 

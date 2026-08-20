@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -838,64 +838,121 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota          int64   `json:"quota"`
+	RequestCount   int64   `json:"request_count"`
+	FailureCount   int64   `json:"failure_count"`
+	FailureRate    float64 `json:"failure_rate"`
+	PeakRpm        int64   `json:"peak_rpm"`
+	PeakTpm        int64   `json:"peak_tpm"`
+	TotalTokens    int64   `json:"total_tokens"`
+	CacheHitTokens int64   `json:"cache_hit_tokens"`
+	CacheHitRate   float64 `json:"cache_hit_rate"`
+}
+
+func cacheTokensSQLExpr() string {
+	// 从日志 other JSON 字段里提取 cache_tokens（OpenAI 风格的缓存命中 token 数）。
+	// 不同数据库 JSON 语法不同；不支持的库返回空字符串，由调用方回退为 0。
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$.cache_tokens')) AS SIGNED) ELSE 0 END), 0)"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN COALESCE((other::jsonb ->> 'cache_tokens')::bigint, 0) ELSE 0 END), 0)"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " THEN COALESCE(CAST(json_extract(other, '$.cache_tokens') AS INTEGER), 0) ELSE 0 END), 0)"
+	default:
+		return ""
+	}
+}
+
+func peakTimeBucketExpr() string {
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return "intDiv(created_at, 60)"
+	}
+	return "created_at / 60"
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select(
-		"COALESCE(SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END), 0) AS quota",
-		LogTypeConsume, LogTypeRefund,
-	)
-
-	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
-
-	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
-		return stat, err
-	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
+	// 构建带统一过滤条件的基础查询。
+	base := LOG_DB.Table("logs")
+	if base, err = applyExplicitLogTextFilter(base, "username", username); err != nil {
 		return stat, err
 	}
 	if tokenName != "" {
-		tx = tx.Where("token_name = ?", tokenName)
-		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
+		base = base.Where("token_name = ?", tokenName)
 	}
 	if startTimestamp != 0 {
-		tx = tx.Where("created_at >= ?", startTimestamp)
+		base = base.Where("created_at >= ?", startTimestamp)
 	}
 	if endTimestamp != 0 {
-		tx = tx.Where("created_at <= ?", endTimestamp)
+		base = base.Where("created_at <= ?", endTimestamp)
 	}
-	if tx, err = applyExplicitLogTextFilter(tx, "model_name", modelName); err != nil {
-		return stat, err
-	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "model_name", modelName); err != nil {
+	if base, err = applyExplicitLogTextFilter(base, "model_name", modelName); err != nil {
 		return stat, err
 	}
 	if channel != 0 {
-		tx = tx.Where("channel_id = ?", channel)
-		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
+		base = base.Where("channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+		base = base.Where(logGroupCol + " = ?", group)
 	}
 
-	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
-
-	// 只统计最近60秒的rpm和tpm
-	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
-
-	// 执行查询
-	if err := tx.Scan(&stat).Error; err != nil {
-		common.SysError("failed to query log stat: " + err.Error())
+	// 1. 费用（消费为正，退款为负）。
+	quotaTx := base.Session(&gorm.Session{}).Select(
+		"COALESCE(SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END), 0) AS quota",
+		LogTypeConsume, LogTypeRefund,
+	)
+	if err := quotaTx.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query log quota stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
-		common.SysError("failed to query rpm/tpm stat: " + err.Error())
+
+	// 2. 请求数、失败数、总 Token、缓存命中 Token。
+	cacheExpr := cacheTokensSQLExpr()
+	selects := []string{
+		"COUNT(CASE WHEN type = ? THEN 1 END) AS request_count",
+		"COUNT(CASE WHEN type = ? THEN 1 END) AS failure_count",
+		"COALESCE(SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END), 0) AS total_tokens",
+	}
+	if cacheExpr != "" {
+		selects = append(selects, cacheExpr+" AS cache_hit_tokens")
+	} else {
+		selects = append(selects, "0 AS cache_hit_tokens")
+	}
+	summaryTx := base.Session(&gorm.Session{}).Select(selects[0], LogTypeConsume, LogTypeError, LogTypeConsume)
+	for i := 1; i < len(selects); i++ {
+		summaryTx = summaryTx.Select(selects[i])
+	}
+	summaryTx = summaryTx.Where("type IN ?", []int{LogTypeConsume, LogTypeError})
+	if err := summaryTx.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query log summary stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
+	}
+
+	// 3. 峰值 RPM / TPM：按分钟桶聚合后取最大值。
+	bucketExpr := peakTimeBucketExpr()
+	peakSub := base.Session(&gorm.Session{}).Select(
+		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tpm",
+	).Where("type = ?", LogTypeConsume).Group(bucketExpr)
+	peak := struct {
+		PeakRpm int64 `gorm:"column:peak_rpm"`
+		PeakTpm int64 `gorm:"column:peak_tpm"`
+	}{}
+	if err := base.Session(&gorm.Session{}).Table("(?) AS peak", peakSub).Select(
+		"COALESCE(MAX(rpm), 0) AS peak_rpm, COALESCE(MAX(tpm), 0) AS peak_tpm",
+	).Scan(&peak).Error; err != nil {
+		common.SysError("failed to query log peak stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	stat.PeakRpm = peak.PeakRpm
+	stat.PeakTpm = peak.PeakTpm
+
+	// 4. 派生比率。
+	totalRequests := stat.RequestCount + stat.FailureCount
+	if totalRequests > 0 {
+		stat.FailureRate = float64(stat.FailureCount) / float64(totalRequests)
+	}
+	if stat.TotalTokens > 0 {
+		stat.CacheHitRate = float64(stat.CacheHitTokens) / float64(stat.TotalTokens)
 	}
 
 	return stat, nil

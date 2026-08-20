@@ -266,8 +266,14 @@ export interface LogOtherData {
  */
 export interface LogStatistics {
   quota: number
-  rpm: number
-  tpm: number
+  request_count: number
+  failure_count: number
+  failure_rate: number
+  peak_rpm: number
+  peak_tpm: number
+  total_tokens: number
+  cache_hit_tokens: number
+  cache_hit_rate: number
 }
 
 // ============================================================================

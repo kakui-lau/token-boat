@@ -21,7 +21,12 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatLogQuota } from '@/lib/format'
+import {
+  formatCompactNumber,
+  formatLogQuota,
+  formatNumber,
+  formatPercent,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats } from '../api'
@@ -31,19 +36,24 @@ import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
-function StatBadge(props: {
+function StatItem(props: {
   label: string
-  value: string | number
-  accent: string
+  value: string
+  accent?: 'danger'
+  hidden?: boolean
 }) {
   return (
-    <span className='border-border/60 bg-muted/25 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs'>
-      <span className={cn('h-3.5 w-0.5 rounded-full', props.accent)} />
+    <div className='flex items-center gap-1.5 text-sm'>
       <span className='text-muted-foreground'>{props.label}</span>
-      <span className='text-foreground/85 font-mono font-semibold tabular-nums'>
-        {props.value}
+      <span
+        className={cn(
+          'font-mono font-semibold tabular-nums',
+          props.accent === 'danger' && 'text-red-600'
+        )}
+      >
+        {props.hidden ? '••••' : props.value}
       </span>
-    </span>
+    </div>
   )
 }
 
@@ -77,30 +87,49 @@ export function CommonLogsStats() {
 
   if (isLoading) {
     return (
-      <div className='flex items-center gap-2'>
-        <Skeleton className='h-7 w-[150px] rounded-md' />
-        <Skeleton className='h-7 w-[100px] rounded-md' />
-        <Skeleton className='h-7 w-[120px] rounded-md' />
+      <div className='flex flex-wrap items-center gap-x-5 gap-y-1.5'>
+        <Skeleton className='h-5 w-[72px] rounded-md' />
+        <Skeleton className='h-5 w-[72px] rounded-md' />
+        <Skeleton className='h-5 w-[72px] rounded-md' />
+        <Skeleton className='h-5 w-[72px] rounded-md' />
+        <Skeleton className='h-5 w-[72px] rounded-md' />
+        <Skeleton className='h-5 w-[72px] rounded-md' />
+        <Skeleton className='h-5 w-[72px] rounded-md' />
       </div>
     )
   }
 
   return (
-    <div className='flex flex-wrap items-center gap-2'>
-      <StatBadge
-        label={t('Usage')}
-        value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
-        accent='bg-sky-500/70'
+    <div className='flex flex-wrap items-center gap-x-5 gap-y-1.5'>
+      <StatItem
+        label={t('Requests')}
+        value={formatNumber(stats?.request_count ?? 0)}
       />
-      <StatBadge
-        label={t('RPM')}
-        value={stats?.rpm || 0}
-        accent='bg-rose-500/65'
+      <StatItem
+        label={t('Failure Rate')}
+        value={formatPercent((stats?.failure_rate ?? 0) * 100)}
+        accent='danger'
       />
-      <StatBadge
-        label={t('TPM')}
-        value={stats?.tpm || 0}
-        accent='bg-slate-400/70'
+      <StatItem
+        label={t('Peak RPM')}
+        value={formatCompactNumber(stats?.peak_rpm ?? 0)}
+      />
+      <StatItem
+        label={t('Peak TPM')}
+        value={formatCompactNumber(stats?.peak_tpm ?? 0)}
+      />
+      <StatItem
+        label={t('Tokens')}
+        value={formatCompactNumber(stats?.total_tokens ?? 0)}
+      />
+      <StatItem
+        label={t('Cost')}
+        value={formatLogQuota(stats?.quota ?? 0)}
+        hidden={!sensitiveVisible}
+      />
+      <StatItem
+        label={t('Cache')}
+        value={formatPercent((stats?.cache_hit_rate ?? 0) * 100)}
       />
     </div>
   )

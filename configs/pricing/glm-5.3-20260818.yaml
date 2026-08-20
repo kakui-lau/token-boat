@@ -1,0 +1,20 @@
+channel_id: 18
+staging_group: default
+logical_model: z-ai/glm-5.3
+upstream_model: glm-5.3
+vendor: 智谱
+icon: ""
+description: "Z.ai flagship GLM-5.3 for long-horizon coding agents and million-token context work"
+tags: []
+endpoints:
+  - openai
+official_source_url: https://docs.z.ai/guides/overview/pricing
+official_input_per_1m: "1.4"
+official_output_per_1m: "4.4"
+official_cache_read_per_1m: "0.26"
+official_cache_write_per_1m: ""
+purchase_discount: "0.65"
+variable_cost_rate: "0.11"
+tax_rate: "0.165"
+target_margin: "0.03"
+minimum_margin: "0.03"

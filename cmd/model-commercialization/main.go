@@ -854,6 +854,10 @@ func openDatabase() error {
 			return err
 		}
 	}
+	// Load standard environment initialization (SQLITE_PATH, SESSION_SECRET,
+	// rate limits, etc.); without this the CLI always falls back to the
+	// default SQLite file and ignores SQLITE_PATH/SQL_DSN overrides.
+	common.InitEnv()
 	if err := os.Setenv("MIGRATION_ENABLED", "false"); err != nil {
 		return err
 	}

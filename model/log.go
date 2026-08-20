@@ -538,17 +538,20 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	TaskId    string
-	Other     map[string]interface{}
-	NodeName  string // 任务发起节点；为空时回退当前节点
+	UserId           int
+	LogType          int
+	Content          string
+	ChannelId        int
+	ModelName        string
+	Quota            int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	TokenId          int
+	Group            string
+	TaskId           string
+	Other            map[string]interface{}
+	NodeName         string // 任务发起节点；为空时回退当前节点
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -564,19 +567,21 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 	createdAt := common.GetTimestamp()
 	log := &Log{
-		UserId:    params.UserId,
-		Username:  username,
-		CreatedAt: createdAt,
-		Type:      params.LogType,
-		Content:   params.Content,
-		TokenName: tokenName,
-		ModelName: params.ModelName,
-		Quota:     params.Quota,
-		ChannelId: params.ChannelId,
-		TokenId:   params.TokenId,
-		Group:     params.Group,
-		TaskId:    params.TaskId,
-		Other:     common.MapToJsonStr(params.Other),
+		UserId:           params.UserId,
+		Username:         username,
+		CreatedAt:        createdAt,
+		Type:             params.LogType,
+		Content:          params.Content,
+		PromptTokens:     params.PromptTokens,
+		CompletionTokens: params.CompletionTokens,
+		TokenName:        tokenName,
+		ModelName:        params.ModelName,
+		Quota:            params.Quota,
+		ChannelId:        params.ChannelId,
+		TokenId:          params.TokenId,
+		Group:            params.Group,
+		TaskId:           params.TaskId,
+		Other:            common.MapToJsonStr(params.Other),
 	}
 	err := createLog(log)
 	if err != nil {
@@ -587,12 +592,17 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
+		tokenUsed := params.TotalTokens
+		if tokenUsed == 0 {
+			tokenUsed = params.PromptTokens + params.CompletionTokens
+		}
 		LogQuotaData(QuotaDataLogParams{
 			UserID:    params.UserId,
 			Username:  username,
 			ModelName: params.ModelName,
 			Quota:     params.Quota,
 			CreatedAt: createdAt,
+			TokenUsed: tokenUsed,
 			UseGroup:  params.Group,
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
@@ -604,7 +614,10 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 // UpdateTaskConsumeLogDetails enriches the original async-task consumption
 // log after the provider reaches a terminal state. Provider cost fields belong
 // under admin_info so normal user log views strip them automatically.
-func UpdateTaskConsumeLogDetails(taskID string, fields, adminFields map[string]interface{}) error {
+// If promptTokens/completionTokens are > 0, the corresponding columns on the
+// original consumption log are updated as well (previously they were always 0
+// for async tasks like Seedance), so token aggregations surface those values.
+func UpdateTaskConsumeLogDetails(taskID string, fields, adminFields map[string]interface{}, promptTokens, completionTokens int) error {
 	if taskID == "" {
 		return nil
 	}
@@ -641,13 +654,58 @@ func UpdateTaskConsumeLogDetails(taskID string, fields, adminFields map[string]i
 	if err != nil {
 		return err
 	}
+	updates := map[string]interface{}{
+		"other": string(payload),
+	}
+	if promptTokens > 0 {
+		updates["prompt_tokens"] = promptTokens
+	}
+	if completionTokens > 0 {
+		updates["completion_tokens"] = completionTokens
+	}
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		parts := []string{"other = ?"}
+		args := []interface{}{string(payload)}
+		if promptTokens > 0 {
+			parts = append(parts, "prompt_tokens = ?")
+			args = append(args, promptTokens)
+		}
+		if completionTokens > 0 {
+			parts = append(parts, "completion_tokens = ?")
+			args = append(args, completionTokens)
+		}
+		args = append(args, log.RequestId, taskID, LogTypeConsume)
 		return LOG_DB.Exec(
-			"ALTER TABLE logs UPDATE other = ? WHERE request_id = ? AND task_id = ? AND type = ? SETTINGS mutations_sync = 1",
-			string(payload), log.RequestId, taskID, LogTypeConsume,
+			"ALTER TABLE logs UPDATE "+strings.Join(parts, ", ")+" WHERE request_id = ? AND task_id = ? AND type = ? SETTINGS mutations_sync = 1",
+			args...,
 		).Error
 	}
-	return LOG_DB.Model(&Log{}).Where("id = ?", log.Id).Update("other", string(payload)).Error
+	if err := LOG_DB.Model(&Log{}).Where("id = ?", log.Id).Updates(updates).Error; err != nil {
+		return err
+	}
+	if (promptTokens > 0 || completionTokens > 0) && common.DataExportEnabled {
+		newTotal := int64(promptTokens) + int64(completionTokens)
+		oldTotal := int64(log.PromptTokens) + int64(log.CompletionTokens)
+		delta := int(newTotal - oldTotal)
+		if delta != 0 {
+			username := ""
+			if log.UserId > 0 {
+				username, _ = GetUsernameById(log.UserId, false)
+			}
+			LogQuotaData(QuotaDataLogParams{
+				UserID:    log.UserId,
+				Username:  username,
+				ModelName: log.ModelName,
+				CreatedAt: log.CreatedAt,
+				TokenUsed: delta,
+				UseGroup:  log.Group,
+				TokenID:   log.TokenId,
+				ChannelID: log.ChannelId,
+				NodeName:  common.NodeName,
+			})
+		}
+	}
+	return nil
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
@@ -854,11 +912,11 @@ func cacheTokensSQLExpr() string {
 	// 不同数据库 JSON 语法不同；不支持的库返回空字符串，由调用方回退为 0。
 	switch {
 	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
-		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$.cache_tokens')) AS SIGNED) ELSE 0 END), 0)"
+		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$.cache_tokens')) AS SIGNED) ELSE 0 END), 0)"
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
 		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN COALESCE((other::jsonb ->> 'cache_tokens')::bigint, 0) ELSE 0 END), 0)"
 	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
-		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " THEN COALESCE(CAST(json_extract(other, '$.cache_tokens') AS INTEGER), 0) ELSE 0 END), 0)"
+		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN COALESCE(CAST(json_extract(other, '$.cache_tokens') AS INTEGER), 0) ELSE 0 END), 0)"
 	default:
 		return ""
 	}

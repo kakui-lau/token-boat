@@ -120,7 +120,7 @@ func sweepPendingTaskSettlements(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		RecalculateTaskQuota(ctx, task, task.SettlementTargetQuota, "pending settlement retry")
+		RecalculateTaskQuota(ctx, task, task.SettlementTargetQuota, "pending settlement retry", 0, 0)
 	}
 }
 
@@ -136,7 +136,7 @@ func sweepPendingTaskBillingAudits(ctx context.Context) {
 			finalQuota = 0
 			refundedQuota = task.RefundQuota
 		}
-		updateTaskBillingAudit(task, string(task.Status), finalQuota, refundedQuota)
+		updateTaskBillingAudit(task, string(task.Status), finalQuota, refundedQuota, 0, 0)
 	}
 }
 
@@ -668,7 +668,16 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if shouldSettle {
 		if settleTaskBillingOnComplete(ctx, adaptor, task, taskResult) {
 			if task.SettlementStatus == model.TaskSettlementStatusCompleted {
-				updateTaskBillingAudit(task, string(model.TaskStatusSuccess), task.Quota, 0)
+				promptTokens := 0
+				completionTokens := taskResult.TotalTokens
+				if taskResult.CompletionTokens > 0 && taskResult.CompletionTokens <= taskResult.TotalTokens {
+					completionTokens = taskResult.CompletionTokens
+					promptTokens = taskResult.TotalTokens - completionTokens
+					if promptTokens < 0 {
+						promptTokens = 0
+					}
+				}
+				updateTaskBillingAudit(task, string(model.TaskStatusSuccess), task.Quota, 0, promptTokens, completionTokens)
 			}
 		} else if err := model.MarkTaskSettlementManualReview(
 			task.ID,
@@ -785,7 +794,7 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 			logger.LogError(ctx, fmt.Sprintf("任务 %s 表达式计费结算失败，保持预扣额度", task.TaskID))
 			return false
 		}
-		RecalculateTaskQuota(ctx, task, actualQuota, "表达式计费重算", result.Clamp)
+		RecalculateTaskQuota(ctx, task, actualQuota, "表达式计费重算", 0, 0, result.Clamp)
 		return true
 	}
 	// 0. 按次计费的任务不做差额结算
@@ -795,7 +804,7 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	}
 	// 1. 优先让 adaptor 决定最终额度
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
-		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", taskResult.QuotaClamp)
+		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", 0, 0, taskResult.QuotaClamp)
 		return true
 	}
 	// 2. 回退到 token 重算

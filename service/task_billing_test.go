@@ -332,7 +332,7 @@ func TestRecalculateTaskQuotaCanSettleToZero(t *testing.T) {
 	task.SettlementStatus = model.TaskSettlementStatusPending
 	require.NoError(t, model.DB.Create(task).Error)
 
-	RecalculateTaskQuota(context.Background(), task, 0, "free expression")
+	RecalculateTaskQuota(context.Background(), task, 0, "free expression", 0, 0)
 
 	assert.Equal(t, 15_000, getUserQuota(t, userID))
 	assert.Equal(t, 13_000, getTokenRemainQuota(t, tokenID))
@@ -610,7 +610,7 @@ func TestTaskBillingAuditRemainsPendingWhenProviderCostSnapshotIsMissing(t *test
 	task.PrivateData.BillingContext.RequestId = "missing-pricing-snapshot"
 	require.NoError(t, model.DB.Create(task).Error)
 
-	updateTaskBillingAudit(task, string(model.TaskStatusSuccess), 1000, 0)
+	updateTaskBillingAudit(task, string(model.TaskStatusSuccess), 1000, 0, 0, 0)
 
 	var stored model.Task
 	require.NoError(t, model.DB.First(&stored, task.ID).Error)
@@ -763,7 +763,7 @@ func TestRecalculate_PositiveDelta(t *testing.T) {
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
 	require.NoError(t, model.DB.Create(task).Error)
 
-	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment")
+	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment", 0, 0)
 
 	// User quota should decrease by the delta (1000 additional charge)
 	assert.Equal(t, initQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
@@ -803,7 +803,7 @@ func TestRecalculate_NegativeDelta(t *testing.T) {
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
 	require.NoError(t, model.DB.Create(task).Error)
 
-	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment")
+	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment", 0, 0)
 
 	// User quota should increase by abs(delta) = 2000 (refund overpayment)
 	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
@@ -837,7 +837,7 @@ func TestRecalculate_ZeroDelta(t *testing.T) {
 	task := makeTask(userID, 0, preConsumed, 0, BillingSourceWallet, 0)
 	require.NoError(t, model.DB.Create(task).Error)
 
-	RecalculateTaskQuota(ctx, task, preConsumed, "exact match")
+	RecalculateTaskQuota(ctx, task, preConsumed, "exact match", 0, 0)
 
 	// No change to user quota
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
@@ -857,7 +857,7 @@ func TestRecalculate_ActualQuotaZero(t *testing.T) {
 
 	task := makeTask(userID, 0, 5000, 0, BillingSourceWallet, 0)
 
-	RecalculateTaskQuota(ctx, task, 0, "zero actual")
+	RecalculateTaskQuota(ctx, task, 0, "zero actual", 0, 0)
 
 	// No change (early return)
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
@@ -882,7 +882,7 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceSubscription, subID)
 	require.NoError(t, model.DB.Create(task).Error)
 
-	RecalculateTaskQuota(ctx, task, actualQuota, "subscription over-charge")
+	RecalculateTaskQuota(ctx, task, actualQuota, "subscription over-charge", 0, 0)
 
 	// Subscription used should decrease by delta (refund 3000)
 	assert.Equal(t, subUsed-int64(preConsumed-actualQuota), getSubscriptionUsed(t, subID))
@@ -944,7 +944,7 @@ func simulatePollBilling(ctx context.Context, task *model.Task, newStatus model.
 	}
 
 	if shouldSettle && actualQuota > 0 {
-		RecalculateTaskQuota(ctx, task, actualQuota, "test settle")
+		RecalculateTaskQuota(ctx, task, actualQuota, "test settle", 0, 0)
 	}
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)

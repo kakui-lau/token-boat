@@ -69,6 +69,7 @@ func TestUpdateTaskConsumeLogDetailsMergesPublicAndAdminBillingFields(t *testing
 		log.TaskId,
 		map[string]interface{}{"customer_final_quota": 500},
 		map[string]interface{}{"provider_cost_usd": 0.4},
+		0, 0,
 	))
 
 	var updated Log
@@ -105,6 +106,7 @@ func TestUpdateTaskConsumeLogDetailsCanRetryCompletedAudit(t *testing.T) {
 		log.TaskId,
 		map[string]interface{}{"task_status": "SUCCESS"},
 		map[string]interface{}{"provider_cost_status": "estimated"},
+		0, 0,
 	))
 
 	var updated Log

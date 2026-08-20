@@ -921,10 +921,10 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	} else {
 		selects = append(selects, "0 AS cache_hit_tokens")
 	}
-	summaryTx := base.Session(&gorm.Session{}).Select(selects[0], LogTypeConsume, LogTypeError, LogTypeConsume)
-	for i := 1; i < len(selects); i++ {
-		summaryTx = summaryTx.Select(selects[i])
-	}
+	summaryTx := base.Session(&gorm.Session{}).Select(
+		strings.Join(selects, ", "),
+		LogTypeConsume, LogTypeError, LogTypeConsume,
+	)
 	summaryTx = summaryTx.Where("type IN ?", []int{LogTypeConsume, LogTypeError})
 	if err := summaryTx.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log summary stat: " + err.Error())

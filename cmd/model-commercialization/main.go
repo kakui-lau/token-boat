@@ -1058,11 +1058,27 @@ func ensureOfficialPrice(cfg config, modelID int) (model.OfficialModelPriceVersi
 	var active model.OfficialModelPriceVersion
 	err := model.DB.Where("model_id = ? AND status = ?", modelID, model.PricingVersionStatusActive).Order("version DESC").First(&active).Error
 	if err == nil {
-		var components map[string]string
-		if decodeErr := common.UnmarshalJsonStr(active.PriceComponents, &components); decodeErr == nil &&
-			components["input_unit_price"] == cfg.OfficialInput && components["output_unit_price"] == cfg.OfficialOutput &&
-			components["cache_read_unit_price"] == cfg.OfficialCacheRead && components["cache_write_unit_price"] == cfg.OfficialCacheWrite {
-			return active, nil
+		// price_components may carry an extra "tiers" array for tiered
+		// official pricing; decoding into map[string]string fails on that
+		// shape, which would make this idempotency check always miss and
+		// overwrite the tiered pricing with a flat version. Use map[string]any
+		// and compare via fmt.Sprint so both flat and tiered components match.
+		// A missing key (e.g. cache_write on tiered Google pricing) equals "".
+		var components map[string]any
+		if decodeErr := common.UnmarshalJsonStr(active.PriceComponents, &components); decodeErr == nil {
+			componentMatches := func(key, want string) bool {
+				v, ok := components[key]
+				if !ok {
+					return want == ""
+				}
+				return fmt.Sprint(v) == want
+			}
+			if componentMatches("input_unit_price", cfg.OfficialInput) &&
+				componentMatches("output_unit_price", cfg.OfficialOutput) &&
+				componentMatches("cache_read_unit_price", cfg.OfficialCacheRead) &&
+				componentMatches("cache_write_unit_price", cfg.OfficialCacheWrite) {
+				return active, nil
+			}
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return active, err

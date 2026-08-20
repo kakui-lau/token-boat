@@ -1,0 +1,20 @@
+channel_id: 18
+staging_group: default
+logical_model: google/gemini-2.5-pro
+upstream_model: gemini-2.5-pro
+vendor: Google
+icon: "Gemini.Color"
+description: "Google Gemini 2.5 Pro，支持长上下文、复杂推理、代码与多模态理解"
+tags: []
+endpoints:
+  - openai
+official_source_url: https://ai.google.dev/gemini-api/docs/pricing
+official_input_per_1m: "1.25"
+official_output_per_1m: "10"
+official_cache_read_per_1m: "0.125"
+official_cache_write_per_1m: ""
+purchase_discount: "0.65"
+variable_cost_rate: "0.11"
+tax_rate: "0.165"
+target_margin: "0.03"
+minimum_margin: "0.03"

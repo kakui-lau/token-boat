@@ -199,19 +199,36 @@ func TestSalesPriceGeneratorListsGeneratesAndExportsSupportedChannelModels(t *te
 	require.Len(t, records, 2)
 	assert.Equal(t, []string{
 		"\ufeff模型名称",
-		"生效费率详情（变动成本率VCR，利得税率TR，目标净利率TM）",
+		"付款手续费",
+		"分销手续费",
+		"运维人力成本",
+		"TR（利得税率）",
+		"TM（目标净利率）",
 		"最低销售折扣",
 		"最低采购折扣",
 		"渠道A名称", "渠道A采购折扣", "渠道A售出折扣",
 		"渠道B名称", "渠道B采购折扣", "渠道B售出折扣",
 	}, records[0])
 	assert.Equal(t, "'+generated-model", records[1][0])
-	assert.Equal(t, "'=channel-a", records[1][4])
-	assert.Equal(t, "VCR 11%；TR 16%；TM 3%", records[1][1])
+	// 默认费率没有分量信息，VCR 分量列显示占位符；TR/TM 仍按费率输出。
+	assert.Equal(t, "—", records[1][1])
+	assert.Equal(t, "—", records[1][2])
+	assert.Equal(t, "—", records[1][3])
+	assert.Equal(t, "16%", records[1][4])
+	assert.Equal(t, "3%", records[1][5])
+	assert.Equal(t, "'=channel-a", records[1][8])
 
 	overriddenInput := input
 	overriddenInput.ModelRates = []salesPriceModelRateInput{
-		{ModelId: 201, TotalVariableCostRate: "0.15", EffectiveTaxRate: "0.16", TargetNetMargin: "0.03"},
+		{
+			ModelId:               201,
+			TotalVariableCostRate: "0.15",
+			EffectiveTaxRate:      "0.16",
+			TargetNetMargin:       "0.03",
+			PaymentProcessingFeeRate: "8",
+			DistributionFeeRate:      "5",
+			OperationsLaborCostRate:  "2",
+		},
 	}
 	context, recorder = newPricingAdminJSONContext(
 		t,
@@ -240,7 +257,12 @@ func TestSalesPriceGeneratorListsGeneratesAndExportsSupportedChannelModels(t *te
 	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
 	require.NoError(t, err)
 	require.Len(t, records, 2)
-	assert.Equal(t, "VCR 15%；TR 16%；TM 3%", records[1][1])
+	assert.Equal(t, "'+generated-model", records[1][0])
+	assert.Equal(t, "8%", records[1][1])
+	assert.Equal(t, "5%", records[1][2])
+	assert.Equal(t, "2%", records[1][3])
+	assert.Equal(t, "16%", records[1][4])
+	assert.Equal(t, "3%", records[1][5])
 
 	invalidModelRatesInput := input
 	invalidModelRatesInput.ModelRates = []salesPriceModelRateInput{

@@ -45,6 +45,10 @@ type salesPriceModelRateInput struct {
 	TotalVariableCostRate string `json:"total_variable_cost_rate"`
 	EffectiveTaxRate      string `json:"effective_tax_rate"`
 	TargetNetMargin       string `json:"target_net_margin"`
+	// VCR 的三个分量（百分比数字，如 "4" 表示 4%），仅用于导出 CSV 分列显示。
+	PaymentProcessingFeeRate string `json:"payment_processing_fee_rate,omitempty"`
+	DistributionFeeRate      string `json:"distribution_fee_rate,omitempty"`
+	OperationsLaborCostRate  string `json:"operations_labor_cost_rate,omitempty"`
 }
 
 type salesPriceGeneratorSourceItem struct {
@@ -138,7 +142,7 @@ func AdminExportGeneratedSalesPrices(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	writePricingComparisonCSV(c, "generated-sales-prices", result.pricingComparisonResult)
+	writeGeneratedSalesPricesCSV(c, result.pricingComparisonResult)
 }
 
 func bindSalesPriceGenerationInput(c *gin.Context) (salesPriceGenerationInput, bool) {
@@ -214,6 +218,15 @@ func bindSalesPriceGenerationInput(c *gin.Context) (salesPriceGenerationInput, b
 				TotalVariableCostRate: modelCalculator.VariableCostRate.String(),
 				EffectiveTaxRate:      modelCalculator.TaxRate.String(),
 				TargetNetMargin:       modelCalculator.TargetNetMargin.String(),
+				PaymentProcessingFeeRate: normalizeRateComponentPercent(
+					modelRate.PaymentProcessingFeeRate,
+				),
+				DistributionFeeRate: normalizeRateComponentPercent(
+					modelRate.DistributionFeeRate,
+				),
+				OperationsLaborCostRate: normalizeRateComponentPercent(
+					modelRate.OperationsLaborCostRate,
+				),
 			})
 		}
 	}
@@ -266,6 +279,18 @@ func generateSalesPriceComparison(c *gin.Context, input salesPriceGenerationInpu
 		}
 		if override, ok := modelRateOverrides[row.ModelId]; ok {
 			effectiveRates = override
+			row.PaymentProcessingFeeRate = sql.NullString{
+				String: override.PaymentProcessingFeeRate,
+				Valid:  override.PaymentProcessingFeeRate != "",
+			}
+			row.DistributionFeeRate = sql.NullString{
+				String: override.DistributionFeeRate,
+				Valid:  override.DistributionFeeRate != "",
+			}
+			row.OperationsLaborCostRate = sql.NullString{
+				String: override.OperationsLaborCostRate,
+				Valid:  override.OperationsLaborCostRate != "",
+			}
 		}
 		purchase := model.ChannelModelPurchasePriceVersion{
 			Id:                  int(row.PurchasePriceVersionId.Int64),
@@ -324,4 +349,19 @@ func salesPriceGeneratorQuery(c *gin.Context) (*gorm.DB, error) {
 		Where("selected_purchase.id IS NOT NULL").
 		Where("COALESCE(selected_purchase.price_components, '') <> ''").
 		Where("COALESCE(linked_official.price_components, current_official.price_components, '') <> ''"), nil
+}
+
+// normalizeRateComponentPercent trims a VCR component percentage ("4" => 4%).
+// Returns "" when the value is empty or not a non-negative number so the
+// exported CSV falls back to a dash instead of emitting invalid data.
+func normalizeRateComponentPercent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || parsed < 0 {
+		return ""
+	}
+	return value
 }

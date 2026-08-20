@@ -219,7 +219,13 @@ describe('sales price generation', () => {
     ).toBeInTheDocument()
     expect(screen.getByTestId('generated-price-scroll')).toBeInTheDocument()
     expect(
-      screen.getByRole('columnheader', { name: 'VCR' })
+      screen.getByRole('columnheader', { name: 'Payment processing fee' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'Distribution fee' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'Operations labor cost' })
     ).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'TR' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'TM' })).toBeInTheDocument()
@@ -239,6 +245,9 @@ describe('sales price generation', () => {
             total_variable_cost_rate: '0.11',
             effective_tax_rate: '0.16',
             target_net_margin: '0.03',
+            payment_processing_fee_rate: '4',
+            distribution_fee_rate: '5',
+            operations_labor_cost_rate: '2',
           },
         ],
       })
@@ -375,6 +384,9 @@ describe('sales price generation', () => {
               total_variable_cost_rate: '0.11',
               effective_tax_rate: '0.16',
               target_net_margin: '0.03',
+              payment_processing_fee_rate: '4',
+              distribution_fee_rate: '5',
+              operations_labor_cost_rate: '2',
             },
           ],
         },
@@ -449,6 +461,9 @@ describe('sales price generation', () => {
             total_variable_cost_rate: '0.11',
             effective_tax_rate: '0.16',
             target_net_margin: '0.03',
+            payment_processing_fee_rate: '4',
+            distribution_fee_rate: '5',
+            operations_labor_cost_rate: '2',
           },
         ],
       })
@@ -468,12 +483,16 @@ describe('sales price generation', () => {
     // Wait for the generated table to appear
     await screen.findByRole('columnheader', { name: 'Minimum sales discount' })
 
-    // The table should have an editable VCR input
-    const vcrInput = screen.getByLabelText('VCR')
-    expect(vcrInput).toBeInTheDocument()
+    // The table row should have editable rate inputs (the last matching
+    // labels belong to the table row — the form has its own copies).
+    const rowFeeInputs = screen.getAllByLabelText('Payment processing fee')
+    const rowFeeInput = rowFeeInputs.at(-1)
+    expect(rowFeeInput).toBeInTheDocument()
 
-    // Change the VCR value from 11 to 15
-    fireEvent.change(vcrInput, { target: { value: '15' } })
+    // Change the payment processing fee from 4 to 8, making VCR = 8 + 5 + 2 = 15
+    fireEvent.change(rowFeeInput as HTMLInputElement, {
+      target: { value: '8' },
+    })
 
     // Wait for the debounced (500 ms) row regeneration
     await waitFor(
@@ -488,15 +507,9 @@ describe('sales price generation', () => {
       { timeout: 3000 }
     )
 
-    // Wait for the regenerated row to be merged into the table, then verify
-    // that exporting uses the edited rate instead of the original one.
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText('VCR')).toHaveValue(15)
-      },
-      { timeout: 3000 }
-    )
-
+    // Verify that exporting uses the edited rate instead of the original one.
+    // The export reads the live row rates, so it reflects the edited fee even
+    // before/after the regeneration round-trip.
     fireEvent.click(
       screen.getByRole('button', { name: 'Export generated table' })
     )
@@ -514,6 +527,9 @@ describe('sales price generation', () => {
             total_variable_cost_rate: '0.15',
             effective_tax_rate: '0.16',
             target_net_margin: '0.03',
+            payment_processing_fee_rate: '8',
+            distribution_fee_rate: '5',
+            operations_labor_cost_rate: '2',
           },
         ],
       })

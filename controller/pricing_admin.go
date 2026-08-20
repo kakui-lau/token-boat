@@ -59,6 +59,10 @@ type channelPricingExportRow struct {
 	TotalVariableCostRate      sql.NullString
 	EffectiveTaxRate           sql.NullString
 	TargetNetMargin            sql.NullString
+	// VCR 的三个分量（百分比数字），由销售价格生成器流程填充，用于导出 CSV 分列。
+	PaymentProcessingFeeRate sql.NullString
+	DistributionFeeRate      sql.NullString
+	OperationsLaborCostRate  sql.NullString
 	ActiveRetailPriceVersionId int
 }
 
@@ -94,6 +98,12 @@ type pricingComparisonRowResult struct {
 	ModelId                 int                              `json:"model_id"`
 	ModelName               string                           `json:"model_name"`
 	EffectiveRateDetails    string                           `json:"effective_rate_details"`
+	// 费率分量展示字段（已格式化，如 "4%"、"16%"），供导出 CSV 分列使用。
+	PaymentProcessingFeeRatePercent string `json:"payment_processing_fee_rate_percent,omitempty"`
+	DistributionFeeRatePercent      string `json:"distribution_fee_rate_percent,omitempty"`
+	OperationsLaborCostRatePercent  string `json:"operations_labor_cost_rate_percent,omitempty"`
+	EffectiveTaxRatePercent         string `json:"effective_tax_rate_percent,omitempty"`
+	TargetNetMarginPercent          string `json:"target_net_margin_percent,omitempty"`
 	MinimumRetailDiscount   string                           `json:"minimum_retail_discount"`
 	MinimumPurchaseDiscount string                           `json:"minimum_purchase_discount"`
 	Channels                []pricingComparisonChannelResult `json:"channels"`
@@ -771,6 +781,21 @@ func buildPricingComparisonResult(rows []channelPricingExportRow) pricingCompari
 			ModelId:                 group.ModelId,
 			ModelName:               group.ModelName,
 			EffectiveRateDetails:    effectiveRateDetails,
+			PaymentProcessingFeeRatePercent: formatRateComponentPercent(
+				group.Channels[0].PaymentProcessingFeeRate.String,
+			),
+			DistributionFeeRatePercent: formatRateComponentPercent(
+				group.Channels[0].DistributionFeeRate.String,
+			),
+			OperationsLaborCostRatePercent: formatRateComponentPercent(
+				group.Channels[0].OperationsLaborCostRate.String,
+			),
+			EffectiveTaxRatePercent: formatPricingRatePercentage(
+				group.Channels[0].EffectiveTaxRate.String,
+			),
+			TargetNetMarginPercent: formatPricingRatePercentage(
+				group.Channels[0].TargetNetMargin.String,
+			),
 			MinimumRetailDiscount:   minimumRetailDiscountText,
 			MinimumPurchaseDiscount: minimumPurchaseDiscountText,
 			Channels:                make([]pricingComparisonChannelResult, 0, len(group.Channels)),
@@ -839,6 +864,64 @@ func writePricingComparisonCSV(c *gin.Context, filenamePrefix string, result pri
 			)
 		}
 		for len(record) < 4+result.MaximumChannelCount*3 {
+			record = append(record, "")
+		}
+		_ = writer.Write(record)
+	}
+	writer.Flush()
+}
+
+// writeGeneratedSalesPricesCSV exports the sales-price-generator result with
+// the VCR split into its three editable components (付款手续费 / 分销手续费 /
+// 运维人力成本) plus TR and TM, matching the columns shown on the page.
+func writeGeneratedSalesPricesCSV(c *gin.Context, result pricingComparisonResult) {
+	filename := "generated-sales-prices-" + time.Now().UTC().Format("20060102-150405") + ".csv"
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Status(200)
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+	writer := csv.NewWriter(c.Writer)
+	header := []string{
+		"模型名称",
+		"付款手续费",
+		"分销手续费",
+		"运维人力成本",
+		"TR（利得税率）",
+		"TM（目标净利率）",
+		"最低销售折扣",
+		"最低采购折扣",
+	}
+	for channelIndex := 0; channelIndex < result.MaximumChannelCount; channelIndex++ {
+		channelLabel := pricingComparisonChannelLabel(channelIndex)
+		header = append(
+			header,
+			"渠道"+channelLabel+"名称",
+			"渠道"+channelLabel+"采购折扣",
+			"渠道"+channelLabel+"售出折扣",
+		)
+	}
+	_ = writer.Write(header)
+
+	for _, item := range result.Items {
+		record := []string{
+			spreadsheetSafeCSVCell(item.ModelName),
+			spreadsheetSafeCSVCell(orCSVDash(item.PaymentProcessingFeeRatePercent)),
+			spreadsheetSafeCSVCell(orCSVDash(item.DistributionFeeRatePercent)),
+			spreadsheetSafeCSVCell(orCSVDash(item.OperationsLaborCostRatePercent)),
+			spreadsheetSafeCSVCell(orCSVDash(item.EffectiveTaxRatePercent)),
+			spreadsheetSafeCSVCell(orCSVDash(item.TargetNetMarginPercent)),
+			item.MinimumRetailDiscount,
+			item.MinimumPurchaseDiscount,
+		}
+		for _, channel := range item.Channels {
+			record = append(
+				record,
+				spreadsheetSafeCSVCell(channel.ChannelName),
+				channel.PurchaseDiscount,
+				channel.RetailDiscount,
+			)
+		}
+		for len(record) < 8+result.MaximumChannelCount*3 {
 			record = append(record, "")
 		}
 		_ = writer.Write(record)
@@ -1982,6 +2065,28 @@ func formatPricingRatePercentage(value string) string {
 		return value
 	}
 	return rate.Mul(decimal.NewFromInt(100)).String() + "%"
+}
+
+// formatRateComponentPercent formats a VCR component percentage value that is
+// already expressed as a percentage number ("4" => "4%"). Empty or invalid
+// values yield "" so callers can render a placeholder.
+func formatRateComponentPercent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if _, err := decimal.NewFromString(value); err != nil {
+		return ""
+	}
+	return value + "%"
+}
+
+// orCSVDash renders a placeholder dash for empty CSV cells.
+func orCSVDash(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "—"
+	}
+	return value
 }
 
 func AdminGetPricingReconciliationSummary(c *gin.Context) {

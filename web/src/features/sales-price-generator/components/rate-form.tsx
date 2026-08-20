@@ -46,12 +46,15 @@ import {
   type SalesPriceGeneratorForm,
 } from '../lib/schema'
 import { calculateVariableCostPercentage } from '../lib/variable-cost-rate'
-import type { SalesPriceGenerationInput } from '../types'
+import type { RowRateValues, SalesPriceGenerationInput } from '../types'
 
 type RateFormProps = {
   hasSelectedModels: boolean
   isGenerating: boolean
-  onGenerate: (input: SalesPriceGenerationInput) => void
+  onGenerate: (
+    input: SalesPriceGenerationInput,
+    formRates: RowRateValues
+  ) => void
 }
 
 const defaultValues: SalesPriceGeneratorForm = {
@@ -95,11 +98,22 @@ export function RateForm(props: RateFormProps) {
           values.distribution_fee_rate,
           values.operations_labor_cost_rate,
         ])
-        props.onGenerate({
-          total_variable_cost_rate: percentageToStoredRate(variableCostRate),
-          effective_tax_rate: percentageToStoredRate(values.effective_tax_rate),
-          target_net_margin: percentageToStoredRate(values.target_net_margin),
-        })
+        props.onGenerate(
+          {
+            total_variable_cost_rate: percentageToStoredRate(variableCostRate),
+            effective_tax_rate: percentageToStoredRate(
+              values.effective_tax_rate
+            ),
+            target_net_margin: percentageToStoredRate(values.target_net_margin),
+          },
+          {
+            payment_processing_fee_rate: values.payment_processing_fee_rate,
+            distribution_fee_rate: values.distribution_fee_rate,
+            operations_labor_cost_rate: values.operations_labor_cost_rate,
+            effective_tax_rate: values.effective_tax_rate,
+            target_net_margin: values.target_net_margin,
+          }
+        )
       })}
     >
       <Card className='shrink-0'>

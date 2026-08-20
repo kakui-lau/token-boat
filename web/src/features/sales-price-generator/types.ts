@@ -22,6 +22,26 @@ export type SalesPriceModelRateInput = {
   total_variable_cost_rate: string
   effective_tax_rate: string
   target_net_margin: string
+  /**
+   * VCR 的三个分量（百分比数字，如 "4" 表示 4%），用于导出 CSV 分列显示。
+   * 可选字段：当某行从未被编辑且没有行费率记录时省略。
+   */
+  payment_processing_fee_rate?: string
+  distribution_fee_rate?: string
+  operations_labor_cost_rate?: string
+}
+
+/**
+ * Per-row editable rate values (percentages) used by the generated price
+ * table. The VCR is split into its three components so users can edit each
+ * one individually — the combined VCR is derived on the fly.
+ */
+export type RowRateValues = {
+  payment_processing_fee_rate: string
+  distribution_fee_rate: string
+  operations_labor_cost_rate: string
+  effective_tax_rate: string
+  target_net_margin: string
 }
 
 export type SalesPriceGenerationInput = {

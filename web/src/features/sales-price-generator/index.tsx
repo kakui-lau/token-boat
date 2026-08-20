@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useDeferredValue, useState } from 'react'
+import { useDeferredValue, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -49,7 +49,9 @@ import {
   parseEffectiveRateDetails,
   type ParsedRateDetails,
 } from './lib/parse-effective-rate-details'
+import { calculateVariableCostPercentage } from './lib/variable-cost-rate'
 import type {
+  RowRateValues,
   SalesPriceGenerationInput,
   SalesPriceGenerationResponse,
   SalesPriceGeneratorFilterParams,
@@ -57,6 +59,14 @@ import type {
 } from './types'
 
 const emptySupportedChannelModels: SupportedChannelModel[] = []
+
+const defaultRowRates: RowRateValues = {
+  payment_processing_fee_rate: '4',
+  distribution_fee_rate: '5',
+  operations_labor_cost_rate: '2',
+  effective_tax_rate: '16',
+  target_net_margin: '3',
+}
 
 export function SalesPriceGenerator() {
   const { t } = useTranslation()
@@ -121,6 +131,14 @@ export function SalesPriceGenerator() {
       generateSalesPrices(input, filterParams),
     onSuccess: (response) => {
       setGenerationResult(response.data)
+      // Seed per-row editable rates with the form values used for this
+      // generation so the table inputs start in sync with the result.
+      const base = pendingFormRatesRef.current ?? defaultRowRates
+      const nextRates: Record<number, RowRateValues> = {}
+      for (const item of response.data.items) {
+        nextRates[item.model_id] = { ...base }
+      }
+      setRowRates(nextRates)
     },
     onError: handleServerError,
   })
@@ -136,6 +154,10 @@ export function SalesPriceGenerator() {
   const [regeneratingRowIds, setRegeneratingRowIds] = useState<Set<number>>(
     new Set()
   )
+  // Per-row editable rate values (percentages). Kept in sync with the table
+  // inputs so exports always use the latest edited values.
+  const [rowRates, setRowRates] = useState<Record<number, RowRateValues>>({})
+  const pendingFormRatesRef = useRef<RowRateValues>(defaultRowRates)
   const supportedItems =
     supportedQuery.data?.data.items ?? emptySupportedChannelModels
 
@@ -186,11 +208,30 @@ export function SalesPriceGenerator() {
 
   const handleExport = () => {
     if (!generationResult) return
-    // Rows may have been regenerated with edited VCR/TR/TM values after the
-    // initial generation. Send each row's current rates so the exported CSV
-    // matches what the table displays.
+    // Use the latest edited rates (from live inputs) so exports match what
+    // the user currently sees, even if the debounced regeneration hasn't
+    // round-tripped yet. The VCR is combined from the three components.
     const modelRates = generationResult.items
       .map((item) => {
+        const row = rowRates[item.model_id]
+        if (row) {
+          const vcr = calculateVariableCostPercentage([
+            row.payment_processing_fee_rate,
+            row.distribution_fee_rate,
+            row.operations_labor_cost_rate,
+          ])
+          return {
+            model_id: item.model_id,
+            total_variable_cost_rate: percentageToStoredRate(vcr),
+            effective_tax_rate: percentageToStoredRate(row.effective_tax_rate),
+            target_net_margin: percentageToStoredRate(row.target_net_margin),
+            // Pass the three VCR components so the exported CSV can split
+            // them into separate columns matching what the page shows.
+            payment_processing_fee_rate: row.payment_processing_fee_rate,
+            distribution_fee_rate: row.distribution_fee_rate,
+            operations_labor_cost_rate: row.operations_labor_cost_rate,
+          }
+        }
         const rates = parseEffectiveRateDetails(item.effective_rate_details)
         return {
           model_id: item.model_id,
@@ -224,8 +265,12 @@ export function SalesPriceGenerator() {
           <RateForm
             hasSelectedModels={selectedIds.size > 0}
             isGenerating={generationMutation.isPending}
-            onGenerate={(input: SalesPriceGenerationInput) => {
+            onGenerate={(
+              input: SalesPriceGenerationInput,
+              formRates: RowRateValues
+            ) => {
               if (selectedIds.size === 0) return
+              pendingFormRatesRef.current = formRates
               generationMutation.mutate({
                 ...input,
                 channel_model_ids: [...selectedIds].sort(
@@ -251,10 +296,12 @@ export function SalesPriceGenerator() {
               setPage(1)
               setSelectedIds(new Set())
               setGenerationResult(undefined)
+              setRowRates({})
             }}
             onSelectionChange={(nextSelectedIds) => {
               setSelectedIds(nextSelectedIds)
               setGenerationResult(undefined)
+              setRowRates({})
             }}
             onPageChange={setPage}
             onPageSizeChange={(nextPageSize) => {
@@ -266,6 +313,10 @@ export function SalesPriceGenerator() {
             result={generationResult}
             regeneratingRowIds={regeneratingRowIds}
             onRowRegenerate={handleRowRegenerate}
+            rates={rowRates}
+            onRatesChange={(modelId, next) => {
+              setRowRates((prev) => ({ ...prev, [modelId]: next }))
+            }}
             canExport={canExport}
             hasGeneratedData={Boolean(generationResult)}
             isExporting={exportMutation.isPending}

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { Calculator, Download } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -56,8 +56,10 @@ import {
   parseEffectiveRateDetails,
   type ParsedRateDetails,
 } from '../lib/parse-effective-rate-details'
+import { calculateVariableCostPercentage } from '../lib/variable-cost-rate'
 import type {
   GeneratedSalesPriceRow,
+  RowRateValues,
   SalesPriceGenerationResponse,
 } from '../types'
 
@@ -65,6 +67,8 @@ type GeneratedPriceTableProps = {
   result?: SalesPriceGenerationResponse['data']
   regeneratingRowIds?: Set<number>
   onRowRegenerate?: (modelId: number, rates: ParsedRateDetails) => void
+  rates?: Record<number, RowRateValues>
+  onRatesChange?: (modelId: number, next: RowRateValues) => void
   canExport?: boolean
   hasGeneratedData?: boolean
   isExporting?: boolean
@@ -83,104 +87,108 @@ function channelLabel(index: number): string {
   return label
 }
 
+const emptyRowRates: RowRateValues = {
+  payment_processing_fee_rate: '',
+  distribution_fee_rate: '',
+  operations_labor_cost_rate: '',
+  effective_tax_rate: '',
+  target_net_margin: '',
+}
+
 function EditableRateCells({
   row,
   regeneratingRowIds,
   onRowRegenerate,
+  rates,
+  onRatesChange,
 }: {
   row: GeneratedSalesPriceRow
   regeneratingRowIds: Set<number>
   onRowRegenerate?: (modelId: number, rates: ParsedRateDetails) => void
+  rates?: RowRateValues
+  onRatesChange?: (modelId: number, next: RowRateValues) => void
 }) {
   const { t } = useTranslation()
   const isRegenerating = regeneratingRowIds.has(row.model_id)
-  const [vcr, setVcr] = useState(() =>
-    parseEffectiveRateDetails(row.effective_rate_details)
-  )
+  const values: RowRateValues = rates ?? emptyRowRates
   // Keep a ref so the debounce effect doesn't fire when the callback identity changes
   const onRowRegenerateRef = useRef(onRowRegenerate)
   onRowRegenerateRef.current = onRowRegenerate
 
-  // Sync local values when the row's effective_rate_details changes
-  // (e.g. after initial generation or a row regeneration round-trip)
-  useEffect(() => {
-    setVcr(parseEffectiveRateDetails(row.effective_rate_details))
-  }, [row.effective_rate_details])
+  // Combined VCR derived from the three editable components
+  const vcr = calculateVariableCostPercentage([
+    values.payment_processing_fee_rate,
+    values.distribution_fee_rate,
+    values.operations_labor_cost_rate,
+  ])
 
-  // Debounce: when the user edits a rate, wait 500ms then trigger regeneration
+  // Debounce: when the user edits any rate, wait 500ms then trigger
+  // regeneration with the combined VCR and current TR/TM values.
   useEffect(() => {
+    if (!vcr || !values.effective_tax_rate || !values.target_net_margin) {
+      return // don't regenerate with empty/invalid fields
+    }
     const current = parseEffectiveRateDetails(row.effective_rate_details)
     if (
-      vcr.vcr === current.vcr &&
-      vcr.tr === current.tr &&
-      vcr.tm === current.tm
+      Number(vcr) === Number(current.vcr) &&
+      Number(values.effective_tax_rate) === Number(current.tr) &&
+      Number(values.target_net_margin) === Number(current.tm)
     ) {
       return // nothing changed — skip
     }
-    if (!vcr.vcr || !vcr.tr || !vcr.tm) {
-      return // don't regenerate with empty fields
-    }
 
     const timer = setTimeout(() => {
-      onRowRegenerateRef.current?.(row.model_id, vcr)
+      onRowRegenerateRef.current?.(row.model_id, {
+        vcr,
+        tr: values.effective_tax_rate,
+        tm: values.target_net_margin,
+      })
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [vcr, row.effective_rate_details, row.model_id])
+  }, [
+    vcr,
+    values.effective_tax_rate,
+    values.target_net_margin,
+    row.effective_rate_details,
+    row.model_id,
+  ])
+
+  const fields: Array<{
+    key: keyof RowRateValues
+    label: string
+  }> = [
+    { key: 'payment_processing_fee_rate', label: t('Payment processing fee') },
+    { key: 'distribution_fee_rate', label: t('Distribution fee') },
+    { key: 'operations_labor_cost_rate', label: t('Operations labor cost') },
+    { key: 'effective_tax_rate', label: t('TR') },
+    { key: 'target_net_margin', label: t('TM') },
+  ]
 
   return (
     <>
-      <TableCell>
-        {isRegenerating ? (
-          <Spinner data-testid={`vcr-spinner-${row.model_id}`} />
-        ) : (
-          <InputGroup className='w-20'>
-            <InputGroupInput
-              type='number'
-              value={vcr.vcr}
-              onChange={(e) =>
-                setVcr((prev) => ({ ...prev, vcr: e.target.value }))
-              }
-              aria-label={t('VCR')}
-            />
-            <InputGroupAddon align='inline-end'>%</InputGroupAddon>
-          </InputGroup>
-        )}
-      </TableCell>
-      <TableCell>
-        {isRegenerating ? (
-          <Spinner data-testid={`tr-spinner-${row.model_id}`} />
-        ) : (
-          <InputGroup className='w-20'>
-            <InputGroupInput
-              type='number'
-              value={vcr.tr}
-              onChange={(e) =>
-                setVcr((prev) => ({ ...prev, tr: e.target.value }))
-              }
-              aria-label={t('TR')}
-            />
-            <InputGroupAddon align='inline-end'>%</InputGroupAddon>
-          </InputGroup>
-        )}
-      </TableCell>
-      <TableCell>
-        {isRegenerating ? (
-          <Spinner data-testid={`tm-spinner-${row.model_id}`} />
-        ) : (
-          <InputGroup className='w-20'>
-            <InputGroupInput
-              type='number'
-              value={vcr.tm}
-              onChange={(e) =>
-                setVcr((prev) => ({ ...prev, tm: e.target.value }))
-              }
-              aria-label={t('TM')}
-            />
-            <InputGroupAddon align='inline-end'>%</InputGroupAddon>
-          </InputGroup>
-        )}
-      </TableCell>
+      {fields.map((field) => (
+        <TableCell key={field.key}>
+          {isRegenerating ? (
+            <Spinner data-testid={`${field.key}-spinner-${row.model_id}`} />
+          ) : (
+            <InputGroup className='w-20'>
+              <InputGroupInput
+                type='number'
+                value={values[field.key]}
+                onChange={(e) =>
+                  onRatesChange?.(row.model_id, {
+                    ...values,
+                    [field.key]: e.target.value,
+                  })
+                }
+                aria-label={field.label}
+              />
+              <InputGroupAddon align='inline-end'>%</InputGroupAddon>
+            </InputGroup>
+          )}
+        </TableCell>
+      ))}
     </>
   )
 }
@@ -254,7 +262,9 @@ export function GeneratedPriceTable(props: GeneratedPriceTableProps) {
               <TableHeader className='bg-card sticky top-0 z-10'>
                 <TableRow>
                   <TableHead>{t('Model Name')}</TableHead>
-                  <TableHead>{t('VCR')}</TableHead>
+                  <TableHead>{t('Payment processing fee')}</TableHead>
+                  <TableHead>{t('Distribution fee')}</TableHead>
+                  <TableHead>{t('Operations labor cost')}</TableHead>
                   <TableHead>{t('TR')}</TableHead>
                   <TableHead>{t('TM')}</TableHead>
                   <TableHead>{t('Minimum sales discount')}</TableHead>
@@ -285,6 +295,8 @@ export function GeneratedPriceTable(props: GeneratedPriceTableProps) {
                       row={item}
                       regeneratingRowIds={regeneratingRowIds}
                       onRowRegenerate={props.onRowRegenerate}
+                      rates={props.rates?.[item.model_id]}
+                      onRatesChange={props.onRatesChange}
                     />
                     <TableCell>{item.minimum_retail_discount || '—'}</TableCell>
                     <TableCell>

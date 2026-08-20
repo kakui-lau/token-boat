@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { TokenMillionsHint } from '@/components/token-millions-hint'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -272,6 +273,7 @@ export function ChannelMonthlyUsagePage() {
               </CardHeader>
               <CardContent className='text-2xl font-semibold'>
                 {formatInteger(summary?.total_tokens)}
+                <TokenMillionsHint tokens={summary?.total_tokens} />
               </CardContent>
             </Card>
             <Card>
@@ -506,6 +508,7 @@ export function ChannelMonthlyUsagePage() {
                         </TableCell>
                         <TableCell className='text-right'>
                           {formatInteger(summary.total_tokens)}
+                          <TokenMillionsHint tokens={summary.total_tokens} />
                         </TableCell>
                         <TableCell className='text-right'>
                           {formatUsd(summary.customer_revenue_usd)}

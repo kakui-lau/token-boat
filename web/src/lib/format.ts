@@ -49,6 +49,23 @@ export function formatCompactNumber(
   }).format(value as number)
 }
 
+/**
+ * Convert a token count into a compact millions (M) display string.
+ * Returns null when the value is below 1M so callers can skip the hint.
+ */
+export function formatTokenMillions(
+  tokens: number | null | undefined
+): string | null {
+  if (
+    tokens == null ||
+    !Number.isFinite(tokens) ||
+    (tokens as number) < 1_000_000
+  ) {
+    return null
+  }
+  return `${((tokens as number) / 1_000_000).toFixed(2)}M`
+}
+
 export function formatPercent(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value as number)) return '-'
   return Intl.NumberFormat(undefined, {

@@ -33,7 +33,12 @@ import type {
   DashboardFilters,
 } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
-import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
+import {
+  formatCompactNumber,
+  formatNumber,
+  formatQuota,
+  formatTokenMillions,
+} from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -136,6 +141,8 @@ export function LogStatCards(props: LogStatCardsProps) {
       title: config.title,
       value: formatted.displayValue,
       fullValue: formatted.fullValue,
+      subValue:
+        config.key === 'tokens' ? formatTokenMillions(rawValue) : null,
       desc: config.description,
       icon: config.icon,
       iconTone: config.iconTone,
@@ -174,6 +181,11 @@ export function LogStatCards(props: LogStatCardsProps) {
                   title={it.fullValue}
                 >
                   {it.value}
+                  {it.subValue && (
+                    <span className='text-muted-foreground ml-1.5 align-middle text-xs font-normal'>
+                      ≈ {it.subValue}
+                    </span>
+                  )}
                 </div>
                 <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
                   {it.desc}

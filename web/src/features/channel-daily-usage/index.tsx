@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
+import { TokenMillionsHint } from '@/components/token-millions-hint'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -590,6 +591,7 @@ export function ChannelDailyUsagePage() {
                 </CardHeader>
                 <CardContent className='text-2xl font-semibold'>
                   {formatInteger(summary?.total_tokens)}
+                  <TokenMillionsHint tokens={summary?.total_tokens} />
                 </CardContent>
               </Card>
               <Card>
@@ -846,6 +848,7 @@ export function ChannelDailyUsagePage() {
                           </TableCell>
                           <TableCell className='text-right'>
                             {formatInteger(summary.total_tokens)}
+                            <TokenMillionsHint tokens={summary.total_tokens} />
                           </TableCell>
                           <TableCell className='text-right'>
                             {formatUsd(summary.customer_revenue_usd)}

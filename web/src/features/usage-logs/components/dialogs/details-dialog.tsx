@@ -54,6 +54,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { TokenMillionsHint } from '@/components/token-millions-hint'
 import { Button } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
@@ -516,7 +517,7 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
 
   if (!hasTokens) return null
 
-  const rows: Array<{ label: string; value: string }> = []
+  const rows: Array<{ label: string; value: React.ReactNode }> = []
 
   rows.push({ label: t('Input Tokens'), value: promptTokens.toLocaleString() })
   rows.push({
@@ -525,7 +526,12 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   })
   rows.push({
     label: t('Total Tokens'),
-    value: (promptTokens + completionTokens).toLocaleString(),
+    value: (
+      <>
+        {(promptTokens + completionTokens).toLocaleString()}
+        <TokenMillionsHint tokens={promptTokens + completionTokens} />
+      </>
+    ),
   })
 
   if (cacheRead > 0) {

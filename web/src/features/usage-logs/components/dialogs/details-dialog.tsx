@@ -245,246 +245,256 @@ function BillingBreakdown(props: {
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
 
-  if (isTieredExpr) {
-    rows.push({
-      label: t('Billing Mode'),
-      value: t('Dynamic Pricing'),
-    })
-    if (tieredSummary) {
-      if (tieredSummary.tier.label) {
+  if (isAdmin) {
+    if (isTieredExpr) {
+      rows.push({
+        label: t('Billing Mode'),
+        value: t('Dynamic Pricing'),
+      })
+      if (tieredSummary) {
+        if (tieredSummary.tier.label) {
+          rows.push({
+            label: t('Matched Tier'),
+            value: tieredSummary.tier.label,
+          })
+        }
+        for (const entry of tieredSummary.priceEntries) {
+          rows.push({
+            label: t(entry.shortLabel),
+            value: `${fmtPrice(entry.price)}/M`,
+          })
+        }
+      } else {
         rows.push({
           label: t('Matched Tier'),
-          value: tieredSummary.tier.label,
+          value: t('No matching results'),
         })
       }
-      for (const entry of tieredSummary.priceEntries) {
+    } else if (isPerCall) {
+      rows.push({ label: t('Billing Mode'), value: t('Per-call') })
+      if (other.model_price != null) {
         rows.push({
-          label: t(entry.shortLabel),
-          value: `${fmtPrice(entry.price)}/M`,
+          label: t('Model Price'),
+          value: fmtPrice(other.model_price),
         })
       }
     } else {
+      rows.push({ label: t('Billing Mode'), value: t('Per-token') })
+      if (other.model_ratio != null && baseInputUSD > 0) {
+        rows.push({
+          label: t('Input'),
+          value: `${fmtPrice(baseInputUSD)}/M`,
+        })
+      }
+      if (
+        other.completion_ratio != null &&
+        other.model_ratio != null &&
+        baseInputUSD > 0
+      ) {
+        rows.push({
+          label: t('Output'),
+          value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
+        })
+      }
+    }
+
+    const userGR = other.user_group_ratio
+    const isUserGR =
+      userGR != null && Number.isFinite(userGR) && userGR !== -1
+    const effectiveGR = isUserGR ? userGR : other.group_ratio
+    if (effectiveGR != null && Number.isFinite(effectiveGR)) {
       rows.push({
-        label: t('Matched Tier'),
-        value: t('No matching results'),
+        label: isUserGR
+          ? t('User Exclusive Ratio')
+          : t('Group Ratio'),
+        value: `${formatRatio(effectiveGR)}x`,
       })
     }
-  } else if (isPerCall) {
-    rows.push({ label: t('Billing Mode'), value: t('Per-call') })
-    if (other.model_price != null) {
+
+    if (other.is_task) {
+      if (other.task_id) {
+        rows.push({ label: t('Task ID'), value: other.task_id })
+      }
+      if (other.task_status) {
+        rows.push({
+          label: t('Task Status'),
+          value: taskStatusLabel(other.task_status, t),
+        })
+      }
+      if (other.refunded_quota != null && other.refunded_quota > 0) {
+        rows.push({
+          label: t('Refund Amount'),
+          value: formatLogQuota(other.refunded_quota),
+        })
+      }
+      if (other.seconds != null) {
+        rows.push({
+          label: t('Duration'),
+          value: `${other.seconds}s`,
+        })
+      }
+      if (other.resolution != null) {
+        rows.push({
+          label: t('Resolution Multiplier'),
+          value: `${formatRatio(other.resolution)}x`,
+        })
+      }
+    }
+
+    if (other.local_estimated_quota != null) {
       rows.push({
-        label: t('Model Price'),
-        value: fmtPrice(other.model_price),
+        label: t('Local Estimate'),
+        value: formatLogQuota(other.local_estimated_quota),
       })
     }
-  } else {
-    rows.push({ label: t('Billing Mode'), value: t('Per-token') })
-    if (other.model_ratio != null && baseInputUSD > 0) {
+    if (other.actual_pre_consumed_quota != null) {
       rows.push({
-        label: t('Input'),
-        value: `${fmtPrice(baseInputUSD)}/M`,
+        label: t('Actual Pre-Charge'),
+        value: formatLogQuota(other.actual_pre_consumed_quota),
+      })
+    }
+    if (other.customer_final_quota != null) {
+      rows.push({
+        label: t('Customer Final Charge'),
+        value: formatLogQuota(other.customer_final_quota),
+      })
+    }
+    if (other.adjustment_quota != null && other.adjustment_quota !== 0) {
+      rows.push({
+        label: t('Billing Adjustment'),
+        value: formatLogQuota(other.adjustment_quota),
+      })
+    }
+    if (other.outstanding_quota != null && other.outstanding_quota !== 0) {
+      rows.push({
+        label: t('Outstanding Amount'),
+        value: formatLogQuota(other.outstanding_quota),
       })
     }
     if (
-      other.completion_ratio != null &&
-      other.model_ratio != null &&
-      baseInputUSD > 0
+      other.admin_info?.provider_cost_known &&
+      other.admin_info.provider_cost_usd != null
     ) {
       rows.push({
-        label: t('Output'),
-        value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
+        label: t('Upstream Actual Cost'),
+        value: fmtPrice(other.admin_info.provider_cost_usd),
       })
+      if (other.admin_info.provider_is_byok != null) {
+        rows.push({
+          label: t('BYOK Cost'),
+          value: other.admin_info.provider_is_byok ? t('Yes') : t('No'),
+        })
+      }
     }
-  }
-
-  const userGR = other.user_group_ratio
-  const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
-  const effectiveGR = isUserGR ? userGR : other.group_ratio
-  if (effectiveGR != null && Number.isFinite(effectiveGR)) {
-    rows.push({
-      label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
-      value: `${formatRatio(effectiveGR)}x`,
-    })
-  }
-
-  if (other.is_task) {
-    if (other.task_id) {
-      rows.push({ label: t('Task ID'), value: other.task_id })
-    }
-    if (other.task_status) {
+    if (other.admin_info?.gross_margin_usd != null) {
       rows.push({
-        label: t('Task Status'),
-        value: taskStatusLabel(other.task_status, t),
-      })
-    }
-    if (other.refunded_quota != null && other.refunded_quota > 0) {
-      rows.push({
-        label: t('Refund Amount'),
-        value: formatLogQuota(other.refunded_quota),
-      })
-    }
-    if (other.seconds != null) {
-      rows.push({
-        label: t('Duration'),
-        value: `${other.seconds}s`,
-      })
-    }
-    if (other.resolution != null) {
-      rows.push({
-        label: t('Resolution Multiplier'),
-        value: `${formatRatio(other.resolution)}x`,
-      })
-    }
-  }
-
-  if (other.local_estimated_quota != null) {
-    rows.push({
-      label: t('Local Estimate'),
-      value: formatLogQuota(other.local_estimated_quota),
-    })
-  }
-  if (other.actual_pre_consumed_quota != null) {
-    rows.push({
-      label: t('Actual Pre-Charge'),
-      value: formatLogQuota(other.actual_pre_consumed_quota),
-    })
-  }
-  if (other.customer_final_quota != null) {
-    rows.push({
-      label: t('Customer Final Charge'),
-      value: formatLogQuota(other.customer_final_quota),
-    })
-  }
-  if (other.adjustment_quota != null && other.adjustment_quota !== 0) {
-    rows.push({
-      label: t('Billing Adjustment'),
-      value: formatLogQuota(other.adjustment_quota),
-    })
-  }
-  if (other.outstanding_quota != null && other.outstanding_quota !== 0) {
-    rows.push({
-      label: t('Outstanding Amount'),
-      value: formatLogQuota(other.outstanding_quota),
-    })
-  }
-  if (
-    isAdmin &&
-    other.admin_info?.provider_cost_known &&
-    other.admin_info.provider_cost_usd != null
-  ) {
-    rows.push({
-      label: t('Upstream Actual Cost'),
-      value: fmtPrice(other.admin_info.provider_cost_usd),
-    })
-    if (other.admin_info.provider_is_byok != null) {
-      rows.push({
-        label: t('BYOK Cost'),
-        value: other.admin_info.provider_is_byok ? t('Yes') : t('No'),
-      })
-    }
-  }
-  if (isAdmin && other.admin_info?.gross_margin_usd != null) {
-    rows.push({
-      label: t('Gross Margin'),
-      value: fmtPrice(other.admin_info.gross_margin_usd),
-    })
-  }
-
-  if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
-    if (other.cache_ratio != null && other.cache_ratio !== 1) {
-      rows.push({
-        label: t('Cache Read'),
-        value: `${fmtPrice(baseInputUSD * other.cache_ratio)}/M`,
-      })
-    }
-    if (
-      other.cache_creation_ratio != null &&
-      other.cache_creation_ratio !== 1
-    ) {
-      rows.push({
-        label: t('Cache Creation'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio)}/M`,
-      })
-    }
-    if (
-      other.cache_creation_ratio_5m != null &&
-      other.cache_creation_ratio_5m !== 0
-    ) {
-      rows.push({
-        label: t('Cache Creation (5m)'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_5m)}/M`,
-      })
-    }
-    if (
-      other.cache_creation_ratio_1h != null &&
-      other.cache_creation_ratio_1h !== 0
-    ) {
-      rows.push({
-        label: t('Cache Creation (1h)'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h)}/M`,
-      })
-    }
-  }
-
-  if (!isTieredExpr) {
-    if (other.audio_ratio != null && other.audio_ratio !== 1) {
-      rows.push({
-        label: t('Audio input'),
-        value: `${fmtPrice(baseInputUSD * other.audio_ratio)}/M`,
+        label: t('Gross Margin'),
+        value: fmtPrice(other.admin_info.gross_margin_usd),
       })
     }
 
-    if (
-      other.audio_completion_ratio != null &&
-      other.audio_completion_ratio !== 1
-    ) {
+    if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
+      if (other.cache_ratio != null && other.cache_ratio !== 1) {
+        rows.push({
+          label: t('Cache Read'),
+          value: `${fmtPrice(baseInputUSD * other.cache_ratio)}/M`,
+        })
+      }
+      if (
+        other.cache_creation_ratio != null &&
+        other.cache_creation_ratio !== 1
+      ) {
+        rows.push({
+          label: t('Cache Creation'),
+          value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio)}/M`,
+        })
+      }
+      if (
+        other.cache_creation_ratio_5m != null &&
+        other.cache_creation_ratio_5m !== 0
+      ) {
+        rows.push({
+          label: t('Cache Creation (5m)'),
+          value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_5m)}/M`,
+        })
+      }
+      if (
+        other.cache_creation_ratio_1h != null &&
+        other.cache_creation_ratio_1h !== 0
+      ) {
+        rows.push({
+          label: t('Cache Creation (1h)'),
+          value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h)}/M`,
+        })
+      }
+    }
+
+    if (!isTieredExpr) {
+      if (other.audio_ratio != null && other.audio_ratio !== 1) {
+        rows.push({
+          label: t('Audio input'),
+          value: `${fmtPrice(baseInputUSD * other.audio_ratio)}/M`,
+        })
+      }
+
+      if (
+        other.audio_completion_ratio != null &&
+        other.audio_completion_ratio !== 1
+      ) {
+        rows.push({
+          label: t('Audio output'),
+          value: `${fmtPrice(baseInputUSD * other.audio_completion_ratio)}/M`,
+        })
+      }
+
+      if (other.image_ratio != null && other.image_ratio !== 1) {
+        rows.push({
+          label: t('Image input'),
+          value: `${fmtPrice(baseInputUSD * other.image_ratio)}/M`,
+        })
+      }
+    }
+
+    if (other.web_search && other.web_search_call_count) {
       rows.push({
-        label: t('Audio output'),
-        value: `${fmtPrice(baseInputUSD * other.audio_completion_ratio)}/M`,
+        label: t('Web Search'),
+        value: `${other.web_search_call_count}x${
+          other.web_search_price ? ` (${fmtPrice(other.web_search_price)})` : ''
+        }`,
       })
     }
 
-    if (other.image_ratio != null && other.image_ratio !== 1) {
+    if (other.file_search && other.file_search_call_count) {
       rows.push({
-        label: t('Image input'),
-        value: `${fmtPrice(baseInputUSD * other.image_ratio)}/M`,
+        label: t('File Search'),
+        value: `${other.file_search_call_count}x${
+          other.file_search_price
+            ? ` (${fmtPrice(other.file_search_price)})`
+            : ''
+        }`,
       })
     }
-  }
 
-  if (other.web_search && other.web_search_call_count) {
-    rows.push({
-      label: t('Web Search'),
-      value: `${other.web_search_call_count}x${other.web_search_price ? ` (${fmtPrice(other.web_search_price)})` : ''}`,
-    })
-  }
+    if (other.image_generation_call && other.image_generation_call_price) {
+      rows.push({
+        label: t('Image Generation'),
+        value: fmtPrice(other.image_generation_call_price),
+      })
+    }
 
-  if (other.file_search && other.file_search_call_count) {
-    rows.push({
-      label: t('File Search'),
-      value: `${other.file_search_call_count}x${other.file_search_price ? ` (${fmtPrice(other.file_search_price)})` : ''}`,
-    })
-  }
+    if (other.audio_input_seperate_price && other.audio_input_price) {
+      rows.push({
+        label: t('Audio Input Price'),
+        value: fmtPrice(other.audio_input_price),
+      })
+    }
 
-  if (other.image_generation_call && other.image_generation_call_price) {
-    rows.push({
-      label: t('Image Generation'),
-      value: fmtPrice(other.image_generation_call_price),
-    })
-  }
-
-  if (other.audio_input_seperate_price && other.audio_input_price) {
-    rows.push({
-      label: t('Audio Input Price'),
-      value: fmtPrice(other.audio_input_price),
-    })
-  }
-
-  if (isAdmin && other.admin_info) {
-    rows.push({
-      label: t('Final Charge Source'),
-      value: getUsageBillingPathLabel(t, other.admin_info),
-    })
+    if (other.admin_info) {
+      rows.push({
+        label: t('Final Charge Source'),
+        value: getUsageBillingPathLabel(t, other.admin_info),
+      })
+    }
   }
 
   rows.push({
@@ -503,9 +513,13 @@ function BillingBreakdown(props: {
   )
 }
 
-function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
+function TokenBreakdown(props: {
+  log: UsageLog
+  other: LogOtherData
+  isAdmin: boolean
+}) {
   const { t } = useTranslation()
-  const { log, other } = props
+  const { log, other, isAdmin } = props
 
   const promptTokens = log.prompt_tokens || 0
   const completionTokens = log.completion_tokens || 0
@@ -575,7 +589,9 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
 
   return (
     <DetailSection label={t('Usage Data')}>
-      <DetailRow label={t('Data Source')} value={usageSource} />
+      {isAdmin && (
+        <DetailRow label={t('Data Source')} value={usageSource} />
+      )}
       {rows.map((row) => (
         <DetailRow key={row.label} label={row.label} value={row.value} mono />
       ))}
@@ -796,7 +812,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <DetailRow label={t('Token')} value={props.log.token_name} mono />
           )}
 
-          {(props.log.group || other?.group) && (
+          {props.isAdmin && (props.log.group || other?.group) && (
             <DetailRow
               label={t('Group')}
               value={props.log.group || other?.group || ''}
@@ -1177,7 +1193,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
 
         {/* Token breakdown (for consume/error types with token data) */}
         {isDisplayableType(props.log.type) && other && (
-          <TokenBreakdown log={props.log} other={other} />
+          <TokenBreakdown
+            log={props.log}
+            other={other}
+            isAdmin={props.isAdmin}
+          />
         )}
 
         {/* Billing breakdown (consume type) */}
@@ -1189,8 +1209,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
           />
         )}
 
-        {/* Tiered pricing breakdown (when billing_mode is tiered_expr) */}
-        {isTieredBilling && other?.expr_b64 && (
+        {/* Tiered pricing breakdown (when billing_mode is tiered_expr) — admin only */}
+        {props.isAdmin && isTieredBilling && other?.expr_b64 && (
           <DetailSection label={t('Dynamic Pricing')}>
             <DynamicPricingBreakdown
               compact

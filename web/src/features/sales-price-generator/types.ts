@@ -17,11 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+export type SalesPriceModelRateInput = {
+  model_id: number
+  total_variable_cost_rate: string
+  effective_tax_rate: string
+  target_net_margin: string
+}
+
 export type SalesPriceGenerationInput = {
   total_variable_cost_rate: string
   effective_tax_rate: string
   target_net_margin: string
   channel_model_ids?: number[]
+  model_rates?: SalesPriceModelRateInput[]
 }
 
 export type SalesPriceGeneratorFilterParams = {

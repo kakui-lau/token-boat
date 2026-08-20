@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Calculator, Download } from 'lucide-react'
+import { Calculator } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -49,13 +49,9 @@ import { calculateVariableCostPercentage } from '../lib/variable-cost-rate'
 import type { SalesPriceGenerationInput } from '../types'
 
 type RateFormProps = {
-  canExport: boolean
   hasSelectedModels: boolean
-  hasGeneratedData: boolean
   isGenerating: boolean
-  isExporting: boolean
   onGenerate: (input: SalesPriceGenerationInput) => void
-  onExport: () => void
 }
 
 const defaultValues: SalesPriceGeneratorForm = {
@@ -165,21 +161,6 @@ export function RateForm(props: RateFormProps) {
           </FieldGroup>
         </CardContent>
         <CardFooter className='justify-end gap-2'>
-          {props.canExport ? (
-            <Button
-              type='button'
-              variant='outline'
-              disabled={!props.hasGeneratedData || props.isExporting}
-              onClick={props.onExport}
-            >
-              {props.isExporting ? (
-                <Spinner data-icon='inline-start' />
-              ) : (
-                <Download data-icon='inline-start' />
-              )}
-              {t('Export generated table')}
-            </Button>
-          ) : null}
           <Button
             type='submit'
             disabled={!props.hasSelectedModels || props.isGenerating}

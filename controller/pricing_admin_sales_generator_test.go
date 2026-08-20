@@ -207,4 +207,52 @@ func TestSalesPriceGeneratorListsGeneratesAndExportsSupportedChannelModels(t *te
 	}, records[0])
 	assert.Equal(t, "'+generated-model", records[1][0])
 	assert.Equal(t, "'=channel-a", records[1][4])
+	assert.Equal(t, "VCR 11%；TR 16%；TM 3%", records[1][1])
+
+	overriddenInput := input
+	overriddenInput.ModelRates = []salesPriceModelRateInput{
+		{ModelId: 201, TotalVariableCostRate: "0.15", EffectiveTaxRate: "0.16", TargetNetMargin: "0.03"},
+	}
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/sales-price-generator/generate",
+		overriddenInput,
+	)
+	AdminGenerateSalesPrices(context)
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &generationResponse))
+	require.True(t, generationResponse.Success)
+	require.Len(t, generationResponse.Data.Items, 1)
+	assert.Equal(
+		t,
+		"VCR 15%；TR 16%；TM 3%",
+		generationResponse.Data.Items[0].EffectiveRateDetails,
+	)
+
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/sales-price-generator/export",
+		overriddenInput,
+	)
+	AdminExportGeneratedSalesPrices(context)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	records, err = csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, "VCR 15%；TR 16%；TM 3%", records[1][1])
+
+	invalidModelRatesInput := input
+	invalidModelRatesInput.ModelRates = []salesPriceModelRateInput{
+		{ModelId: -1, TotalVariableCostRate: "0.15", EffectiveTaxRate: "0.16", TargetNetMargin: "0.03"},
+	}
+	context, recorder = newPricingAdminJSONContext(
+		t,
+		http.MethodPost,
+		"/api/pricing-admin/sales-price-generator/generate",
+		invalidModelRatesInput,
+	)
+	AdminGenerateSalesPrices(context)
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &generationResponse))
+	require.False(t, generationResponse.Success)
 }

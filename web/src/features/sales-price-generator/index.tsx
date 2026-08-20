@@ -45,7 +45,10 @@ import {
 import { GeneratedPriceTable } from './components/generated-price-table'
 import { RateForm } from './components/rate-form'
 import { SupportedChannelModelTable } from './components/supported-channel-model-table'
-import type { ParsedRateDetails } from './lib/parse-effective-rate-details'
+import {
+  parseEffectiveRateDetails,
+  type ParsedRateDetails,
+} from './lib/parse-effective-rate-details'
 import type {
   SalesPriceGenerationInput,
   SalesPriceGenerationResponse,
@@ -181,6 +184,33 @@ export function SalesPriceGenerator() {
     }
   }
 
+  const handleExport = () => {
+    if (!generationResult) return
+    // Rows may have been regenerated with edited VCR/TR/TM values after the
+    // initial generation. Send each row's current rates so the exported CSV
+    // matches what the table displays.
+    const modelRates = generationResult.items
+      .map((item) => {
+        const rates = parseEffectiveRateDetails(item.effective_rate_details)
+        return {
+          model_id: item.model_id,
+          total_variable_cost_rate: percentageToStoredRate(rates.vcr),
+          effective_tax_rate: percentageToStoredRate(rates.tr),
+          target_net_margin: percentageToStoredRate(rates.tm),
+        }
+      })
+      .filter(
+        (rate) =>
+          rate.total_variable_cost_rate !== '' &&
+          rate.effective_tax_rate !== '' &&
+          rate.target_net_margin !== ''
+      )
+    exportMutation.mutate({
+      ...generationResult.rates,
+      model_rates: modelRates.length > 0 ? modelRates : undefined,
+    })
+  }
+
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
@@ -192,11 +222,8 @@ export function SalesPriceGenerator() {
           className='flex h-full min-h-0 flex-col gap-5 overflow-y-auto overscroll-contain'
         >
           <RateForm
-            canExport={canExport}
             hasSelectedModels={selectedIds.size > 0}
-            hasGeneratedData={Boolean(generationResult)}
             isGenerating={generationMutation.isPending}
-            isExporting={exportMutation.isPending}
             onGenerate={(input: SalesPriceGenerationInput) => {
               if (selectedIds.size === 0) return
               generationMutation.mutate({
@@ -205,11 +232,6 @@ export function SalesPriceGenerator() {
                   (left, right) => left - right
                 ),
               })
-            }}
-            onExport={() => {
-              if (generationResult) {
-                exportMutation.mutate(generationResult.rates)
-              }
             }}
           />
           <SupportedChannelModelTable
@@ -244,6 +266,10 @@ export function SalesPriceGenerator() {
             result={generationResult}
             regeneratingRowIds={regeneratingRowIds}
             onRowRegenerate={handleRowRegenerate}
+            canExport={canExport}
+            hasGeneratedData={Boolean(generationResult)}
+            isExporting={exportMutation.isPending}
+            onExport={handleExport}
           />
         </div>
       </SectionPageLayout.Content>

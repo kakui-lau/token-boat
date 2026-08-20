@@ -233,6 +233,14 @@ describe('sales price generation', () => {
         effective_tax_rate: '0.16',
         target_net_margin: '0.03',
         channel_model_ids: [11, 12],
+        model_rates: [
+          {
+            model_id: 21,
+            total_variable_cost_rate: '0.11',
+            effective_tax_rate: '0.16',
+            target_net_margin: '0.03',
+          },
+        ],
       })
     })
   })
@@ -361,6 +369,14 @@ describe('sales price generation', () => {
           effective_tax_rate: '0.16',
           target_net_margin: '0.03',
           channel_model_ids: [11, 12],
+          model_rates: [
+            {
+              model_id: 21,
+              total_variable_cost_rate: '0.11',
+              effective_tax_rate: '0.16',
+              target_net_margin: '0.03',
+            },
+          ],
         },
         {
           keyword: 'gemini',
@@ -427,6 +443,14 @@ describe('sales price generation', () => {
         effective_tax_rate: '0.16',
         target_net_margin: '0.03',
         channel_model_ids: [11],
+        model_rates: [
+          {
+            model_id: 21,
+            total_variable_cost_rate: '0.11',
+            effective_tax_rate: '0.16',
+            target_net_margin: '0.03',
+          },
+        ],
       })
     })
   })
@@ -463,5 +487,36 @@ describe('sales price generation', () => {
       },
       { timeout: 3000 }
     )
+
+    // Wait for the regenerated row to be merged into the table, then verify
+    // that exporting uses the edited rate instead of the original one.
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText('VCR')).toHaveValue(15)
+      },
+      { timeout: 3000 }
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export generated table' })
+    )
+    await waitFor(() => {
+      expect(
+        vi.mocked(exportGeneratedSalesPrices).mock.calls.at(-1)?.[0]
+      ).toEqual({
+        total_variable_cost_rate: '0.11',
+        effective_tax_rate: '0.16',
+        target_net_margin: '0.03',
+        channel_model_ids: [11, 12],
+        model_rates: [
+          {
+            model_id: 21,
+            total_variable_cost_rate: '0.15',
+            effective_tax_rate: '0.16',
+            target_net_margin: '0.03',
+          },
+        ],
+      })
+    })
   })
 })

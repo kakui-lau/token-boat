@@ -17,12 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { Calculator } from 'lucide-react'
+import { Calculator, Download } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -63,6 +65,10 @@ type GeneratedPriceTableProps = {
   result?: SalesPriceGenerationResponse['data']
   regeneratingRowIds?: Set<number>
   onRowRegenerate?: (modelId: number, rates: ParsedRateDetails) => void
+  canExport?: boolean
+  hasGeneratedData?: boolean
+  isExporting?: boolean
+  onExport?: () => void
 }
 
 function channelLabel(index: number): string {
@@ -193,6 +199,24 @@ export function GeneratedPriceTable(props: GeneratedPriceTableProps) {
             'Each model occupies one row, with channel columns added dynamically.'
           )}
         </CardDescription>
+        {props.canExport ? (
+          <CardAction>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={!props.hasGeneratedData || props.isExporting}
+              onClick={props.onExport}
+            >
+              {props.isExporting ? (
+                <Spinner data-icon='inline-start' />
+              ) : (
+                <Download data-icon='inline-start' />
+              )}
+              {t('Export generated table')}
+            </Button>
+          </CardAction>
+        ) : null}
       </CardHeader>
       <CardContent>
         {!props.result ? (

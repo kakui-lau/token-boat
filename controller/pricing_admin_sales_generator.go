@@ -33,10 +33,18 @@ import (
 )
 
 type salesPriceGenerationInput struct {
+	TotalVariableCostRate string                     `json:"total_variable_cost_rate"`
+	EffectiveTaxRate      string                     `json:"effective_tax_rate"`
+	TargetNetMargin       string                     `json:"target_net_margin"`
+	ChannelModelIds       []int                      `json:"channel_model_ids,omitempty"`
+	ModelRates            []salesPriceModelRateInput `json:"model_rates,omitempty"`
+}
+
+type salesPriceModelRateInput struct {
+	ModelId               int    `json:"model_id"`
 	TotalVariableCostRate string `json:"total_variable_cost_rate"`
 	EffectiveTaxRate      string `json:"effective_tax_rate"`
 	TargetNetMargin       string `json:"target_net_margin"`
-	ChannelModelIds       []int  `json:"channel_model_ids,omitempty"`
 }
 
 type salesPriceGeneratorSourceItem struct {
@@ -174,11 +182,48 @@ func bindSalesPriceGenerationInput(c *gin.Context) (salesPriceGenerationInput, b
 		seen[channelModelId] = struct{}{}
 		selectedIds = append(selectedIds, channelModelId)
 	}
+
+	var modelRates []salesPriceModelRateInput
+	if len(input.ModelRates) > 0 {
+		modelRates = make([]salesPriceModelRateInput, 0, len(input.ModelRates))
+		seenModelIds := make(map[int]struct{}, len(input.ModelRates))
+		for _, modelRate := range input.ModelRates {
+			if modelRate.ModelId <= 0 {
+				common.ApiErrorMsg(c, "model_rates 包含无效的模型 ID")
+				return salesPriceGenerationInput{}, false
+			}
+			if _, exists := seenModelIds[modelRate.ModelId]; exists {
+				continue
+			}
+			seenModelIds[modelRate.ModelId] = struct{}{}
+			modelCalculator, err := pricingadmin.NewRetailPriceCalculator(
+				strings.TrimSpace(modelRate.TotalVariableCostRate),
+				strings.TrimSpace(modelRate.EffectiveTaxRate),
+				strings.TrimSpace(modelRate.TargetNetMargin),
+			)
+			if err != nil {
+				common.ApiErrorMsg(c, err.Error())
+				return salesPriceGenerationInput{}, false
+			}
+			if _, err := modelCalculator.SellingFactor(); err != nil {
+				common.ApiErrorMsg(c, err.Error())
+				return salesPriceGenerationInput{}, false
+			}
+			modelRates = append(modelRates, salesPriceModelRateInput{
+				ModelId:               modelRate.ModelId,
+				TotalVariableCostRate: modelCalculator.VariableCostRate.String(),
+				EffectiveTaxRate:      modelCalculator.TaxRate.String(),
+				TargetNetMargin:       modelCalculator.TargetNetMargin.String(),
+			})
+		}
+	}
+
 	return salesPriceGenerationInput{
 		TotalVariableCostRate: calculator.VariableCostRate.String(),
 		EffectiveTaxRate:      calculator.TaxRate.String(),
 		TargetNetMargin:       calculator.TargetNetMargin.String(),
 		ChannelModelIds:       selectedIds,
+		ModelRates:            modelRates,
 	}, true
 }
 
@@ -207,8 +252,21 @@ func generateSalesPriceComparison(c *gin.Context, input salesPriceGenerationInpu
 		return salesPriceGenerationResult{}, err
 	}
 
+	modelRateOverrides := make(map[int]salesPriceModelRateInput, len(input.ModelRates))
+	for _, modelRate := range input.ModelRates {
+		modelRateOverrides[modelRate.ModelId] = modelRate
+	}
+
 	generatedRows := make([]channelPricingExportRow, 0, len(rows))
 	for _, row := range rows {
+		effectiveRates := salesPriceModelRateInput{
+			TotalVariableCostRate: input.TotalVariableCostRate,
+			EffectiveTaxRate:      input.EffectiveTaxRate,
+			TargetNetMargin:       input.TargetNetMargin,
+		}
+		if override, ok := modelRateOverrides[row.ModelId]; ok {
+			effectiveRates = override
+		}
 		purchase := model.ChannelModelPurchasePriceVersion{
 			Id:                  int(row.PurchasePriceVersionId.Int64),
 			ChannelModelId:      row.ChannelModelId,
@@ -225,10 +283,10 @@ func generateSalesPriceComparison(c *gin.Context, input salesPriceGenerationInpu
 			pricingadmin.RetailDraftInput{
 				ChannelModelId:         row.ChannelModelId,
 				PurchasePriceVersionId: purchase.Id,
-				TotalVariableCostRate:  input.TotalVariableCostRate,
-				EffectiveTaxRate:       input.EffectiveTaxRate,
-				TargetNetMargin:        input.TargetNetMargin,
-				MinimumMarginRate:      input.TargetNetMargin,
+				TotalVariableCostRate:  effectiveRates.TotalVariableCostRate,
+				EffectiveTaxRate:       effectiveRates.EffectiveTaxRate,
+				TargetNetMargin:        effectiveRates.TargetNetMargin,
+				MinimumMarginRate:      effectiveRates.TargetNetMargin,
 			},
 			purchase,
 		)
@@ -243,9 +301,9 @@ func generateSalesPriceComparison(c *gin.Context, input salesPriceGenerationInpu
 		row.RetailPriceComponents = preview.PriceComponents
 		row.RetailBillingExpr = preview.RetailBillingExpr
 		row.RetailCurrency = preview.Currency
-		row.TotalVariableCostRate = sql.NullString{String: input.TotalVariableCostRate, Valid: true}
-		row.EffectiveTaxRate = sql.NullString{String: input.EffectiveTaxRate, Valid: true}
-		row.TargetNetMargin = sql.NullString{String: input.TargetNetMargin, Valid: true}
+		row.TotalVariableCostRate = sql.NullString{String: effectiveRates.TotalVariableCostRate, Valid: true}
+		row.EffectiveTaxRate = sql.NullString{String: effectiveRates.EffectiveTaxRate, Valid: true}
+		row.TargetNetMargin = sql.NullString{String: effectiveRates.TargetNetMargin, Valid: true}
 		generatedRows = append(generatedRows, row)
 	}
 

@@ -149,21 +149,19 @@ export function isTokenBasedModel(model: PricingModel): boolean {
 /**
  * Check if the model is an LLM-style text generation model.
  *
- * Rule of thumb used here:
- *   1. Must be token-priced (quota_type === TOKEN), so image/video/per-request
- *      models are out by construction).
- *   2. Either declares at least one text-generation-style endpoint
- *      (chat/response/anthropic/gemini). If the model has no endpoint info
- *      yet we still accept token-priced models as text LLM by default.
- *   3. Explicitly exclude pure non-generative token-priced families that happen to
- *      be token-priced (embeddings, rerank).
+ * We use a DENY-list approach because OpenRouter/Sub2API-style channels default
+ * every model to `endpointType=openai` regardless of what it actually serves,
+ * so a WHITELIST on text endpoints lets image/video/embedding models slip in.
+ *
+ * Model is considered NON-text LLM (excluded) if ANY of these hold:
+ *   1. Not token-priced (quota_type !== TOKEN). Catches per-request image/video.
+ *   2. Declares any non-text endpoint (image-generation, openai-video,
+ *      embeddings, jina-rerank). Takes priority over text endpoints because
+ *      the backend always injects `openai` alongside the real type.
+ *   3. Matches any known non-text keyword in its model_name (seedance,
+ *      gpt-image, dall-e, flux, whisper, tts, moderation, embed, rerank,
+ *      upscale, ...). Acts as a safety net when metadata is stale.
  */
-const TEXT_LLM_ENDPOINTS: Set<string> = new Set([
-  ENDPOINT_TYPES.OPENAI,
-  ENDPOINT_TYPES.OPENAI_RESPONSE,
-  ENDPOINT_TYPES.ANTHROPIC,
-  ENDPOINT_TYPES.GEMINI,
-])
 const EXPLICIT_NON_LLM_ENDPOINTS: Set<string> = new Set([
   ENDPOINT_TYPES.IMAGE_GENERATION,
   ENDPOINT_TYPES.OPENAI_VIDEO,
@@ -171,13 +169,47 @@ const EXPLICIT_NON_LLM_ENDPOINTS: Set<string> = new Set([
   ENDPOINT_TYPES.JINA_RERANK,
 ])
 
+const NON_LLM_NAME_KEYWORDS: ReadonlyArray<string> = [
+  'dall-e',
+  'dalle',
+  'gpt-image',
+  'gpt-image-',
+  'seedance',
+  'flux.1',
+  'flux-',
+  'imagen-',
+  'sd-',
+  'stable-diffusion',
+  'stable_diffusion',
+  'upscale',
+  'whisper',
+  'tts-',
+  '-tts',
+  'speech',
+  'transcribe',
+  'transcription',
+  'translation',
+  'moderation',
+  'embed',
+  'embedding',
+  'rerank',
+  're-rank',
+  'video',
+  'image',
+]
+
 export function isTextLLMModel(model: PricingModel): boolean {
   if (!isTokenBasedModel(model)) return false
+
   const endpoints = Array.isArray(model.supported_endpoint_types)
     ? model.supported_endpoint_types
     : []
-  if (endpoints.length === 0) return true
-  if (endpoints.every((ep) => EXPLICIT_NON_LLM_ENDPOINTS.has(ep))) return false
-  if (endpoints.some((ep) => TEXT_LLM_ENDPOINTS.has(ep))) return true
-  return !endpoints.every((ep) => EXPLICIT_NON_LLM_ENDPOINTS.has(ep))
+  if (endpoints.some((ep) => EXPLICIT_NON_LLM_ENDPOINTS.has(ep))) return false
+
+  const name = (model.model_name ?? '').toLowerCase()
+  if (name === '') return true
+  for (const kw of NON_LLM_NAME_KEYWORDS) {
+    if (name.includes(kw)) return false
+  }
+  return true
 }

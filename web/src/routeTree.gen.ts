@@ -41,6 +41,7 @@ import { Route as SupportCommunityInteractionRouteImport } from './routes/suppor
 import { Route as WikiFeaturesIntroductionRouteImport } from './routes/wiki/features-introduction'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedChannelDailyUsageIndexRouteImport } from './routes/_authenticated/channel-daily-usage/index'
+import { Route as AuthenticatedChannelModelProbesIndexRouteImport } from './routes/_authenticated/channel-model-probes/index'
 import { Route as AuthenticatedChannelMonthlyUsageIndexRouteImport } from './routes/_authenticated/channel-monthly-usage/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
@@ -245,6 +246,12 @@ const AuthenticatedChannelDailyUsageIndexRoute =
   AuthenticatedChannelDailyUsageIndexRouteImport.update({
     id: '/channel-daily-usage/',
     path: '/channel-daily-usage/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedChannelModelProbesIndexRoute =
+  AuthenticatedChannelModelProbesIndexRouteImport.update({
+    id: '/channel-model-probes/',
+    path: '/channel-model-probes/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedChannelMonthlyUsageIndexRoute =
@@ -538,6 +545,7 @@ export interface FileRoutesByFullPath {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channel-daily-usage/': typeof AuthenticatedChannelDailyUsageIndexRoute
+  '/channel-model-probes/': typeof AuthenticatedChannelModelProbesIndexRoute
   '/channel-monthly-usage/': typeof AuthenticatedChannelMonthlyUsageIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/circuit-analysis/': typeof AuthenticatedCircuitAnalysisIndexRoute
@@ -612,6 +620,7 @@ export interface FileRoutesByTo {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channel-daily-usage': typeof AuthenticatedChannelDailyUsageIndexRoute
+  '/channel-model-probes': typeof AuthenticatedChannelModelProbesIndexRoute
   '/channel-monthly-usage': typeof AuthenticatedChannelMonthlyUsageIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/circuit-analysis': typeof AuthenticatedCircuitAnalysisIndexRoute
@@ -690,6 +699,7 @@ export interface FileRoutesById {
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/channel-daily-usage/': typeof AuthenticatedChannelDailyUsageIndexRoute
+  '/_authenticated/channel-model-probes/': typeof AuthenticatedChannelModelProbesIndexRoute
   '/_authenticated/channel-monthly-usage/': typeof AuthenticatedChannelMonthlyUsageIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/circuit-analysis/': typeof AuthenticatedCircuitAnalysisIndexRoute
@@ -767,6 +777,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/channel-daily-usage/'
+    | '/channel-model-probes/'
     | '/channel-monthly-usage/'
     | '/channels/'
     | '/circuit-analysis/'
@@ -841,6 +852,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/channel-daily-usage'
+    | '/channel-model-probes'
     | '/channel-monthly-usage'
     | '/channels'
     | '/circuit-analysis'
@@ -918,6 +930,7 @@ export interface FileRouteTypes {
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/channel-daily-usage/'
+    | '/_authenticated/channel-model-probes/'
     | '/_authenticated/channel-monthly-usage/'
     | '/_authenticated/channels/'
     | '/_authenticated/circuit-analysis/'
@@ -1207,6 +1220,13 @@ declare module '@tanstack/react-router' {
       path: '/channel-daily-usage'
       fullPath: '/channel-daily-usage/'
       preLoaderRoute: typeof AuthenticatedChannelDailyUsageIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/channel-model-probes/': {
+      id: '/_authenticated/channel-model-probes/'
+      path: '/channel-model-probes'
+      fullPath: '/channel-model-probes/'
+      preLoaderRoute: typeof AuthenticatedChannelModelProbesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/channel-monthly-usage/': {
@@ -1605,6 +1625,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedChannelDailyUsageIndexRoute: typeof AuthenticatedChannelDailyUsageIndexRoute
+  AuthenticatedChannelModelProbesIndexRoute: typeof AuthenticatedChannelModelProbesIndexRoute
   AuthenticatedChannelMonthlyUsageIndexRoute: typeof AuthenticatedChannelMonthlyUsageIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCircuitAnalysisIndexRoute: typeof AuthenticatedCircuitAnalysisIndexRoute
@@ -1640,6 +1661,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedChannelDailyUsageIndexRoute:
     AuthenticatedChannelDailyUsageIndexRoute,
+  AuthenticatedChannelModelProbesIndexRoute:
+    AuthenticatedChannelModelProbesIndexRoute,
   AuthenticatedChannelMonthlyUsageIndexRoute:
     AuthenticatedChannelMonthlyUsageIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,

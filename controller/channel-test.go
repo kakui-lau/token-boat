@@ -29,6 +29,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
@@ -1243,13 +1244,34 @@ func runModelActiveProbeTask(ctx context.Context, report func(processed, total i
 			string(target.endpointType),
 			shouldUseStreamForAutomaticChannelTest(target.channel),
 		)
+		latencyMs := time.Since(startedAt).Milliseconds()
 		success := result.localErr == nil && result.newAPIError == nil
 		perfmetrics.Record(perfmetrics.Sample{
 			Model:     target.modelName,
 			Group:     "auto",
-			LatencyMs: time.Since(startedAt).Milliseconds(),
+			LatencyMs: latencyMs,
 			Success:   success,
 		})
+		errorCode := ""
+		errorMessage := ""
+		if result.newAPIError != nil {
+			errorCode = string(result.newAPIError.GetErrorCode())
+			errorMessage = result.newAPIError.MaskSensitiveErrorWithStatusCode()
+		} else if result.localErr != nil {
+			errorMessage = common.MaskSensitiveInfo(result.localErr.Error())
+		}
+		messageRunes := []rune(errorMessage)
+		if len(messageRunes) > 1000 {
+			errorMessage = string(messageRunes[:1000])
+		}
+		if err := model.CreateChannelModelProbe(&model.ChannelModelProbe{
+			ChannelId: target.channel.Id, ChannelName: target.channel.Name,
+			ModelName: target.modelName, EndpointType: string(target.endpointType),
+			Success: success, LatencyMs: latencyMs, ErrorCode: errorCode,
+			ErrorMessage: errorMessage, ProbedAt: time.Now().Unix(),
+		}); err != nil {
+			common.SysError(fmt.Sprintf("failed to record channel model probe channel=%d model=%s: %v", target.channel.Id, target.modelName, err))
+		}
 		summary.Tested++
 		if success {
 			summary.Succeeded++
@@ -1266,6 +1288,12 @@ func runModelActiveProbeTask(ctx context.Context, report func(processed, total i
 	}
 	if report != nil {
 		report(len(targets), len(targets))
+	}
+	if retentionDays := perf_metrics_setting.GetSetting().RetentionDays; retentionDays > 0 {
+		cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
+		if err := model.DeleteChannelModelProbesBefore(cutoff); err != nil {
+			common.SysError("failed to cleanup channel model probes: " + err.Error())
+		}
 	}
 	return summary, nil
 }

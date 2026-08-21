@@ -143,6 +143,11 @@ export function useSidebarData(): SidebarData {
             icon: Radio,
           },
           {
+            title: t('Channel Model Probes'),
+            url: '/channel-model-probes',
+            icon: Activity,
+          },
+          {
             title: t('Official Pricing'),
             url: '/official-pricing',
             icon: BadgeDollarSign,

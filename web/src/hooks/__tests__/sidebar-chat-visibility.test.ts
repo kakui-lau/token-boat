@@ -120,6 +120,11 @@ describe('sidebar chat preset visibility', () => {
         expect.objectContaining({ url: '/sales-price-generator' }),
       ])
     )
+    expect(adminGroup?.items).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: '/channel-model-probes' }),
+      ])
+    )
   })
 
   test('hides sensitive admin modules without their read permission', () => {

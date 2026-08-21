@@ -15,8 +15,11 @@ import {
   formatLatency,
   formatThroughput,
   formatUptimePct,
+  getSuccessRateColor,
   getSuccessRateDotClass,
+  getSuccessRateLevel,
   getSuccessRateTextClass,
+  type SuccessRateLevel,
 } from '@/features/performance-metrics/lib/format'
 import type { PerfModelSummary } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
@@ -53,17 +56,26 @@ export function ModelAvailabilityOverview(
     () => new Set(props.modelNames),
     [props.modelNames]
   )
-  const fastestModels = useMemo(
-    () =>
-      filterMeasuredModels(dailyQuery.data?.data.models ?? [], visibleModels)
-        .filter((model) => model.avg_tps > 0)
-        .sort((a, b) => b.avg_tps - a.avg_tps)
-        .slice(0, LIST_LIMIT),
-    [dailyQuery.data, visibleModels]
-  )
+  const fastestModels = useMemo(() => {
+    const list = filterMeasuredModels(
+      dailyQuery.data?.data.models ?? [],
+      visibleModels
+    )
+      .filter((model) => model.avg_tps > 0)
+      .sort((a, b) => b.avg_tps - a.avg_tps)
+      .slice(0, LIST_LIMIT)
+    const maxTps = list[0]?.avg_tps ?? 1
+    return list.map((m) => ({
+      model: m,
+      tpsRatio: Math.min(1, Math.max(0, m.avg_tps / maxTps)),
+    }))
+  }, [dailyQuery.data, visibleModels])
   const availableModels = useMemo(
     () =>
-      filterMeasuredModels(threeDayQuery.data?.data.models ?? [], visibleModels)
+      filterMeasuredModels(
+        threeDayQuery.data?.data.models ?? [],
+        visibleModels
+      )
         .sort((a, b) => (b.request_count ?? 0) - (a.request_count ?? 0))
         .slice(0, LIST_LIMIT),
     [threeDayQuery.data, visibleModels]
@@ -71,9 +83,15 @@ export function ModelAvailabilityOverview(
   const loading = dailyQuery.isLoading || threeDayQuery.isLoading
 
   return (
-    <section aria-labelledby='model-availability-title' className='mt-10'>
+    <section
+      aria-labelledby='model-availability-title'
+      className='mt-10'
+    >
       <div className='mb-4'>
-        <h2 id='model-availability-title' className='text-xl font-semibold'>
+        <h2
+          id='model-availability-title'
+          className='text-xl font-semibold tracking-tight'
+        >
           {t('Model availability')}
         </h2>
         <p className='text-muted-foreground mt-1 text-sm'>
@@ -89,46 +107,124 @@ export function ModelAvailabilityOverview(
           description={t(
             'Past 24 hours: output speed = total output tokens / total generation time'
           )}
-          models={fastestModels}
+          metricLabelPrimary={t('Output speed')}
+          metricLabelSecondary={t('Average full response time')}
+          models={fastestModels.map((d) => d.model)}
           loading={loading}
-          renderMetric={(model) => (
-            <div className='text-right'>
-              <div className='font-mono text-sm font-semibold tabular-nums'>
-                {formatThroughput(model.avg_tps)}
+          renderRow={(model, index) => {
+            const data = fastestModels[index]
+            return (
+              <div className='flex w-full flex-col gap-1.5'>
+                <div className='flex items-baseline justify-between gap-2'>
+                  <div className='flex items-center gap-2'>
+                    <span className='font-mono text-xs font-medium text-muted-foreground/80'>
+                      {t('Output speed')}
+                    </span>
+                  </div>
+                  <span
+                    className={cn(
+                      'font-mono text-base font-semibold tabular-nums tracking-tight text-foreground'
+                    )}
+                  >
+                    {formatThroughput(model.avg_tps)}
+                  </span>
+                </div>
+                <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted/60'>
+                  <div
+                    className='h-full rounded-full bg-gradient-to-r from-sky-400 via-sky-500 to-indigo-500 transition-all duration-500'
+                    style={{ width: `${(data?.tpsRatio ?? 0) * 100}%` }}
+                  />
+                </div>
+                <div className='flex items-center justify-between gap-2'>
+                  <span className='font-mono text-[11px] text-muted-foreground'>
+                    {t('Average full response time')}
+                  </span>
+                  <span className='font-mono text-[11px] tabular-nums text-muted-foreground'>
+                    {formatLatency(model.avg_latency_ms)}
+                  </span>
+                </div>
               </div>
-              <div className='text-muted-foreground text-[11px]'>
-                {t('Output speed')}
-              </div>
-              <div className='text-muted-foreground text-xs'>
-                {formatLatency(model.avg_latency_ms)} ·{' '}
-                {t('Average full response time')}
-              </div>
-            </div>
-          )}
+            )
+          }}
         />
         <MetricList
           title={t('Model success rate')}
           description={t('Observed success rate over the past 72 hours')}
+          metricLabelPrimary={t('Success rate')}
+          metricLabelSecondary={t('Observed window')}
           models={availableModels}
           loading={loading}
-          renderMetric={(model) => (
-            <div className='flex items-center gap-2'>
-              <span
-                className={cn(
-                  'size-2 rounded-full',
-                  getSuccessRateDotClass(model.success_rate)
-                )}
-                aria-hidden='true'
-              />
-              <span
-                className={cn(
-                  'font-mono text-sm font-semibold tabular-nums',
-                  getSuccessRateTextClass(model.success_rate)
-                )}
-              >
-                {formatUptimePct(model.success_rate)}
-              </span>
-            </div>
+          renderRow={(model) => {
+            const rate = Number.isFinite(model.success_rate)
+              ? model.success_rate
+              : 0
+            const level: SuccessRateLevel = getSuccessRateLevel(model.success_rate)
+            const barColor = getSuccessRateBarClass(level)
+            return (
+              <div className='flex w-full flex-col gap-1.5'>
+                <div className='flex items-center justify-between gap-2'>
+                  <div className='flex items-center gap-2'>
+                    <span
+                      className={cn(
+                        'size-2 rounded-full ring-2 ring-offset-background transition-all',
+                        getSuccessRateDotClass(model.success_rate),
+                        level === 'excellent' &&
+                          'ring-emerald-500/10 dark:ring-emerald-500/20',
+                        level === 'good' &&
+                          'ring-emerald-400/10 dark:ring-emerald-400/20',
+                        level === 'warning' &&
+                          'ring-amber-500/10 dark:ring-amber-500/20',
+                        level === 'critical' &&
+                          'ring-red-500/10 dark:ring-red-500/20'
+                      )}
+                      aria-hidden='true'
+                    />
+                    <span className='font-mono text-xs font-medium text-muted-foreground/80'>
+                      {t('Success rate')}
+                    </span>
+                  </div>
+                  <span
+                    className={cn(
+                      'font-mono text-base font-semibold tabular-nums tracking-tight',
+                      getSuccessRateTextClass(model.success_rate)
+                    )}
+                  >
+                    {formatUptimePct(model.success_rate)}
+                  </span>
+                </div>
+                <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted/60'>
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-500',
+                      barColor
+                    )}
+                    style={{
+                      width: `${Math.max(0, Math.min(100, rate))}%`,
+                      backgroundColor:
+                        barColor === ''
+                          ? getSuccessRateColor(model.success_rate)
+                          : undefined,
+                    }}
+                  />
+                </div>
+                <div className='flex items-center justify-between gap-2'>
+                  <span className='font-mono text-[11px] text-muted-foreground'>
+                    {t('72h samples')}
+                  </span>
+                  <span className='font-mono text-[11px] tabular-nums text-muted-foreground'>
+                    {model.request_count?.toLocaleString() ?? '—'}
+                  </span>
+                </div>
+              </div>
+            )
+          }}
+          rowLeadingBar={(model) => (
+            <span
+              className={cn(
+                'absolute left-0 top-0 h-full w-1',
+                getSuccessRateStripeClass(getSuccessRateLevel(model.success_rate))
+              )}
+            />
           )}
         />
       </div>
@@ -147,58 +243,157 @@ function filterMeasuredModels(
   )
 }
 
+function getSuccessRateBarClass(level: SuccessRateLevel): string {
+  switch (level) {
+    case 'excellent':
+      return 'bg-gradient-to-r from-emerald-400 to-emerald-500'
+    case 'good':
+      return 'bg-gradient-to-r from-emerald-300 to-emerald-500'
+    case 'warning':
+      return 'bg-gradient-to-r from-amber-400 to-amber-500'
+    case 'critical':
+      return 'bg-gradient-to-r from-red-400 to-red-500'
+    default:
+      return 'bg-muted-foreground/40'
+  }
+}
+
+function getSuccessRateStripeClass(level: SuccessRateLevel): string {
+  switch (level) {
+    case 'excellent':
+      return 'bg-emerald-500/80'
+    case 'good':
+      return 'bg-emerald-400/80'
+    case 'warning':
+      return 'bg-amber-500/80'
+    case 'critical':
+      return 'bg-red-500/80'
+    default:
+      return 'bg-muted/80'
+  }
+}
+
+function rankStyles(
+  rank: number
+): { badge: string; text: string } {
+  if (rank === 1) {
+    return {
+      badge:
+        'bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 text-amber-950 shadow-[0_0_0_1px_rgba(251,191,36,0.3)]',
+      text: 'text-amber-600 dark:text-amber-400',
+    }
+  }
+  if (rank === 2) {
+    return {
+      badge:
+        'bg-gradient-to-br from-slate-200 via-slate-300 to-slate-500 text-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25)]',
+      text: 'text-slate-500 dark:text-slate-300',
+    }
+  }
+  if (rank === 3) {
+    return {
+      badge:
+        'bg-gradient-to-br from-orange-300 via-orange-400 to-orange-600 text-orange-950 shadow-[0_0_0_1px_rgba(251,146,60,0.3)]',
+      text: 'text-orange-600 dark:text-orange-400',
+    }
+  }
+  return {
+    badge:
+      'bg-muted/70 text-muted-foreground border border-muted',
+    text: 'text-muted-foreground/80',
+  }
+}
+
 function MetricList(props: {
   title: string
   description: string
+  metricLabelPrimary?: string
+  metricLabelSecondary?: string
   models: PerfModelSummary[]
   loading: boolean
-  renderMetric: (model: PerfModelSummary) => React.ReactNode
+  renderRow: (model: PerfModelSummary, index: number) => React.ReactNode
+  rowLeadingBar?: (model: PerfModelSummary) => React.ReactNode
 }) {
   const { t } = useTranslation()
   let content: React.ReactNode
 
   if (props.loading) {
     content = (
-      <div className='text-muted-foreground px-4 py-8 text-center text-sm'>
+      <div className='text-muted-foreground px-5 py-10 text-center text-sm'>
         {t('Loading...')}
       </div>
     )
   } else if (props.models.length === 0) {
     content = (
-      <div className='text-muted-foreground px-4 py-8 text-center text-sm'>
+      <div className='text-muted-foreground px-5 py-10 text-center text-sm'>
         {t('Not enough recent samples')}
       </div>
     )
   } else {
     content = (
-      <ol className='divide-y'>
-        {props.models.map((model, index) => (
-          <li
-            key={model.model_name}
-            className='flex min-h-14 items-center gap-3 px-4 py-2.5'
-          >
-            <span className='text-muted-foreground w-5 text-center font-mono text-xs'>
-              {index + 1}
-            </span>
-            <span className='min-w-0 flex-1 truncate font-mono text-sm'>
-              {model.model_name}
-            </span>
-            {props.renderMetric(model)}
-          </li>
-        ))}
-      </ol>
+      <ul className='relative divide-y divide-border/70'>
+        {props.models.map((model, index) => {
+          const rank = index + 1
+          const style = rankStyles(rank)
+          return (
+            <li
+              key={model.model_name}
+              className={cn(
+                'relative flex min-h-[84px] items-stretch gap-4 px-5 py-4 transition-colors hover:bg-muted/35'
+              )}
+            >
+              {props.rowLeadingBar?.(model)}
+              <div className='flex flex-col items-center justify-start pt-0.5'>
+                <span
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums',
+                    style.badge
+                  )}
+                >
+                  {rank}
+                </span>
+              </div>
+              <div className='flex min-w-0 flex-1 flex-col justify-between gap-1'>
+                <div className='flex items-center gap-2'>
+                  <span
+                    className={cn(
+                      'min-w-0 truncate font-mono text-[13px] font-medium tracking-tight text-foreground'
+                    )}
+                    title={model.model_name}
+                  >
+                    {model.model_name}
+                  </span>
+                </div>
+                {props.renderRow(model, index)}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     )
   }
 
   return (
-    <article className='bg-background/70 overflow-hidden rounded-xl border backdrop-blur-sm'>
-      <header className='border-b px-4 py-3'>
-        <h3 className='font-semibold'>{props.title}</h3>
-        <p className='text-muted-foreground mt-0.5 text-xs'>
-          {props.description}
-        </p>
+    <article
+      className={cn(
+        'group relative overflow-hidden rounded-2xl border shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_8px_24px_-12px_rgba(15,23,42,0.15)] dark:hover:shadow-[0_8px_28px_-16px_rgba(0,0,0,0.6)]',
+        'bg-gradient-to-b from-background/90 via-background/70 to-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/50'
+      )}
+    >
+      <div className='pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-70' />
+      <header className='relative border-b px-5 py-4'>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='min-w-0'>
+            <h3 className='text-[15px] font-semibold tracking-tight text-foreground'>
+              {props.title}
+            </h3>
+            <p className='text-muted-foreground mt-1 text-xs leading-relaxed'>
+              {props.description}
+            </p>
+          </div>
+        </div>
       </header>
-      {content}
+      <div className='relative'>{content}</div>
     </article>
   )
 }

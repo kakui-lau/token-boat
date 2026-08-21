@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 describe('model availability overview', () => {
-  test('ranks measured models and hides models with insufficient samples', async () => {
+  test('ranks measured text models and hides metrics outside the visible model list', async () => {
     vi.mocked(getPerfMetricsSummary).mockImplementation(async (hours) => ({
       success: true,
       data: {
@@ -39,12 +39,12 @@ describe('model availability overview', () => {
             ? [
                 modelMetric('fast-model', 40, 99, 80),
                 modelMetric('steady-model', 50, 98, 30),
-                modelMetric('low-sample-model', 3, 100, 100),
+                modelMetric('bytedance/seedance-2.0-fast-upscale', 3, 100, 100),
               ]
             : [
-                modelMetric('steady-model', 80, 99.5, 30),
+                modelMetric('steady-model', 80, 99.5, 30, [98, 99, 100]),
                 modelMetric('fast-model', 60, 97, 80),
-                modelMetric('low-sample-model', 3, 100, 100),
+                modelMetric('bytedance/seedance-2.0-fast-upscale', 3, 100, 100),
               ],
       },
     }))
@@ -55,7 +55,7 @@ describe('model availability overview', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ModelAvailabilityOverview
-          modelNames={['fast-model', 'steady-model', 'low-sample-model']}
+          modelNames={['fast-model', 'steady-model']}
         />
       </QueryClientProvider>
     )
@@ -69,10 +69,15 @@ describe('model availability overview', () => {
       'listitem'
     )
     expect(fastestRows[0]).toHaveTextContent('fast-model')
-    expect(fastestRows[0]).toHaveTextContent('Output speed')
-    expect(fastestRows[0]).toHaveTextContent('Average full response time')
     expect(fastestRows[1]).toHaveTextContent('steady-model')
-    expect(screen.queryByText('low-sample-model')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('bytedance/seedance-2.0-fast-upscale')
+    ).not.toBeInTheDocument()
+    expect(
+      await screen.findByRole('img', {
+        name: 'Recent observations: 98.00%, 99.00%, 100.00%',
+      })
+    ).toBeInTheDocument()
   })
 })
 
@@ -80,7 +85,8 @@ function modelMetric(
   modelName: string,
   requestCount: number,
   successRate: number,
-  averageTps: number
+  averageTps: number,
+  recentSuccessRates?: number[]
 ) {
   return {
     model_name: modelName,
@@ -88,5 +94,6 @@ function modelMetric(
     success_rate: successRate,
     avg_tps: averageTps,
     avg_latency_ms: 500,
+    recent_success_rates: recentSuccessRates,
   }
 }

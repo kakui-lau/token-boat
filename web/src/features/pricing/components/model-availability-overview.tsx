@@ -237,6 +237,10 @@ export function ModelAvailabilityOverview(
                   </div>
                 </div>
                 <div className='flex shrink-0 items-center gap-2'>
+                  <RecentSuccessRatePoints
+                    rates={model.recent_success_rates}
+                    label={t('Recent observations')}
+                  />
                   <span
                     className={cn(
                       'font-mono text-[12px] font-semibold tabular-nums tracking-tight',
@@ -291,17 +295,41 @@ export function ModelAvailabilityOverview(
   )
 }
 
-function filterMeasuredModels(
-  models: PerfModelSummary[],
-  visibleModels: Set<string>
-): PerfModelSummary[] {
-  return models.filter(
-    (model) =>
-      visibleModels.has(model.model_name) &&
-      (model.request_count ?? 0) >= MINIMUM_SAMPLE_COUNT
+function RecentSuccessRatePoints(props: { rates?: number[]; label: string }) {
+  const rates = (props.rates ?? [])
+    .filter((rate) => Number.isFinite(rate))
+    .slice(-3)
+
+  if (rates.length === 0) {
+    return null
+  }
+
+  const observations = rates.map((rate, index) => ({
+    position: index + 1,
+    rate,
+    formattedRate: formatUptimePct(rate),
+  }))
+
+  return (
+    <div
+      role='img'
+      aria-label={`${props.label}: ${observations.map((observation) => observation.formattedRate).join(', ')}`}
+      className='flex h-3 items-end gap-0.5'
+    >
+      {observations.map((observation) => (
+        <span
+          key={observation.position}
+          title={`${props.label} ${observation.position}: ${observation.formattedRate}`}
+          className={cn(
+            'h-3 w-1.5 rounded-sm ring-1 ring-background/70',
+            getSuccessRateDotClass(observation.rate)
+          )}
+          aria-hidden='true'
+        />
+      ))}
+    </div>
   )
 }
-void filterMeasuredModels
 
 function getSuccessRateBarClass(level: SuccessRateLevel): string {
   switch (level) {

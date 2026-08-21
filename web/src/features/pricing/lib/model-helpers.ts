@@ -213,3 +213,22 @@ export function isTextLLMModel(model: PricingModel): boolean {
   }
   return true
 }
+
+/**
+ * Keep the public availability dashboard aligned with models users can
+ * actually purchase and route to right now.
+ */
+export function isModelEligibleForAvailabilityMetrics(
+  model: PricingModel
+): boolean {
+  if (!isTextLLMModel(model)) return false
+  if (!model.available || model.availability_status !== 'available')
+    return false
+  if (
+    !Array.isArray(model.pricing_groups) ||
+    model.pricing_groups.length === 0
+  ) {
+    return false
+  }
+  return (model.lowest_price?.items.length ?? 0) > 0
+}

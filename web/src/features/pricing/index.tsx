@@ -36,7 +36,7 @@ import {
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
-import { isTextLLMModel } from './lib/model-helpers'
+import { isModelEligibleForAvailabilityMetrics } from './lib/model-helpers'
 
 export function Pricing() {
   const { t } = useTranslation()
@@ -109,7 +109,7 @@ export function Pricing() {
   const modelNames = useMemo(
     () =>
       (models || [])
-        .filter((model) => isTextLLMModel(model))
+        .filter((model) => isModelEligibleForAvailabilityMetrics(model))
         .map((model) => model.model_name),
     [models]
   )

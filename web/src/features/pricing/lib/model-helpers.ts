@@ -16,7 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { EXCLUDED_GROUPS, FILTER_ALL, QUOTA_TYPE_VALUES } from '../constants'
+import {
+  ENDPOINT_TYPES,
+  EXCLUDED_GROUPS,
+  FILTER_ALL,
+  QUOTA_TYPE_VALUES,
+} from '../constants'
 import type { PricingModel, PublicPriceSummary } from '../types'
 
 // ----------------------------------------------------------------------------
@@ -139,4 +144,40 @@ export function replaceModelInPath(path: string, modelName: string): string {
  */
 export function isTokenBasedModel(model: PricingModel): boolean {
   return model.quota_type === QUOTA_TYPE_VALUES.TOKEN
+}
+
+/**
+ * Check if the model is an LLM-style text generation model.
+ *
+ * Rule of thumb used here:
+ *   1. Must be token-priced (quota_type === TOKEN), so image/video/per-request
+ *      models are out by construction).
+ *   2. Either declares at least one text-generation-style endpoint
+ *      (chat/response/anthropic/gemini). If the model has no endpoint info
+ *      yet we still accept token-priced models as text LLM by default.
+ *   3. Explicitly exclude pure non-generative token-priced families that happen to
+ *      be token-priced (embeddings, rerank).
+ */
+const TEXT_LLM_ENDPOINTS: Set<string> = new Set([
+  ENDPOINT_TYPES.OPENAI,
+  ENDPOINT_TYPES.OPENAI_RESPONSE,
+  ENDPOINT_TYPES.ANTHROPIC,
+  ENDPOINT_TYPES.GEMINI,
+])
+const EXPLICIT_NON_LLM_ENDPOINTS: Set<string> = new Set([
+  ENDPOINT_TYPES.IMAGE_GENERATION,
+  ENDPOINT_TYPES.OPENAI_VIDEO,
+  ENDPOINT_TYPES.EMBEDDINGS,
+  ENDPOINT_TYPES.JINA_RERANK,
+])
+
+export function isTextLLMModel(model: PricingModel): boolean {
+  if (!isTokenBasedModel(model)) return false
+  const endpoints = Array.isArray(model.supported_endpoint_types)
+    ? model.supported_endpoint_types
+    : []
+  if (endpoints.length === 0) return true
+  if (endpoints.every((ep) => EXPLICIT_NON_LLM_ENDPOINTS.has(ep))) return false
+  if (endpoints.some((ep) => TEXT_LLM_ENDPOINTS.has(ep))) return true
+  return !endpoints.every((ep) => EXPLICIT_NON_LLM_ENDPOINTS.has(ep))
 }

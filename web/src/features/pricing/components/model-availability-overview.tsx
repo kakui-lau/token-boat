@@ -124,7 +124,7 @@ export function ModelAvailabilityOverview(
         </p>
       </div>
 
-      <div className='grid gap-4 lg:grid-cols-2'>
+      <div className='grid gap-3 lg:grid-cols-2'>
         <MetricList
           title={t('Fastest models')}
           description={t(
@@ -134,37 +134,28 @@ export function ModelAvailabilityOverview(
           metricLabelSecondary={t('Average full response time')}
           models={fastestModels.map((d) => d.model)}
           loading={loading}
+          compact={false}
           renderRow={(model, index) => {
             const data = fastestModels[index]
             return (
-              <div className='flex w-full flex-col gap-1.5'>
-                <div className='flex items-baseline justify-between gap-2'>
-                  <div className='flex items-center gap-2'>
-                    <span className='font-mono text-xs font-medium text-muted-foreground/80'>
-                      {t('Output speed')}
-                    </span>
-                  </div>
+              <div className='flex w-full flex-col gap-1'>
+                <div className='flex items-center justify-between gap-2'>
                   <span
                     className={cn(
-                      'font-mono text-base font-semibold tabular-nums tracking-tight text-foreground'
+                      'font-mono text-[13px] font-semibold tabular-nums tracking-tight text-foreground'
                     )}
                   >
                     {formatThroughput(model.avg_tps)}
                   </span>
+                  <span className='font-mono text-[11px] tabular-nums text-muted-foreground'>
+                    {formatLatency(model.avg_latency_ms)}
+                  </span>
                 </div>
-                <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted/60'>
+                <div className='h-1 w-full overflow-hidden rounded-full bg-muted/60'>
                   <div
                     className='h-full rounded-full bg-gradient-to-r from-sky-400 via-sky-500 to-indigo-500 transition-all duration-500'
                     style={{ width: `${(data?.tpsRatio ?? 0) * 100}%` }}
                   />
-                </div>
-                <div className='flex items-center justify-between gap-2'>
-                  <span className='font-mono text-[11px] text-muted-foreground'>
-                    {t('Average full response time')}
-                  </span>
-                  <span className='font-mono text-[11px] tabular-nums text-muted-foreground'>
-                    {formatLatency(model.avg_latency_ms)}
-                  </span>
                 </div>
               </div>
             )
@@ -186,37 +177,27 @@ export function ModelAvailabilityOverview(
                   request_count: 0,
                 } satisfies PerfModelSummary)
           )}
+          compact
           loading={loading}
           renderRow={(_model, index) => {
             const row = availableModels[index]
             if (!row || row.kind === 'pending') {
               return (
-                <div className='flex w-full flex-col gap-2'>
-                  <div className='flex items-center justify-between gap-2'>
-                    <div className='flex items-center gap-2'>
-                      <span
-                        className={cn(
-                          'size-2 rounded-full ring-2 ring-offset-background bg-muted-foreground/25 ring-muted/20'
-                        )}
-                        aria-hidden='true'
-                      />
-                      <span className='font-mono text-xs font-medium text-muted-foreground/70'>
-                        {t('No samples yet')}
-                      </span>
-                    </div>
-                    <span className='font-mono text-sm tabular-nums text-muted-foreground/50'>
-                      —
-                    </span>
-                  </div>
-                  <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted/40'>
-                    <div className='h-full w-0 rounded-full bg-muted-foreground/15' />
-                  </div>
-                  <div className='flex items-center justify-between gap-2'>
-                    <span className='font-mono text-[11px] text-muted-foreground/60'>
+                <div className='flex w-full items-center justify-between gap-2'>
+                  <div className='flex min-w-0 items-center gap-2'>
+                    <span
+                      className={cn(
+                        'size-1.5 shrink-0 rounded-full bg-muted-foreground/25 ring-1 ring-muted/30'
+                      )}
+                      aria-hidden='true'
+                    />
+                    <span className='font-mono text-[11px] text-muted-foreground/70'>
                       {t('No samples yet')}
                     </span>
+                  </div>
+                  <div className='flex shrink-0 items-center gap-2'>
                     <span className='font-mono text-[11px] tabular-nums text-muted-foreground/50'>
-                      0
+                      —
                     </span>
                   </div>
                 </div>
@@ -229,57 +210,42 @@ export function ModelAvailabilityOverview(
             const level: SuccessRateLevel = getSuccessRateLevel(model.success_rate)
             const barColor = getSuccessRateBarClass(level)
             return (
-              <div className='flex w-full flex-col gap-1.5'>
-                <div className='flex items-center justify-between gap-2'>
-                  <div className='flex items-center gap-2'>
-                    <span
-                      className={cn(
-                        'size-2 rounded-full ring-2 ring-offset-background transition-all',
-                        getSuccessRateDotClass(model.success_rate),
-                        level === 'excellent' &&
-                          'ring-emerald-500/10 dark:ring-emerald-500/20',
-                        level === 'good' &&
-                          'ring-emerald-400/10 dark:ring-emerald-400/20',
-                        level === 'warning' &&
-                          'ring-amber-500/10 dark:ring-amber-500/20',
-                        level === 'critical' &&
-                          'ring-red-500/10 dark:ring-red-500/20'
-                      )}
-                      aria-hidden='true'
-                    />
-                    <span className='font-mono text-xs font-medium text-muted-foreground/80'>
-                      {t('Success rate')}
-                    </span>
-                  </div>
+              <div className='flex w-full items-center justify-between gap-2'>
+                <div className='flex min-w-0 flex-1 items-center gap-2'>
                   <span
                     className={cn(
-                      'font-mono text-base font-semibold tabular-nums tracking-tight',
+                      'size-1.5 shrink-0 rounded-full transition-all',
+                      getSuccessRateDotClass(model.success_rate)
+                    )}
+                    aria-hidden='true'
+                  />
+                  <span className='sr-only'>{t('Success rate')}</span>
+                  <div className='h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted/60'>
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-500',
+                        barColor
+                      )}
+                      style={{
+                        width: `${Math.max(0, Math.min(100, rate))}%`,
+                        backgroundColor:
+                          barColor === ''
+                            ? getSuccessRateColor(model.success_rate)
+                            : undefined,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className='flex shrink-0 items-center gap-2'>
+                  <span
+                    className={cn(
+                      'font-mono text-[12px] font-semibold tabular-nums tracking-tight',
                       getSuccessRateTextClass(model.success_rate)
                     )}
                   >
                     {formatUptimePct(model.success_rate)}
                   </span>
-                </div>
-                <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted/60'>
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all duration-500',
-                      barColor
-                    )}
-                    style={{
-                      width: `${Math.max(0, Math.min(100, rate))}%`,
-                      backgroundColor:
-                        barColor === ''
-                          ? getSuccessRateColor(model.success_rate)
-                          : undefined,
-                    }}
-                  />
-                </div>
-                <div className='flex items-center justify-between gap-2'>
-                  <span className='font-mono text-[11px] text-muted-foreground'>
-                    {t('72h samples')}
-                  </span>
-                  <span className='font-mono text-[11px] tabular-nums text-muted-foreground'>
+                  <span className='font-mono text-[10px] tabular-nums text-muted-foreground/70'>
                     {model.request_count?.toLocaleString() ?? '—'}
                   </span>
                 </div>
@@ -290,13 +256,13 @@ export function ModelAvailabilityOverview(
             const row = availableModels[index]
             if (!row || row.kind === 'pending') {
               return (
-                <span className='absolute left-0 top-0 h-full w-1 bg-muted/60' />
+                <span className='absolute left-0 top-0 h-full w-0.5 bg-muted/60' />
               )
             }
             return (
               <span
                 className={cn(
-                  'absolute left-0 top-0 h-full w-1',
+                  'absolute left-0 top-0 h-full w-0.5',
                   getSuccessRateStripeClass(
                     getSuccessRateLevel(row.measured.success_rate)
                   )
@@ -405,6 +371,7 @@ function MetricList(props: {
   metricLabelSecondary?: string
   models: PerfModelSummary[]
   loading: boolean
+  compact: boolean
   renderRow: (model: PerfModelSummary, index: number) => React.ReactNode
   rowLeadingBar?: (model: PerfModelSummary, index: number) => React.ReactNode
   rowLabel?: (model: PerfModelSummary, index: number) => string | undefined
@@ -415,46 +382,69 @@ function MetricList(props: {
 
   if (props.loading) {
     content = (
-      <div className='text-muted-foreground px-5 py-10 text-center text-sm'>
+      <div className='text-muted-foreground px-4 py-8 text-center text-sm'>
         {t('Loading...')}
       </div>
     )
   } else if (props.models.length === 0) {
     content = (
-      <div className='text-muted-foreground px-5 py-10 text-center text-sm'>
+      <div className='text-muted-foreground px-4 py-8 text-center text-sm'>
         {t('Not enough recent samples')}
       </div>
     )
   } else {
     content = (
-      <ul className='relative divide-y divide-border/70'>
+      <ul
+        className={cn(
+          'relative divide-y divide-border/60',
+          props.compact && 'divide-border/50'
+        )}
+      >
         {props.models.map((model, index) => {
           const rank = index + 1
           const style = rankStyles(rank)
           const label = props.rowLabel?.(model, index) ?? model.model_name
+          const compact = props.compact
           return (
             <li
               key={label}
               className={cn(
-                'relative flex min-h-[84px] items-stretch gap-4 px-5 py-4 transition-colors hover:bg-muted/35'
+                'relative flex items-stretch transition-colors hover:bg-muted/30',
+                compact
+                  ? 'min-h-[40px] gap-2.5 px-4 py-1.5'
+                  : 'min-h-[64px] gap-4 px-4 py-2.5'
               )}
             >
               {props.rowLeadingBar?.(model, index)}
-              <div className='flex flex-col items-center justify-start pt-0.5'>
-                <span
-                  className={cn(
-                    'flex size-6 items-center justify-center rounded-md text-[11px] font-bold tabular-nums',
-                    style.badge
-                  )}
-                >
-                  {rank}
-                </span>
-              </div>
-              <div className='flex min-w-0 flex-1 flex-col justify-between gap-1'>
-                <div className='flex items-center gap-2'>
+              {!compact ? (
+                <div className='flex flex-col items-center justify-start pt-0.5'>
                   <span
                     className={cn(
-                      'min-w-0 truncate font-mono text-[13px] font-medium tracking-tight text-foreground'
+                      'flex size-5 items-center justify-center rounded-md text-[10px] font-bold tabular-nums',
+                      style.badge
+                    )}
+                  >
+                    {rank}
+                  </span>
+                </div>
+              ) : (
+                <div className='flex w-5 shrink-0 flex-col items-center justify-center'>
+                  <span
+                    className={cn(
+                      'font-mono text-[10px] font-semibold tabular-nums leading-none',
+                      style.text
+                    )}
+                  >
+                    {rank <= 99 ? rank : '•'}
+                  </span>
+                </div>
+              )}
+              <div className='flex min-w-0 flex-1 flex-col justify-center gap-0.5'>
+                <div className='flex min-w-0 items-center gap-2'>
+                  <span
+                    className={cn(
+                      'min-w-0 truncate font-mono tracking-tight text-foreground',
+                      compact ? 'text-[12px] font-medium' : 'text-[13px] font-medium'
                     )}
                     title={label}
                   >
@@ -478,13 +468,13 @@ function MetricList(props: {
       )}
     >
       <div className='pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-70' />
-      <header className='relative border-b px-5 py-4'>
+      <header className='relative border-b px-4 py-3'>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <h3 className='text-[15px] font-semibold tracking-tight text-foreground'>
+            <h3 className='text-[14px] font-semibold tracking-tight text-foreground'>
               {props.title}
             </h3>
-            <p className='text-muted-foreground mt-1 text-xs leading-relaxed'>
+            <p className='text-muted-foreground mt-0.5 text-[11px] leading-snug'>
               {props.description}
             </p>
           </div>
@@ -492,8 +482,8 @@ function MetricList(props: {
       </header>
       <div className='relative flex-1'>{content}</div>
       {props.footerHint && (
-        <div className='border-t px-5 py-2'>
-          <p className='text-muted-foreground font-mono text-[11px]'>
+        <div className='border-t px-4 py-1.5'>
+          <p className='text-muted-foreground font-mono text-[10px]'>
             {props.footerHint}
           </p>
         </div>

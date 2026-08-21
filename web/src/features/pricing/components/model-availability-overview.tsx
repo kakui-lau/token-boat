@@ -24,8 +24,9 @@ import {
 import type { PerfModelSummary } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
-const MINIMUM_SAMPLE_COUNT = 10
-const LIST_LIMIT = 8
+const MINIMUM_SAMPLE_COUNT = 1
+const FASTEST_LIST_LIMIT = 8
+const SUCCESS_RATE_LIST_LIMIT_MAX = 64
 
 type ModelAvailabilityOverviewProps = {
   modelNames: string[]
@@ -56,30 +57,52 @@ export function ModelAvailabilityOverview(
     () => new Set(props.modelNames),
     [props.modelNames]
   )
+  const measuredMap72h = useMemo(() => {
+    const m = new Map<string, PerfModelSummary>()
+    for (const model of threeDayQuery.data?.data.models ?? []) {
+      const count = model.request_count ?? 0
+      if (visibleModels.has(model.model_name) && count >= MINIMUM_SAMPLE_COUNT) {
+        m.set(model.model_name, model)
+      }
+    }
+    return m
+  }, [threeDayQuery.data, visibleModels])
   const fastestModels = useMemo(() => {
-    const list = filterMeasuredModels(
-      dailyQuery.data?.data.models ?? [],
-      visibleModels
-    )
-      .filter((model) => model.avg_tps > 0)
+    const list = (dailyQuery.data?.data.models ?? [])
+      .filter(
+        (m) =>
+          visibleModels.has(m.model_name) &&
+          (m.request_count ?? 0) >= MINIMUM_SAMPLE_COUNT &&
+          m.avg_tps > 0
+      )
       .sort((a, b) => b.avg_tps - a.avg_tps)
-      .slice(0, LIST_LIMIT)
+      .slice(0, FASTEST_LIST_LIMIT)
     const maxTps = list[0]?.avg_tps ?? 1
     return list.map((m) => ({
       model: m,
       tpsRatio: Math.min(1, Math.max(0, m.avg_tps / maxTps)),
     }))
   }, [dailyQuery.data, visibleModels])
-  const availableModels = useMemo(
-    () =>
-      filterMeasuredModels(
-        threeDayQuery.data?.data.models ?? [],
-        visibleModels
-      )
-        .sort((a, b) => (b.request_count ?? 0) - (a.request_count ?? 0))
-        .slice(0, LIST_LIMIT),
-    [threeDayQuery.data, visibleModels]
-  )
+  const availableModels = useMemo(() => {
+    const ordered = [...visibleModels]
+      .map((name) => {
+        const measured = measuredMap72h.get(name)
+        if (measured) {
+          return { kind: 'measured' as const, name, measured }
+        }
+        return { kind: 'pending' as const, name }
+      })
+      .sort((a, b) => {
+        if (a.kind === 'measured' && b.kind === 'measured') {
+          return (b.measured.request_count ?? 0) - (a.measured.request_count ?? 0)
+        }
+        if (a.kind === 'measured') return -1
+        if (b.kind === 'measured') return 1
+        return a.name.localeCompare(b.name)
+      })
+      .slice(0, SUCCESS_RATE_LIST_LIMIT_MAX)
+    return ordered
+  }, [visibleModels, measuredMap72h])
   const loading = dailyQuery.isLoading || threeDayQuery.isLoading
 
   return (
@@ -152,9 +175,54 @@ export function ModelAvailabilityOverview(
           description={t('Observed success rate over the past 72 hours')}
           metricLabelPrimary={t('Success rate')}
           metricLabelSecondary={t('Observed window')}
-          models={availableModels}
+          models={availableModels.map((d) =>
+            d.kind === 'measured'
+              ? d.measured
+              : ({
+                  model_name: d.name,
+                  avg_latency_ms: 0,
+                  success_rate: 0,
+                  avg_tps: 0,
+                  request_count: 0,
+                } satisfies PerfModelSummary)
+          )}
           loading={loading}
-          renderRow={(model) => {
+          renderRow={(_model, index) => {
+            const row = availableModels[index]
+            if (!row || row.kind === 'pending') {
+              return (
+                <div className='flex w-full flex-col gap-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <div className='flex items-center gap-2'>
+                      <span
+                        className={cn(
+                          'size-2 rounded-full ring-2 ring-offset-background bg-muted-foreground/25 ring-muted/20'
+                        )}
+                        aria-hidden='true'
+                      />
+                      <span className='font-mono text-xs font-medium text-muted-foreground/70'>
+                        {t('No samples yet')}
+                      </span>
+                    </div>
+                    <span className='font-mono text-sm tabular-nums text-muted-foreground/50'>
+                      —
+                    </span>
+                  </div>
+                  <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted/40'>
+                    <div className='h-full w-0 rounded-full bg-muted-foreground/15' />
+                  </div>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='font-mono text-[11px] text-muted-foreground/60'>
+                      {t('No samples yet')}
+                    </span>
+                    <span className='font-mono text-[11px] tabular-nums text-muted-foreground/50'>
+                      0
+                    </span>
+                  </div>
+                </div>
+              )
+            }
+            const model = row.measured
             const rate = Number.isFinite(model.success_rate)
               ? model.success_rate
               : 0
@@ -218,14 +286,39 @@ export function ModelAvailabilityOverview(
               </div>
             )
           }}
-          rowLeadingBar={(model) => (
-            <span
-              className={cn(
-                'absolute left-0 top-0 h-full w-1',
-                getSuccessRateStripeClass(getSuccessRateLevel(model.success_rate))
-              )}
-            />
-          )}
+          rowLeadingBar={(_model, index) => {
+            const row = availableModels[index]
+            if (!row || row.kind === 'pending') {
+              return (
+                <span className='absolute left-0 top-0 h-full w-1 bg-muted/60' />
+              )
+            }
+            return (
+              <span
+                className={cn(
+                  'absolute left-0 top-0 h-full w-1',
+                  getSuccessRateStripeClass(
+                    getSuccessRateLevel(row.measured.success_rate)
+                  )
+                )}
+              />
+            )
+          }}
+          rowLabel={(_model, index) => {
+            const row = availableModels[index]
+            return row ? row.name : undefined
+          }}
+          footerHint={
+            !loading
+              ? t(
+                  '{{shown}} of {{total}} configured models shown',
+                  {
+                    shown: availableModels.length,
+                    total: visibleModels.size,
+                  }
+                )
+              : undefined
+          }
         />
       </div>
     </section>
@@ -242,6 +335,7 @@ function filterMeasuredModels(
       (model.request_count ?? 0) >= MINIMUM_SAMPLE_COUNT
   )
 }
+void filterMeasuredModels
 
 function getSuccessRateBarClass(level: SuccessRateLevel): string {
   switch (level) {
@@ -312,7 +406,9 @@ function MetricList(props: {
   models: PerfModelSummary[]
   loading: boolean
   renderRow: (model: PerfModelSummary, index: number) => React.ReactNode
-  rowLeadingBar?: (model: PerfModelSummary) => React.ReactNode
+  rowLeadingBar?: (model: PerfModelSummary, index: number) => React.ReactNode
+  rowLabel?: (model: PerfModelSummary, index: number) => string | undefined
+  footerHint?: string
 }) {
   const { t } = useTranslation()
   let content: React.ReactNode
@@ -335,14 +431,15 @@ function MetricList(props: {
         {props.models.map((model, index) => {
           const rank = index + 1
           const style = rankStyles(rank)
+          const label = props.rowLabel?.(model, index) ?? model.model_name
           return (
             <li
-              key={model.model_name}
+              key={label}
               className={cn(
                 'relative flex min-h-[84px] items-stretch gap-4 px-5 py-4 transition-colors hover:bg-muted/35'
               )}
             >
-              {props.rowLeadingBar?.(model)}
+              {props.rowLeadingBar?.(model, index)}
               <div className='flex flex-col items-center justify-start pt-0.5'>
                 <span
                   className={cn(
@@ -359,9 +456,9 @@ function MetricList(props: {
                     className={cn(
                       'min-w-0 truncate font-mono text-[13px] font-medium tracking-tight text-foreground'
                     )}
-                    title={model.model_name}
+                    title={label}
                   >
-                    {model.model_name}
+                    {label}
                   </span>
                 </div>
                 {props.renderRow(model, index)}
@@ -376,7 +473,7 @@ function MetricList(props: {
   return (
     <article
       className={cn(
-        'group relative overflow-hidden rounded-2xl border shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_8px_24px_-12px_rgba(15,23,42,0.15)] dark:hover:shadow-[0_8px_28px_-16px_rgba(0,0,0,0.6)]',
+        'group relative flex flex-col overflow-hidden rounded-2xl border shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_8px_24px_-12px_rgba(15,23,42,0.15)] dark:hover:shadow-[0_8px_28px_-16px_rgba(0,0,0,0.6)]',
         'bg-gradient-to-b from-background/90 via-background/70 to-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/50'
       )}
     >
@@ -393,7 +490,14 @@ function MetricList(props: {
           </div>
         </div>
       </header>
-      <div className='relative'>{content}</div>
+      <div className='relative flex-1'>{content}</div>
+      {props.footerHint && (
+        <div className='border-t px-5 py-2'>
+          <p className='text-muted-foreground font-mono text-[11px]'>
+            {props.footerHint}
+          </p>
+        </div>
+      )}
     </article>
   )
 }

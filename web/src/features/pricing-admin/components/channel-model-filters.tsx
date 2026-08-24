@@ -135,39 +135,17 @@ export function ChannelModelFilters(props: ChannelModelFiltersProps) {
         </NativeSelect>
       </Field>
       <Field className='w-auto'>
-        <FieldLabel htmlFor={`${props.idPrefix}-runtime`}>
-          {t('Runtime')}
+        <FieldLabel htmlFor={`${props.idPrefix}-purchase-status`}>
+          {t('Purchase Status')}
         </FieldLabel>
         <NativeSelect
-          id={`${props.idPrefix}-runtime`}
+          id={`${props.idPrefix}-purchase-status`}
           className='w-40'
-          value={props.value.runtimeMode}
+          value={props.value.purchaseStatus}
           onChange={(event) =>
             props.onChange({
               ...props.value,
-              runtimeMode: event.target.value,
-            })
-          }
-        >
-          <NativeSelectOption value=''>{t('All')}</NativeSelectOption>
-          <NativeSelectOption value='legacy'>
-            {t('Legacy Billing')}
-          </NativeSelectOption>
-          <NativeSelectOption value='v2'>{t('V2 Pricing')}</NativeSelectOption>
-        </NativeSelect>
-      </Field>
-      <Field className='w-auto'>
-        <FieldLabel htmlFor={`${props.idPrefix}-retail-status`}>
-          {t('Retail Status')}
-        </FieldLabel>
-        <NativeSelect
-          id={`${props.idPrefix}-retail-status`}
-          className='w-40'
-          value={props.value.retailStatus}
-          onChange={(event) =>
-            props.onChange({
-              ...props.value,
-              retailStatus: event.target.value,
+              purchaseStatus: event.target.value,
             })
           }
         >

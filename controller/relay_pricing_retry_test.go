@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRelayRetryLimitUsesEveryFrozenV2Candidate(t *testing.T) {
+func TestRelayRetryLimitUsesEveryFrozenPricingCandidate(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
 			RouteChannelIds: []int{11, 12, 13},
@@ -18,7 +18,7 @@ func TestRelayRetryLimitUsesEveryFrozenV2Candidate(t *testing.T) {
 	assert.Equal(t, 2, relayRetryLimit(info))
 }
 
-func TestRelayRetryLimitDoesNotRetrySingleV2Candidate(t *testing.T) {
+func TestRelayRetryLimitDoesNotRetrySinglePricingCandidate(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
 			RouteChannelIds: []int{11},

@@ -1,14 +1,10 @@
 package main
 
 import (
-	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -48,97 +44,6 @@ func TestConvertTokenExpressionToV2PreservesCurrencyAmount(t *testing.T) {
 func TestConvertTokenExpressionToV2RejectsEmptyExpression(t *testing.T) {
 	_, err := convertTokenExpressionToV2("  ")
 	require.ErrorContains(t, err, "empty")
-}
-
-func TestValidateRoutePlanAcceptsSortedEligibleCandidates(t *testing.T) {
-	err := validateRoutePlan([]pricingruntime.RouteCandidate{
-		{
-			ChannelId: 1, ChannelModelId: 11,
-			PurchaseCost: decimal.RequireFromString("0.25"), RouteScore: 0.9,
-		},
-		{
-			ChannelId: 2, ChannelModelId: 12,
-			PurchaseCost: decimal.RequireFromString("0.30"), RouteScore: 0.7,
-		},
-	})
-	require.NoError(t, err)
-}
-
-func TestValidateRoutePlanRejectsUnsafeOrAmbiguousPlans(t *testing.T) {
-	tests := []struct {
-		name       string
-		candidates []pricingruntime.RouteCandidate
-		errorText  string
-	}{
-		{name: "empty", errorText: "no eligible"},
-		{
-			name: "negative quote",
-			candidates: []pricingruntime.RouteCandidate{{
-				ChannelId: 1, ChannelModelId: 11,
-				PurchaseCost: decimal.RequireFromString("-0.01"), RouteScore: 0.9,
-			}},
-			errorText: "negative purchase quote",
-		},
-		{
-			name: "non finite score",
-			candidates: []pricingruntime.RouteCandidate{{
-				ChannelId: 1, ChannelModelId: 11,
-				PurchaseCost: decimal.Zero, RouteScore: math.Inf(1),
-			}},
-			errorText: "invalid route score",
-		},
-		{
-			name: "duplicate channel model",
-			candidates: []pricingruntime.RouteCandidate{
-				{ChannelId: 1, ChannelModelId: 11, RouteScore: 0.9},
-				{ChannelId: 1, ChannelModelId: 11, RouteScore: 0.8},
-			},
-			errorText: "appears more than once",
-		},
-		{
-			name: "ascending score",
-			candidates: []pricingruntime.RouteCandidate{
-				{ChannelId: 1, ChannelModelId: 11, RouteScore: 0.7},
-				{ChannelId: 2, ChannelModelId: 12, RouteScore: 0.9},
-			},
-			errorText: "not sorted",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := validateRoutePlan(test.candidates)
-			require.ErrorContains(t, err, test.errorText)
-		})
-	}
-}
-
-func TestReadinessRatioScenariosIncludeUserSpecificDiscount(t *testing.T) {
-	config := ratio_setting.GetGroupRatioSetting()
-	originalRatios := config.GroupRatio.ReadAll()
-	originalOverrides := config.GroupGroupRatio.ReadAll()
-	originalSpecialGroups := config.GroupSpecialUsableGroup.ReadAll()
-	t.Cleanup(func() {
-		config.GroupRatio.Clear()
-		config.GroupRatio.AddAll(originalRatios)
-		config.GroupGroupRatio.Clear()
-		config.GroupGroupRatio.AddAll(originalOverrides)
-		config.GroupSpecialUsableGroup.Clear()
-		config.GroupSpecialUsableGroup.AddAll(originalSpecialGroups)
-	})
-	config.GroupRatio.Clear()
-	config.GroupRatio.AddAll(map[string]float64{"vip": 1})
-	config.GroupGroupRatio.Clear()
-	config.GroupGroupRatio.AddAll(map[string]map[string]float64{
-		"vip": {"vip": 0.5},
-	})
-	config.GroupSpecialUsableGroup.Clear()
-
-	scenarios := readinessRatioScenarios("vip")
-
-	require.Len(t, scenarios, 2)
-	assert.Equal(t, float64(1), scenarios[0].Ratio)
-	assert.Equal(t, float64(0.5), scenarios[1].Ratio)
-	assert.Equal(t, "vip", scenarios[1].UserGroup)
 }
 
 func TestValidateProductionPriceEvidenceRejectsLocalPlaceholder(t *testing.T) {
@@ -183,7 +88,6 @@ func setupProductionEvidenceTest(t *testing.T, source string, quoteReference str
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
 		&model.ChannelModelPurchasePriceVersion{},
-		&model.ChannelModelRetailPriceVersion{},
 	))
 	officialId := 1
 	require.NoError(t, db.Create(&model.Model{
@@ -197,7 +101,6 @@ func setupProductionEvidenceTest(t *testing.T, source string, quoteReference str
 	}).Error)
 	require.NoError(t, db.Create(&model.ChannelModel{
 		Id: 1, ChannelId: 1, ModelId: 1, Status: 1,
-		RuntimeMode: pricingruntime.RuntimeModeV2,
 	}).Error)
 	require.NoError(t, db.Create(&model.OfficialModelPriceVersion{
 		Id: 1, ModelId: 1, BillingMode: "token", PriceStructure: "flat",
@@ -213,14 +116,5 @@ func setupProductionEvidenceTest(t *testing.T, source string, quoteReference str
 		ExpressionSchemaVersion: "v2", Currency: "USD",
 		QuoteReference: quoteReference, Version: 1,
 		Status: model.PricingVersionStatusActive,
-	}).Error)
-	require.NoError(t, db.Create(&model.ChannelModelRetailPriceVersion{
-		Id: 1, ChannelModelId: 1, PurchasePriceVersionId: 1,
-		BillingMode: "token", PriceStructure: "flat",
-		RetailBillingExpr: "v2:p / 1000000", RetailExprHash: "hash",
-		ExpressionSchemaVersion: "v2", Currency: "USD",
-		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.1", MinimumMarginRate: "0.05",
-		Version: 1, Status: model.PricingVersionStatusActive,
 	}).Error)
 }

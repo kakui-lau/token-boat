@@ -23,7 +23,7 @@ import type { PricingModel, PublicPriceSummary } from '../../types'
 import { filterAndSortModels, sortModels } from '../filters'
 import {
   getAvailableGroups,
-  getDisplayedRetailPrice,
+  getDisplayedSalesPrice,
   isModelAvailableForGroup,
 } from '../model-helpers'
 
@@ -56,32 +56,32 @@ const model: PricingModel = {
   available: true,
   availability_status: 'available',
   lowest_price: defaultSummary,
-  retail_prices_by_group: { default: defaultSummary, vip: vipSummary },
+  sales_prices_by_group: { default: defaultSummary, vip: vipSummary },
 }
 
-describe('group-scoped retail price', () => {
+describe('group-scoped sales price', () => {
   test('uses the selected group instead of the cross-group minimum', () => {
-    expect(getDisplayedRetailPrice(model, 'vip')).toBe(vipSummary)
+    expect(getDisplayedSalesPrice(model, 'vip')).toBe(vipSummary)
   })
 
   test('does not fall back to another group when selected group has no price', () => {
-    expect(getDisplayedRetailPrice(model, 'unpriced')).toBeUndefined()
+    expect(getDisplayedSalesPrice(model, 'unpriced')).toBeUndefined()
   })
 
   test('uses the cross-group component minimum when no group is selected', () => {
-    expect(getDisplayedRetailPrice(model, 'all')).toBe(defaultSummary)
+    expect(getDisplayedSalesPrice(model, 'all')).toBe(defaultSummary)
   })
 
-  test('marks a selected group unavailable when it has no retail price', () => {
+  test('marks a selected group unavailable when it has no sales price', () => {
     expect(isModelAvailableForGroup(model, 'unpriced')).toBe(false)
   })
 
-  test('uses priced groups for expression-only V2 models', () => {
+  test('uses priced groups for expression-only models', () => {
     const expressionOnlyModel: PricingModel = {
       ...model,
       lowest_price: undefined,
-      retail_prices_by_group: undefined,
-      pricing_source: 'v2_dynamic',
+      sales_prices_by_group: undefined,
+      pricing_source: 'sales_price_book',
       pricing_groups: ['vip'],
     }
 
@@ -93,7 +93,7 @@ describe('group-scoped retail price', () => {
     const cheaperVipModel: PricingModel = {
       ...model,
       model_name: 'cheaper-vip-model',
-      retail_prices_by_group: {
+      sales_prices_by_group: {
         vip: {
           ...vipSummary,
           items: [{ ...vipSummary.items[0], amount: '1.2' }],
@@ -103,14 +103,14 @@ describe('group-scoped retail price', () => {
     const unavailableVipModel: PricingModel = {
       ...model,
       model_name: 'unavailable-vip-model',
-      retail_prices_by_group: {},
+      sales_prices_by_group: {},
     }
     const quoteRequiredVipModel: PricingModel = {
       ...model,
       model_name: 'quote-required-vip-model',
       lowest_price: undefined,
-      retail_prices_by_group: undefined,
-      pricing_source: 'v2_dynamic',
+      sales_prices_by_group: undefined,
+      pricing_source: 'sales_price_book',
       pricing_groups: ['vip'],
     }
 

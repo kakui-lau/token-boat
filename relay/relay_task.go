@@ -20,7 +20,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -204,7 +203,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 4. 价格计算：任务请求必须由完整 V2 价格链接管。无法在提交前
 	// 安全确定计费用量时明确拒绝，禁止静默回退旧计费。
 	info.OriginModelName = modelName
-	if !pricingruntime.HasRuntimePricing(info.UsingGroup, info.OriginModelName) {
+	if !pricingruntime.HasCompletePricing(info.UsingGroup, info.OriginModelName) {
 		return nil, service.TaskErrorWrapper(
 			fmt.Errorf("model %s has no complete v2 price chain", info.OriginModelName),
 			"model_price_error",
@@ -213,23 +212,17 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	v2CandidateSelected := info.DynamicPricingSnapshot != nil
 	if !v2CandidateSelected {
-		for _, bundle := range pricingruntime.GetRuntimeCandidateBundles(info.UsingGroup, info.OriginModelName) {
+		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
 			if bundle.ChannelModel.ChannelId == info.ChannelId {
 				v2CandidateSelected = true
 				break
 			}
 		}
 		fixedPricingSupported := pricingruntime.SupportsFixedVideoTaskPricing(
+			info.UserId,
 			info.UsingGroup,
 			info.OriginModelName,
 		)
-		if setting.SalesPriceBookRuntimeEnabled {
-			fixedPricingSupported = pricingruntime.SupportsFixedVideoTaskSalesPricing(
-				info.UserId,
-				info.UsingGroup,
-				info.OriginModelName,
-			)
-		}
 		if v2CandidateSelected &&
 			!fixedPricingSupported &&
 			!hasSafePreSubmitTaskUsage(info) {

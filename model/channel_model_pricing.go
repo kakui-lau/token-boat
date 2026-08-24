@@ -27,8 +27,8 @@ type ChannelModelImportResult struct {
 }
 
 // ChannelModel is the stable identity of one logical model supplied by one
-// channel. Runtime routing remains on Ability until the V2 feature flag is
-// enabled.
+// channel. Ability controls route availability; active purchase pricing
+// controls commercial availability.
 type ChannelModel struct {
 	Id                int    `json:"id"`
 	ChannelId         int    `json:"channel_id" gorm:"not null;uniqueIndex:uk_channel_model_upstream,priority:1;index"`
@@ -41,7 +41,6 @@ type ChannelModel struct {
 	DataPolicy        string `json:"data_policy" gorm:"type:varchar(32)"`
 	CapabilityConfig  string `json:"capability_config" gorm:"type:text"`
 	RoutingTags       string `json:"routing_tags" gorm:"type:varchar(255)"`
-	RuntimeMode       string `json:"runtime_mode" gorm:"type:varchar(16);not null;index"`
 	CreatedAt         int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt         int64  `json:"updated_at" gorm:"bigint"`
 }
@@ -50,9 +49,6 @@ func (m *ChannelModel) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	m.CreatedAt = now
 	m.UpdatedAt = now
-	if m.RuntimeMode == "" {
-		m.RuntimeMode = "legacy"
-	}
 	return nil
 }
 
@@ -144,37 +140,6 @@ type ChannelModelPurchasePriceVersion struct {
 	Remark                  string `json:"remark" gorm:"type:varchar(255)"`
 }
 
-type ChannelModelRetailPriceVersion struct {
-	Id                      int    `json:"id"`
-	ChannelModelId          int    `json:"channel_model_id" gorm:"not null;uniqueIndex:uk_retail_price_version,priority:1;index"`
-	PurchasePriceVersionId  int    `json:"purchase_price_version_id" gorm:"not null;index"`
-	BillingMode             string `json:"billing_mode" gorm:"type:varchar(32);not null"`
-	PriceStructure          string `json:"price_structure" gorm:"type:varchar(16);not null"`
-	PriceComponents         string `json:"price_components" gorm:"type:text"`
-	InputUnitPrice          string `json:"input_unit_price" gorm:"type:text"`
-	OutputUnitPrice         string `json:"output_unit_price" gorm:"type:text"`
-	CacheReadUnitPrice      string `json:"cache_read_unit_price" gorm:"type:text"`
-	CacheWriteUnitPrice     string `json:"cache_write_unit_price" gorm:"type:text"`
-	PriceUnit               string `json:"price_unit" gorm:"type:varchar(32)"`
-	RetailBillingExpr       string `json:"retail_billing_expr" gorm:"type:text;not null"`
-	RetailExprHash          string `json:"retail_expr_hash" gorm:"type:varchar(64);not null"`
-	ExpressionSource        string `json:"expression_source" gorm:"type:varchar(16);not null"`
-	ExpressionSchemaVersion string `json:"expression_schema_version" gorm:"type:varchar(16);not null"`
-	Currency                string `json:"currency" gorm:"type:varchar(8);not null"`
-	TotalVariableCostRate   string `json:"total_variable_cost_rate" gorm:"type:decimal(18,12);not null"`
-	EffectiveTaxRate        string `json:"effective_tax_rate" gorm:"type:decimal(18,12);not null"`
-	TargetNetMargin         string `json:"target_net_margin" gorm:"type:decimal(18,12);not null"`
-	MinimumMarginRate       string `json:"minimum_margin_rate" gorm:"type:decimal(18,12);not null"`
-	Version                 int64  `json:"version" gorm:"bigint;not null;uniqueIndex:uk_retail_price_version,priority:2"`
-	Status                  string `json:"status" gorm:"type:varchar(16);not null;index"`
-	EffectiveFrom           int64  `json:"effective_from" gorm:"bigint;not null;index"`
-	EffectiveTo             int64  `json:"effective_to" gorm:"bigint;index"`
-	CreatedBy               int    `json:"created_by"`
-	CreatedAt               int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt               int64  `json:"updated_at" gorm:"bigint"`
-	Remark                  string `json:"remark" gorm:"type:varchar(255)"`
-}
-
 type RequestPricingSnapshot struct {
 	Id                      int     `json:"id"`
 	RequestId               string  `json:"request_id" gorm:"type:varchar(64);not null;uniqueIndex"`
@@ -182,7 +147,6 @@ type RequestPricingSnapshot struct {
 	ModelId                 int     `json:"model_id" gorm:"not null;index"`
 	ChannelModelId          int     `json:"channel_model_id" gorm:"not null;index"`
 	PurchasePriceVersionId  int     `json:"purchase_price_version_id" gorm:"not null"`
-	RetailPriceVersionId    int     `json:"retail_price_version_id" gorm:"not null"`
 	SalesPriceBookId        int     `json:"sales_price_book_id" gorm:"index"`
 	SalesPriceBookVersionId int     `json:"sales_price_book_version_id" gorm:"index"`
 	SalesPriceBookItemId    int     `json:"sales_price_book_item_id" gorm:"index"`
@@ -210,8 +174,8 @@ type RequestPricingSnapshot struct {
 	ProviderCostConfirmedAt int64   `json:"provider_cost_confirmed_at" gorm:"bigint;index"`
 	CostVariance            string  `json:"cost_variance" gorm:"type:decimal(36,18)"`
 	GrossMargin             string  `json:"gross_margin" gorm:"type:decimal(36,18)"`
-	RetailAmount            string  `json:"retail_amount" gorm:"type:decimal(36,18);not null"`
-	BaseRetailAmount        string  `json:"base_retail_amount" gorm:"type:decimal(36,18)"`
+	SalesAmount             string  `json:"sales_amount" gorm:"type:decimal(36,18);not null"`
+	BaseSalesAmount         string  `json:"base_sales_amount" gorm:"type:decimal(36,18)"`
 	EstimatedCustomerCharge string  `json:"estimated_customer_charge" gorm:"type:decimal(36,18)"`
 	CustomerCharge          *string `json:"customer_charge" gorm:"type:decimal(36,18)"`
 	AppliedGroup            string  `json:"applied_group" gorm:"type:varchar(64)"`
@@ -286,19 +250,6 @@ func (v *ChannelModelPurchasePriceVersion) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
-func (v *ChannelModelRetailPriceVersion) BeforeCreate(tx *gorm.DB) error {
-	setPricingVersionCreateTimes(&v.CreatedAt, &v.UpdatedAt)
-	return nil
-}
-
-func (v *ChannelModelRetailPriceVersion) BeforeUpdate(tx *gorm.DB) error {
-	if err := rejectPublishedPricingVersionMutation(tx, v.Id, v.Status); err != nil {
-		return err
-	}
-	v.UpdatedAt = common.GetTimestamp()
-	return nil
-}
-
 func (s *RequestPricingSnapshot) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
@@ -315,11 +266,11 @@ func (s *RequestPricingSnapshot) BeforeCreate(tx *gorm.DB) error {
 	if s.GrossMargin == "" {
 		s.GrossMargin = "0"
 	}
-	if s.BaseRetailAmount == "" {
-		s.BaseRetailAmount = s.RetailAmount
+	if s.BaseSalesAmount == "" {
+		s.BaseSalesAmount = s.SalesAmount
 	}
 	if s.EstimatedCustomerCharge == "" {
-		s.EstimatedCustomerCharge = s.RetailAmount
+		s.EstimatedCustomerCharge = s.SalesAmount
 	}
 	if s.AppliedGroupRatio == "" {
 		s.AppliedGroupRatio = "1"
@@ -480,7 +431,6 @@ func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 					Status:            status,
 					Priority:          item.priority,
 					Weight:            item.weight,
-					RuntimeMode:       "legacy",
 				}).Error; err != nil {
 					return err
 				}
@@ -529,12 +479,6 @@ func GetChannelModelForUpdate(tx *gorm.DB, id int) (ChannelModel, error) {
 
 func GetPurchasePriceVersionForUpdate(tx *gorm.DB, id int) (ChannelModelPurchasePriceVersion, error) {
 	var version ChannelModelPurchasePriceVersion
-	err := lockForUpdate(tx).First(&version, id).Error
-	return version, err
-}
-
-func GetRetailPriceVersionForUpdate(tx *gorm.DB, id int) (ChannelModelRetailPriceVersion, error) {
-	var version ChannelModelRetailPriceVersion
 	err := lockForUpdate(tx).First(&version, id).Error
 	return version, err
 }
@@ -633,33 +577,6 @@ func ActivatePurchasePriceVersion(tx *gorm.DB, version ChannelModelPurchasePrice
 	}
 	if result.RowsAffected != 1 {
 		return errors.New("purchase price version is no longer publishable")
-	}
-	return nil
-}
-
-func ActivateRetailPriceVersion(tx *gorm.DB, version ChannelModelRetailPriceVersion, now int64) error {
-	if err := tx.Model(&ChannelModelRetailPriceVersion{}).
-		Where("channel_model_id = ? AND status = ? AND id <> ?", version.ChannelModelId, PricingVersionStatusActive, version.Id).
-		UpdateColumns(map[string]any{
-			"status":       PricingVersionStatusExpired,
-			"effective_to": now,
-			"updated_at":   now,
-		}).Error; err != nil {
-		return err
-	}
-	result := tx.Model(&ChannelModelRetailPriceVersion{}).
-		Where("id = ? AND status = ?", version.Id, PricingVersionStatusDraft).
-		UpdateColumns(map[string]any{
-			"status":         PricingVersionStatusActive,
-			"effective_from": now,
-			"effective_to":   0,
-			"updated_at":     now,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return errors.New("retail price version is no longer publishable")
 	}
 	return nil
 }

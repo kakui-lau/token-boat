@@ -31,7 +31,7 @@ import { getLobeIcon } from '@/lib/lobe-icon'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { parseTags } from '../lib/filters'
 import {
-  getDisplayedRetailPrice,
+  getDisplayedSalesPrice,
   isModelAvailableForGroup,
 } from '../lib/model-helpers'
 import type { PricingModel, TokenUnit } from '../types'
@@ -125,7 +125,7 @@ export function usePricingColumns(
       enableSorting: false,
     },
 
-    // Lowest active retail price across usable channels
+    // Current customer-facing sales price from the applicable price book.
     {
       accessorKey: 'lowest_price',
       meta: { label: t('Lowest item price') },
@@ -134,7 +134,7 @@ export function usePricingColumns(
       ),
       cell: ({ row }) => (
         <PublicPriceSummaryCompact
-          summary={getDisplayedRetailPrice(row.original, options.selectedGroup)}
+          summary={getDisplayedSalesPrice(row.original, options.selectedGroup)}
           tokenUnit={tokenUnit}
           showRechargePrice={options.showRechargePrice}
           priceRate={options.priceRate}

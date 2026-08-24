@@ -42,10 +42,10 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 	}
 	selected := info.DynamicPricingSnapshot.Selected
 	if selected == nil {
-		return errors.New("v2 pricing has no selected candidate")
+		return errors.New("pricing has no selected candidate")
 	}
 	if info.RequestId == "" {
-		return errors.New("v2 pricing requires a request id")
+		return errors.New("pricing requires a request id")
 	}
 	estimatedUsage, err := sanitizedPricingUsageJSON(
 		info.DynamicPricingSnapshot.EstimatedUsage,
@@ -59,13 +59,12 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		ModelId:                 selected.ModelId,
 		ChannelModelId:          selected.ChannelModelId,
 		PurchasePriceVersionId:  selected.PurchasePriceVersion,
-		RetailPriceVersionId:    selected.RetailPriceVersion,
 		SalesPriceBookId:        selected.SalesPriceBookId,
 		SalesPriceBookVersionId: selected.SalesPriceBookVersionId,
 		SalesPriceBookItemId:    selected.SalesPriceBookItemId,
 		PriceBookAssignmentId:   selected.PriceBookAssignmentId,
-		SalesBillingExpr:        selected.RetailExpression,
-		SalesExprHash:           selected.RetailExpressionHash,
+		SalesBillingExpr:        selected.SalesExpression,
+		SalesExprHash:           selected.SalesExpressionHash,
 		SalesPricingSource:      selected.SalesPricingSource,
 		SalesPriceResolvedAt:    common.GetTimestamp(),
 		BillingMode:             selected.BillingMode,
@@ -77,8 +76,8 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		PurchaseCost:            selected.EstimatedPurchaseUSD,
 		ProviderCostMode:        selected.ProviderCostMode,
 		ProviderCostStatus:      model.InitialProviderCostStatus(selected.ProviderCostMode),
-		RetailAmount:            selected.EstimatedRetailUSD,
-		BaseRetailAmount:        selected.EstimatedRetailUSD,
+		SalesAmount:             selected.EstimatedSalesUSD,
+		BaseSalesAmount:         selected.EstimatedSalesUSD,
 		EstimatedCustomerCharge: selected.EstimatedCustomerChargeUSD,
 		AppliedGroup:            info.DynamicPricingSnapshot.Group,
 		AppliedGroupRatio:       decimal.NewFromFloat(info.DynamicPricingSnapshot.GroupRatio).String(),
@@ -138,7 +137,7 @@ func SyncRequestPricingPreConsume(info *relaycommon.RelayInfo) error {
 		return result.Error
 	}
 	if result.RowsAffected != 1 {
-		return errors.New("v2 pricing snapshot was not found or already finalized")
+		return errors.New("pricing snapshot was not found or already finalized")
 	}
 	return nil
 }
@@ -153,10 +152,10 @@ func SettleRequestPricingSnapshot(
 	}
 	selected := info.DynamicPricingSnapshot.Selected
 	if selected == nil {
-		return errors.New("v2 pricing has no selected settlement candidate")
+		return errors.New("pricing has no selected settlement candidate")
 	}
 	if usage == nil {
-		return errors.New("v2 pricing settlement requires usage")
+		return errors.New("pricing settlement requires usage")
 	}
 	var actualUsage pricingengine.Usage
 	if err := common.UnmarshalJsonStr(
@@ -192,15 +191,15 @@ func SettleRequestPricingSnapshot(
 		markPricingSnapshotPending(info.RequestId, "purchase_evaluation_failed", err.Error())
 		return fmt.Errorf("evaluate settled purchase price: %w", err)
 	}
-	retail, err := pricingengine.EvaluateWithRequest(
-		selected.RetailExpression,
-		selected.RetailExpressionHash,
+	sales, err := pricingengine.EvaluateWithRequest(
+		selected.SalesExpression,
+		selected.SalesExpressionHash,
 		actualUsage,
 		requestInput,
 	)
 	if err != nil {
-		markPricingSnapshotPending(info.RequestId, "retail_evaluation_failed", err.Error())
-		return fmt.Errorf("evaluate settled retail price: %w", err)
+		markPricingSnapshotPending(info.RequestId, "sales_evaluation_failed", err.Error())
+		return fmt.Errorf("evaluate settled sales price: %w", err)
 	}
 	if settledQuota < 0 {
 		err = errors.New("settled quota cannot be negative")
@@ -250,13 +249,12 @@ func SettleRequestPricingSnapshot(
 		Updates(map[string]any{
 			"channel_model_id":          selected.ChannelModelId,
 			"purchase_price_version_id": selected.PurchasePriceVersion,
-			"retail_price_version_id":   selected.RetailPriceVersion,
 			"billing_mode":              selected.BillingMode,
 			"actual_usage":              string(usageJSON),
 			"settled_quota":             int64(settledQuota),
 			"purchase_cost":             purchase.Amount.String(),
-			"retail_amount":             retail.Amount.String(),
-			"base_retail_amount":        retail.Amount.String(),
+			"sales_amount":              sales.Amount.String(),
+			"base_sales_amount":         sales.Amount.String(),
 			"customer_charge":           customerCharge.String(),
 			"applied_group":             info.DynamicPricingSnapshot.Group,
 			"applied_group_ratio":       decimal.NewFromFloat(info.DynamicPricingSnapshot.GroupRatio).String(),
@@ -275,7 +273,7 @@ func SettleRequestPricingSnapshot(
 		return result.Error
 	}
 	if result.RowsAffected != 1 {
-		return errors.New("v2 pricing snapshot was not found or already settled")
+		return errors.New("pricing snapshot was not found or already settled")
 	}
 	return nil
 }
@@ -503,7 +501,7 @@ func MarkRequestPricingRefunded(requestId string) error {
 	if status == PricingSnapshotStatusRefunded {
 		return nil
 	}
-	return errors.New("v2 pricing snapshot was not found or cannot be refunded")
+	return errors.New("pricing snapshot was not found or cannot be refunded")
 }
 
 func ReconcileStaleRequestPricingSnapshots(staleBefore int64) (int64, error) {

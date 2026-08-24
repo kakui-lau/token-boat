@@ -178,7 +178,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		initialGroup := relayInfo.UsingGroup
 		for _, fallbackGroup := range service.GetUserAutoGroup(relayInfo.UserGroup) {
 			if fallbackGroup == initialGroup ||
-				!pricingruntime.HasRuntimePricing(fallbackGroup, relayInfo.OriginModelName) {
+				!pricingruntime.HasCompletePricing(fallbackGroup, relayInfo.OriginModelName) {
 				continue
 			}
 			common.SetContextKey(c, constant.ContextKeyAutoGroup, fallbackGroup)
@@ -626,7 +626,7 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return false
 	}
 	// A caller that explicitly selects a channel expects both the upstream
-	// request and its frozen V2 pricing snapshot to stay on that channel.
+	// request and its frozen pricing snapshot to stay on that channel.
 	// Channel-scoped errors are normally retried, so this guard must run before
 	// IsChannelError or a failed specified channel can silently fall through to
 	// another V2 candidate.

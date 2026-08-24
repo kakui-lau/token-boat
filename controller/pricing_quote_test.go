@@ -37,13 +37,13 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
 		Id: 82, ChannelId: 83, ModelId: 81, UpstreamModelName: "public-quote-model",
-		Status: 1, RuntimeMode: pricingruntime.RuntimeModeV2,
+		Status: 1,
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.Ability{
 		Group: "default", Model: "public-quote-model", ChannelId: 83, Enabled: true,
 	}).Error)
 	purchaseExpr := `v2:tier("base", p * 1 / 1000000)`
-	retailExpr := `v2:tier("base", p * 2 / 1000000)`
+	salesExpr := `v2:tier("base", p * 2 / 1000000)`
 	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
 		Id: 84, ChannelModelId: 82, BillingMode: "token",
 		PricingMode: "fixed_unit_price", PriceStructure: "flat",
@@ -52,14 +52,26 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 		ExpressionSchemaVersion: "v2",
 		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
-		Id: 85, ChannelModelId: 82, PurchasePriceVersionId: 84,
-		BillingMode: "token", PriceStructure: "flat", RetailBillingExpr: retailExpr,
-		RetailExprHash:          billingexpr.ExprHashString(retailExpr),
-		ExpressionSchemaVersion: "v2",
-		Currency:                "USD", Version: 1, Status: model.PricingVersionStatusActive,
+	currentVersionID := 85
+	require.NoError(t, model.DB.Create(&model.SalesPriceBook{
+		Id: 85, Code: "toc-default", Name: "TOC Default", Audience: "toc",
+		Currency: "USD", Status: model.SalesPriceBookStatusEnabled,
+		CurrentVersionId: &currentVersionID,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookVersion{
+		Id: 85, PriceBookId: 85, Version: 1,
+		Status: model.SalesPriceBookVersionStatusActive, EffectiveFrom: 1,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
 		MinimumMarginRate: "0.1", TargetNetMargin: "0.2",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookItem{
+		Id: 85, PriceBookVersionId: 85, ModelId: 81, Status: "enabled",
+		BillingMode: "token", PriceStructure: "flat", SalesBillingExpr: salesExpr,
+		SalesExprHash:           billingexpr.ExprHashString(salesExpr),
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: 85,
 	}).Error)
 	pricingruntime.InvalidateCatalog()
 	require.NoError(t, pricingruntime.RefreshCatalog())
@@ -83,7 +95,7 @@ func TestQuotePricingReturnsOnlyUserFacingAmounts(t *testing.T) {
 	assert.Equal(t, true, response["success"])
 	data, ok := response["data"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "2", data["minimum_retail_amount"])
+	assert.Equal(t, "2", data["sales_amount"])
 	assert.Equal(t, "2", data["maximum_reservation_amount"])
 	assert.Equal(t, "default", data["group"])
 	assert.Equal(t, "internal-quote-alias", data["model_name"])

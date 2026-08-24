@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestDistributorRejectsModelWithoutCompleteV2PriceChain(t *testing.T) {
+func TestDistributorRejectsModelWithoutCompletePriceChain(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -28,7 +28,6 @@ func TestDistributorRejectsModelWithoutCompleteV2PriceChain(t *testing.T) {
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
 		&model.ChannelModelPurchasePriceVersion{},
-		&model.ChannelModelRetailPriceVersion{},
 	))
 	pricingruntime.InvalidateCatalog()
 	t.Cleanup(func() {
@@ -41,7 +40,7 @@ func TestDistributorRejectsModelWithoutCompleteV2PriceChain(t *testing.T) {
 	context.Request = httptest.NewRequest(
 		http.MethodPost,
 		"/v1/chat/completions",
-		strings.NewReader(`{"model":"missing-v2-model","messages":[]}`),
+		strings.NewReader(`{"model":"missing-priced-model","messages":[]}`),
 	)
 	context.Request.Header.Set("Content-Type", "application/json")
 	context.Set(string(constant.ContextKeyUsingGroup), "default")
@@ -49,7 +48,7 @@ func TestDistributorRejectsModelWithoutCompleteV2PriceChain(t *testing.T) {
 	Distribute()(context)
 
 	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "V2")
+	assert.Contains(t, recorder.Body.String(), "采购价")
 	assert.True(t, context.IsAborted())
 }
 
@@ -65,7 +64,6 @@ func TestDistributorResolvesSystemAliasBeforePricing(t *testing.T) {
 		&model.ChannelModel{},
 		&model.OfficialModelPriceVersion{},
 		&model.ChannelModelPurchasePriceVersion{},
-		&model.ChannelModelRetailPriceVersion{},
 	))
 	target := model.Model{
 		ModelName:  "openai/gpt-5.6-terra",

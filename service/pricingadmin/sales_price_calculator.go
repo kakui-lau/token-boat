@@ -6,39 +6,41 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-type RetailPriceCalculator struct {
+var maxSalesFactor = decimal.NewFromInt(1_000_000)
+
+const salesSellingPriceDecimalPlaces int32 = 5
+
+type SalesPriceCalculator struct {
 	VariableCostRate decimal.Decimal
 	TaxRate          decimal.Decimal
 	TargetNetMargin  decimal.Decimal
 }
 
-const retailSellingPriceDecimalPlaces int32 = 5
-
-func NewRetailPriceCalculator(
+func NewSalesPriceCalculator(
 	variableCostRate string,
 	taxRate string,
 	targetNetMargin string,
-) (RetailPriceCalculator, error) {
+) (SalesPriceCalculator, error) {
 	vcr, err := validateRate("total_variable_cost_rate", variableCostRate)
 	if err != nil {
-		return RetailPriceCalculator{}, err
+		return SalesPriceCalculator{}, err
 	}
 	tax, err := validateRate("effective_tax_rate", taxRate)
 	if err != nil {
-		return RetailPriceCalculator{}, err
+		return SalesPriceCalculator{}, err
 	}
 	margin, err := validateRate("target_net_margin", targetNetMargin)
 	if err != nil {
-		return RetailPriceCalculator{}, err
+		return SalesPriceCalculator{}, err
 	}
-	return RetailPriceCalculator{
+	return SalesPriceCalculator{
 		VariableCostRate: vcr,
 		TaxRate:          tax,
 		TargetNetMargin:  margin,
 	}, nil
 }
 
-func (c RetailPriceCalculator) SellingFactor() (decimal.Decimal, error) {
+func (c SalesPriceCalculator) SellingFactor() (decimal.Decimal, error) {
 	one := decimal.NewFromInt(1)
 	taxTerm := one.Sub(c.TaxRate)
 	denominator := one.Sub(c.VariableCostRate).
@@ -47,18 +49,18 @@ func (c RetailPriceCalculator) SellingFactor() (decimal.Decimal, error) {
 	if !denominator.IsPositive() {
 		maximumTheoreticalMargin := one.Sub(c.VariableCostRate).Mul(taxTerm)
 		return decimal.Zero, errors.New(
-			"VCR, tax rate and target margin produce a non-positive retail denominator; " +
+			"VCR, tax rate and target margin produce a non-positive sales-price denominator; " +
 				"target margin must be lower than " + maximumTheoreticalMargin.String(),
 		)
 	}
 	factor := taxTerm.Div(denominator)
-	if factor.GreaterThan(maxRetailFactor) {
-		return decimal.Zero, errors.New("retail selling factor exceeds the supported maximum")
+	if factor.GreaterThan(maxSalesFactor) {
+		return decimal.Zero, errors.New("sales-price factor exceeds the supported maximum")
 	}
 	return factor, nil
 }
 
-func (c RetailPriceCalculator) CalculateSellingPrice(
+func (c SalesPriceCalculator) CalculateSellingPrice(
 	procurementCost decimal.Decimal,
 ) (decimal.Decimal, error) {
 	if procurementCost.IsNegative() {
@@ -68,5 +70,5 @@ func (c RetailPriceCalculator) CalculateSellingPrice(
 	if err != nil {
 		return decimal.Zero, err
 	}
-	return procurementCost.Mul(factor).RoundCeil(retailSellingPriceDecimalPlaces), nil
+	return procurementCost.Mul(factor).RoundCeil(salesSellingPriceDecimalPlaces), nil
 }

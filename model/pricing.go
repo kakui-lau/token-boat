@@ -41,7 +41,7 @@ type Pricing struct {
 	PricingSource          string                         `json:"pricing_source,omitempty"`
 	OfficialPrice          *PublicPriceSummary            `json:"official_price,omitempty"`
 	LowestPrice            *PublicPriceSummary            `json:"lowest_price,omitempty"`
-	RetailPricesByGroup    map[string]*PublicPriceSummary `json:"retail_prices_by_group,omitempty"`
+	SalesPricesByGroup     map[string]*PublicPriceSummary `json:"sales_prices_by_group,omitempty"`
 	PricingGroups          []string                       `json:"pricing_groups,omitempty"`
 	Available              bool                           `json:"available"`
 	AvailabilityStatus     string                         `json:"availability_status"`

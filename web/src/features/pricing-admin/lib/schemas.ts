@@ -40,15 +40,6 @@ const optionalPositiveDecimal = z
     'Enter a positive discount'
   )
 
-const requiredPercentage = z
-  .string()
-  .trim()
-  .refine(
-    (value) =>
-      /^\d+(\.\d+)?$/.test(value) && Number(value) >= 0 && Number(value) < 100,
-    'Enter a percentage from 0 to less than 100'
-  )
-
 export const officialPriceSchema = z
   .object({
     currency: z.literal('USD'),
@@ -164,27 +155,5 @@ export const purchasePriceSchema = z
     }
   })
 
-export const retailPriceSchema = z
-  .object({
-    purchase_price_version_id: z
-      .string()
-      .min(1, 'Select a purchase price version'),
-    total_variable_cost_rate: requiredPercentage,
-    effective_tax_rate: requiredPercentage,
-    target_net_margin: requiredPercentage,
-    minimum_margin_rate: requiredPercentage,
-    remark: z.string().trim(),
-  })
-  .superRefine((value, context) => {
-    if (Number(value.minimum_margin_rate) > Number(value.target_net_margin)) {
-      context.addIssue({
-        code: 'custom',
-        path: ['minimum_margin_rate'],
-        message: 'Margin floor cannot exceed target margin',
-      })
-    }
-  })
-
 export type OfficialPriceForm = z.infer<typeof officialPriceSchema>
 export type PurchasePriceForm = z.infer<typeof purchasePriceSchema>
-export type RetailPriceForm = z.infer<typeof retailPriceSchema>

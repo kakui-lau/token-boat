@@ -573,8 +573,8 @@ func TestRefundTaskQuotaFinalizesV2PricingSnapshot(t *testing.T) {
 	snapshot := model.RequestPricingSnapshot{
 		RequestId: "request-task-refund", UserId: userID,
 		ModelId: 1, ChannelModelId: 1,
-		PurchasePriceVersionId: 1, RetailPriceVersionId: 1,
-		BillingMode: "video_duration", PurchaseCost: "0.2", RetailAmount: "1",
+		PurchasePriceVersionId: 1, SalesPriceBookVersionId: 1,
+		BillingMode: "video_duration", PurchaseCost: "0.2", SalesAmount: "1",
 		EstimatedCustomerCharge: "1",
 		Currency:                "USD", ReservedQuota: preConsumed,
 		Status: pricingruntime.PricingSnapshotStatusReserved,

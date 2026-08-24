@@ -21,49 +21,37 @@ import (
 
 type channelModelAdminRow struct {
 	model.ChannelModel
-	ChannelName                string `json:"channel_name"`
-	ModelName                  string `json:"model_name"`
-	RoutingEnabled             bool   `json:"routing_enabled"`
-	ActiveRetailPriceVersionId int    `json:"active_retail_price_version_id"`
-	ActiveRetailPriceVersion   int64  `json:"active_retail_price_version"`
+	ChannelName                  string `json:"channel_name"`
+	ModelName                    string `json:"model_name"`
+	RoutingEnabled               bool   `json:"routing_enabled"`
+	ActivePurchasePriceVersionId int    `json:"active_purchase_price_version_id"`
+	ActivePurchasePriceVersion   int64  `json:"active_purchase_price_version"`
+	PurchasePricingMode          string `json:"purchase_pricing_mode"`
+	PurchaseDiscount             string `json:"purchase_discount"`
 }
 
 type channelPricingExportRow struct {
-	ChannelModelId             int
-	ModelId                    int
-	ModelName                  string
-	ChannelName                string
-	UpstreamModelName          string
-	RuntimeMode                string
-	OfficialPriceComponents    string
-	OfficialBillingExpr        string
-	OfficialCurrency           string
-	OfficialPriceVersionId     sql.NullInt64
-	OfficialPriceVersion       sql.NullInt64
-	PurchasePriceVersionId     sql.NullInt64
-	PurchasePriceVersion       sql.NullInt64
-	PurchasePricingMode        string
-	PurchaseDiscount           string
-	PurchaseQuoteSpec          string
-	PurchaseBillingMode        string
-	PurchasePriceStructure     string
-	PurchasePriceComponents    string
-	PurchaseBillingExpr        string
-	PurchaseCurrency           string
-	PurchasePriceUnit          string
-	RetailPriceVersionId       sql.NullInt64
-	RetailPriceVersion         sql.NullInt64
-	RetailPriceComponents      string
-	RetailBillingExpr          string
-	RetailCurrency             string
-	TotalVariableCostRate      sql.NullString
-	EffectiveTaxRate           sql.NullString
-	TargetNetMargin            sql.NullString
-	// VCR 的三个分量（百分比数字），由销售价格生成器流程填充，用于导出 CSV 分列。
-	PaymentProcessingFeeRate sql.NullString
-	DistributionFeeRate      sql.NullString
-	OperationsLaborCostRate  sql.NullString
-	ActiveRetailPriceVersionId int
+	ChannelModelId          int
+	ModelId                 int
+	ModelName               string
+	ChannelName             string
+	UpstreamModelName       string
+	OfficialPriceComponents string
+	OfficialBillingExpr     string
+	OfficialCurrency        string
+	OfficialPriceVersionId  sql.NullInt64
+	OfficialPriceVersion    sql.NullInt64
+	PurchasePriceVersionId  sql.NullInt64
+	PurchasePriceVersion    sql.NullInt64
+	PurchasePricingMode     string
+	PurchaseDiscount        string
+	PurchaseQuoteSpec       string
+	PurchaseBillingMode     string
+	PurchasePriceStructure  string
+	PurchasePriceComponents string
+	PurchaseBillingExpr     string
+	PurchaseCurrency        string
+	PurchasePriceUnit       string
 }
 
 type channelModelSelectionInput struct {
@@ -74,44 +62,6 @@ type pricingCSVPricePoint struct {
 	Key   string
 	Label string
 	Price decimal.Decimal
-}
-
-type pricingCSVComponentRatio struct {
-	Label string
-	Ratio decimal.Decimal
-}
-
-type channelPricingComparisonGroup struct {
-	ModelId   int
-	ModelName string
-	Channels  []channelPricingExportRow
-}
-
-type pricingComparisonChannelResult struct {
-	ChannelModelId   int    `json:"channel_model_id"`
-	ChannelName      string `json:"channel_name"`
-	PurchaseDiscount string `json:"purchase_discount"`
-	RetailDiscount   string `json:"retail_discount"`
-}
-
-type pricingComparisonRowResult struct {
-	ModelId                 int                              `json:"model_id"`
-	ModelName               string                           `json:"model_name"`
-	EffectiveRateDetails    string                           `json:"effective_rate_details"`
-	// 费率分量展示字段（已格式化，如 "4%"、"16%"），供导出 CSV 分列使用。
-	PaymentProcessingFeeRatePercent string `json:"payment_processing_fee_rate_percent,omitempty"`
-	DistributionFeeRatePercent      string `json:"distribution_fee_rate_percent,omitempty"`
-	OperationsLaborCostRatePercent  string `json:"operations_labor_cost_rate_percent,omitempty"`
-	EffectiveTaxRatePercent         string `json:"effective_tax_rate_percent,omitempty"`
-	TargetNetMarginPercent          string `json:"target_net_margin_percent,omitempty"`
-	MinimumRetailDiscount   string                           `json:"minimum_retail_discount"`
-	MinimumPurchaseDiscount string                           `json:"minimum_purchase_discount"`
-	Channels                []pricingComparisonChannelResult `json:"channels"`
-}
-
-type pricingComparisonResult struct {
-	Items               []pricingComparisonRowResult `json:"items"`
-	MaximumChannelCount int                          `json:"maximum_channel_count"`
 }
 
 var pricingCSVFlatComponents = []struct {
@@ -176,11 +126,6 @@ type pricingAdminCatalogOption struct {
 	Id                int    `json:"id"`
 	Name              string `json:"name"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
-}
-
-type pricingModelRuntimeInput struct {
-	ModelName   string `json:"model_name"`
-	RuntimeMode string `json:"runtime_mode"`
 }
 
 type requestPricingSnapshotAdminRow struct {
@@ -410,36 +355,6 @@ func AdminListPricingCircuitEvents(c *gin.Context) {
 	})
 }
 
-func AdminSetPricingModelRuntime(c *gin.Context) {
-	var input pricingModelRuntimeInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	input.ModelName = strings.TrimSpace(input.ModelName)
-	if input.ModelName == "" {
-		common.ApiErrorMsg(c, "模型名称不能为空")
-		return
-	}
-	if input.RuntimeMode != pricingruntime.RuntimeModeV2 {
-		common.ApiErrorMsg(c, "运行时只允许启用 V2，不允许回退旧版")
-		return
-	}
-	updated, err := pricingruntime.SetModelRuntimeMode(input.ModelName, input.RuntimeMode)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	recordManageAudit(c, "pricing.model_runtime.update", map[string]interface{}{
-		"model_name": input.ModelName, "runtime_mode": input.RuntimeMode,
-		"channel_model_count": updated,
-	})
-	common.ApiSuccess(c, gin.H{
-		"model_name": input.ModelName, "runtime_mode": input.RuntimeMode,
-		"updated": updated,
-	})
-}
-
 func AdminListPricingCatalogOptions(c *gin.Context) {
 	var channels []pricingAdminCatalogOption
 	if err := model.DB.Model(&model.Channel{}).
@@ -463,15 +378,6 @@ func AdminListPricingCatalogOptions(c *gin.Context) {
 		}
 	}
 	common.ApiSuccess(c, gin.H{"channels": channels, "models": models})
-}
-
-func AdminListModelPriceOverview(c *gin.Context) {
-	items, err := pricingadmin.ListModelPriceOverview(c.Query("keyword"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, items)
 }
 
 func AdminListOfficialPriceOverview(c *gin.Context) {
@@ -502,11 +408,14 @@ func AdminListChannelModels(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	query = joinChannelPurchasePrices(query)
 	query = query.Select(
 		"channel_models.*, channels.name AS channel_name, models.model_name AS model_name, "+
 			"CASE WHEN EXISTS (SELECT 1 FROM abilities WHERE abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name AND abilities.enabled = ?) THEN 1 ELSE 0 END AS routing_enabled, "+
-			"COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id, "+
-			"COALESCE(active_retail.active_retail_price_version, 0) AS active_retail_price_version",
+			"COALESCE(active_purchase.active_purchase_price_version_id, 0) AS active_purchase_price_version_id, "+
+			"COALESCE(active_purchase.active_purchase_price_version, 0) AS active_purchase_price_version, "+
+			"COALESCE(selected_purchase.pricing_mode, '') AS purchase_pricing_mode, "+
+			"COALESCE(selected_purchase.purchase_discount, '') AS purchase_discount",
 		true,
 	)
 
@@ -591,27 +500,6 @@ func AdminExportSelectedChannelPurchaseDiscounts(c *gin.Context) {
 	writeSelectedPurchaseDiscountsCSV(c, rows)
 }
 
-func AdminExportSelectedPricingComparison(c *gin.Context) {
-	channelModelIds, ok := selectedChannelModelIds(c)
-	if !ok {
-		return
-	}
-	query, err := channelPricingExportQuery(c)
-	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
-		return
-	}
-	var rows []channelPricingExportRow
-	if err := query.
-		Where("channel_models.id IN ?", channelModelIds).
-		Order("models.model_name ASC, models.id ASC, channels.name ASC, channel_models.id ASC").
-		Scan(&rows).Error; err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	writeSelectedPricingComparisonCSV(c, rows)
-}
-
 func channelPricingExportQuery(c *gin.Context) (*gorm.DB, error) {
 	query, err := channelModelAdminQuery(c)
 	if err != nil {
@@ -620,7 +508,7 @@ func channelPricingExportQuery(c *gin.Context) (*gorm.DB, error) {
 	return joinChannelPurchasePrices(query).
 		Select(`channel_models.id AS channel_model_id, models.id AS model_id,
 			models.model_name, channels.name AS channel_name,
-			channel_models.upstream_model_name, channel_models.runtime_mode,
+			channel_models.upstream_model_name,
 			COALESCE(linked_official.price_components, current_official.price_components, '') AS official_price_components,
 			COALESCE(linked_official.billing_expr, current_official.billing_expr, '') AS official_billing_expr,
 			COALESCE(linked_official.currency, current_official.currency, '') AS official_currency,
@@ -636,16 +524,7 @@ func channelPricingExportQuery(c *gin.Context) (*gorm.DB, error) {
 			COALESCE(selected_purchase.price_components, '') AS purchase_price_components,
 			COALESCE(selected_purchase.purchase_billing_expr, '') AS purchase_billing_expr,
 			COALESCE(selected_purchase.currency, '') AS purchase_currency,
-			COALESCE(selected_purchase.price_unit, '') AS purchase_price_unit,
-			active_retail_detail.id AS retail_price_version_id,
-			active_retail_detail.version AS retail_price_version,
-			COALESCE(active_retail_detail.price_components, '') AS retail_price_components,
-			COALESCE(active_retail_detail.retail_billing_expr, '') AS retail_billing_expr,
-			COALESCE(active_retail_detail.currency, '') AS retail_currency,
-			active_retail_detail.total_variable_cost_rate,
-			active_retail_detail.effective_tax_rate,
-			active_retail_detail.target_net_margin,
-			COALESCE(active_retail.active_retail_price_version_id, 0) AS active_retail_price_version_id`).
+			COALESCE(selected_purchase.price_unit, '') AS purchase_price_unit`).
 		Joins("LEFT JOIN official_model_price_versions AS linked_official ON linked_official.id = selected_purchase.official_price_version_id").
 		Joins("LEFT JOIN model_official_prices ON model_official_prices.model_id = channel_models.model_id").
 		Joins("LEFT JOIN official_model_price_versions AS current_official ON current_official.id = model_official_prices.current_revision_id"), nil
@@ -660,22 +539,12 @@ func writeChannelPricingCSV(c *gin.Context, rows []channelPricingExportRow) {
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
 		"模型名称", "上游渠道", "上游模型", "官方价格", "官方价版本",
-		"采购价版本", "采购定价方式", "采购折扣", "销售价折扣（相对官方价）",
-		"销售价格", "销售价版本", "币种",
-		"变动成本率（VCR）", "利得税率（TR）", "目标净利润率（TM）",
+		"采购价版本", "采购定价方式", "采购折扣", "采购价格", "币种",
 	})
 	for _, row := range rows {
-		currency := row.RetailCurrency
+		currency := row.PurchaseCurrency
 		if currency == "" {
 			currency = row.OfficialCurrency
-		}
-		retailSummary := ""
-		if row.ActiveRetailPriceVersionId > 0 {
-			retailSummary = formatPricingComponentsForCSV(
-				row.RetailPriceComponents,
-				row.RetailBillingExpr,
-				row.RetailCurrency,
-			)
 		}
 		_ = writer.Write([]string{
 			spreadsheetSafeCSVCell(row.ModelName),
@@ -700,20 +569,12 @@ func writeChannelPricingCSV(c *gin.Context, rows []channelPricingExportRow) {
 				row.PurchaseDiscount,
 				row.PurchaseQuoteSpec,
 			),
-			formatRetailOfficialDiscountForCSV(
-				row.PurchasePricingMode,
-				row.OfficialPriceComponents,
-				row.RetailPriceComponents,
-			),
-			retailSummary,
-			formatPriceVersionForCSV(
-				row.RetailPriceVersionId,
-				row.RetailPriceVersion,
+			formatPricingComponentsForCSV(
+				row.PurchasePriceComponents,
+				row.PurchaseBillingExpr,
+				row.PurchaseCurrency,
 			),
 			currency,
-			formatPricingRatePercentage(row.TotalVariableCostRate.String),
-			formatPricingRatePercentage(row.EffectiveTaxRate.String),
-			formatPricingRatePercentage(row.TargetNetMargin.String),
 		})
 	}
 	writer.Flush()
@@ -739,273 +600,6 @@ func writeSelectedPurchaseDiscountsCSV(c *gin.Context, rows []channelPricingExpo
 		})
 	}
 	writer.Flush()
-}
-
-func writeSelectedPricingComparisonCSV(c *gin.Context, rows []channelPricingExportRow) {
-	writePricingComparisonCSV(
-		c,
-		"selected-pricing-comparison",
-		buildPricingComparisonResult(rows),
-	)
-}
-
-func buildPricingComparisonResult(rows []channelPricingExportRow) pricingComparisonResult {
-	groups := make([]channelPricingComparisonGroup, 0)
-	groupIndexes := make(map[int]int)
-	maximumChannelCount := 0
-	for _, row := range rows {
-		groupIndex, exists := groupIndexes[row.ModelId]
-		if !exists {
-			groupIndex = len(groups)
-			groupIndexes[row.ModelId] = groupIndex
-			groups = append(groups, channelPricingComparisonGroup{
-				ModelId: row.ModelId, ModelName: row.ModelName,
-			})
-		}
-		groups[groupIndex].Channels = append(groups[groupIndex].Channels, row)
-		maximumChannelCount = max(maximumChannelCount, len(groups[groupIndex].Channels))
-	}
-
-	result := pricingComparisonResult{
-		Items:               make([]pricingComparisonRowResult, 0, len(groups)),
-		MaximumChannelCount: maximumChannelCount,
-	}
-	for _, group := range groups {
-		hasMinimumPurchaseDiscount := false
-		hasMinimumRetailDiscount := false
-		minimumPurchaseDiscount := decimal.Zero
-		minimumRetailDiscount := decimal.Zero
-		rateDetails := make([]string, 0, len(group.Channels))
-		allRateDetailsEqual := true
-		for _, row := range group.Channels {
-			for _, discount := range purchaseDiscountMultipliersForCSV(
-				row.PurchasePricingMode,
-				row.PurchaseDiscount,
-				row.PurchaseQuoteSpec,
-			) {
-				if !hasMinimumPurchaseDiscount || discount.LessThan(minimumPurchaseDiscount) {
-					minimumPurchaseDiscount = discount
-					hasMinimumPurchaseDiscount = true
-				}
-			}
-			for _, discount := range retailOfficialRatiosForCSV(
-				row.OfficialPriceComponents,
-				row.RetailPriceComponents,
-			) {
-				if !hasMinimumRetailDiscount || discount.Ratio.LessThan(minimumRetailDiscount) {
-					minimumRetailDiscount = discount.Ratio
-					hasMinimumRetailDiscount = true
-				}
-			}
-			rateDetail := formatEffectivePricingRatesForCSV(row)
-			if len(rateDetails) > 0 && rateDetail != rateDetails[0] {
-				allRateDetailsEqual = false
-			}
-			rateDetails = append(rateDetails, rateDetail)
-		}
-
-		effectiveRateDetails := ""
-		if len(rateDetails) > 0 && allRateDetailsEqual {
-			effectiveRateDetails = rateDetails[0]
-		} else {
-			rateDetailParts := make([]string, 0, len(group.Channels))
-			for channelIndex, row := range group.Channels {
-				rateDetailParts = append(
-					rateDetailParts,
-					row.ChannelName+"："+rateDetails[channelIndex],
-				)
-			}
-			effectiveRateDetails = strings.Join(rateDetailParts, " | ")
-		}
-
-		minimumRetailDiscountText := ""
-		if hasMinimumRetailDiscount {
-			minimumRetailDiscountText = formatRetailOfficialMultiplierForCSV(minimumRetailDiscount)
-		}
-		minimumPurchaseDiscountText := ""
-		if hasMinimumPurchaseDiscount {
-			minimumPurchaseDiscountText = formatPurchaseDiscountMultiplierForCSV(minimumPurchaseDiscount.String(), false)
-		}
-		item := pricingComparisonRowResult{
-			ModelId:                 group.ModelId,
-			ModelName:               group.ModelName,
-			EffectiveRateDetails:    effectiveRateDetails,
-			PaymentProcessingFeeRatePercent: formatRateComponentPercent(
-				group.Channels[0].PaymentProcessingFeeRate.String,
-			),
-			DistributionFeeRatePercent: formatRateComponentPercent(
-				group.Channels[0].DistributionFeeRate.String,
-			),
-			OperationsLaborCostRatePercent: formatRateComponentPercent(
-				group.Channels[0].OperationsLaborCostRate.String,
-			),
-			EffectiveTaxRatePercent: formatPricingRatePercentage(
-				group.Channels[0].EffectiveTaxRate.String,
-			),
-			TargetNetMarginPercent: formatPricingRatePercentage(
-				group.Channels[0].TargetNetMargin.String,
-			),
-			MinimumRetailDiscount:   minimumRetailDiscountText,
-			MinimumPurchaseDiscount: minimumPurchaseDiscountText,
-			Channels:                make([]pricingComparisonChannelResult, 0, len(group.Channels)),
-		}
-		for _, row := range group.Channels {
-			item.Channels = append(
-				item.Channels,
-				pricingComparisonChannelResult{
-					ChannelModelId: row.ChannelModelId,
-					ChannelName:    row.ChannelName,
-					PurchaseDiscount: formatPurchaseDiscountForCSV(
-						row.PurchasePricingMode,
-						row.PurchaseDiscount,
-						row.PurchaseQuoteSpec,
-					),
-					RetailDiscount: formatRetailOfficialDiscountForCSV(
-						row.PurchasePricingMode,
-						row.OfficialPriceComponents,
-						row.RetailPriceComponents,
-					),
-				},
-			)
-		}
-		result.Items = append(result.Items, item)
-	}
-	return result
-}
-
-func writePricingComparisonCSV(c *gin.Context, filenamePrefix string, result pricingComparisonResult) {
-	filename := filenamePrefix + "-" + time.Now().UTC().Format("20060102-150405") + ".csv"
-	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	c.Status(200)
-	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
-	writer := csv.NewWriter(c.Writer)
-	header := []string{
-		"模型名称",
-		"生效费率详情（变动成本率VCR，利得税率TR，目标净利率TM）",
-		"最低销售折扣",
-		"最低采购折扣",
-	}
-	for channelIndex := 0; channelIndex < result.MaximumChannelCount; channelIndex++ {
-		channelLabel := pricingComparisonChannelLabel(channelIndex)
-		header = append(
-			header,
-			"渠道"+channelLabel+"名称",
-			"渠道"+channelLabel+"采购折扣",
-			"渠道"+channelLabel+"售出折扣",
-		)
-	}
-	_ = writer.Write(header)
-
-	for _, item := range result.Items {
-		record := []string{
-			spreadsheetSafeCSVCell(item.ModelName),
-			spreadsheetSafeCSVCell(item.EffectiveRateDetails),
-			item.MinimumRetailDiscount,
-			item.MinimumPurchaseDiscount,
-		}
-		for _, channel := range item.Channels {
-			record = append(
-				record,
-				spreadsheetSafeCSVCell(channel.ChannelName),
-				channel.PurchaseDiscount,
-				channel.RetailDiscount,
-			)
-		}
-		for len(record) < 4+result.MaximumChannelCount*3 {
-			record = append(record, "")
-		}
-		_ = writer.Write(record)
-	}
-	writer.Flush()
-}
-
-// writeGeneratedSalesPricesCSV exports the sales-price-generator result with
-// the VCR split into its three editable components (付款手续费 / 分销手续费 /
-// 运维人力成本) plus TR and TM, matching the columns shown on the page.
-func writeGeneratedSalesPricesCSV(c *gin.Context, result pricingComparisonResult) {
-	filename := "generated-sales-prices-" + time.Now().UTC().Format("20060102-150405") + ".csv"
-	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	c.Status(200)
-	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
-	writer := csv.NewWriter(c.Writer)
-	header := []string{
-		"模型名称",
-		"付款手续费",
-		"分销手续费",
-		"运维人力成本",
-		"TR（利得税率）",
-		"TM（目标净利率）",
-		"最低销售折扣",
-		"最低采购折扣",
-	}
-	for channelIndex := 0; channelIndex < result.MaximumChannelCount; channelIndex++ {
-		channelLabel := pricingComparisonChannelLabel(channelIndex)
-		header = append(
-			header,
-			"渠道"+channelLabel+"名称",
-			"渠道"+channelLabel+"采购折扣",
-			"渠道"+channelLabel+"售出折扣",
-		)
-	}
-	_ = writer.Write(header)
-
-	for _, item := range result.Items {
-		record := []string{
-			spreadsheetSafeCSVCell(item.ModelName),
-			spreadsheetSafeCSVCell(orCSVDash(item.PaymentProcessingFeeRatePercent)),
-			spreadsheetSafeCSVCell(orCSVDash(item.DistributionFeeRatePercent)),
-			spreadsheetSafeCSVCell(orCSVDash(item.OperationsLaborCostRatePercent)),
-			spreadsheetSafeCSVCell(orCSVDash(item.EffectiveTaxRatePercent)),
-			spreadsheetSafeCSVCell(orCSVDash(item.TargetNetMarginPercent)),
-			item.MinimumRetailDiscount,
-			item.MinimumPurchaseDiscount,
-		}
-		for _, channel := range item.Channels {
-			record = append(
-				record,
-				spreadsheetSafeCSVCell(channel.ChannelName),
-				channel.PurchaseDiscount,
-				channel.RetailDiscount,
-			)
-		}
-		for len(record) < 8+result.MaximumChannelCount*3 {
-			record = append(record, "")
-		}
-		_ = writer.Write(record)
-	}
-	writer.Flush()
-}
-
-func pricingComparisonChannelLabel(index int) string {
-	label := ""
-	for index >= 0 {
-		label = string(rune('A'+index%26)) + label
-		index = index/26 - 1
-	}
-	return label
-}
-
-func formatEffectivePricingRatesForCSV(row channelPricingExportRow) string {
-	vcr := formatPricingRatePercentage(row.TotalVariableCostRate.String)
-	tax := formatPricingRatePercentage(row.EffectiveTaxRate.String)
-	margin := formatPricingRatePercentage(row.TargetNetMargin.String)
-	if vcr == "" && tax == "" && margin == "" {
-		return "未配置"
-	}
-	if vcr == "" {
-		vcr = "未配置"
-	}
-	if tax == "" {
-		tax = "未配置"
-	}
-	if margin == "" {
-		margin = "未配置"
-	}
-	return "VCR " + vcr +
-		"；TR " + tax +
-		"；TM " + margin
 }
 
 func selectedChannelModelIds(c *gin.Context) ([]int, bool) {
@@ -1040,24 +634,14 @@ func selectedChannelModelIds(c *gin.Context) ([]int, bool) {
 }
 
 func joinChannelPurchasePrices(query *gorm.DB) *gorm.DB {
-	activePurchasePrices := model.DB.Table("channel_model_purchase_price_versions").
-		Select("channel_model_id, MAX(id) AS active_purchase_price_version_id").
-		Where("status = ?", model.PricingVersionStatusActive).
-		Group("channel_model_id")
-	return query.
-		Joins("LEFT JOIN channel_model_retail_price_versions AS active_retail_detail ON active_retail_detail.id = active_retail.active_retail_price_version_id").
-		Joins(
-			"LEFT JOIN (?) AS active_purchase ON active_purchase.channel_model_id = channel_models.id",
-			activePurchasePrices,
-		).
-		Joins("LEFT JOIN channel_model_purchase_price_versions AS selected_purchase ON selected_purchase.id = COALESCE(active_retail_detail.purchase_price_version_id, active_purchase.active_purchase_price_version_id)")
+	return query.Joins("LEFT JOIN channel_model_purchase_price_versions AS selected_purchase ON selected_purchase.id = active_purchase.active_purchase_price_version_id")
 }
 
 func channelModelAdminQuery(c *gin.Context) (*gorm.DB, error) {
-	activeRetailPrices := model.DB.Table("channel_model_retail_price_versions").
+	activePurchasePrices := model.DB.Table("channel_model_purchase_price_versions").
 		Select(
-			"channel_model_id, MAX(id) AS active_retail_price_version_id, "+
-				"MAX(version) AS active_retail_price_version",
+			"channel_model_id, MAX(id) AS active_purchase_price_version_id, "+
+				"MAX(version) AS active_purchase_price_version",
 		).
 		Where("status = ?", model.PricingVersionStatusActive).
 		Group("channel_model_id")
@@ -1065,8 +649,8 @@ func channelModelAdminQuery(c *gin.Context) (*gorm.DB, error) {
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
 		Joins("JOIN models ON models.id = channel_models.model_id AND models.deleted_at IS NULL").
 		Joins(
-			"LEFT JOIN (?) AS active_retail ON active_retail.channel_model_id = channel_models.id",
-			activeRetailPrices,
+			"LEFT JOIN (?) AS active_purchase ON active_purchase.channel_model_id = channel_models.id",
+			activePurchasePrices,
 		)
 	keyword := strings.TrimSpace(c.Query("keyword"))
 	if keyword != "" {
@@ -1107,20 +691,14 @@ func channelModelAdminQuery(c *gin.Context) (*gorm.DB, error) {
 			return nil, errors.New("routing_status 无效")
 		}
 	}
-	if runtimeMode := strings.TrimSpace(c.Query("runtime_mode")); runtimeMode != "" {
-		if runtimeMode != "legacy" && runtimeMode != "v2" {
-			return nil, errors.New("runtime_mode 无效")
-		}
-		query = query.Where("channel_models.runtime_mode = ?", runtimeMode)
-	}
-	if retailStatus := strings.TrimSpace(c.Query("retail_status")); retailStatus != "" {
-		switch retailStatus {
+	if purchaseStatus := strings.TrimSpace(c.Query("purchase_status")); purchaseStatus != "" {
+		switch purchaseStatus {
 		case "published":
-			query = query.Where("active_retail.active_retail_price_version_id IS NOT NULL")
+			query = query.Where("active_purchase.active_purchase_price_version_id IS NOT NULL")
 		case "unpublished":
-			query = query.Where("active_retail.active_retail_price_version_id IS NULL")
+			query = query.Where("active_purchase.active_purchase_price_version_id IS NULL")
 		default:
-			return nil, errors.New("retail_status 无效")
+			return nil, errors.New("purchase_status 无效")
 		}
 	}
 	return query, nil
@@ -1187,7 +765,7 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 		"reserved_quota", "settled_quota", "purchase_cost",
 		"provider_cost_mode", "provider_cost_status", "provider_cost_source",
 		"provider_reported_cost", "provider_cost_scope", "cost_variance",
-		"gross_margin", "gross_margin_known", "base_retail_amount",
+		"gross_margin", "gross_margin_known", "base_sales_amount",
 		"estimated_customer_charge", "customer_charge", "applied_group", "applied_group_ratio", "net_margin_rate",
 		"margin_compliant",
 		"status", "created_at", "updated_at",
@@ -1211,7 +789,7 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 			row.CostVariance,
 			row.GrossMargin,
 			strconv.FormatBool(row.GrossMarginKnown),
-			row.BaseRetailAmount,
+			row.BaseSalesAmount,
 			row.EstimatedCustomerCharge,
 			nullablePricingString(row.CustomerCharge),
 			spreadsheetSafeCSVCell(row.AppliedGroup),
@@ -1743,68 +1321,6 @@ func formatPurchaseDiscountMultiplierForCSV(value string, includeOfficialPriceLa
 	return discount + "（" + percentage + "）"
 }
 
-func formatRetailOfficialDiscountForCSV(pricingMode string, officialRaw string, retailRaw string) string {
-	ratios := retailOfficialRatiosForCSV(officialRaw, retailRaw)
-	if len(ratios) == 0 {
-		return ""
-	}
-
-	firstRatio := ratios[0].Ratio.Round(4)
-	if strings.TrimSpace(pricingMode) == "official_ratio" {
-		return formatRetailOfficialMultiplierForCSV(firstRatio)
-	}
-	uniform := true
-	for _, ratio := range ratios[1:] {
-		if !ratio.Ratio.Round(4).Equal(firstRatio) {
-			uniform = false
-			break
-		}
-	}
-	if uniform {
-		return formatRetailOfficialMultiplierForCSV(firstRatio)
-	}
-
-	parts := make([]string, 0, len(ratios))
-	for _, ratio := range ratios {
-		parts = append(
-			parts,
-			ratio.Label+" "+formatRetailOfficialMultiplierForCSV(ratio.Ratio),
-		)
-	}
-	return strings.Join(parts, "；")
-}
-
-func retailOfficialRatiosForCSV(officialRaw string, retailRaw string) []pricingCSVComponentRatio {
-	officialPrices := pricingPricePointsForCSV(officialRaw)
-	retailPrices := pricingPricePointsForCSV(retailRaw)
-	if len(officialPrices) == 0 || len(retailPrices) == 0 {
-		return nil
-	}
-
-	retailByKey := make(map[string]pricingCSVPricePoint, len(retailPrices))
-	for _, point := range retailPrices {
-		retailByKey[point.Key] = point
-	}
-	ratios := make([]pricingCSVComponentRatio, 0, len(officialPrices))
-	for _, official := range officialPrices {
-		retail, exists := retailByKey[official.Key]
-		if !exists || !official.Price.IsPositive() || retail.Price.IsNegative() {
-			continue
-		}
-		ratios = append(ratios, pricingCSVComponentRatio{
-			Label: official.Label,
-			Ratio: retail.Price.Div(official.Price),
-		})
-	}
-	return ratios
-}
-
-func formatRetailOfficialMultiplierForCSV(multiplier decimal.Decimal) string {
-	discount := multiplier.Mul(decimal.NewFromInt(10)).Round(4).String() + "折"
-	percentage := multiplier.Mul(decimal.NewFromInt(100)).Round(4).String() + "%"
-	return discount + "（" + percentage + "）"
-}
-
 func pricingPricePointsForCSV(raw string) []pricingCSVPricePoint {
 	var components map[string]any
 	if err := common.UnmarshalJsonStr(strings.TrimSpace(raw), &components); err != nil {
@@ -2104,40 +1620,6 @@ func pricingCSVUnit(unit string, unitSize string) string {
 	return unitSize + " " + label
 }
 
-func formatPricingRatePercentage(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	rate, err := decimal.NewFromString(value)
-	if err != nil {
-		return value
-	}
-	return rate.Mul(decimal.NewFromInt(100)).String() + "%"
-}
-
-// formatRateComponentPercent formats a VCR component percentage value that is
-// already expressed as a percentage number ("4" => "4%"). Empty or invalid
-// values yield "" so callers can render a placeholder.
-func formatRateComponentPercent(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if _, err := decimal.NewFromString(value); err != nil {
-		return ""
-	}
-	return value + "%"
-}
-
-// orCSVDash renders a placeholder dash for empty CSV cells.
-func orCSVDash(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "—"
-	}
-	return value
-}
-
 func AdminGetPricingReconciliationSummary(c *gin.Context) {
 	now := common.GetTimestamp()
 	staleBefore := now - pricingReconciliationReservedAgeSeconds
@@ -2239,10 +1721,6 @@ func AdminCreateChannelModel(c *gin.Context) {
 		common.ApiErrorMsg(c, "渠道、模型和上游模型名称不能为空")
 		return
 	}
-	if input.RuntimeMode != "" && input.RuntimeMode != pricingruntime.RuntimeModeLegacy {
-		common.ApiErrorMsg(c, "新渠道模型必须先使用 legacy 模式并发布完整价格链")
-		return
-	}
 	if err := requireChannelModelReferences(input.ChannelId, input.ModelId); err != nil {
 		common.ApiError(c, err)
 		return
@@ -2252,7 +1730,6 @@ func AdminCreateChannelModel(c *gin.Context) {
 		return
 	}
 	input.Id = 0
-	input.RuntimeMode = pricingruntime.RuntimeModeLegacy
 	input.UpstreamModelName = strings.TrimSpace(input.UpstreamModelName)
 	if err := model.DB.Create(&input).Error; err != nil {
 		common.ApiError(c, err)
@@ -2276,12 +1753,6 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		common.ApiErrorMsg(c, "渠道、模型和上游模型名称不能为空")
 		return
 	}
-	if input.RuntimeMode != "" &&
-		input.RuntimeMode != pricingruntime.RuntimeModeLegacy &&
-		input.RuntimeMode != pricingruntime.RuntimeModeV2 {
-		common.ApiErrorMsg(c, "运行模式必须是 legacy 或 v2")
-		return
-	}
 	if err := requireChannelModelReferences(input.ChannelId, input.ModelId); err != nil {
 		common.ApiError(c, err)
 		return
@@ -2296,16 +1767,6 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		strings.TrimSpace(input.UpstreamModelName) != current.UpstreamModelName {
 		common.ApiErrorMsg(c, "渠道模型标识创建后不可修改，请新建渠道模型")
 		return
-	}
-	if input.RuntimeMode != "" && input.RuntimeMode != current.RuntimeMode {
-		common.ApiErrorMsg(c, "运行模式只能通过模型级启用 V2 或回退操作修改")
-		return
-	}
-	if current.RuntimeMode == pricingruntime.RuntimeModeV2 {
-		if input.Status == 0 {
-			common.ApiErrorMsg(c, "停用的渠道模型不能启用 V2 运行时")
-			return
-		}
 	}
 	updates := map[string]any{
 		"status":            input.Status,
@@ -2322,11 +1783,9 @@ func AdminUpdateChannelModel(c *gin.Context) {
 		return
 	}
 	pricingruntime.InvalidateCatalog()
-	if current.RuntimeMode == pricingruntime.RuntimeModeV2 {
-		if err := pricingruntime.RefreshCatalog(); err != nil {
-			common.ApiError(c, err)
-			return
-		}
+	if err := pricingruntime.RefreshCatalog(); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	if err := model.DB.First(&current, id).Error; err != nil {
 		common.ApiError(c, err)
@@ -2380,7 +1839,7 @@ func AdminDeleteSelectedChannelModels(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"deleted": deleted})
 }
 
-func AdminSyncLegacyChannelModels(c *gin.Context) {
+func AdminSyncChannelModels(c *gin.Context) {
 	result, err := model.InitializeChannelModelsFromAbilities()
 	if err != nil {
 		common.ApiError(c, err)
@@ -2490,15 +1949,6 @@ func AdminDeleteOfficialPriceDraft(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
-}
-
-func AdminImportLegacyOfficialPriceDrafts(c *gin.Context) {
-	result, err := pricingadmin.ImportLegacyOfficialPriceDrafts(c.GetInt("id"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, result)
 }
 
 func AdminCreateOfficialFlatPriceDraft(c *gin.Context) {
@@ -2627,129 +2077,6 @@ func AdminUpdateStructuredPurchasePriceDraft(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, version)
-}
-
-func AdminListRetailPriceVersions(c *gin.Context) {
-	channelModelId, ok := positiveQueryId(c, "channel_model_id")
-	if !ok {
-		return
-	}
-	var versions []model.ChannelModelRetailPriceVersion
-	if err := model.DB.Where("channel_model_id = ?", channelModelId).
-		Order("version DESC").
-		Find(&versions).Error; err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, versions)
-}
-
-func AdminCreateRetailPriceVersion(c *gin.Context) {
-	var input model.ChannelModelRetailPriceVersion
-	if err := c.ShouldBindJSON(&input); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if err := pricingadmin.CreateRetailPriceVersion(&input, c.GetInt("id")); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, &input)
-}
-
-func AdminPublishRetailPriceVersion(c *gin.Context) {
-	id, ok := positivePathId(c)
-	if !ok {
-		return
-	}
-	if err := pricingadmin.PublishRetailPriceVersion(id); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, nil)
-}
-
-func AdminSuspendRetailPriceVersion(c *gin.Context) {
-	id, ok := positivePathId(c)
-	if !ok {
-		return
-	}
-	if err := pricingadmin.SuspendRetailPriceVersion(id); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, nil)
-}
-
-func AdminDeleteRetailPriceDraft(c *gin.Context) {
-	id, ok := positivePathId(c)
-	if !ok {
-		return
-	}
-	if err := pricingadmin.DeleteRetailPriceDraft(id); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, nil)
-}
-
-func AdminCreateStructuredRetailPriceDraft(c *gin.Context) {
-	var input pricingadmin.RetailDraftInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	version, err := pricingadmin.CreateRetailDraft(input, c.GetInt("id"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, version)
-}
-
-func AdminUpdateStructuredRetailPriceDraft(c *gin.Context) {
-	id, ok := positivePathId(c)
-	if !ok {
-		return
-	}
-	var input pricingadmin.RetailDraftInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	version, err := pricingadmin.UpdateRetailDraft(id, input)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, version)
-}
-
-func AdminSimulatePrice(c *gin.Context) {
-	var input pricingadmin.PriceSimulationInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	result, err := pricingadmin.SimulatePrice(input)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, result)
-}
-
-func AdminGetActivePriceBundle(c *gin.Context) {
-	channelModelId, ok := positiveQueryId(c, "channel_model_id")
-	if !ok {
-		return
-	}
-	bundle, err := pricingadmin.GetActivePriceBundle(channelModelId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, bundle)
 }
 
 func positivePathId(c *gin.Context) (int, bool) {

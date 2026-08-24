@@ -318,13 +318,11 @@ export function PricingReconciliationPanel() {
           <NativeSelectOption value=''>{t('All statuses')}</NativeSelectOption>
           {(
             ['reserved', 'pending', 'settled', 'refunded', 'archived'] as const
-          ).map(
-            (status) => (
-              <NativeSelectOption key={status} value={status}>
-                {statusLabels[status]}
-              </NativeSelectOption>
-            )
-          )}
+          ).map((status) => (
+            <NativeSelectOption key={status} value={status}>
+              {statusLabels[status]}
+            </NativeSelectOption>
+          ))}
         </NativeSelect>
         <NativeSelect
           size='sm'
@@ -579,7 +577,7 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Provider reported cost')}</TableHead>
               <TableHead>{t('Cost variance')}</TableHead>
               <TableHead>{t('Gross margin')}</TableHead>
-              <TableHead>{t('Base retail amount')}</TableHead>
+              <TableHead>{t('Base sales amount')}</TableHead>
               <TableHead>{t('Estimated charge')}</TableHead>
               <TableHead>{t('Billed Amount')}</TableHead>
               <TableHead>{t('Effective group')}</TableHead>
@@ -639,7 +637,7 @@ export function PricingReconciliationPanel() {
                       : '—'}
                   </TableCell>
                   <TableCell className='font-mono whitespace-nowrap tabular-nums'>
-                    {row.base_retail_amount || row.retail_amount} {row.currency}
+                    {row.base_sales_amount || row.sales_amount} {row.currency}
                   </TableCell>
                   <TableCell className='font-mono whitespace-nowrap tabular-nums'>
                     {row.estimated_customer_charge
@@ -760,8 +758,8 @@ export function PricingReconciliationPanel() {
                   {t('Price versions')}
                 </div>
                 <div className='font-mono text-xs'>
-                  P#{selectedSnapshot.purchase_price_version_id ?? '—'} · R#
-                  {selectedSnapshot.retail_price_version_id ?? '—'}
+                  P#{selectedSnapshot.purchase_price_version_id ?? '—'} · PB#
+                  {selectedSnapshot.sales_price_book_version_id ?? '—'}
                 </div>
               </div>
               <div>

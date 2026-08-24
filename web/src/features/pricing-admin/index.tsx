@@ -60,12 +60,10 @@ import {
   deleteSelectedChannelModels,
   exportChannelModelPrices,
   exportSelectedChannelModelPrices,
-  exportSelectedPricingComparison,
   exportSelectedPurchaseDiscounts,
   getChannelModels,
   getPricingCatalogOptions,
-  setPricingModelRuntime,
-  syncLegacyChannelModels,
+  syncChannelModels,
 } from './api'
 import { ChannelModelDialog } from './components/channel-model-dialog'
 import { ChannelModelFilters } from './components/channel-model-filters'
@@ -109,9 +107,6 @@ export function PricingAdmin() {
   const [editingChannelModel, setEditingChannelModel] =
     useState<ChannelModel | null>(null)
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false)
-  const [pendingV2ModelName, setPendingV2ModelName] = useState<string | null>(
-    null
-  )
   const deferredKeyword = useDeferredValue(filters.keyword)
   const catalogQuery = useQuery({
     queryKey: ['pricing-admin', 'catalog-options'],
@@ -125,8 +120,7 @@ export function PricingAdmin() {
       filters.channelId,
       filters.status,
       filters.routingStatus,
-      filters.runtimeMode,
-      filters.retailStatus,
+      filters.purchaseStatus,
       page,
       pageSize,
     ],
@@ -140,21 +134,17 @@ export function PricingAdmin() {
           filters.routingStatus === 'removed'
             ? filters.routingStatus
             : undefined,
-        runtime_mode:
-          filters.runtimeMode === 'legacy' || filters.runtimeMode === 'v2'
-            ? filters.runtimeMode
-            : undefined,
-        retail_status:
-          filters.retailStatus === 'published' ||
-          filters.retailStatus === 'unpublished'
-            ? filters.retailStatus
+        purchase_status:
+          filters.purchaseStatus === 'published' ||
+          filters.purchaseStatus === 'unpublished'
+            ? filters.purchaseStatus
             : undefined,
         page,
         page_size: pageSize,
       }),
   })
   const syncMutation = useMutation({
-    mutationFn: syncLegacyChannelModels,
+    mutationFn: syncChannelModels,
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'channel-models'],
@@ -174,28 +164,8 @@ export function PricingAdmin() {
           })
         )
       }
-      setPendingV2ModelName(null)
     },
     onError: handleServerError,
-  })
-  const runtimeMutation = useMutation({
-    mutationFn: (input: { model_name: string; runtime_mode: 'v2' }) =>
-      setPricingModelRuntime(input),
-    onSuccess: async (response) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['pricing-admin', 'channel-models'],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['pricing-admin', 'runtime-status'],
-        }),
-      ])
-      toast.success(
-        t('V2 enabled for {{count}} channel models', {
-          count: response.data.updated,
-        })
-      )
-    },
   })
   const exportAllMutation = useMutation({
     mutationFn: () =>
@@ -208,14 +178,10 @@ export function PricingAdmin() {
           filters.routingStatus === 'removed'
             ? filters.routingStatus
             : undefined,
-        runtime_mode:
-          filters.runtimeMode === 'legacy' || filters.runtimeMode === 'v2'
-            ? filters.runtimeMode
-            : undefined,
-        retail_status:
-          filters.retailStatus === 'published' ||
-          filters.retailStatus === 'unpublished'
-            ? filters.retailStatus
+        purchase_status:
+          filters.purchaseStatus === 'published' ||
+          filters.purchaseStatus === 'unpublished'
+            ? filters.purchaseStatus
             : undefined,
       }),
     onSuccess: (blob) => downloadCSV(blob, 'channel-pricing'),
@@ -231,12 +197,6 @@ export function PricingAdmin() {
     mutationFn: (channelModelIds: number[]) =>
       exportSelectedPurchaseDiscounts(channelModelIds),
     onSuccess: (blob) => downloadCSV(blob, 'selected-purchase-discounts'),
-    onError: handleServerError,
-  })
-  const exportSelectedPricingComparisonMutation = useMutation({
-    mutationFn: (channelModelIds: number[]) =>
-      exportSelectedPricingComparison(channelModelIds),
-    onSuccess: (blob) => downloadCSV(blob, 'selected-pricing-comparison'),
     onError: handleServerError,
   })
   const deleteSelectedMutation = useMutation({
@@ -274,7 +234,9 @@ export function PricingAdmin() {
 
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>{t('Channel Pricing')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t('Channel Purchase Pricing')}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         {canExport ? (
           <>
@@ -313,21 +275,6 @@ export function PricingAdmin() {
             >
               <Download data-icon='inline-start' />
               {t('Export selected purchase discounts')}
-            </Button>
-            <Button
-              variant='outline'
-              disabled={
-                selectedIds.size === 0 ||
-                exportSelectedPricingComparisonMutation.isPending
-              }
-              onClick={() =>
-                exportSelectedPricingComparisonMutation.mutate(
-                  [...selectedIds].sort((left, right) => left - right)
-                )
-              }
-            >
-              <Download data-icon='inline-start' />
-              {t('Export selected pricing comparison')}
             </Button>
           </>
         ) : null}
@@ -468,8 +415,9 @@ export function PricingAdmin() {
                   <TableHead>{t('Routing')}</TableHead>
                   <TableHead>{t('Priority')}</TableHead>
                   <TableHead>{t('Weight')}</TableHead>
-                  <TableHead>{t('Runtime')}</TableHead>
-                  <TableHead>{t('Retail Status')}</TableHead>
+                  <TableHead>{t('Purchase Status')}</TableHead>
+                  <TableHead>{t('Purchase Pricing Mode')}</TableHead>
+                  <TableHead>{t('Purchase Discount')}</TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -523,37 +471,25 @@ export function PricingAdmin() {
                     <TableCell>{row.priority}</TableCell>
                     <TableCell>{row.weight}</TableCell>
                     <TableCell>
-                      <Badge variant='outline'>
-                        {row.runtime_mode === 'v2'
-                          ? t('V2 Pricing')
-                          : t('Legacy Billing')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {row.active_retail_price_version_id > 0 ? (
+                      {row.active_purchase_price_version_id > 0 ? (
                         <div className='flex items-center gap-2'>
                           <Badge>{t('Published')}</Badge>
                           <span className='text-muted-foreground font-mono text-xs'>
-                            v{row.active_retail_price_version}
+                            v{row.active_purchase_price_version}
                           </span>
                         </div>
                       ) : (
                         <Badge variant='secondary'>{t('Not Published')}</Badge>
                       )}
                     </TableCell>
+                    <TableCell>{row.purchase_pricing_mode || '—'}</TableCell>
+                    <TableCell>
+                      {row.purchase_discount === null
+                        ? '—'
+                        : row.purchase_discount}
+                    </TableCell>
                     <TableCell className='text-right'>
                       <div className='flex justify-end gap-2'>
-                        {canWrite && row.runtime_mode !== 'v2' ? (
-                          <Button
-                            size='sm'
-                            disabled={runtimeMutation.isPending}
-                            onClick={() =>
-                              setPendingV2ModelName(row.model_name)
-                            }
-                          >
-                            {t('Enable Model V2')}
-                          </Button>
-                        ) : null}
                         {canWrite ? (
                           <Button
                             size='sm'
@@ -580,7 +516,7 @@ export function PricingAdmin() {
                 {!channelModelsQuery.isLoading && rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={11}
+                      colSpan={12}
                       className='text-muted-foreground h-24 text-center'
                     >
                       {t('No channel models found')}
@@ -652,33 +588,6 @@ export function PricingAdmin() {
               deleteSelectedMutation.mutate(
                 [...selectedIds].sort((left, right) => left - right)
               )
-            }}
-          />
-          <ConfirmDialog
-            open={canWrite && pendingV2ModelName !== null}
-            onOpenChange={(open) => {
-              if (!open && !runtimeMutation.isPending) {
-                setPendingV2ModelName(null)
-              }
-            }}
-            title={t('Enable Model V2')}
-            desc={
-              <div className='space-y-2'>
-                <p className='text-foreground font-mono font-medium'>
-                  {pendingV2ModelName}
-                </p>
-                <p>{t('This action cannot be undone.')}</p>
-              </div>
-            }
-            confirmText={t('Enable Model V2')}
-            isLoading={runtimeMutation.isPending}
-            handleConfirm={() => {
-              if (pendingV2ModelName) {
-                runtimeMutation.mutate({
-                  model_name: pendingV2ModelName,
-                  runtime_mode: 'v2',
-                })
-              }
             }}
           />
         </div>

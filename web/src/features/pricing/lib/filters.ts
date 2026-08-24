@@ -25,7 +25,7 @@ import {
 } from '../constants'
 import type { PricingModel } from '../types'
 import {
-  getDisplayedRetailPrice,
+  getDisplayedSalesPrice,
   isModelAvailableForGroup,
 } from './model-helpers'
 
@@ -109,7 +109,7 @@ export function filterByEndpointType(
  */
 function getModelPrice(model: PricingModel, group: string): number | null {
   const lowestAmount = Number(
-    getDisplayedRetailPrice(model, group)?.items[0]?.amount
+    getDisplayedSalesPrice(model, group)?.items[0]?.amount
   )
   if (Number.isFinite(lowestAmount)) {
     return lowestAmount

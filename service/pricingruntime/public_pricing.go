@@ -1,8 +1,6 @@
 package pricingruntime
 
 import (
-	"fmt"
-	"math"
 	"sort"
 	"strings"
 
@@ -54,92 +52,6 @@ type publicPriceComponents struct {
 	Rules     []publicPriceRule `json:"rules"`
 }
 
-type publicPriceCandidate struct {
-	bundle     ActivePriceBundle
-	group      string
-	groupLabel string
-	factor     decimal.Decimal
-}
-
-// HasSafeStructuredCatalogPricing reports whether a group has at least one
-// complete candidate whose structured price items remain above the configured
-// margin floor after the user's effective group multiplier. Expression-only
-// contracts pass through here and are validated with concrete usage later.
-func HasSafeStructuredCatalogPricing(
-	group string,
-	modelName string,
-	groupRatio float64,
-) bool {
-	return len(publicPricingCandidates(
-		modelName,
-		map[string]string{group: group},
-		map[string]float64{group: groupRatio},
-	)) > 0
-}
-
-func ApplyV2RetailPricing(
-	pricing []model.Pricing,
-	usableGroups map[string]string,
-	groupRatios map[string]float64,
-) []model.Pricing {
-	officialByModel := map[string]model.OfficialModelPriceVersion{}
-	if snapshot, ok := getCatalogSnapshot(); ok {
-		officialByModel = snapshot.OfficialByModelName
-	}
-	for index := range pricing {
-		if official, exists := officialByModel[pricing[index].ModelName]; exists {
-			pricing[index].OfficialPrice = buildPublicPriceSummary(
-				official.BillingMode,
-				official.PriceStructure,
-				official.Currency,
-				official.PriceComponents,
-				decimal.NewFromInt(1),
-			)
-		}
-
-		candidates := publicPricingCandidates(
-			pricing[index].ModelName,
-			usableGroups,
-			groupRatios,
-		)
-		if len(candidates) == 0 {
-			continue
-		}
-		pricing[index].PricingSource = "v2_dynamic"
-		pricing[index].LowestPrice = buildLowestPublicPriceSummary(candidates)
-		pricesByGroup := make(map[string]*model.PublicPriceSummary)
-		candidatesByGroup := make(map[string][]publicPriceCandidate)
-		for _, candidate := range candidates {
-			candidatesByGroup[candidate.group] = append(
-				candidatesByGroup[candidate.group],
-				candidate,
-			)
-		}
-		groupNames := make([]string, 0, len(candidatesByGroup))
-		for group := range candidatesByGroup {
-			groupNames = append(groupNames, group)
-		}
-		sort.Strings(groupNames)
-		for _, group := range groupNames {
-			if summary := buildLowestPublicPriceSummary(candidatesByGroup[group]); summary != nil {
-				pricesByGroup[group] = summary
-			}
-		}
-		pricing[index].PricingGroups = groupNames
-		if len(pricesByGroup) > 0 {
-			pricing[index].RetailPricesByGroup = pricesByGroup
-		}
-
-		// Keep the expression fields for older clients. New clients use the
-		// normalized summaries above and never parse the runtime expression.
-		selected := candidates[0].bundle
-		pricing[index].BillingMode = "tiered_expr"
-		pricing[index].BillingExpr = selected.Retail.RetailBillingExpr
-		pricing[index].PricingVersion = selected.Revision
-	}
-	return pricing
-}
-
 // ApplySalesPriceBookPricing publishes the customer-specific sales price book
 // while keeping upstream purchase prices and route selection private. The same
 // logical-model sales price is shown for every usable group that has at least
@@ -177,7 +89,7 @@ func ApplySalesPriceBookPricing(
 		eligibleRoutes := make(map[int]struct{})
 		for _, group := range groupNames {
 			groupEligible := false
-			for _, bundle := range GetPurchaseCandidateBundles(group, pricing[index].ModelName) {
+			for _, bundle := range GetCandidateBundles(group, pricing[index].ModelName) {
 				if !salesPriceBookCandidateHasSafeStructuredMargins(resolved, bundle) {
 					continue
 				}
@@ -234,7 +146,7 @@ func ApplySalesPriceBookPricing(
 			pricesByGroup[group] = summary
 		}
 		if len(pricesByGroup) > 0 {
-			pricing[index].RetailPricesByGroup = pricesByGroup
+			pricing[index].SalesPricesByGroup = pricesByGroup
 		}
 	}
 	return pricing
@@ -310,221 +222,6 @@ func salesPriceBookCandidateHasSafeStructuredMargins(
 		}
 	}
 	return true
-}
-
-func publicPricingCandidates(
-	modelName string,
-	usableGroups map[string]string,
-	groupRatios map[string]float64,
-) []publicPriceCandidate {
-	result := make([]publicPriceCandidate, 0)
-	seen := make(map[string]struct{})
-	groupNames := make([]string, 0, len(usableGroups))
-	for group := range usableGroups {
-		groupNames = append(groupNames, group)
-	}
-	sort.Strings(groupNames)
-	for _, group := range groupNames {
-		groupLabel := usableGroups[group]
-		factor := decimal.NewFromInt(1)
-		if configured, exists := groupRatios[group]; exists {
-			if configured < 0 || math.IsNaN(configured) || math.IsInf(configured, 0) {
-				continue
-			}
-			factor = decimal.NewFromFloat(configured)
-		}
-		for _, bundle := range GetCandidateBundles(group, modelName) {
-			candidate := publicPriceCandidate{
-				bundle: bundle, group: group, groupLabel: groupLabel, factor: factor,
-			}
-			if !candidateHasSafeStructuredMargins(candidate) {
-				continue
-			}
-			key := fmt.Sprintf(
-				"%s:%d:%s",
-				group,
-				bundle.ChannelModel.Id,
-				factor.String(),
-			)
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			result = append(result, candidate)
-		}
-	}
-	sort.SliceStable(result, func(left int, right int) bool {
-		if result[left].group != result[right].group {
-			return result[left].group < result[right].group
-		}
-		return result[left].bundle.ChannelModel.Id < result[right].bundle.ChannelModel.Id
-	})
-	return result
-}
-
-func candidateHasSafeStructuredMargins(candidate publicPriceCandidate) bool {
-	purchase := buildPublicPriceSummary(
-		candidate.bundle.Purchase.BillingMode,
-		candidate.bundle.Purchase.PriceStructure,
-		candidate.bundle.Purchase.Currency,
-		candidate.bundle.Purchase.PriceComponents,
-		decimal.NewFromInt(1),
-	)
-	retail := buildPublicPriceSummary(
-		candidate.bundle.Retail.BillingMode,
-		candidate.bundle.Retail.PriceStructure,
-		candidate.bundle.Retail.Currency,
-		candidate.bundle.Retail.PriceComponents,
-		decimal.NewFromInt(1),
-	)
-	if purchase == nil || retail == nil {
-		// Expression-only prices still receive the authoritative request-time
-		// margin check because a catalog page has no concrete usage to evaluate.
-		return true
-	}
-	variableCostRate, err := parseRate(
-		"total variable cost rate",
-		candidate.bundle.Retail.TotalVariableCostRate,
-	)
-	if err != nil {
-		return false
-	}
-	taxRate, err := parseRate(
-		"effective tax rate",
-		candidate.bundle.Retail.EffectiveTaxRate,
-	)
-	if err != nil {
-		return false
-	}
-	minimumMargin, err := parseMargin(candidate.bundle.Retail.MinimumMarginRate)
-	if err != nil {
-		return false
-	}
-	purchaseByKey := make(map[string]decimal.Decimal, len(purchase.Items))
-	allKeys := make(map[string]struct{}, len(purchase.Items)+len(retail.Items))
-	for _, item := range purchase.Items {
-		amount, parseErr := decimal.NewFromString(item.Amount)
-		if parseErr != nil {
-			return false
-		}
-		purchaseByKey[item.Key] = amount
-		allKeys[item.Key] = struct{}{}
-	}
-	retailByKey := make(map[string]decimal.Decimal, len(retail.Items))
-	for _, item := range retail.Items {
-		retailAmount, parseErr := decimal.NewFromString(item.Amount)
-		if parseErr != nil {
-			return false
-		}
-		retailByKey[item.Key] = retailAmount
-		allKeys[item.Key] = struct{}{}
-	}
-	if len(allKeys) == 0 {
-		return false
-	}
-	for key := range allKeys {
-		purchaseAmount := purchaseByKey[key]
-		retailAmount := retailByKey[key]
-		netMargin := calculateNetMargin(
-			purchaseAmount,
-			retailAmount.Mul(candidate.factor),
-			variableCostRate,
-			taxRate,
-		)
-		if !meetsMinimumMargin(netMargin, minimumMargin) {
-			return false
-		}
-	}
-	return true
-}
-
-func buildLowestPublicPriceSummary(candidates []publicPriceCandidate) *model.PublicPriceSummary {
-	if len(candidates) == 0 {
-		return nil
-	}
-	minimumByKey := make(map[string]model.PublicPriceItem)
-	order := make([]string, 0)
-	comparableCandidates := 0
-	comparableOffers := make(map[string]struct{})
-	currency := ""
-	billingMode := ""
-	priceStructure := ""
-	for _, candidate := range candidates {
-		offerKey := fmt.Sprintf(
-			"%d:%s",
-			candidate.bundle.ChannelModel.Id,
-			candidate.factor.String(),
-		)
-		if _, exists := comparableOffers[offerKey]; exists {
-			continue
-		}
-		summary := buildPublicPriceSummary(
-			candidate.bundle.Retail.BillingMode,
-			candidate.bundle.Retail.PriceStructure,
-			candidate.bundle.Retail.Currency,
-			candidate.bundle.Retail.PriceComponents,
-			decimal.NewFromInt(1),
-		)
-		if summary == nil {
-			continue
-		}
-		comparableOffers[offerKey] = struct{}{}
-		comparableCandidates++
-		if currency == "" {
-			currency = summary.Currency
-		} else if currency != summary.Currency {
-			currency = "mixed"
-		}
-		if billingMode == "" {
-			billingMode = summary.BillingMode
-		} else if billingMode != summary.BillingMode {
-			billingMode = "mixed"
-		}
-		if priceStructure == "" {
-			priceStructure = summary.PriceStructure
-		} else if priceStructure != summary.PriceStructure {
-			priceStructure = "mixed"
-		}
-		for _, item := range summary.Items {
-			baseAmount, err := decimal.NewFromString(item.Amount)
-			if err != nil {
-				continue
-			}
-			item.BaseAmount = baseAmount.String()
-			item.Amount = baseAmount.Mul(candidate.factor).
-				RoundCeil(publicPriceDecimalPlaces).String()
-			item.AppliedGroup = candidate.group
-			item.AppliedGroupLabel = candidate.groupLabel
-			item.AppliedGroupRatio = candidate.factor.String()
-			current, exists := minimumByKey[item.Key]
-			if !exists {
-				minimumByKey[item.Key] = item
-				order = append(order, item.Key)
-				continue
-			}
-			amount, amountErr := decimal.NewFromString(item.Amount)
-			currentAmount, currentErr := decimal.NewFromString(current.Amount)
-			if amountErr == nil && (currentErr != nil || amount.LessThan(currentAmount)) {
-				minimumByKey[item.Key] = item
-			}
-		}
-	}
-	items := make([]model.PublicPriceItem, 0, len(order))
-	for _, key := range order {
-		items = append(items, minimumByKey[key])
-	}
-	if len(items) == 0 {
-		return nil
-	}
-	sortPublicPriceItems(items)
-	return &model.PublicPriceSummary{
-		Currency:        currency,
-		BillingMode:     billingMode,
-		PriceStructure:  priceStructure,
-		ComparisonScope: "component_minimum",
-		CandidateCount:  comparableCandidates,
-		Items:           items,
-	}
 }
 
 func buildPublicPriceSummary(

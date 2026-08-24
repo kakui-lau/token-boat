@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: token-boat-pricing-v2-readiness
+  name: token-boat-pricing-readiness
   labels:
     app.kubernetes.io/name: token-boat
     app.kubernetes.io/component: pricing-readiness

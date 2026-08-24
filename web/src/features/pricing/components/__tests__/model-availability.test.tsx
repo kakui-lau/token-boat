@@ -67,7 +67,7 @@ describe('model availability badge', () => {
     expect(screen.getByText('Available')).toBeVisible()
   })
 
-  test('shows unavailable when the selected group has no retail price', () => {
+  test('shows unavailable when the selected group has no sales price', () => {
     render(
       <ModelAvailabilityBadge
         selectedGroup='vip'
@@ -75,7 +75,7 @@ describe('model availability badge', () => {
           ...baseModel,
           available: true,
           availability_status: 'available',
-          retail_prices_by_group: {},
+          sales_prices_by_group: {},
         }}
       />
     )
@@ -83,7 +83,7 @@ describe('model availability badge', () => {
     expect(screen.getByText('Not available')).toBeVisible()
   })
 
-  test('shows expression-only V2 pricing as available for its priced group', () => {
+  test('shows expression-only pricing as available for its priced group', () => {
     render(
       <ModelAvailabilityBadge
         selectedGroup='vip'
@@ -91,7 +91,7 @@ describe('model availability badge', () => {
           ...baseModel,
           available: true,
           availability_status: 'available',
-          pricing_source: 'v2_dynamic',
+          pricing_source: 'sales_price_book',
           pricing_groups: ['vip'],
         }}
       />

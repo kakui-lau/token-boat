@@ -35,14 +35,14 @@ func TestInjectGeneralBillingAuditRecordsReconciliation(t *testing.T) {
 	assert.False(t, hasAdminInfo)
 }
 
-func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.T) {
+func TestInjectGeneralBillingAuditRecordsPriceBookLineageAsAdminOnly(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
 			QuotaPerUnit: 1_000_000,
 			Selected: &types.DynamicPriceCandidate{
-				ChannelModelId: 4, PurchasePriceVersion: 5, RetailPriceVersion: 6,
+				ChannelModelId: 4, PurchasePriceVersion: 5, SalesPriceBookVersionId: 6,
 				PricingRevision: "revision", EstimatedPurchaseUSD: "0.4",
-				EstimatedRetailUSD: "0.8", BillingMode: "video_duration",
+				EstimatedSalesUSD: "0.8", BillingMode: "video_duration",
 				ProviderCostMode: model.ProviderCostModeInvoice,
 			},
 		},
@@ -51,14 +51,14 @@ func TestInjectGeneralBillingAuditRecordsV2VersionLineageAsAdminOnly(t *testing.
 
 	InjectGeneralBillingAudit(other, relayInfo, 10, nil)
 
-	assert.Equal(t, "v2_dynamic", other["billing_mode"])
+	assert.Equal(t, "sales_price_book", other["billing_mode"])
 	assert.Equal(t, float64(1_000_000), other["quota_per_unit"])
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, 4, adminInfo["channel_model_id"])
 	assert.Equal(t, "video_duration", adminInfo["pricing_billing_mode"])
 	assert.Equal(t, 5, adminInfo["purchase_price_version_id"])
-	assert.Equal(t, 6, adminInfo["retail_price_version_id"])
+	assert.Equal(t, 6, adminInfo["sales_price_book_version_id"])
 	assert.Equal(t, "revision", adminInfo["pricing_revision"])
 	assert.Equal(t, model.ProviderCostModeInvoice, adminInfo["provider_cost_mode"])
 	assert.Equal(t, model.ProviderCostStatusPending, adminInfo["provider_cost_status"])

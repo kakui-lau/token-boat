@@ -61,7 +61,10 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 		&model.OfficialModelPriceVersion{},
 		&model.ModelOfficialPrice{},
 		&model.ChannelModelPurchasePriceVersion{},
-		&model.ChannelModelRetailPriceVersion{},
+		&model.SalesPriceBook{},
+		&model.SalesPriceBookVersion{},
+		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookDefault{},
 	))
 
 	t.Cleanup(func() {
@@ -334,49 +337,62 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.Empty(t, missingExprPricing.BillingExpr)
 }
 
-func TestListModelsIncludesV2OnlyModel(t *testing.T) {
+func TestListModelsIncludesModelWithPurchaseAndSalesPricing(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.User{
 		Id:       1004,
-		Username: "v2-model-list-user",
+		Username: "priced-model-list-user",
 		Password: "password",
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&model.Model{
-		Id: 801, ModelName: "zz-v2-only-model", Status: 1,
+		Id: 801, ModelName: "zz-priced-model", Status: 1,
 	}).Error)
 	require.NoError(t, db.Create(&model.Channel{
-		Id: 801, Name: "v2-only-channel", Type: constant.ChannelTypeOpenAI,
+		Id: 801, Name: "priced-channel", Type: constant.ChannelTypeOpenAI,
 		Status: common.ChannelStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&model.Ability{
-		Group: "default", Model: "zz-v2-only-model", ChannelId: 801, Enabled: true,
+		Group: "default", Model: "zz-priced-model", ChannelId: 801, Enabled: true,
 	}).Error)
 	require.NoError(t, db.Create(&model.ChannelModel{
-		Id: 801, ChannelId: 801, ModelId: 801, UpstreamModelName: "zz-v2-only-model",
-		Status: 1, RuntimeMode: pricingruntime.RuntimeModeV2,
+		Id: 801, ChannelId: 801, ModelId: 801, UpstreamModelName: "zz-priced-model",
+		Status: 1,
 	}).Error)
 	purchaseExpression := `v2:tier("base", p * 1 / 1000000)`
-	retailExpression := `v2:tier("base", p * 2 / 1000000)`
+	salesExpression := `v2:tier("base", p * 2 / 1000000)`
 	require.NoError(t, db.Create(&model.ChannelModelPurchasePriceVersion{
 		Id: 801, ChannelModelId: 801, BillingMode: "token",
-		PricingMode: "fixed_unit_price", PriceStructure: "flat",
+		PricingMode: "fixed_unit_price", PriceStructure: "flat", PriceComponents: `{"input_unit_price":"1"}`,
 		PurchaseBillingExpr:     purchaseExpression,
 		PurchaseExprHash:        billingexpr.ExprHashString(purchaseExpression),
 		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
 		Status: model.PricingVersionStatusActive,
 	}).Error)
-	require.NoError(t, db.Create(&model.ChannelModelRetailPriceVersion{
-		Id: 801, ChannelModelId: 801, PurchasePriceVersionId: 801,
-		BillingMode: "token", PriceStructure: "flat",
-		RetailBillingExpr:       retailExpression,
-		RetailExprHash:          billingexpr.ExprHashString(retailExpression),
-		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
-		Status:                model.PricingVersionStatusActive,
+	currentVersionID := 801
+	require.NoError(t, db.Create(&model.SalesPriceBook{
+		Id: 801, Code: "toc-default", Name: "TOC Default", Audience: "toc",
+		Currency: "USD", Status: model.SalesPriceBookStatusEnabled,
+		CurrentVersionId: &currentVersionID,
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookVersion{
+		Id: 801, PriceBookId: 801, Version: 1,
+		Status:                model.SalesPriceBookVersionStatusActive,
 		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
 		MinimumMarginRate: "0.1", TargetNetMargin: "0.2",
+		EffectiveFrom: 1,
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookItem{
+		Id: 801, PriceBookVersionId: 801, ModelId: 801, Status: "enabled",
+		BillingMode: "token", PriceStructure: "flat",
+		PriceComponents:  `{"input_unit_price":"2"}`,
+		SalesBillingExpr: salesExpression, SalesExprHash: billingexpr.ExprHashString(salesExpression),
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: 801,
 	}).Error)
 
 	pricingruntime.InvalidateCatalog()
@@ -391,7 +407,7 @@ func TestListModelsIncludesV2OnlyModel(t *testing.T) {
 	ListModels(ctx, constant.ChannelTypeOpenAI)
 
 	ids := decodeListModelsResponse(t, recorder)
-	require.Contains(t, ids, "zz-v2-only-model")
+	require.Contains(t, ids, "zz-priced-model")
 }
 
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {

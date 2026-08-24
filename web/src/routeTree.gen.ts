@@ -55,14 +55,12 @@ import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedOfficialPricingIndexRouteImport } from './routes/_authenticated/official-pricing/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
-import { Route as AuthenticatedPriceComparisonIndexRouteImport } from './routes/_authenticated/price-comparison/index'
 import { Route as AuthenticatedPricingAdminIndexRouteImport } from './routes/_authenticated/pricing-admin/index'
 import { Route as AuthenticatedPricingReconciliationIndexRouteImport } from './routes/_authenticated/pricing-reconciliation/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRechargeIndexRouteImport } from './routes/_authenticated/recharge/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedSalesPriceBooksIndexRouteImport } from './routes/_authenticated/sales-price-books/index'
-import { Route as AuthenticatedSalesPriceGeneratorIndexRouteImport } from './routes/_authenticated/sales-price-generator/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
@@ -331,12 +329,6 @@ const AuthenticatedPlaygroundIndexRoute =
     path: '/playground/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedPriceComparisonIndexRoute =
-  AuthenticatedPriceComparisonIndexRouteImport.update({
-    id: '/price-comparison/',
-    path: '/price-comparison/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedPricingAdminIndexRoute =
   AuthenticatedPricingAdminIndexRouteImport.update({
     id: '/pricing-admin/',
@@ -371,12 +363,6 @@ const AuthenticatedSalesPriceBooksIndexRoute =
   AuthenticatedSalesPriceBooksIndexRouteImport.update({
     id: '/sales-price-books/',
     path: '/sales-price-books/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedSalesPriceGeneratorIndexRoute =
-  AuthenticatedSalesPriceGeneratorIndexRouteImport.update({
-    id: '/sales-price-generator/',
-    path: '/sales-price-generator/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSubscriptionsIndexRoute =
@@ -562,14 +548,12 @@ export interface FileRoutesByFullPath {
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
-  '/price-comparison/': typeof AuthenticatedPriceComparisonIndexRoute
   '/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/pricing-reconciliation/': typeof AuthenticatedPricingReconciliationIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/sales-price-books/': typeof AuthenticatedSalesPriceBooksIndexRoute
-  '/sales-price-generator/': typeof AuthenticatedSalesPriceGeneratorIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -638,14 +622,12 @@ export interface FileRoutesByTo {
   '/models': typeof AuthenticatedModelsIndexRoute
   '/official-pricing': typeof AuthenticatedOfficialPricingIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
-  '/price-comparison': typeof AuthenticatedPriceComparisonIndexRoute
   '/pricing-admin': typeof AuthenticatedPricingAdminIndexRoute
   '/pricing-reconciliation': typeof AuthenticatedPricingReconciliationIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/recharge': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/sales-price-books': typeof AuthenticatedSalesPriceBooksIndexRoute
-  '/sales-price-generator': typeof AuthenticatedSalesPriceGeneratorIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
@@ -718,14 +700,12 @@ export interface FileRoutesById {
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/official-pricing/': typeof AuthenticatedOfficialPricingIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
-  '/_authenticated/price-comparison/': typeof AuthenticatedPriceComparisonIndexRoute
   '/_authenticated/pricing-admin/': typeof AuthenticatedPricingAdminIndexRoute
   '/_authenticated/pricing-reconciliation/': typeof AuthenticatedPricingReconciliationIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/sales-price-books/': typeof AuthenticatedSalesPriceBooksIndexRoute
-  '/_authenticated/sales-price-generator/': typeof AuthenticatedSalesPriceGeneratorIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -797,14 +777,12 @@ export interface FileRouteTypes {
     | '/models/'
     | '/official-pricing/'
     | '/playground/'
-    | '/price-comparison/'
     | '/pricing-admin/'
     | '/pricing-reconciliation/'
     | '/profile/'
     | '/recharge/'
     | '/redemption-codes/'
     | '/sales-price-books/'
-    | '/sales-price-generator/'
     | '/subscriptions/'
     | '/system-info/'
     | '/system-settings/'
@@ -873,14 +851,12 @@ export interface FileRouteTypes {
     | '/models'
     | '/official-pricing'
     | '/playground'
-    | '/price-comparison'
     | '/pricing-admin'
     | '/pricing-reconciliation'
     | '/profile'
     | '/recharge'
     | '/redemption-codes'
     | '/sales-price-books'
-    | '/sales-price-generator'
     | '/subscriptions'
     | '/system-info'
     | '/system-settings'
@@ -952,14 +928,12 @@ export interface FileRouteTypes {
     | '/_authenticated/models/'
     | '/_authenticated/official-pricing/'
     | '/_authenticated/playground/'
-    | '/_authenticated/price-comparison/'
     | '/_authenticated/pricing-admin/'
     | '/_authenticated/pricing-reconciliation/'
     | '/_authenticated/profile/'
     | '/_authenticated/recharge/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/sales-price-books/'
-    | '/_authenticated/sales-price-generator/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
@@ -1333,13 +1307,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlaygroundIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/price-comparison/': {
-      id: '/_authenticated/price-comparison/'
-      path: '/price-comparison'
-      fullPath: '/price-comparison/'
-      preLoaderRoute: typeof AuthenticatedPriceComparisonIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/pricing-admin/': {
       id: '/_authenticated/pricing-admin/'
       path: '/pricing-admin'
@@ -1380,13 +1347,6 @@ declare module '@tanstack/react-router' {
       path: '/sales-price-books'
       fullPath: '/sales-price-books/'
       preLoaderRoute: typeof AuthenticatedSalesPriceBooksIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/sales-price-generator/': {
-      id: '/_authenticated/sales-price-generator/'
-      path: '/sales-price-generator'
-      fullPath: '/sales-price-generator/'
-      preLoaderRoute: typeof AuthenticatedSalesPriceGeneratorIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/subscriptions/': {
@@ -1655,14 +1615,12 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedOfficialPricingIndexRoute: typeof AuthenticatedOfficialPricingIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
-  AuthenticatedPriceComparisonIndexRoute: typeof AuthenticatedPriceComparisonIndexRoute
   AuthenticatedPricingAdminIndexRoute: typeof AuthenticatedPricingAdminIndexRoute
   AuthenticatedPricingReconciliationIndexRoute: typeof AuthenticatedPricingReconciliationIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRechargeIndexRoute: typeof AuthenticatedRechargeIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedSalesPriceBooksIndexRoute: typeof AuthenticatedSalesPriceBooksIndexRoute
-  AuthenticatedSalesPriceGeneratorIndexRoute: typeof AuthenticatedSalesPriceGeneratorIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
@@ -1696,8 +1654,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOfficialPricingIndexRoute:
     AuthenticatedOfficialPricingIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
-  AuthenticatedPriceComparisonIndexRoute:
-    AuthenticatedPriceComparisonIndexRoute,
   AuthenticatedPricingAdminIndexRoute: AuthenticatedPricingAdminIndexRoute,
   AuthenticatedPricingReconciliationIndexRoute:
     AuthenticatedPricingReconciliationIndexRoute,
@@ -1707,8 +1663,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedSalesPriceBooksIndexRoute:
     AuthenticatedSalesPriceBooksIndexRoute,
-  AuthenticatedSalesPriceGeneratorIndexRoute:
-    AuthenticatedSalesPriceGeneratorIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,

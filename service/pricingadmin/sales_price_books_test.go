@@ -47,7 +47,7 @@ func createSalesPriceBookPurchaseSource(
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
 		Id: channelModelId, ChannelId: channelId, ModelId: modelId,
-		UpstreamModelName: modelName, Status: 1, RuntimeMode: "v2",
+		UpstreamModelName: modelName, Status: 1,
 	}).Error)
 	components, err := marshalFlatPriceComponents(FlatTokenPriceInput{
 		InputUnitPrice: inputPrice, OutputUnitPrice: outputPrice,

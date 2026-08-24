@@ -106,16 +106,16 @@ export function getDisplayGroupRatio(
 }
 
 /**
- * Resolve the structured retail summary for the selected model-square group.
+ * Resolve the structured sales-price summary for the selected model-square group.
  * The unfiltered view uses the cross-group component minimum returned by the
  * backend; a concrete group must never silently fall back to another group.
  */
-export function getDisplayedRetailPrice(
+export function getDisplayedSalesPrice(
   model: PricingModel,
   selectedGroup?: string
 ): PublicPriceSummary | undefined {
   if (selectedGroup && selectedGroup !== FILTER_ALL) {
-    return model.retail_prices_by_group?.[selectedGroup]
+    return model.sales_prices_by_group?.[selectedGroup]
   }
   return model.lowest_price
 }
@@ -129,7 +129,7 @@ export function isModelAvailableForGroup(
   if (Array.isArray(model.pricing_groups)) {
     return model.pricing_groups.includes(selectedGroup)
   }
-  return Boolean(model.retail_prices_by_group?.[selectedGroup])
+  return Boolean(model.sales_prices_by_group?.[selectedGroup])
 }
 
 /**
@@ -222,8 +222,9 @@ export function isModelEligibleForAvailabilityMetrics(
   model: PricingModel
 ): boolean {
   if (!isTextLLMModel(model)) return false
-  if (!model.available || model.availability_status !== 'available')
+  if (!model.available || model.availability_status !== 'available') {
     return false
+  }
   if (
     !Array.isArray(model.pricing_groups) ||
     model.pricing_groups.length === 0

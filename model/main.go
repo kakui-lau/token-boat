@@ -257,6 +257,9 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	if err := renameLegacyPricingSnapshotColumns(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -300,7 +303,6 @@ func migrateDB() error {
 		&OfficialModelPriceVersion{},
 		&OfficialPriceSyncBatch{},
 		&ChannelModelPurchasePriceVersion{},
-		&ChannelModelRetailPriceVersion{},
 		&SalesPriceBook{},
 		&SalesPriceBookVersion{},
 		&SalesPriceBookItem{},
@@ -316,6 +318,9 @@ func migrateDB() error {
 		&FinanceAlert{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := retireLegacyChannelRetailPricing(); err != nil {
 		return err
 	}
 	if err := InitializeModelOfficialPrices(); err != nil {
@@ -343,6 +348,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := renameLegacyPricingSnapshotColumns(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -389,7 +397,6 @@ func migrateDBFast() error {
 		{&OfficialModelPriceVersion{}, "OfficialModelPriceVersion"},
 		{&OfficialPriceSyncBatch{}, "OfficialPriceSyncBatch"},
 		{&ChannelModelPurchasePriceVersion{}, "ChannelModelPurchasePriceVersion"},
-		{&ChannelModelRetailPriceVersion{}, "ChannelModelRetailPriceVersion"},
 		{&SalesPriceBook{}, "SalesPriceBook"},
 		{&SalesPriceBookVersion{}, "SalesPriceBookVersion"},
 		{&SalesPriceBookItem{}, "SalesPriceBookItem"},
@@ -427,6 +434,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := retireLegacyChannelRetailPricing(); err != nil {
+		return err
+	}
 	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
@@ -449,6 +459,75 @@ func migrateDBFast() error {
 		}
 	}
 	common.SysLog("database migrated")
+	return nil
+}
+
+type legacyChannelModelPricingMigration struct {
+	Id          int
+	RuntimeMode string `gorm:"column:runtime_mode"`
+}
+
+func (legacyChannelModelPricingMigration) TableName() string {
+	return "channel_models"
+}
+
+type legacyRequestPricingSnapshotMigration struct {
+	Id                   int
+	RetailPriceVersionId int `gorm:"column:retail_price_version_id"`
+}
+
+func (legacyRequestPricingSnapshotMigration) TableName() string {
+	return "request_pricing_snapshots"
+}
+
+func retireLegacyChannelRetailPricing() error {
+	const table = "channel_model_retail_price_versions"
+	if DB.Migrator().HasTable(table) {
+		common.SysLog("dropping retired channel retail pricing table")
+		if err := DB.Migrator().DropTable(table); err != nil {
+			return err
+		}
+	}
+	if DB.Migrator().HasColumn(&legacyChannelModelPricingMigration{}, "RuntimeMode") {
+		common.SysLog("dropping retired channel pricing runtime mode column")
+		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+			if err := DB.Exec("ALTER TABLE `channel_models` DROP COLUMN `runtime_mode`").Error; err != nil {
+				return err
+			}
+		} else if err := DB.Migrator().DropColumn(&legacyChannelModelPricingMigration{}, "RuntimeMode"); err != nil {
+			return err
+		}
+	}
+	if DB.Migrator().HasColumn(&legacyRequestPricingSnapshotMigration{}, "RetailPriceVersionId") {
+		common.SysLog("dropping retired retail price version from pricing snapshots")
+		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+			if err := DB.Exec("ALTER TABLE `request_pricing_snapshots` DROP COLUMN `retail_price_version_id`").Error; err != nil {
+				return err
+			}
+		} else if err := DB.Migrator().DropColumn(&legacyRequestPricingSnapshotMigration{}, "RetailPriceVersionId"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renameLegacyPricingSnapshotColumns() error {
+	if !DB.Migrator().HasTable(&RequestPricingSnapshot{}) {
+		return nil
+	}
+	for _, columns := range [][2]string{
+		{"retail_amount", "sales_amount"},
+		{"base_retail_amount", "base_sales_amount"},
+	} {
+		if !DB.Migrator().HasColumn(&RequestPricingSnapshot{}, columns[0]) ||
+			DB.Migrator().HasColumn(&RequestPricingSnapshot{}, columns[1]) {
+			continue
+		}
+		common.SysLog("renaming retired pricing snapshot column " + columns[0])
+		if err := DB.Migrator().RenameColumn(&RequestPricingSnapshot{}, columns[0], columns[1]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

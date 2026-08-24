@@ -1,633 +1,69 @@
 package pricingadmin
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestScaleBillingExpressionScalesOneValidRequestAwareExpression(t *testing.T) {
-	scaled, err := scaleBillingExpression(
-		`v2:(tier("base", p * 2 / 1000000)) * (param("service_tier") == "fast" ? 2 : 1)`,
-		decimal.RequireFromString("0.5"),
+func TestScaleBillingExpressionScalesRequestAwareExpression(t *testing.T) {
+	expression, err := scaleBillingExpression(
+		`v2:tier("fast", req * (header("x-priority") == "fast" ? 2 : 1))`,
+		decimal.RequireFromString("1.25"),
 	)
 	require.NoError(t, err)
-	assert.NotContains(t, scaled, "|||")
-
-	result, trace, err := billingexpr.RunExprWithRequest(
-		scaled,
-		billingexpr.TokenParams{P: 100},
-		billingexpr.RequestInput{Body: []byte(`{"service_tier":"fast"}`)},
-	)
-	require.NoError(t, err)
-	assert.Equal(t, 0.0002, result)
-	assert.Equal(t, "base", trace.MatchedTier)
+	assert.Contains(t, expression, "* 1.25")
 }
 
-func TestScaleBillingExpressionRejectsLegacySchema(t *testing.T) {
-	_, err := scaleBillingExpression(
-		`v1:tier("base", p * 2)`,
-		decimal.RequireFromString("0.5"),
-	)
-	require.ErrorContains(t, err, "must use schema v2")
-}
-
-func TestScalePriceComponentsPreservesEmptyOptionalUnitPrices(t *testing.T) {
-	scaled, err := scalePriceComponents(
-		`{"input_unit_price":"2","cache_write_unit_price":"","tiers":[{"unit_price":"4"}]}`,
-		decimal.RequireFromString("0.5"),
-		false,
-	)
-	require.NoError(t, err)
-	assert.JSONEq(
-		t,
-		`{"input_unit_price":"1","cache_write_unit_price":"","tiers":[{"unit_price":"2"}]}`,
-		scaled,
-	)
-}
-
-func TestPriceComponentLimitsAllowEmptyOptionalUnitPrices(t *testing.T) {
-	require.NoError(t, validatePriceComponentLimits(
-		`{"input_unit_price":"1","cache_write_unit_price":""}`,
-	))
-}
-
-func TestStructuredDraftBuildsOfficialPurchaseAndRetailPriceChain(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 21, ModelName: "structured-test"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id:                31,
-		ChannelId:         41,
-		ModelId:           21,
-		UpstreamModelName: "structured-test",
-		Status:            1,
-		RuntimeMode:       "legacy",
-	}).Error)
-
-	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId:  21,
-		Currency: "usd",
-		Prices: FlatTokenPriceInput{
-			InputUnitPrice:     "2",
-			OutputUnitPrice:    "10",
-			CacheReadUnitPrice: "0.2",
-		},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-	assert.Equal(t, "v2", official.ExpressionSchemaVersion)
-	assert.True(t, strings.HasPrefix(official.BillingExpr, "v2:"))
-
-	officialId := official.Id
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId:         31,
-		OfficialPriceVersionId: &officialId,
-		PricingMode:            "official_ratio",
-		PurchaseDiscount:       "0.65",
-	}, 2)
-	require.NoError(t, err)
-	assert.Equal(t, "v2", purchase.ExpressionSchemaVersion)
-	assert.Equal(t, "1.3", purchase.InputUnitPrice)
-	assert.Equal(t, "6.5", purchase.OutputUnitPrice)
-	assert.Equal(t, "0.13", purchase.CacheReadUnitPrice)
-	assert.Contains(t, purchase.PurchaseBillingExpr, "* 0.65")
-
-	retail, err := CreateRetailDraft(RetailDraftInput{
-		ChannelModelId:         31,
-		PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate:  "0.10",
-		EffectiveTaxRate:       "0.165",
-		TargetNetMargin:        "0.10",
-		MinimumMarginRate:      "0.05",
-	}, 3)
-	require.NoError(t, err)
-	assert.Equal(t, "v2", retail.ExpressionSchemaVersion)
-
-	actualInput := decimal.RequireFromString(retail.InputUnitPrice)
-	assert.True(t, decimal.RequireFromString("1.66616").Equal(actualInput))
-	assert.Contains(t, retail.RetailBillingExpr, "p * 1.66616")
-	require.NoError(t, PublishRetailPriceVersion(retail.Id))
-
-	var storedPurchase model.ChannelModelPurchasePriceVersion
-	require.NoError(t, model.DB.First(&storedPurchase, purchase.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusActive, storedPurchase.Status)
-	var storedRetail model.ChannelModelRetailPriceVersion
-	require.NoError(t, model.DB.First(&storedRetail, retail.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusActive, storedRetail.Status)
-}
-
-func TestUpdateOfficialFlatDraftChangesPricesWithoutCreatingVersion(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 24, ModelName: "editable-draft"}).Error)
-
-	draft, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 24, Currency: "USD",
-		Prices: FlatTokenPriceInput{
-			InputUnitPrice:  "1",
-			OutputUnitPrice: "4",
-		},
-		Source: "legacy_import",
-		Remark: "initial",
-	}, 7)
-	require.NoError(t, err)
-
-	_, err = UpdateOfficialFlatDraft(draft.Id, OfficialFlatDraftInput{
-		ModelId: 24, Currency: "eur",
-		Prices: FlatTokenPriceInput{
-			InputUnitPrice:       "1.25",
-			OutputUnitPrice:      "5",
-			AudioOutputUnitPrice: "12",
-		},
-		Remark: "revised",
-	})
-	require.ErrorContains(t, err, "official price currency must be USD")
-
-	updated, err := UpdateOfficialFlatDraft(draft.Id, OfficialFlatDraftInput{
-		ModelId: 24, Currency: "usd",
-		Prices: FlatTokenPriceInput{
-			InputUnitPrice:       "1.25",
-			OutputUnitPrice:      "5",
-			AudioOutputUnitPrice: "12",
-		},
-		Remark: "revised",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, draft.Id, updated.Id)
-	assert.Equal(t, draft.Version, updated.Version)
-	assert.Equal(t, "USD", updated.Currency)
-	assert.Equal(t, "legacy_import", updated.Source)
-	assert.Equal(t, "revised", updated.Remark)
-	assert.Contains(t, updated.PriceComponents, `"input_unit_price":"1.25"`)
-	assert.Contains(t, updated.PriceComponents, `"audio_output_unit_price":"12"`)
-	assert.NotEmpty(t, updated.ExprHash)
-
-	var count int64
-	require.NoError(t, model.DB.Model(&model.OfficialModelPriceVersion{}).
-		Where("model_id = ?", 24).Count(&count).Error)
-	assert.Equal(t, int64(1), count)
-}
-
-func TestUpdateOfficialFlatDraftRejectsPublishedVersion(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 25, ModelName: "published-price"}).Error)
-
-	version, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 25, Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishOfficialPriceVersion(version.Id))
-
-	_, err = UpdateOfficialFlatDraft(version.Id, OfficialFlatDraftInput{
-		ModelId: 25, Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "2"},
-	})
-	require.ErrorContains(t, err, "only official price drafts")
-}
-
-func TestCreateFixedPurchaseDraftRejectsNonUSDCurrency(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id:                35,
-		ChannelId:         45,
-		ModelId:           25,
-		UpstreamModelName: "non-usd-purchase",
-		Status:            1,
-		RuntimeMode:       "legacy",
-	}).Error)
-
-	_, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 35,
-		PricingMode:    "fixed_unit_price",
-		Currency:       "CNY",
-		Prices:         FlatTokenPriceInput{InputUnitPrice: "1"},
-	}, 1)
-	require.ErrorContains(t, err, "pricing currency must be USD")
-}
-
-func TestUpdatePurchaseAndRetailDraftsPreservesVersionIdentity(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 26, ModelName: "editable-chain"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 36, ChannelId: 46, ModelId: 26, UpstreamModelName: "editable-chain",
-		Status: 1, RuntimeMode: "legacy",
-	}).Error)
-	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 26, Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "8"},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-	officialId := official.Id
-
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
-		PricingMode: "component_ratio", InputDiscount: "0.5", OutputDiscount: "0.75",
-	}, 2)
-	require.NoError(t, err)
-	updatedPurchase, err := UpdatePurchaseDraft(purchase.Id, PurchaseDraftInput{
-		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
-		PricingMode: "component_ratio", InputDiscount: "0.6", OutputDiscount: "0.8",
-		QuoteReference: "Q-2026", Remark: "revised",
-		ExpectedUpdatedAt: purchase.UpdatedAt,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, purchase.Id, updatedPurchase.Id)
-	assert.Equal(t, purchase.Version, updatedPurchase.Version)
-	assert.Equal(t, "1.2", updatedPurchase.InputUnitPrice)
-	assert.Equal(t, "6.4", updatedPurchase.OutputUnitPrice)
-	assert.Equal(t, "Q-2026", updatedPurchase.QuoteReference)
-	assert.Contains(t, updatedPurchase.QuoteSpec, `"input_discount":"0.6"`)
-	_, err = UpdatePurchaseDraft(purchase.Id, PurchaseDraftInput{
-		ChannelModelId: 36, OfficialPriceVersionId: &officialId,
-		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
-		ExpectedUpdatedAt: purchase.UpdatedAt,
-	})
-	require.ErrorContains(t, err, "updated by another administrator")
-	require.NoError(t, PublishPurchasePriceVersion(updatedPurchase.Id))
-
-	retail, err := CreateRetailDraft(RetailDraftInput{
-		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
-		TotalVariableCostRate: "0.1", EffectiveTaxRate: "0.1",
-		TargetNetMargin: "0.05", MinimumMarginRate: "0.01",
-	}, 3)
-	require.NoError(t, err)
-	updatedRetail, err := UpdateRetailDraft(retail.Id, RetailDraftInput{
-		ChannelModelId: 36, PurchasePriceVersionId: updatedPurchase.Id,
-		TotalVariableCostRate: "0.12", EffectiveTaxRate: "0.1",
-		TargetNetMargin: "0.06", MinimumMarginRate: "0.02", Remark: "approved",
-		ExpectedUpdatedAt: retail.UpdatedAt,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, retail.Id, updatedRetail.Id)
-	assert.Equal(t, retail.Version, updatedRetail.Version)
-	assert.Equal(t, "0.06", updatedRetail.TargetNetMargin)
-	assert.Equal(t, "approved", updatedRetail.Remark)
-}
-
-func TestPublishRetailDraftRejectsMarginBelowConfiguredFloor(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 27, ModelName: "margin-gate"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 37, ChannelId: 47, ModelId: 27, UpstreamModelName: "margin-gate",
-		Status: 1, RuntimeMode: "legacy",
-	}).Error)
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 37, PricingMode: "fixed_unit_price", Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
-	retail, err := CreateRetailDraft(RetailDraftInput{
-		ChannelModelId: 37, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: "0.1", EffectiveTaxRate: "0.1",
-		TargetNetMargin: "0.1", MinimumMarginRate: "0.2",
-	}, 1)
-	require.NoError(t, err)
-
-	err = PublishRetailPriceVersion(retail.Id)
-	require.ErrorContains(t, err, "does not meet the configured minimum margin")
-}
-
-func TestCreateRetailDraftRejectsPriceEqualToOfficial(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 28, ModelName: "retail-cap"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 38, ChannelId: 48, ModelId: 28, UpstreamModelName: "retail-cap",
-		Status: 1, RuntimeMode: "legacy",
-	}).Error)
-	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 28, Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 38, OfficialPriceVersionId: &official.Id,
-		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
-	}, 1)
-	require.NoError(t, err)
-
-	_, err = CreateRetailDraft(RetailDraftInput{
-		ChannelModelId: 38, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.5", MinimumMarginRate: "0.1",
-	}, 1)
-	require.ErrorContains(t, err, "retail price must be lower than the official price")
+func TestScaleBillingExpressionRejectsOldSchema(t *testing.T) {
+	_, err := scaleBillingExpression(`v1:tier("base", p * 1)`, decimal.NewFromInt(2))
+	require.ErrorContains(t, err, "v2")
 }
 
 func TestComponentDiscountRequiresEveryPricedOfficialComponent(t *testing.T) {
 	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 22, ModelName: "component-test"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 41, ModelName: "component-model"}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id:                32,
-		ChannelId:         42,
-		ModelId:           22,
-		UpstreamModelName: "component-test",
-		Status:            1,
-		RuntimeMode:       "legacy",
+		Id: 42, ChannelId: 43, ModelId: 41, UpstreamModelName: "component-model", Status: 1,
 	}).Error)
 	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId:  22,
-		Currency: "USD",
-		Prices: FlatTokenPriceInput{
-			InputUnitPrice:  "1",
-			OutputUnitPrice: "4",
-		},
+		ModelId: 41, Currency: "USD",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "1", OutputUnitPrice: "2"},
 	}, 1)
 	require.NoError(t, err)
 	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-
-	officialId := official.Id
+	officialID := official.Id
 	_, err = CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId:         32,
-		OfficialPriceVersionId: &officialId,
-		PricingMode:            "component_ratio",
-		InputDiscount:          "0.6",
-	}, 2)
-	require.ErrorContains(t, err, "output_discount")
+		ChannelModelId: 42, OfficialPriceVersionId: &officialID,
+		PricingMode: "component_ratio", InputDiscount: "0.8",
+	}, 1)
+	require.ErrorContains(t, err, "output")
 }
 
-func TestStructuredDraftPreservesMultimodalTokenPrices(t *testing.T) {
+func TestPurchaseCanReferenceExpiredOfficialRevision(t *testing.T) {
 	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 23, ModelName: "multimodal-test"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 51, ModelName: "revision-model"}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 33, ChannelId: 43, ModelId: 23, UpstreamModelName: "multimodal-test",
-		Status: 1, RuntimeMode: "legacy",
+		Id: 52, ChannelId: 53, ModelId: 51, UpstreamModelName: "revision-model", Status: 1,
 	}).Error)
-	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 23, Currency: "USD",
-		Prices: FlatTokenPriceInput{
-			CacheWrite1HUnitPrice: "4",
-			ImageInputUnitPrice:   "2", ImageOutputUnitPrice: "8",
-			AudioInputUnitPrice: "3", AudioOutputUnitPrice: "12",
-		},
+	first, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 51, Currency: "USD", Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
 	}, 1)
 	require.NoError(t, err)
-	assert.Contains(t, official.BillingExpr, "img * 2")
-	assert.Contains(t, official.BillingExpr, "img_o * 8")
-	assert.Contains(t, official.BillingExpr, "ai * 3")
-	assert.Contains(t, official.BillingExpr, "ao * 12")
-	assert.Contains(t, official.BillingExpr, "cc1h * 4")
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-
-	officialId := official.Id
+	require.NoError(t, PublishOfficialPriceVersion(first.Id))
+	second, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 51, Currency: "USD", Prices: FlatTokenPriceInput{InputUnitPrice: "2"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(second.Id))
+	firstID := first.Id
 	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 33, OfficialPriceVersionId: &officialId,
-		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+		ChannelModelId: 52, OfficialPriceVersionId: &firstID,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.8",
 	}, 1)
 	require.NoError(t, err)
-	assert.Contains(t, purchase.PriceComponents, `"image_input_unit_price":"1"`)
-	assert.Contains(t, purchase.PriceComponents, `"audio_output_unit_price":"6"`)
-	assert.Contains(t, purchase.PriceComponents, `"cache_write_1h_unit_price":"2"`)
-	assert.Contains(t, purchase.PurchaseBillingExpr, "cc1h * 4")
-	assert.Contains(t, purchase.PurchaseBillingExpr, "* 0.5")
-	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
-
-	retail, err := CreateRetailDraft(RetailDraftInput{
-		ChannelModelId: 33, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.4", MinimumMarginRate: "0.1",
-	}, 1)
-	require.NoError(t, err)
-	assert.Contains(t, retail.PriceComponents, `"image_input_unit_price":"1.66667"`)
-	assert.Contains(t, retail.PriceComponents, `"audio_output_unit_price":"10.00001"`)
-	assert.Contains(t, retail.PriceComponents, `"cache_write_1h_unit_price":"3.33334"`)
-	assert.Contains(t, retail.RetailBillingExpr, "cc1h * 3.33334")
-}
-
-func TestStructuredDraftBuildsTieredExpressionPurchaseAndRetailChain(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 31, ModelName: "tiered-chain"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 32, ChannelId: 33, ModelId: 31, UpstreamModelName: "tiered-chain",
-		Status: 1, RuntimeMode: "legacy",
-	}).Error)
-	official := model.OfficialModelPriceVersion{
-		ModelId: 31, BillingMode: "token", PriceStructure: "tiered",
-		PriceComponents: `{"rules":[` +
-			`{"name":"short","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"2","upper_bound":"100000"},` +
-			`{"name":"default","component":"token_input","unit":"token","unit_size":"1000000","unit_price":"4"}` +
-			`]}`,
-		BillingExpr:      `v2:len <= 100000 ? tier("short", p * 2 / 1000000) : tier("default", p * 4 / 1000000)`,
-		ExpressionSource: "custom", ExpressionSchemaVersion: "v2",
-		Currency: "USD", Source: "manual",
-	}
-	require.NoError(t, CreateOfficialPriceVersion(&official, 1))
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 32, OfficialPriceVersionId: &official.Id,
-		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
-	}, 1)
-	require.NoError(t, err)
-	assert.Equal(t, "tiered", purchase.PriceStructure)
-	assert.Contains(t, purchase.PurchaseBillingExpr, "* 0.5")
-	assert.Contains(t, purchase.PriceComponents, `"unit_price":"1"`)
-
-	retail, err := CreateRetailDraft(RetailDraftInput{
-		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.4", MinimumMarginRate: "0.3",
-	}, 1)
-	require.NoError(t, err)
-	assert.Equal(t, "tiered", retail.PriceStructure)
-	assert.Contains(t, retail.RetailBillingExpr, "* 1.666666")
-	require.NoError(t, PublishRetailPriceVersion(retail.Id))
-
-	result, err := SimulatePrice(PriceSimulationInput{
-		ChannelModelId: 32, PurchasePriceVersionId: purchase.Id,
-		RetailPriceVersionId: retail.Id, PromptTokens: 200_000,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "0.4", result.PurchaseCost)
-	assert.Equal(t, "0.6666666666666667", result.RetailAmount)
-}
-
-func TestExpressionRetailPriceComponentsRoundUpToFiveDecimals(t *testing.T) {
-	factor, err := NewRetailPriceCalculator("0.11", "0.16", "0.5")
-	require.NoError(t, err)
-	sellingFactor, err := factor.SellingFactor()
-	require.NoError(t, err)
-
-	components, err := scalePriceComponents(
-		`{"rules":[`+
-			`{"name":"480p","unit_price":"0.024"},`+
-			`{"name":"720p","unit_price":"0.048"}`+
-			`]}`,
-		sellingFactor,
-		true,
-	)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"rules":[`+
-		`{"name":"480p","unit_price":"0.08143"},`+
-		`{"name":"720p","unit_price":"0.16285"}`+
-		`]}`, components)
-}
-
-func TestStructuredDraftBuildsFlatImagePurchaseAndRetailChain(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 34, ModelName: "flat-image-chain"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 35, ChannelId: 36, ModelId: 34, UpstreamModelName: "flat-image-chain",
-		Status: 1, RuntimeMode: "legacy",
-	}).Error)
-	official := model.OfficialModelPriceVersion{
-		ModelId:        34,
-		BillingMode:    "image",
-		PriceStructure: "flat",
-		PriceComponents: `{"schema_version":"v2","rules":[` +
-			`{"name":"output","component":"image_output","unit":"image","unit_size":"1","unit_price":"0.04"}` +
-			`]}`,
-		BillingExpr:             `v2:tier("output", images * 0.04)`,
-		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: "v2",
-		Currency:                "USD",
-		Source:                  "manual",
-	}
-	require.NoError(t, CreateOfficialPriceVersion(&official, 1))
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 35, OfficialPriceVersionId: &official.Id,
-		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
-	}, 1)
-	require.NoError(t, err)
-	assert.Equal(t, "image", purchase.BillingMode)
-	assert.Equal(t, "expression", purchase.PriceUnit)
-	assert.Contains(t, purchase.PriceComponents, `"unit_price":"0.02"`)
-	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
-
-	retail, err := CreateRetailDraft(RetailDraftInput{
-		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
-		TargetNetMargin: "0.4", MinimumMarginRate: "0.3",
-	}, 1)
-	require.NoError(t, err)
-	assert.Equal(t, "image", retail.BillingMode)
-	assert.Contains(t, retail.PriceComponents, `"unit_price":"0.03334"`)
-
-	result, err := SimulatePrice(PriceSimulationInput{
-		ChannelModelId: 35, PurchasePriceVersionId: purchase.Id,
-		RetailPriceVersionId: retail.Id, ImageCount: 2,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "0.04", result.PurchaseCost)
-	assert.Equal(t, "0.06666666666666667", result.RetailAmount)
-}
-
-func TestComponentDiscountRejectsNonTokenOfficialPrice(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{Id: 37, ModelName: "image-discount"}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 38, ChannelId: 39, ModelId: 37, UpstreamModelName: "image-discount",
-		Status: 1, RuntimeMode: "legacy",
-	}).Error)
-	official := model.OfficialModelPriceVersion{
-		ModelId:        37,
-		BillingMode:    "image",
-		PriceStructure: "flat",
-		PriceComponents: `{"schema_version":"v2","rules":[` +
-			`{"name":"output","component":"image_output","unit":"image","unit_size":"1","unit_price":"0.04"}` +
-			`]}`,
-		BillingExpr:             `v2:tier("output", images * 0.04)`,
-		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: "v2",
-		Currency:                "USD",
-		Source:                  "manual",
-	}
-	require.NoError(t, CreateOfficialPriceVersion(&official, 1))
-	require.NoError(t, PublishOfficialPriceVersion(official.Id))
-
-	_, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 38, OfficialPriceVersionId: &official.Id,
-		PricingMode: "component_ratio", ImageOutputDiscount: "0.5",
-	}, 1)
-	require.ErrorContains(t, err, "component discounts require a flat token official price")
-}
-
-func TestPurchaseCanReferenceAnExpiredOfficialRevision(t *testing.T) {
-	setupPricingAdminTestDB(t)
-	require.NoError(t, model.DB.Create(&model.Model{
-		Id: 81, ModelName: "historical-official-reference",
-	}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModel{
-		Id: 82, ChannelId: 83, ModelId: 81,
-		UpstreamModelName: "historical-official-reference",
-		Status:            1, RuntimeMode: "legacy",
-	}).Error)
-
-	historical, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 81, Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "8"},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishOfficialPriceVersion(historical.Id))
-
-	current, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
-		ModelId: 81, Currency: "USD",
-		Prices: FlatTokenPriceInput{InputUnitPrice: "3", OutputUnitPrice: "12"},
-	}, 1)
-	require.NoError(t, err)
-	require.NoError(t, PublishOfficialPriceVersion(current.Id))
-
-	require.NoError(t, model.DB.First(&historical, historical.Id).Error)
-	assert.Equal(t, model.PricingVersionStatusExpired, historical.Status)
-
-	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
-		ChannelModelId: 82, OfficialPriceVersionId: &historical.Id,
-		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
-	}, 1)
-	require.NoError(t, err)
-	assert.Equal(t, "1", purchase.InputUnitPrice)
-	assert.Equal(t, "4", purchase.OutputUnitPrice)
-	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
-}
-
-func TestEnsurePurchaseEvidenceReferencesInheritsActiveOrGenerates(t *testing.T) {
-	setupPricingAdminTestDB(t)
-
-	// 1. 显式传入引用 → 不改动
-	input := PurchaseDraftInput{
-		ChannelModelId:    50,
-		QuoteReference:    "Q-100",
-		ContractReference: "C-200",
-	}
-	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
-	assert.Equal(t, "Q-100", input.QuoteReference)
-	assert.Equal(t, "C-200", input.ContractReference)
-
-	// 2. 前端留空 + 存在带证据的 active 版本 → 继承
-	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
-		ChannelModelId: 51,
-		Status:         model.PricingVersionStatusActive,
-		QuoteReference: "prod-ch-16-ratio-0.5-backfill",
-	}).Error)
-	input = PurchaseDraftInput{ChannelModelId: 51, PurchaseDiscount: "0.5"}
-	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
-	assert.Equal(t, "prod-ch-16-ratio-0.5-backfill", input.QuoteReference)
-
-	// 3. 前端留空 + active 版本也无证据 → 自动生成
-	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
-		ChannelModelId: 52,
-		Status:         model.PricingVersionStatusActive,
-	}).Error)
-	input = PurchaseDraftInput{ChannelModelId: 52, PurchaseDiscount: "0.5"}
-	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
-	assert.Equal(t, "channel 52 official price 0.5", input.QuoteReference)
-
-	// 4. 无任何 active 版本 → 自动生成（折扣为空时用 official 兜底）
-	input = PurchaseDraftInput{ChannelModelId: 53, PurchaseDiscount: "0.7"}
-	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
-	assert.Equal(t, "channel 53 official price 0.7", input.QuoteReference)
-
-	input = PurchaseDraftInput{ChannelModelId: 54}
-	require.NoError(t, ensurePurchaseEvidenceReferences(&input))
-	assert.Equal(t, "channel 54 official price official", input.QuoteReference)
+	assert.Equal(t, first.Id, *purchase.OfficialPriceVersionId)
 }

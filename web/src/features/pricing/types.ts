@@ -60,11 +60,11 @@ export type PricingModel = {
   pricing_source?: string
   /** Current vendor list price normalized by the backend. */
   official_price?: PublicPriceSummary
-  /** Lowest active retail price per comparable item across usable channels. */
+  /** Current customer-facing sales price per comparable item. */
   lowest_price?: PublicPriceSummary
-  /** Lowest active retail price per comparable item within each usable group. */
-  retail_prices_by_group?: Record<string, PublicPriceSummary>
-  /** Usable groups with at least one complete V2 price chain. */
+  /** Current customer-facing sales price per usable group. */
+  sales_prices_by_group?: Record<string, PublicPriceSummary>
+  /** Usable groups with at least one complete purchase and sales price chain. */
   pricing_groups?: string[]
   /** Whether this model has both a usable route and complete active pricing. */
   available: boolean

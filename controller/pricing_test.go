@@ -25,21 +25,21 @@ func TestScopePricingPreservesModelsOutsideUsableGroups(t *testing.T) {
 	assert.Equal(t, []string{"all"}, scoped[3].EnableGroup)
 }
 
-func TestMarkPricingAvailabilityRequiresRouteAndRetailPrice(t *testing.T) {
+func TestMarkPricingAvailabilityRequiresRouteAndSalesPrice(t *testing.T) {
 	price := &model.PublicPriceSummary{Currency: "USD"}
 	pricing := []model.Pricing{
 		{
 			ModelName: "available", EnableGroup: []string{"default"},
-			LowestPrice: price, PricingSource: "v2_dynamic",
+			LowestPrice: price, PricingSource: "sales_price_book",
 		},
 		{
 			ModelName: "expression-only", EnableGroup: []string{"default"},
-			PricingSource: "v2_dynamic",
+			PricingSource: "sales_price_book",
 		},
 		{ModelName: "missing-price", EnableGroup: []string{"default"}},
 		{
 			ModelName: "missing-route", EnableGroup: []string{},
-			LowestPrice: price, PricingSource: "v2_dynamic",
+			LowestPrice: price, PricingSource: "sales_price_book",
 		},
 	}
 

@@ -1104,7 +1104,7 @@ export function ModelMutateDrawer({
                         </Select>
                         <FormDescription>
                           {t(
-                            'The target model supplies channels, official price, purchase cost, retail price, group multipliers, retries, and circuit state.'
+                            'The target model supplies channels, official price, purchase cost, sales price book, retries, and circuit state.'
                           )}
                         </FormDescription>
                         <FormMessage />
@@ -1118,7 +1118,7 @@ export function ModelMutateDrawer({
                     </div>
                     <div className='text-muted-foreground mt-1'>
                       {t(
-                        'This alias is internal and does not create official, purchase, retail, channel-model, or ability records of its own.'
+                        'This alias is internal and does not create official prices, purchase prices, sales price books, channel-model, or ability records of its own.'
                       )}
                     </div>
                   </div>

@@ -24,33 +24,7 @@ func SuspendPurchasePriceVersion(id int) error {
 		if version.Status != model.PricingVersionStatusActive {
 			return errors.New("only active purchase prices can be suspended")
 		}
-		var dependent int64
-		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
-			Where("purchase_price_version_id = ? AND status = ?", id, model.PricingVersionStatusActive).
-			Count(&dependent).Error; err != nil {
-			return err
-		}
-		if dependent > 0 {
-			return errors.New("purchase price is referenced by an active retail price")
-		}
 		return suspendVersion(tx, &model.ChannelModelPurchasePriceVersion{}, id)
-	})
-	if err == nil {
-		pricingruntime.InvalidateCatalog()
-	}
-	return err
-}
-
-func SuspendRetailPriceVersion(id int) error {
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		version, err := model.GetRetailPriceVersionForUpdate(tx, id)
-		if err != nil {
-			return err
-		}
-		if version.Status != model.PricingVersionStatusActive {
-			return errors.New("only active retail prices can be suspended")
-		}
-		return suspendVersion(tx, &model.ChannelModelRetailPriceVersion{}, id)
 	})
 	if err == nil {
 		pricingruntime.InvalidateCatalog()
@@ -88,28 +62,6 @@ func DeletePurchasePriceDraft(id int) error {
 		}
 		if version.Status != model.PricingVersionStatusDraft {
 			return errors.New("only purchase price drafts can be deleted")
-		}
-		var dependent int64
-		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
-			Where("purchase_price_version_id = ?", id).
-			Count(&dependent).Error; err != nil {
-			return err
-		}
-		if dependent > 0 {
-			return errors.New("purchase price draft is referenced by a retail price")
-		}
-		return tx.Delete(&version).Error
-	})
-}
-
-func DeleteRetailPriceDraft(id int) error {
-	return model.DB.Transaction(func(tx *gorm.DB) error {
-		version, err := model.GetRetailPriceVersionForUpdate(tx, id)
-		if err != nil {
-			return err
-		}
-		if version.Status != model.PricingVersionStatusDraft {
-			return errors.New("only retail price drafts can be deleted")
 		}
 		return tx.Delete(&version).Error
 	})

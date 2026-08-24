@@ -21,7 +21,6 @@ import {
   BadgeDollarSign,
   BookOpen,
   Box,
-  Calculator,
   ChartNoAxesCombined,
   CircleDollarSign,
   ClipboardCheck,
@@ -158,18 +157,9 @@ export function useSidebarData(): SidebarData {
             },
           },
           {
-            title: t('Channel Pricing'),
+            title: t('Channel Purchase Pricing'),
             url: '/pricing-admin',
             icon: Coins,
-            requiredPermission: {
-              resource: ADMIN_PERMISSION_RESOURCES.PRICING,
-              action: ADMIN_PERMISSION_ACTIONS.READ,
-            },
-          },
-          {
-            title: t('Sales Price Generator'),
-            url: '/sales-price-generator',
-            icon: Calculator,
             requiredPermission: {
               resource: ADMIN_PERMISSION_RESOURCES.PRICING,
               action: ADMIN_PERMISSION_ACTIONS.READ,

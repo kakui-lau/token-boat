@@ -60,10 +60,10 @@ type plan struct {
 	PurchaseOutput     string
 	PurchaseCacheRead  string
 	PurchaseCacheWrite string
-	RetailInput        string
-	RetailOutput       string
-	RetailCacheRead    string
-	RetailCacheWrite   string
+	SalesInput         string
+	SalesOutput        string
+	SalesCacheRead     string
+	SalesCacheWrite    string
 	SellingFactor      string
 }
 
@@ -84,9 +84,9 @@ func main() {
 	anthropicDiscount := flags.String("anthropic-discount", "", "Anthropic purchase discount")
 	moonshotDiscount := flags.String("moonshotai-discount", "", "Moonshot purchase discount")
 	deepSeekDiscount := flags.String("deepseek-discount", "", "DeepSeek purchase discount")
-	variableCostRate := flags.String("variable-cost-rate", "", "retail variable cost rate")
-	taxRate := flags.String("tax-rate", "", "retail effective tax rate")
-	targetMargin := flags.String("target-margin", "", "retail target and minimum margin")
+	variableCostRate := flags.String("variable-cost-rate", "", "sales-price variable cost rate")
+	taxRate := flags.String("tax-rate", "", "sales-price effective tax rate")
+	targetMargin := flags.String("target-margin", "", "sales-price target and minimum margin")
 	upscaleDiscount := flags.String("upscale-discount", "", "purchase discount for models ending in -upscale")
 	standardDiscount := flags.String("standard-discount", "", "purchase discount for other models")
 	sourceChannelID := flags.Int("source-channel-id", 0, "source channel ID to clone for staging")
@@ -402,7 +402,7 @@ func stageVideoChannel(cfg stagedVideoChannelConfig) error {
 			if err := tx.Create(&ability).Error; err != nil {
 				return err
 			}
-			channelModel := model.ChannelModel{ChannelId: channel.Id, ModelId: modelsByName[logical].Id, UpstreamModelName: mapping[logical], Status: 1, Priority: 0, Weight: 0, RuntimeMode: "legacy"}
+			channelModel := model.ChannelModel{ChannelId: channel.Id, ModelId: modelsByName[logical].Id, UpstreamModelName: mapping[logical], Status: 1, Priority: 0, Weight: 0}
 			if err := tx.Create(&channelModel).Error; err != nil {
 				return err
 			}
@@ -413,7 +413,7 @@ func stageVideoChannel(cfg stagedVideoChannelConfig) error {
 		return err
 	}
 	model.InitChannelCache()
-	fmt.Printf("staged channel id=%d name=%q group=%q runtime=legacy pricing=not-created\n", channel.Id, channel.Name, channel.Group)
+	fmt.Printf("staged channel id=%d name=%q group=%q purchase_pricing=not-created\n", channel.Id, channel.Name, channel.Group)
 	for _, logical := range logicalNames {
 		fmt.Printf("mapping logical=%q upstream=%q purchase_discount=%s\n", logical, mapping[logical], discounts[logical])
 	}
@@ -442,10 +442,9 @@ func inspectChannel(channelID int) error {
 		ModelName         string `gorm:"column:model_name"`
 		UpstreamModelName string `gorm:"column:upstream_model_name"`
 		Status            int    `gorm:"column:status"`
-		RuntimeMode       string `gorm:"column:runtime_mode"`
 	}
 	if err := model.DB.Table("channel_models").
-		Select("channel_models.id, models.model_name, channel_models.upstream_model_name, channel_models.status, channel_models.runtime_mode").
+		Select("channel_models.id, models.model_name, channel_models.upstream_model_name, channel_models.status").
 		Joins("JOIN models ON models.id = channel_models.model_id").
 		Where("channel_models.channel_id = ?", channelID).
 		Order("models.model_name ASC, channel_models.upstream_model_name ASC").
@@ -453,7 +452,7 @@ func inspectChannel(channelID int) error {
 		return err
 	}
 	for _, item := range channelModels {
-		fmt.Printf("channel_model id=%d logical=%q upstream=%q status=%d runtime=%q\n", item.ID, item.ModelName, item.UpstreamModelName, item.Status, item.RuntimeMode)
+		fmt.Printf("channel_model id=%d logical=%q upstream=%q status=%d\n", item.ID, item.ModelName, item.UpstreamModelName, item.Status)
 		var official struct {
 			ID            int    `gorm:"column:id"`
 			Status        string `gorm:"column:status"`
@@ -471,12 +470,10 @@ func inspectChannel(channelID int) error {
 		fmt.Printf("official id=%d status=%q source=%q source_version=%q remark=%q\n", official.ID, official.Status, official.Source, official.SourceVersion, official.Remark)
 		var purchase model.ChannelModelPurchasePriceVersion
 		purchaseErr := model.DB.Where("channel_model_id = ? AND status = ?", item.ID, model.PricingVersionStatusActive).First(&purchase).Error
-		var retail model.ChannelModelRetailPriceVersion
-		retailErr := model.DB.Where("channel_model_id = ? AND status = ?", item.ID, model.PricingVersionStatusActive).First(&retail).Error
-		if purchaseErr == nil && retailErr == nil {
-			fmt.Printf("pricing purchase_id=%d retail_id=%d purchase_expr=%q retail_expr=%q variable_cost=%s tax=%s minimum_margin=%s target_margin=%s\n", purchase.Id, retail.Id, purchase.PurchaseBillingExpr, retail.RetailBillingExpr, retail.TotalVariableCostRate, retail.EffectiveTaxRate, retail.MinimumMarginRate, retail.TargetNetMargin)
-		} else if !errors.Is(purchaseErr, gorm.ErrRecordNotFound) || !errors.Is(retailErr, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("load active pricing for channel model %d: purchase=%v retail=%v", item.ID, purchaseErr, retailErr)
+		if purchaseErr == nil {
+			fmt.Printf("pricing purchase_id=%d purchase_expr=%q discount=%s\n", purchase.Id, purchase.PurchaseBillingExpr, purchase.PurchaseDiscount)
+		} else if !errors.Is(purchaseErr, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("load active purchase pricing for channel model %d: %w", item.ID, purchaseErr)
 		}
 	}
 	var abilities []model.Ability
@@ -655,12 +652,8 @@ func priceChannel(params channelPricingParams) error {
 		}
 		bundle, err := pricingadmin.GetActivePriceBundle(row.Id)
 		if err == nil {
-			if !decimalValuesEqual(bundle.Purchase.PurchaseDiscount, discount) ||
-				!decimalValuesEqual(bundle.Retail.TotalVariableCostRate, params.VariableCostRate) ||
-				!decimalValuesEqual(bundle.Retail.EffectiveTaxRate, params.TaxRate) ||
-				!decimalValuesEqual(bundle.Retail.TargetNetMargin, params.TargetMargin) ||
-				!decimalValuesEqual(bundle.Retail.MinimumMarginRate, params.TargetMargin) {
-				return fmt.Errorf("model %s already has a different active price chain", row.ModelName)
+			if !decimalValuesEqual(bundle.Purchase.PurchaseDiscount, discount) {
+				return fmt.Errorf("model %s already has a different active purchase price", row.ModelName)
 			}
 			target.AlreadyReady = true
 		}
@@ -683,29 +676,15 @@ func priceChannel(params channelPricingParams) error {
 		if err != nil {
 			return fmt.Errorf("create %s purchase price: %w", target.ModelName, err)
 		}
-		retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
-			ChannelModelId: target.ChannelModel.Id, PurchasePriceVersionId: purchase.Id,
-			TotalVariableCostRate: params.VariableCostRate, EffectiveTaxRate: params.TaxRate,
-			TargetNetMargin: params.TargetMargin, MinimumMarginRate: params.TargetMargin,
-			Remark: "Anispark tenant API internal-test retail price",
-		}, 1)
-		if err != nil {
-			return fmt.Errorf("create %s retail price: %w", target.ModelName, err)
-		}
-		if err := pricingadmin.PublishRetailPriceVersion(retail.Id); err != nil {
-			return fmt.Errorf("publish %s price chain: %w", target.ModelName, err)
+		if err := pricingadmin.PublishPurchasePriceVersion(purchase.Id); err != nil {
+			return fmt.Errorf("publish %s purchase price: %w", target.ModelName, err)
 		}
 		fmt.Printf(
-			"priced model=%s channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s\n",
-			target.ModelName, target.ChannelModel.Id, officialID, purchase.Id, retail.Id, target.Discount,
+			"priced model=%s channel_model_id=%d official_id=%d purchase_id=%d discount=%s\n",
+			target.ModelName, target.ChannelModel.Id, officialID, purchase.Id, target.Discount,
 		)
 	}
 
-	for _, target := range targets {
-		if _, err := pricingruntime.SetModelRuntimeMode(target.ModelName, pricingruntime.RuntimeModeV2); err != nil {
-			return fmt.Errorf("activate V2 for %s: %w", target.ModelName, err)
-		}
-	}
 	pricingruntime.InvalidateCatalog()
 	return verifyChannelPricing(params, targets)
 }
@@ -716,12 +695,8 @@ func verifyChannelPricing(params channelPricingParams, targets []channelPricingT
 		if err != nil {
 			return fmt.Errorf("verify %s active bundle: %w", target.ModelName, err)
 		}
-		if !decimalValuesEqual(bundle.Purchase.PurchaseDiscount, target.Discount) ||
-			!decimalValuesEqual(bundle.Retail.TotalVariableCostRate, params.VariableCostRate) ||
-			!decimalValuesEqual(bundle.Retail.EffectiveTaxRate, params.TaxRate) ||
-			!decimalValuesEqual(bundle.Retail.TargetNetMargin, params.TargetMargin) ||
-			!decimalValuesEqual(bundle.Retail.MinimumMarginRate, params.TargetMargin) {
-			return fmt.Errorf("verify %s price rates differ from requested values", target.ModelName)
+		if !decimalValuesEqual(bundle.Purchase.PurchaseDiscount, target.Discount) {
+			return fmt.Errorf("verify %s purchase discount differs from requested value", target.ModelName)
 		}
 		var abilityCount int64
 		if err := model.DB.Model(&model.Ability{}).
@@ -799,7 +774,7 @@ func validateConfig(cfg config) error {
 }
 
 func buildPlan(cfg config) (plan, error) {
-	calculator, err := pricingadmin.NewRetailPriceCalculator(cfg.VariableCostRate, cfg.TaxRate, cfg.TargetMargin)
+	calculator, err := pricingadmin.NewSalesPriceCalculator(cfg.VariableCostRate, cfg.TaxRate, cfg.TargetMargin)
 	if err != nil {
 		return plan{}, err
 	}
@@ -812,12 +787,12 @@ func buildPlan(cfg config) (plan, error) {
 	components := []struct {
 		official string
 		purchase *string
-		retail   *string
+		sales    *string
 	}{
-		{cfg.OfficialInput, &result.PurchaseInput, &result.RetailInput},
-		{cfg.OfficialOutput, &result.PurchaseOutput, &result.RetailOutput},
-		{cfg.OfficialCacheRead, &result.PurchaseCacheRead, &result.RetailCacheRead},
-		{cfg.OfficialCacheWrite, &result.PurchaseCacheWrite, &result.RetailCacheWrite},
+		{cfg.OfficialInput, &result.PurchaseInput, &result.SalesInput},
+		{cfg.OfficialOutput, &result.PurchaseOutput, &result.SalesOutput},
+		{cfg.OfficialCacheRead, &result.PurchaseCacheRead, &result.SalesCacheRead},
+		{cfg.OfficialCacheWrite, &result.PurchaseCacheWrite, &result.SalesCacheWrite},
 	}
 	for _, item := range components {
 		if strings.TrimSpace(item.official) == "" {
@@ -828,14 +803,14 @@ func buildPlan(cfg config) (plan, error) {
 			return plan{}, fmt.Errorf("official price %q is invalid", item.official)
 		}
 		purchase := official.Mul(discount)
-		retail, err := calculator.CalculateSellingPrice(purchase)
+		salesPrice, err := calculator.CalculateSellingPrice(purchase)
 		if err != nil {
 			return plan{}, err
 		}
 		*item.purchase = purchase.String()
-		*item.retail = retail.StringFixed(5)
-		if !retail.LessThan(official) {
-			return plan{}, fmt.Errorf("calculated retail price %s must be lower than official price %s", retail, official)
+		*item.sales = salesPrice.StringFixed(5)
+		if !salesPrice.LessThan(official) {
+			return plan{}, fmt.Errorf("calculated sales price %s must be lower than official price %s", salesPrice, official)
 		}
 	}
 	return result, nil
@@ -845,7 +820,7 @@ func printPlan(cfg config, computed plan) {
 	fmt.Printf("model=%s channel_id=%d upstream=%s staging_group=%s\n", cfg.LogicalModel, cfg.ChannelID, cfg.UpstreamModel, cfg.StagingGroup)
 	fmt.Printf("official input=%s output=%s cache_read=%s cache_write=%s USD/1M\n", cfg.OfficialInput, cfg.OfficialOutput, cfg.OfficialCacheRead, cfg.OfficialCacheWrite)
 	fmt.Printf("purchase input=%s output=%s cache_read=%s cache_write=%s USD/1M\n", computed.PurchaseInput, computed.PurchaseOutput, computed.PurchaseCacheRead, computed.PurchaseCacheWrite)
-	fmt.Printf("retail input=%s output=%s cache_read=%s cache_write=%s USD/1M factor=%s\n", computed.RetailInput, computed.RetailOutput, computed.RetailCacheRead, computed.RetailCacheWrite, computed.SellingFactor)
+	fmt.Printf("sales input=%s output=%s cache_read=%s cache_write=%s USD/1M factor=%s\n", computed.SalesInput, computed.SalesOutput, computed.SalesCacheRead, computed.SalesCacheWrite, computed.SellingFactor)
 }
 
 func openDatabase() error {
@@ -892,7 +867,7 @@ func inspect(cfg config) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("channel_model id=%d upstream=%q status=%d runtime=%q\n", channelModel.Id, channelModel.UpstreamModelName, channelModel.Status, channelModel.RuntimeMode)
+	fmt.Printf("channel_model id=%d upstream=%q status=%d\n", channelModel.Id, channelModel.UpstreamModelName, channelModel.Status)
 	return nil
 }
 
@@ -973,7 +948,7 @@ func apply(cfg config) error {
 	var channelModel model.ChannelModel
 	err = model.DB.Where("channel_id = ? AND model_id = ?", cfg.ChannelID, logicalModel.Id).First(&channelModel).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		channelModel = model.ChannelModel{ChannelId: cfg.ChannelID, ModelId: logicalModel.Id, UpstreamModelName: cfg.UpstreamModel, Status: 1, Priority: int64Value(channel.Priority), Weight: uint(channel.GetWeight()), RuntimeMode: pricingruntime.RuntimeModeLegacy}
+		channelModel = model.ChannelModel{ChannelId: cfg.ChannelID, ModelId: logicalModel.Id, UpstreamModelName: cfg.UpstreamModel, Status: 1, Priority: int64Value(channel.Priority), Weight: uint(channel.GetWeight())}
 		if err := model.DB.Create(&channelModel).Error; err != nil {
 			return err
 		}
@@ -990,11 +965,8 @@ func apply(cfg config) error {
 	if err := ensurePriceChain(cfg, channelModel.Id, official.Id); err != nil {
 		return err
 	}
-	updated, err := pricingruntime.SetModelRuntimeMode(cfg.LogicalModel, pricingruntime.RuntimeModeV2)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("applied model_id=%d channel_model_id=%d runtime_updated=%d\n", logicalModel.Id, channelModel.Id, updated)
+	pricingruntime.InvalidateCatalog()
+	fmt.Printf("applied model_id=%d channel_model_id=%d\n", logicalModel.Id, channelModel.Id)
 	return nil
 }
 
@@ -1094,30 +1066,20 @@ func ensureOfficialPrice(cfg config, modelID int) (model.OfficialModelPriceVersi
 }
 
 func ensurePriceChain(cfg config, channelModelID int, officialID int) error {
-	var retail model.ChannelModelRetailPriceVersion
-	err := model.DB.Where("channel_model_id = ? AND status = ?", channelModelID, model.PricingVersionStatusActive).First(&retail).Error
+	var purchase model.ChannelModelPurchasePriceVersion
+	err := model.DB.Where("channel_model_id = ? AND status = ?", channelModelID, model.PricingVersionStatusActive).First(&purchase).Error
 	if err == nil {
-		var purchase model.ChannelModelPurchasePriceVersion
-		if err := model.DB.First(&purchase, retail.PurchasePriceVersionId).Error; err != nil {
-			return err
-		}
-		if purchase.OfficialPriceVersionId != nil && *purchase.OfficialPriceVersionId == officialID && purchase.PurchaseDiscount == cfg.PurchaseDiscount &&
-			retail.TotalVariableCostRate == decimalString(cfg.VariableCostRate) && retail.EffectiveTaxRate == decimalString(cfg.TaxRate) &&
-			retail.TargetNetMargin == decimalString(cfg.TargetMargin) && retail.MinimumMarginRate == decimalString(cfg.MinimumMargin) {
+		if purchase.OfficialPriceVersionId != nil && *purchase.OfficialPriceVersionId == officialID && purchase.PurchaseDiscount == cfg.PurchaseDiscount {
 			return nil
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	purchase, err := pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{ChannelModelId: channelModelID, OfficialPriceVersionId: &officialID, PricingMode: "official_ratio", Currency: "USD", PurchaseDiscount: cfg.PurchaseDiscount, QuoteReference: fmt.Sprintf("channel %d official price %s", channelModelID, cfg.PurchaseDiscount)}, 1)
+	purchase, err = pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{ChannelModelId: channelModelID, OfficialPriceVersionId: &officialID, PricingMode: "official_ratio", Currency: "USD", PurchaseDiscount: cfg.PurchaseDiscount, QuoteReference: fmt.Sprintf("channel %d official price %s", channelModelID, cfg.PurchaseDiscount)}, 1)
 	if err != nil {
 		return err
 	}
-	retail, err = pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{ChannelModelId: channelModelID, PurchasePriceVersionId: purchase.Id, TotalVariableCostRate: cfg.VariableCostRate, EffectiveTaxRate: cfg.TaxRate, TargetNetMargin: cfg.TargetMargin, MinimumMarginRate: cfg.MinimumMargin}, 1)
-	if err != nil {
-		return err
-	}
-	return pricingadmin.PublishRetailPriceVersion(retail.Id)
+	return pricingadmin.PublishPurchasePriceVersion(purchase.Id)
 }
 
 func verify(cfg config, expected plan, probe bool) error {
@@ -1129,15 +1091,15 @@ func verify(cfg config, expected plan, probe bool) error {
 	if err := model.DB.Where("channel_id = ? AND model_id = ? AND upstream_model_name = ?", cfg.ChannelID, logicalModel.Id, cfg.UpstreamModel).First(&channelModel).Error; err != nil {
 		return err
 	}
-	if channelModel.RuntimeMode != pricingruntime.RuntimeModeV2 || channelModel.Status != 1 {
-		return errors.New("channel model is not active in V2 runtime")
+	if channelModel.Status != 1 {
+		return errors.New("channel model is not active")
 	}
 	bundle, err := pricingadmin.GetActivePriceBundle(channelModel.Id)
 	if err != nil {
 		return err
 	}
-	if bundle.Retail.InputUnitPrice != expected.RetailInput || bundle.Retail.OutputUnitPrice != expected.RetailOutput || bundle.Retail.CacheReadUnitPrice != expected.RetailCacheRead {
-		return fmt.Errorf("retail prices differ from plan: got %s/%s/%s", bundle.Retail.InputUnitPrice, bundle.Retail.OutputUnitPrice, bundle.Retail.CacheReadUnitPrice)
+	if bundle.Purchase.InputUnitPrice != expected.PurchaseInput || bundle.Purchase.OutputUnitPrice != expected.PurchaseOutput || bundle.Purchase.CacheReadUnitPrice != expected.PurchaseCacheRead {
+		return fmt.Errorf("purchase prices differ from plan: got %s/%s/%s", bundle.Purchase.InputUnitPrice, bundle.Purchase.OutputUnitPrice, bundle.Purchase.CacheReadUnitPrice)
 	}
 	var abilityCount int64
 	groupColumn := "`group`"
@@ -1156,7 +1118,7 @@ func verify(cfg config, expected plan, probe bool) error {
 	if abilityCount == 0 {
 		return errors.New("no enabled routing ability exists")
 	}
-	fmt.Printf("verified model_id=%d channel_model_id=%d purchase_id=%d retail_id=%d abilities=%d\n", logicalModel.Id, channelModel.Id, bundle.Purchase.Id, bundle.Retail.Id, abilityCount)
+	fmt.Printf("verified model_id=%d channel_model_id=%d purchase_id=%d abilities=%d\n", logicalModel.Id, channelModel.Id, bundle.Purchase.Id, abilityCount)
 	if probe {
 		return probeUpstream(cfg)
 	}

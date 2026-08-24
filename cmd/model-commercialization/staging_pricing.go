@@ -50,7 +50,6 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 		ChannelStatus  int    `gorm:"column:channel_status"`
 		UpstreamModel  string `gorm:"column:upstream_model"`
 		ChannelModelOK int    `gorm:"column:channel_model_status"`
-		RuntimeMode    string `gorm:"column:runtime_mode"`
 		Group          string `gorm:"column:ability_group"`
 		AbilityEnabled bool   `gorm:"column:ability_enabled"`
 	}
@@ -59,7 +58,7 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 		Select(
 			"channel_models.id AS channel_model_id, channel_models.channel_id, channels.name AS channel_name, "+
 				"channels.status AS channel_status, channel_models.upstream_model_name AS upstream_model, "+
-				"channel_models.status AS channel_model_status, channel_models.runtime_mode, "+
+				"channel_models.status AS channel_model_status, "+
 				"abilities.group AS ability_group, abilities.enabled AS ability_enabled",
 		).
 		Joins("JOIN channels ON channels.id = channel_models.channel_id").
@@ -82,21 +81,19 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 			continue
 		}
 		seenChannelModels[route.ChannelModelID] = struct{}{}
-		bundle, err := pricingruntime.ValidateV2Activation(route.ChannelModelID)
+		bundle, err := pricingruntime.ValidatePricingActivation(route.ChannelModelID)
 		if err != nil {
 			fmt.Printf(
-				"route channel_id=%d channel=%q channel_status=%d channel_model_id=%d upstream=%q channel_model_status=%d runtime=%q v2_valid=false error=%q\n",
+				"route channel_id=%d channel=%q channel_status=%d channel_model_id=%d upstream=%q channel_model_status=%d structured_pricing_valid=false error=%q\n",
 				route.ChannelID, route.ChannelName, route.ChannelStatus, route.ChannelModelID, route.UpstreamModel,
-				route.ChannelModelOK, route.RuntimeMode, err.Error(),
+				route.ChannelModelOK, err.Error(),
 			)
 		} else {
 			fmt.Printf(
-				"route channel_id=%d channel=%q channel_status=%d channel_model_id=%d upstream=%q channel_model_status=%d runtime=%q v2_valid=true purchase_id=%d retail_id=%d discount=%q variable_cost=%q tax=%q target_margin=%q minimum_margin=%q ability_group=%q ability_enabled=%t\n",
+				"route channel_id=%d channel=%q channel_status=%d channel_model_id=%d upstream=%q channel_model_status=%d structured_pricing_valid=true purchase_id=%d discount=%q ability_group=%q ability_enabled=%t\n",
 				route.ChannelID, route.ChannelName, route.ChannelStatus, route.ChannelModelID, route.UpstreamModel,
-				route.ChannelModelOK, route.RuntimeMode, bundle.Purchase.Id, bundle.Retail.Id,
-				bundle.Purchase.PurchaseDiscount, bundle.Retail.TotalVariableCostRate,
-				bundle.Retail.EffectiveTaxRate, bundle.Retail.TargetNetMargin,
-				bundle.Retail.MinimumMarginRate, route.Group, route.AbilityEnabled,
+				route.ChannelModelOK, bundle.Purchase.Id,
+				bundle.Purchase.PurchaseDiscount, route.Group, route.AbilityEnabled,
 			)
 		}
 	}
@@ -234,7 +231,7 @@ func cloneChannelModelForStaging(sourceChannelID int, logicalModel string, chann
 			Status:            1, Priority: priority, Weight: weight,
 			Region: sourceModel.Region, DataPolicy: sourceModel.DataPolicy,
 			CapabilityConfig: sourceModel.CapabilityConfig,
-			RoutingTags:      sourceModel.RoutingTags, RuntimeMode: "legacy",
+			RoutingTags:      sourceModel.RoutingTags,
 		}
 		return tx.Create(&channelModel).Error
 	})
@@ -314,6 +311,9 @@ func repriceActiveChannelModel(
 			return err
 		}
 	}
+	if variableCostRateOverride != "" || taxRateOverride != "" || targetMarginOverride != "" {
+		return errors.New("sales cost and margin overrides must be applied through a sales price-book revision")
+	}
 	var channelModel model.ChannelModel
 	if err := model.DB.First(&channelModel, channelModelID).Error; err != nil {
 		return err
@@ -339,20 +339,6 @@ func repriceActiveChannelModel(
 	if purchaseDiscountOverride != "" {
 		purchaseDiscount = purchaseDiscountOverride
 	}
-	variableCostRate := current.Retail.TotalVariableCostRate
-	if variableCostRateOverride != "" {
-		variableCostRate = variableCostRateOverride
-	}
-	taxRate := current.Retail.EffectiveTaxRate
-	if taxRateOverride != "" {
-		taxRate = taxRateOverride
-	}
-	targetMargin := current.Retail.TargetNetMargin
-	minimumMargin := current.Retail.MinimumMarginRate
-	if targetMarginOverride != "" {
-		targetMargin = targetMarginOverride
-		minimumMargin = targetMarginOverride
-	}
 	purchase, err := pricingadmin.CreatePurchaseDraft(pricingadmin.PurchaseDraftInput{
 		ChannelModelId: channelModelID, OfficialPriceVersionId: &officialID,
 		PricingMode: current.Purchase.PricingMode, Currency: official.Currency,
@@ -364,25 +350,13 @@ func repriceActiveChannelModel(
 	if err != nil {
 		return err
 	}
-	retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
-		ChannelModelId: channelModelID, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: variableCostRate,
-		EffectiveTaxRate:      taxRate,
-		TargetNetMargin:       targetMargin,
-		MinimumMarginRate:     minimumMargin,
-		Remark:                "Recreated from current purchase price",
-	}, 1)
-	if err != nil {
-		return err
-	}
-	if err := pricingadmin.PublishRetailPriceVersion(retail.Id); err != nil {
+	if err := pricingadmin.PublishPurchasePriceVersion(purchase.Id); err != nil {
 		return err
 	}
 	pricingruntime.InvalidateCatalog()
 	fmt.Printf(
-		"repriced production channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s variable_cost=%s tax=%s target_margin=%s minimum_margin=%s\n",
-		channelModelID, official.Id, purchase.Id, retail.Id, purchase.PurchaseDiscount,
-		retail.TotalVariableCostRate, retail.EffectiveTaxRate, retail.TargetNetMargin, retail.MinimumMarginRate,
+		"repriced production channel_model_id=%d official_id=%d purchase_id=%d discount=%s\n",
+		channelModelID, official.Id, purchase.Id, purchase.PurchaseDiscount,
 	)
 	return nil
 }
@@ -403,43 +377,30 @@ func consolidateChannelModel(channelModelID, duplicateChannelModelID int) error 
 		if kept.ChannelId != duplicate.ChannelId || kept.ModelId != duplicate.ModelId {
 			return errors.New("channel model records do not represent the same channel and logical model")
 		}
-		if kept.RuntimeMode != pricingruntime.RuntimeModeV2 || duplicate.RuntimeMode != pricingruntime.RuntimeModeLegacy {
-			return errors.New("expected a V2 record and a legacy duplicate")
-		}
-
-		var purchaseCount, retailCount, snapshotCount int64
+		var purchaseCount, snapshotCount int64
 		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
 			Where("channel_model_id = ?", duplicate.Id).Count(&purchaseCount).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
-			Where("channel_model_id = ?", duplicate.Id).Count(&retailCount).Error; err != nil {
 			return err
 		}
 		if err := tx.Model(&model.RequestPricingSnapshot{}).
 			Where("channel_model_id = ?", duplicate.Id).Count(&snapshotCount).Error; err != nil {
 			return err
 		}
-		if purchaseCount > 0 || retailCount > 0 || snapshotCount > 0 {
+		if purchaseCount > 0 || snapshotCount > 0 {
 			return fmt.Errorf(
-				"duplicate channel model has references: purchase=%d retail=%d snapshots=%d",
-				purchaseCount, retailCount, snapshotCount,
+				"duplicate channel model has references: purchase=%d snapshots=%d",
+				purchaseCount, snapshotCount,
 			)
 		}
 
-		var activePurchases, activeRetails int64
+		var activePurchases int64
 		if err := tx.Model(&model.ChannelModelPurchasePriceVersion{}).
 			Where("channel_model_id = ? AND status = ?", kept.Id, model.PricingVersionStatusActive).
 			Count(&activePurchases).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
-			Where("channel_model_id = ? AND status = ?", kept.Id, model.PricingVersionStatusActive).
-			Count(&activeRetails).Error; err != nil {
-			return err
-		}
-		if activePurchases != 1 || activeRetails != 1 {
-			return fmt.Errorf("kept V2 record has incomplete active pricing: purchase=%d retail=%d", activePurchases, activeRetails)
+		if activePurchases != 1 {
+			return fmt.Errorf("kept structured-pricing record has %d active purchase prices", activePurchases)
 		}
 
 		var channel model.Channel
@@ -475,6 +436,9 @@ func consolidateChannelModel(channelModelID, duplicateChannelModelID int) error 
 }
 
 func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, purchaseDiscount, variableCostRate, taxRate, targetMargin string) error {
+	if variableCostRate != "" || taxRate != "" || targetMargin != "" {
+		return errors.New("sales cost and margin rates must be configured on a sales price book")
+	}
 	if channelID <= 0 || logicalModel == "" || upstreamModel == "" {
 		return errors.New("channel-id, logical-model, and upstream-model are required")
 	}
@@ -544,7 +508,6 @@ func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, pu
 		channelModel = model.ChannelModel{
 			ChannelId: channelID, ModelId: logical.Id, UpstreamModelName: upstreamModel,
 			Status: 1, Priority: int64Value(channel.Priority), Weight: uint(channel.GetWeight()),
-			RuntimeMode: pricingruntime.RuntimeModeLegacy,
 		}
 		if err := model.DB.Create(&channelModel).Error; err != nil {
 			return err
@@ -569,26 +532,14 @@ func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, pu
 	if err != nil {
 		return err
 	}
-	retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
-		ChannelModelId: channelModel.Id, PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate: variableCostRate, EffectiveTaxRate: taxRate,
-		TargetNetMargin: targetMargin, MinimumMarginRate: targetMargin,
-		Remark: "Production retail price from confirmed procurement rate",
-	}, 1)
-	if err != nil {
-		return err
-	}
-	if err := pricingadmin.PublishRetailPriceVersion(retail.Id); err != nil {
-		return err
-	}
-	if _, err := pricingruntime.SetModelRuntimeMode(logicalModel, pricingruntime.RuntimeModeV2); err != nil {
+	if err := pricingadmin.PublishPurchasePriceVersion(purchase.Id); err != nil {
 		return err
 	}
 	pricingruntime.InvalidateCatalog()
 	model.InitChannelCache()
 	fmt.Printf(
-		"attached production channel_id=%d model=%q channel_model_id=%d official_id=%d purchase_id=%d retail_id=%d discount=%s\n",
-		channelID, logicalModel, channelModel.Id, official.Id, purchase.Id, retail.Id, purchaseDiscount,
+		"attached production channel_id=%d model=%q channel_model_id=%d official_id=%d purchase_id=%d discount=%s\n",
+		channelID, logicalModel, channelModel.Id, official.Id, purchase.Id, purchaseDiscount,
 	)
 	return nil
 }

@@ -20,7 +20,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -105,9 +104,9 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 				var selectGroup string
-				v2RouteActive := false
-				v2PriceChainFound := false
-				v2MarginEligible := false
+				pricingRouteActive := false
+				priceChainFound := false
+				marginEligible := false
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				routeGroups := []string{usingGroup}
 				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
@@ -115,30 +114,16 @@ func Distribute() func(c *gin.Context) {
 					routeGroups = service.GetRequestAutoGroups(c, userGroup)
 				}
 				for _, routeGroup := range routeGroups {
-					pricingReady := pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model)
-					if setting.SalesPriceBookRuntimeEnabled {
-						pricingReady = pricingruntime.HasCompletePurchasePricing(routeGroup, modelRequest.Model)
-					}
-					if !pricingReady {
+					if !pricingruntime.HasCompletePricing(routeGroup, modelRequest.Model) {
 						continue
 					}
-					v2PriceChainFound = true
-					var routeCandidates []pricingruntime.RouteCandidate
-					var routeErr error
-					if setting.SalesPriceBookRuntimeEnabled {
-						routeCandidates, routeErr = pricingruntime.PlanSalesPriceBookRoute(
-							c.GetInt("id"), routeGroup, modelRequest.Model,
-						)
-					} else {
-						routeCandidates, routeErr = pricingruntime.PlanV2RouteWithGroupRatio(
-							routeGroup,
-							modelRequest.Model,
-							service.GetUserGroupRatio(userGroup, routeGroup),
-						)
-					}
+					priceChainFound = true
+					routeCandidates, routeErr := pricingruntime.PlanRoute(
+						c.GetInt("id"), routeGroup, modelRequest.Model,
+					)
 					if routeErr != nil {
 						common.SysError(fmt.Sprintf(
-							"plan v2 pricing route failed: group=%s model=%s error=%v",
+							"plan pricing route failed: group=%s model=%s error=%v",
 							routeGroup,
 							modelRequest.Model,
 							routeErr,
@@ -148,8 +133,8 @@ func Distribute() func(c *gin.Context) {
 					if len(routeCandidates) == 0 {
 						continue
 					}
-					v2MarginEligible = true
-					v2RouteActive = true
+					marginEligible = true
+					pricingRouteActive = true
 					for _, candidate := range routeCandidates {
 						planned, getErr := model.CacheGetChannel(candidate.ChannelId)
 						if getErr != nil ||
@@ -174,15 +159,15 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if !v2RouteActive {
+				if !pricingRouteActive {
 					message := fmt.Sprintf(
-						"分组 %s 下模型 %s 没有完整的 V2 价格链",
+						"分组 %s 下模型 %s 没有完整的采购价和销售报价",
 						usingGroup,
 						modelRequest.Model,
 					)
-					if v2PriceChainFound && !v2MarginEligible {
+					if priceChainFound && !marginEligible {
 						message = fmt.Sprintf(
-							"分组 %s 下模型 %s 没有满足利润底线的 V2 价格链",
+							"分组 %s 下模型 %s 没有满足利润底线的销售报价",
 							usingGroup,
 							modelRequest.Model,
 						)
@@ -196,7 +181,7 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 
-				if channel == nil && v2RouteActive {
+				if channel == nil && pricingRouteActive {
 					abortWithOpenAiMessage(
 						c,
 						http.StatusServiceUnavailable,

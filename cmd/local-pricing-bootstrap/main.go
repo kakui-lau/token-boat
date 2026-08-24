@@ -5,22 +5,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
@@ -29,11 +25,6 @@ import (
 )
 
 const localBootstrapUserId = 1
-
-type readinessRatioScenario struct {
-	UserGroup string
-	Ratio     float64
-}
 
 func main() {
 	databasePath := flag.String("database", "", "local SQLite database file")
@@ -155,8 +146,8 @@ func bootstrapAndReport(backupPath string) error {
 		return err
 	}
 	fmt.Printf(
-		"ready: %d/%d channel models use V2, %d model/group scopes active\n",
-		readiness.V2ChannelModels,
+		"ready: %d/%d channel models have structured purchase pricing, %d model/group scopes active\n",
+		readiness.PricedChannelModels,
 		readiness.TotalChannelModels,
 		readiness.CompleteGroupModelScopes,
 	)
@@ -200,37 +191,12 @@ func verifyAndReport(production bool) error {
 		return scopes[left].model < scopes[right].model
 	})
 	verifiedCandidates := 0
-	verifiedPricingScenarios := 0
 	for _, scope := range scopes {
-		for _, scenario := range readinessRatioScenarios(scope.group) {
-			candidates, err := pricingruntime.PlanV2RouteWithGroupRatio(
-				scope.group,
-				scope.model,
-				scenario.Ratio,
-			)
-			if err != nil {
-				return fmt.Errorf(
-					"%s/%s user_group=%q ratio=%g: %w",
-					scope.group,
-					scope.model,
-					scenario.UserGroup,
-					scenario.Ratio,
-					err,
-				)
-			}
-			if err := validateRoutePlan(candidates); err != nil {
-				return fmt.Errorf(
-					"%s/%s user_group=%q ratio=%g: %w",
-					scope.group,
-					scope.model,
-					scenario.UserGroup,
-					scenario.Ratio,
-					err,
-				)
-			}
-			verifiedCandidates += len(candidates)
-			verifiedPricingScenarios++
+		candidates := pricingruntime.GetCandidateBundles(scope.group, scope.model)
+		if len(candidates) == 0 {
+			return fmt.Errorf("%s/%s has no complete purchase-price route", scope.group, scope.model)
 		}
+		verifiedCandidates += len(candidates)
 	}
 	readiness, err := pricingruntime.GetRuntimeReadiness()
 	if err != nil {
@@ -243,10 +209,10 @@ func verifyAndReport(production bool) error {
 			len(scopes),
 		)
 	}
-	if readiness.V2ChannelModels != readiness.TotalChannelModels {
+	if readiness.PricedChannelModels != readiness.TotalChannelModels {
 		return fmt.Errorf(
-			"%d of %d channel models still use a non-V2 runtime",
-			readiness.TotalChannelModels-readiness.V2ChannelModels,
+			"%d of %d channel models lack structured purchase pricing",
+			readiness.TotalChannelModels-readiness.PricedChannelModels,
 			readiness.TotalChannelModels,
 		)
 	}
@@ -261,59 +227,13 @@ func verifyAndReport(production bool) error {
 		}
 	}
 	fmt.Printf(
-		"verified: %d model/group scopes, %d effective multiplier scenarios, %d eligible route candidate evaluations, %d/%d channel models use V2\n",
+		"verified: %d model/group scopes, %d eligible purchase-price candidates, %d/%d channel models use structured pricing\n",
 		len(scopes),
-		verifiedPricingScenarios,
 		verifiedCandidates,
-		readiness.V2ChannelModels,
+		readiness.PricedChannelModels,
 		readiness.TotalChannelModels,
 	)
 	return nil
-}
-
-func readinessRatioScenarios(routeGroup string) []readinessRatioScenario {
-	userGroups := make(map[string]struct{})
-	for userGroup := range ratio_setting.GetGroupRatioCopy() {
-		userGroups[userGroup] = struct{}{}
-	}
-	ratioConfig := ratio_setting.GetGroupRatioSetting()
-	for userGroup := range ratioConfig.GroupGroupRatio.ReadAll() {
-		userGroups[userGroup] = struct{}{}
-	}
-	for userGroup := range ratioConfig.GroupSpecialUsableGroup.ReadAll() {
-		userGroups[userGroup] = struct{}{}
-	}
-
-	names := make([]string, 0, len(userGroups))
-	for userGroup := range userGroups {
-		names = append(names, userGroup)
-	}
-	sort.Strings(names)
-
-	scenarios := make([]readinessRatioScenario, 0, len(names)+1)
-	seenRatios := make(map[string]struct{})
-	addScenario := func(userGroup string, ratio float64) {
-		key := strconv.FormatFloat(ratio, 'g', -1, 64)
-		if _, exists := seenRatios[key]; exists {
-			return
-		}
-		seenRatios[key] = struct{}{}
-		scenarios = append(scenarios, readinessRatioScenario{
-			UserGroup: userGroup,
-			Ratio:     ratio,
-		})
-	}
-	addScenario("", service.GetUserGroupRatio("", routeGroup))
-	for _, userGroup := range names {
-		if !service.GroupInUserUsableGroups(userGroup, routeGroup) {
-			continue
-		}
-		addScenario(
-			userGroup,
-			service.GetUserGroupRatio(userGroup, routeGroup),
-		)
-	}
-	return scenarios
 }
 
 func validateProductionPriceEvidence() error {
@@ -326,9 +246,8 @@ func validateProductionPriceEvidence() error {
 			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
 		).
 		Where(
-			"channel_models.status <> ? AND channel_models.runtime_mode = ? AND channels.status = ? AND abilities.enabled = ?",
+			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ?",
 			0,
-			pricingruntime.RuntimeModeV2,
 			common.ChannelStatusEnabled,
 			true,
 		).
@@ -376,49 +295,11 @@ func validateProductionPriceEvidence() error {
 			)
 		}
 		if strings.Contains(quoteReference, "local-test") ||
-			strings.Contains(strings.ToLower(bundle.Purchase.Remark), "local v2") ||
-			strings.Contains(strings.ToLower(bundle.Retail.Remark), "local v2") {
+			strings.Contains(strings.ToLower(bundle.Purchase.Remark), "local v2") {
 			return fmt.Errorf(
-				"channel model %d still uses local-test purchase or retail evidence",
+				"channel model %d still uses local-test purchase evidence",
 				channelModel.Id,
 			)
-		}
-	}
-	return nil
-}
-
-func validateRoutePlan(candidates []pricingruntime.RouteCandidate) error {
-	if len(candidates) == 0 {
-		return errors.New("no eligible V2 route candidate")
-	}
-	seenChannelModels := make(map[int]struct{}, len(candidates))
-	for index, candidate := range candidates {
-		if candidate.ChannelId <= 0 || candidate.ChannelModelId <= 0 {
-			return errors.New("route candidate has an invalid channel identity")
-		}
-		if _, exists := seenChannelModels[candidate.ChannelModelId]; exists {
-			return fmt.Errorf(
-				"channel model %d appears more than once",
-				candidate.ChannelModelId,
-			)
-		}
-		seenChannelModels[candidate.ChannelModelId] = struct{}{}
-		if candidate.PurchaseCost.IsNegative() {
-			return fmt.Errorf(
-				"channel model %d has a negative purchase quote",
-				candidate.ChannelModelId,
-			)
-		}
-		if math.IsNaN(candidate.RouteScore) ||
-			math.IsInf(candidate.RouteScore, 0) ||
-			candidate.RouteScore < 0 {
-			return fmt.Errorf(
-				"channel model %d has an invalid route score",
-				candidate.ChannelModelId,
-			)
-		}
-		if index > 0 && candidate.RouteScore > candidates[index-1].RouteScore {
-			return errors.New("route candidates are not sorted by descending score")
 		}
 	}
 	return nil
@@ -600,14 +481,7 @@ func bootstrapPrices() error {
 				)
 			}
 		}
-		updated, err := pricingruntime.SetModelRuntimeMode(
-			logicalModel.ModelName,
-			pricingruntime.RuntimeModeV2,
-		)
-		if err != nil {
-			return fmt.Errorf("enable V2: %w", err)
-		}
-		fmt.Printf("%s: %d channel model(s) enabled\n", logicalModel.ModelName, updated)
+		fmt.Printf("%s: %d channel model(s) priced\n", logicalModel.ModelName, len(channelModels))
 	}
 	return pricingruntime.RefreshCatalog()
 }
@@ -683,14 +557,14 @@ func ensureChannelPriceChain(
 	channelModel model.ChannelModel,
 	official model.OfficialModelPriceVersion,
 ) error {
-	var activeRetail model.ChannelModelRetailPriceVersion
+	var activePurchase model.ChannelModelPurchasePriceVersion
 	err := model.DB.
 		Where(
 			"channel_model_id = ? AND status = ?",
 			channelModel.Id,
 			model.PricingVersionStatusActive,
 		).
-		First(&activeRetail).Error
+		First(&activePurchase).Error
 	if err == nil {
 		return nil
 	}
@@ -737,19 +611,7 @@ func ensureChannelPriceChain(
 			return err
 		}
 	}
-	retail, err := pricingadmin.CreateRetailDraft(pricingadmin.RetailDraftInput{
-		ChannelModelId:         channelModel.Id,
-		PurchasePriceVersionId: purchase.Id,
-		TotalVariableCostRate:  "0.11",
-		EffectiveTaxRate:       "0.16",
-		TargetNetMargin:        "0.10",
-		MinimumMarginRate:      "0.05",
-		Remark:                 "Generated for local V2 testing",
-	}, localBootstrapUserId)
-	if err != nil {
-		return err
-	}
-	return pricingadmin.PublishRetailPriceVersion(retail.Id)
+	return pricingadmin.PublishPurchasePriceVersion(purchase.Id)
 }
 
 func exitWithError(err error) {

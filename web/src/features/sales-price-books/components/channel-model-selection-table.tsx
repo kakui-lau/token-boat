@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 import {
   ArrowReloadHorizontalIcon,
   CheckListIcon,
@@ -55,11 +54,10 @@ import {
 import { ChannelModelFilters } from '@/features/pricing-admin/components/channel-model-filters'
 import { ChannelModelPagination } from '@/features/pricing-admin/components/channel-model-pagination'
 import type { ChannelModelFilterValues } from '@/features/pricing-admin/lib/channel-model-filters'
-
-import type { SupportedChannelModel } from '../types'
+import type { ChannelModel } from '@/features/pricing-admin/types'
 
 type SupportedChannelModelTableProps = {
-  items: SupportedChannelModel[]
+  items: ChannelModel[]
   filters: ChannelModelFilterValues
   channels: Array<{ id: number; name: string }>
   selectedIds: Set<number>
@@ -76,13 +74,13 @@ type SupportedChannelModelTableProps = {
   onPageSizeChange: (pageSize: number) => void
 }
 
-export function SupportedChannelModelTable(
+export function ChannelModelSelectionTable(
   props: SupportedChannelModelTableProps
 ) {
   const { t } = useTranslation()
   let selectedOnPage = 0
   for (const item of props.items) {
-    if (props.selectedIds.has(item.channel_model_id)) selectedOnPage += 1
+    if (props.selectedIds.has(item.id)) selectedOnPage += 1
   }
   const allRowsOnPageSelected =
     props.items.length > 0 && selectedOnPage === props.items.length
@@ -101,7 +99,7 @@ export function SupportedChannelModelTable(
       </CardHeader>
       <CardContent className='flex flex-col gap-4'>
         <ChannelModelFilters
-          idPrefix='sales-price-generator'
+          idPrefix='sales-price-book-generator'
           value={props.filters}
           channels={props.channels}
           onChange={props.onFiltersChange}
@@ -118,7 +116,7 @@ export function SupportedChannelModelTable(
               onClick={() => {
                 const next = new Set(props.selectedIds)
                 for (const item of props.items) {
-                  next.add(item.channel_model_id)
+                  next.add(item.id)
                 }
                 props.onSelectionChange(next)
               }}
@@ -137,10 +135,10 @@ export function SupportedChannelModelTable(
               onClick={() => {
                 const next = new Set(props.selectedIds)
                 for (const item of props.items) {
-                  if (next.has(item.channel_model_id)) {
-                    next.delete(item.channel_model_id)
+                  if (next.has(item.id)) {
+                    next.delete(item.id)
                   } else {
-                    next.add(item.channel_model_id)
+                    next.add(item.id)
                   }
                 }
                 props.onSelectionChange(next)
@@ -208,8 +206,8 @@ export function SupportedChannelModelTable(
                       onCheckedChange={(checked) => {
                         const next = new Set(props.selectedIds)
                         for (const item of props.items) {
-                          if (checked) next.add(item.channel_model_id)
-                          else next.delete(item.channel_model_id)
+                          if (checked) next.add(item.id)
+                          else next.delete(item.id)
                         }
                         props.onSelectionChange(next)
                       }}
@@ -220,29 +218,27 @@ export function SupportedChannelModelTable(
                   <TableHead>{t('Upstream Model')}</TableHead>
                   <TableHead>{t('Purchase pricing mode')}</TableHead>
                   <TableHead>{t('Purchase Discount')}</TableHead>
-                  <TableHead>{t('Runtime')}</TableHead>
+                  <TableHead>{t('Purchase Status')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {props.items.map((item) => (
                   <TableRow
-                    key={item.channel_model_id}
+                    key={item.id}
                     data-state={
-                      props.selectedIds.has(item.channel_model_id)
-                        ? 'selected'
-                        : undefined
+                      props.selectedIds.has(item.id) ? 'selected' : undefined
                     }
                   >
                     <TableCell>
                       <Checkbox
-                        checked={props.selectedIds.has(item.channel_model_id)}
+                        checked={props.selectedIds.has(item.id)}
                         aria-label={t('Select {{model}}', {
                           model: item.model_name,
                         })}
                         onCheckedChange={(checked) => {
                           const next = new Set(props.selectedIds)
-                          if (checked) next.add(item.channel_model_id)
-                          else next.delete(item.channel_model_id)
+                          if (checked) next.add(item.id)
+                          else next.delete(item.id)
                           props.onSelectionChange(next)
                         }}
                       />
@@ -257,12 +253,14 @@ export function SupportedChannelModelTable(
                     <TableCell>
                       <Badge
                         variant={
-                          item.runtime_mode === 'v2' ? 'default' : 'outline'
+                          item.active_purchase_price_version_id > 0
+                            ? 'default'
+                            : 'outline'
                         }
                       >
-                        {item.runtime_mode === 'v2'
-                          ? t('V2 Pricing')
-                          : t('Legacy Billing')}
+                        {item.active_purchase_price_version_id > 0
+                          ? t('Published')
+                          : t('Not Published')}
                       </Badge>
                     </TableCell>
                   </TableRow>

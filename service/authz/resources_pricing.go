@@ -24,7 +24,7 @@ func init() {
 			{
 				Action:         ActionRead,
 				LabelKey:       "View model pricing",
-				DescriptionKey: "View official, purchase, and retail price versions and channel pricing details.",
+				DescriptionKey: "View official prices, channel purchase prices, and sales price books.",
 			},
 			{
 				Action:         ActionWrite,
@@ -34,7 +34,7 @@ func init() {
 			{
 				Action:         ActionPublish,
 				LabelKey:       "Publish model pricing",
-				DescriptionKey: "Publish or suspend official, purchase, and retail price versions.",
+				DescriptionKey: "Publish or suspend official prices, purchase prices, and sales price books.",
 			},
 			{
 				Action:         ActionExport,

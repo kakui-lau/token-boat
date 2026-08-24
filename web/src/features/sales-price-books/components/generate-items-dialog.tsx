@@ -31,16 +31,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
-import { getPricingCatalogOptions } from '@/features/pricing-admin/api'
+import {
+  getChannelModels,
+  getPricingCatalogOptions,
+} from '@/features/pricing-admin/api'
 import {
   EMPTY_CHANNEL_MODEL_FILTERS,
   type ChannelModelFilterValues,
 } from '@/features/pricing-admin/lib/channel-model-filters'
-import { getSupportedChannelModels } from '@/features/sales-price-generator/api'
-import { SupportedChannelModelTable } from '@/features/sales-price-generator/components/supported-channel-model-table'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { generateSalesPriceBookItems } from '../api'
+import { ChannelModelSelectionTable } from './channel-model-selection-table'
 
 type GenerateItemsDialogProps = {
   open: boolean
@@ -73,13 +75,12 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
       filters.channelId,
       filters.status,
       filters.routingStatus,
-      filters.runtimeMode,
-      filters.retailStatus,
+      filters.purchaseStatus,
       page,
       pageSize,
     ],
     queryFn: () =>
-      getSupportedChannelModels({
+      getChannelModels({
         keyword: deferredKeyword.trim() || undefined,
         channel_id: filters.channelId ? Number(filters.channelId) : undefined,
         status: filters.status ? Number(filters.status) : undefined,
@@ -88,14 +89,10 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
           filters.routingStatus === 'removed'
             ? filters.routingStatus
             : undefined,
-        runtime_mode:
-          filters.runtimeMode === 'legacy' || filters.runtimeMode === 'v2'
-            ? filters.runtimeMode
-            : undefined,
-        retail_status:
-          filters.retailStatus === 'published' ||
-          filters.retailStatus === 'unpublished'
-            ? filters.retailStatus
+        purchase_status:
+          filters.purchaseStatus === 'published' ||
+          filters.purchaseStatus === 'unpublished'
+            ? filters.purchaseStatus
             : undefined,
         page,
         page_size: pageSize,
@@ -143,7 +140,7 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
           </DialogDescription>
         </DialogHeader>
         <div className='min-h-0 flex-1 overflow-auto p-0.5'>
-          <SupportedChannelModelTable
+          <ChannelModelSelectionTable
             items={data?.items ?? emptyItems}
             filters={filters}
             channels={catalogQuery.data?.data.channels ?? []}

@@ -70,7 +70,7 @@ import { parseTags } from '../lib/filters'
 import {
   getAvailableGroups,
   getConfiguredGroupRatio,
-  getDisplayedRetailPrice,
+  getDisplayedSalesPrice,
   isModelAvailableForGroup,
   isTokenBasedModel,
 } from '../lib/model-helpers'
@@ -587,7 +587,7 @@ function PriceSection(props: {
   selectedGroup?: string
 }) {
   const { t } = useTranslation()
-  const displayedRetailPrice = getDisplayedRetailPrice(
+  const displayedSalesPrice = getDisplayedSalesPrice(
     props.model,
     props.selectedGroup
   )
@@ -596,7 +596,7 @@ function PriceSection(props: {
     props.selectedGroup
   )
 
-  if (displayedRetailPrice) {
+  if (displayedSalesPrice) {
     return (
       <div className='grid gap-4 @md/details:grid-cols-2'>
         <section>
@@ -609,7 +609,7 @@ function PriceSection(props: {
         <section>
           <SectionTitle>{t('Lowest item price')}</SectionTitle>
           <PublicPriceSummaryDetails
-            summary={displayedRetailPrice}
+            summary={displayedSalesPrice}
             tokenUnit={props.tokenUnit}
             showRechargePrice={props.showRechargePrice}
             priceRate={props.priceRate}
@@ -617,7 +617,7 @@ function PriceSection(props: {
           />
           <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
             {t(
-              'Lowest active retail price for each component across available channels.'
+              'Current sales price for each component in the applicable price book.'
             )}
           </p>
         </section>
@@ -645,30 +645,6 @@ function PriceSection(props: {
     }
     return (
       <p className='text-muted-foreground text-sm'>{t('Not configured')}</p>
-    )
-  }
-
-  if (props.model.pricing_source === 'v2_dynamic') {
-    return (
-      <div className='grid gap-4 @md/details:grid-cols-2'>
-        <section>
-          <SectionTitle>{t('Official Price')}</SectionTitle>
-          <PublicPriceSummaryDetails
-            summary={props.model.official_price}
-            tokenUnit={props.tokenUnit}
-          />
-        </section>
-        <section>
-          <SectionTitle>{t('Lowest item price')}</SectionTitle>
-          <PublicPriceSummaryDetails
-            tokenUnit={props.tokenUnit}
-            emptyLabel={t('Quote required')}
-          />
-          <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
-            {t('Dynamic Pricing')}
-          </p>
-        </section>
-      </div>
     )
   }
 
@@ -1244,12 +1220,12 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const isDynamic =
     props.model.billing_mode === 'tiered_expr' &&
     Boolean(props.model.billing_expr)
-  const displayedRetailPrice = getDisplayedRetailPrice(
+  const displayedSalesPrice = getDisplayedSalesPrice(
     props.model,
     props.selectedGroup
   )
   const hasStructuredPublicPrice = Boolean(
-    props.model.official_price || displayedRetailPrice
+    props.model.official_price || displayedSalesPrice
   )
 
   return (

@@ -93,7 +93,7 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		other["quota_per_unit"] = quotaPerUnit
 	}
 	if snapshot := relayInfo.DynamicPricingSnapshot; snapshot != nil && snapshot.Selected != nil {
-		other["billing_mode"] = "v2_dynamic"
+		other["billing_mode"] = "sales_price_book"
 		adminInfo, _ := other["admin_info"].(map[string]interface{})
 		if adminInfo == nil {
 			adminInfo = make(map[string]interface{})
@@ -102,10 +102,12 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["channel_model_id"] = snapshot.Selected.ChannelModelId
 		adminInfo["pricing_billing_mode"] = snapshot.Selected.BillingMode
 		adminInfo["purchase_price_version_id"] = snapshot.Selected.PurchasePriceVersion
-		adminInfo["retail_price_version_id"] = snapshot.Selected.RetailPriceVersion
+		adminInfo["sales_price_book_id"] = snapshot.Selected.SalesPriceBookId
+		adminInfo["sales_price_book_version_id"] = snapshot.Selected.SalesPriceBookVersionId
+		adminInfo["sales_price_book_item_id"] = snapshot.Selected.SalesPriceBookItemId
 		adminInfo["pricing_revision"] = snapshot.Selected.PricingRevision
 		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
-		adminInfo["estimated_retail_usd"] = snapshot.Selected.EstimatedRetailUSD
+		adminInfo["estimated_sales_usd"] = snapshot.Selected.EstimatedSalesUSD
 		adminInfo["estimated_customer_charge_usd"] = snapshot.Selected.EstimatedCustomerChargeUSD
 		adminInfo["provider_cost_mode"] = snapshot.Selected.ProviderCostMode
 		adminInfo["provider_cost_status"] = model.InitialProviderCostStatus(snapshot.Selected.ProviderCostMode)

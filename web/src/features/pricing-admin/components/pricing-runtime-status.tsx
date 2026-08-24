@@ -36,14 +36,14 @@ export function PricingRuntimeStatus() {
     return null
   }
   const runtimeTitle = runtime.live_traffic_enabled
-    ? t('V2 routing and billing are active')
-    : t('V2 routing unavailable')
+    ? t('Pricing routing and billing are active')
+    : t('Pricing routing unavailable')
   const runtimeDescription = runtime.live_traffic_enabled
     ? t(
         'Eligible requests use purchase-cost routing and frozen sales-price settlement.'
       )
     : t(
-        'No requests use the new routing or billing until complete V2 price chains are enabled.'
+        'Requests cannot be routed until purchase prices and sales price books are complete.'
       )
 
   return (
@@ -54,8 +54,8 @@ export function PricingRuntimeStatus() {
         <p>{runtimeDescription}</p>
         <div className='mt-2 flex flex-wrap gap-2'>
           <Badge variant='outline'>
-            {t('{{v2}} of {{total}} channel models use V2', {
-              v2: runtime.v2_channel_models,
+            {t('{{priced}} of {{total}} channel models have purchase pricing', {
+              priced: runtime.priced_channel_models,
               total: runtime.total_channel_models,
             })}
           </Badge>

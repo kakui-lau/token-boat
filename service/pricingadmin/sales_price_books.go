@@ -171,7 +171,7 @@ func validateSalesPriceBookPolicy(input *model.SalesPriceBookVersion) error {
 	if !payment.Add(distribution).Add(operations).Equal(total) {
 		return errors.New("total variable cost rate must equal payment, distribution and operations rates")
 	}
-	if _, err := NewRetailPriceCalculator(
+	if _, err := NewSalesPriceCalculator(
 		input.TotalVariableCostRate,
 		input.EffectiveTaxRate,
 		input.TargetNetMargin,

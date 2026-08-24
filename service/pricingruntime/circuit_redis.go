@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	circuitRedisChannelsKey = "pricing:v2:circuit:{shared}:channels"
-	circuitRedisEventsKey   = "pricing:v2:circuit:{shared}:events"
-	circuitRedisEventIdKey  = "pricing:v2:circuit:{shared}:event_id"
+	circuitRedisChannelsKey = "pricing:circuit:{shared}:channels"
+	circuitRedisEventsKey   = "pricing:circuit:{shared}:events"
+	circuitRedisEventIdKey  = "pricing:circuit:{shared}:event_id"
 )
 
 func circuitRedisEnabled() bool {
@@ -23,7 +23,7 @@ func circuitRedisEnabled() bool {
 }
 
 func circuitRedisChannelKey(channelId int, modelId int) string {
-	return fmt.Sprintf("pricing:v2:circuit:{shared}:channel:%d:model:%d", channelId, modelId)
+	return fmt.Sprintf("pricing:circuit:{shared}:channel:%d:model:%d", channelId, modelId)
 }
 
 func circuitRedisChannelModelMember(channelId int, modelId int) string {

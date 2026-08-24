@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { parseTags } from '../lib/filters'
 import {
-  getDisplayedRetailPrice,
+  getDisplayedSalesPrice,
   isModelAvailableForGroup,
 } from '../lib/model-helpers'
 import type { PricingModel, TokenUnit } from '../types'
@@ -125,7 +125,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
 
       <PublicPriceComparison
         official={props.model.official_price}
-        lowest={getDisplayedRetailPrice(props.model, props.selectedGroup)}
+        lowest={getDisplayedSalesPrice(props.model, props.selectedGroup)}
         tokenUnit={tokenUnit}
         showRechargePrice={props.showRechargePrice}
         priceRate={props.priceRate}

@@ -6,16 +6,15 @@ type DynamicPriceCandidate struct {
 	ModelId                    int
 	BillingMode                string
 	PurchasePriceVersion       int
-	RetailPriceVersion         int
 	PurchaseExpression         string
 	PurchaseExpressionHash     string
-	RetailExpression           string
-	RetailExpressionHash       string
+	SalesExpression            string
+	SalesExpressionHash        string
 	PricingRevision            string
 	Currency                   string
 	ProviderCostMode           string
 	EstimatedPurchaseUSD       string
-	EstimatedRetailUSD         string
+	EstimatedSalesUSD          string
 	EstimatedCustomerChargeUSD string
 	TotalVariableCostRate      string
 	EffectiveTaxRate           string

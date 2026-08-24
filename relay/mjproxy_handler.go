@@ -30,7 +30,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func prepareMidjourneyV2Pricing(
+func prepareMidjourneyPricing(
 	c *gin.Context,
 	info *relaycommon.RelayInfo,
 	modelName string,
@@ -55,7 +55,7 @@ func prepareMidjourneyV2Pricing(
 	}
 	if !ok {
 		return hosttypes.PriceData{}, fmt.Errorf(
-			"model %s has no complete v2 request price",
+			"model %s has no complete purchase and sales price",
 			modelName,
 		)
 	}
@@ -244,7 +244,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	}
 	modelName := service.CovertMjpActionToModelName(constant.MjActionSwapFace)
 
-	priceData, err := prepareMidjourneyV2Pricing(c, info, modelName)
+	priceData, err := prepareMidjourneyPricing(c, info, modelName)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
@@ -573,7 +573,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 
 	modelName := service.CovertMjpActionToModelName(midjRequest.Action)
 
-	priceData, err := prepareMidjourneyV2Pricing(c, relayInfo, modelName)
+	priceData, err := prepareMidjourneyPricing(c, relayInfo, modelName)
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,

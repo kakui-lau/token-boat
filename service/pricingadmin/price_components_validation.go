@@ -9,6 +9,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var maxPricingUnitPrice = decimal.NewFromInt(1_000_000)
+
 type businessPriceRule struct {
 	Name       string `json:"name"`
 	Component  string `json:"component"`

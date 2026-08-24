@@ -19,17 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
-  ActivePriceBundle,
   ChannelCircuitOverview,
   ChannelCircuitEventListResponse,
   ChannelModel,
   ChannelModelListResponse,
   FlatTokenPrices,
   ImportResponse,
-  ModelPriceOverview,
   OfficialPriceOverview,
   OfficialPriceVersion,
-  PriceSimulationResult,
   PricingRuntimeStatus,
   PricingFinancialSummary,
   PricingReconciliationSummary,
@@ -37,7 +34,6 @@ import type {
   PriceVersionResponse,
   PublishLatestOfficialPriceDraftsResponse,
   PurchasePriceVersion,
-  RetailPriceVersion,
   RequestPricingSnapshotListResponse,
 } from './types'
 
@@ -81,20 +77,6 @@ export async function resetPricingCircuit(
   return requirePricingSuccess(response.data)
 }
 
-export async function setPricingModelRuntime(input: {
-  model_name: string
-  runtime_mode: 'legacy' | 'v2'
-}): Promise<
-  PriceVersionResponse<{
-    model_name: string
-    runtime_mode: 'legacy' | 'v2'
-    updated: number
-  }>
-> {
-  const response = await api.put('/api/pricing-admin/model-runtime', input)
-  return requirePricingSuccess(response.data)
-}
-
 function requirePricingSuccess<
   T extends { success: boolean; message?: string },
 >(response: T): T {
@@ -109,8 +91,7 @@ export async function getChannelModels(params: {
   channel_id?: number
   status?: number
   routing_status?: 'available' | 'removed'
-  runtime_mode?: 'legacy' | 'v2'
-  retail_status?: 'published' | 'unpublished'
+  purchase_status?: 'published' | 'unpublished'
   page?: number
   page_size?: number
 }): Promise<ChannelModelListResponse> {
@@ -125,8 +106,7 @@ export async function exportChannelModelPrices(params: {
   channel_id?: number
   status?: number
   routing_status?: 'available' | 'removed'
-  runtime_mode?: 'legacy' | 'v2'
-  retail_status?: 'published' | 'unpublished'
+  purchase_status?: 'published' | 'unpublished'
 }): Promise<Blob> {
   const response = await api.get('/api/pricing-admin/channel-models/export', {
     params,
@@ -151,17 +131,6 @@ export async function exportSelectedPurchaseDiscounts(
 ): Promise<Blob> {
   const response = await api.post(
     '/api/pricing-admin/channel-models/export-selected-purchase-discounts',
-    { channel_model_ids: channelModelIds },
-    { responseType: 'blob' }
-  )
-  return response.data
-}
-
-export async function exportSelectedPricingComparison(
-  channelModelIds: number[]
-): Promise<Blob> {
-  const response = await api.post(
-    '/api/pricing-admin/channel-models/export-selected-pricing-comparison',
     { channel_model_ids: channelModelIds },
     { responseType: 'blob' }
   )
@@ -244,10 +213,8 @@ export async function recordPricingSnapshotProviderCost(
   return requirePricingSuccess(response.data)
 }
 
-export async function syncLegacyChannelModels(): Promise<ImportResponse> {
-  const response = await api.post(
-    '/api/pricing-admin/channel-models/sync-legacy'
-  )
+export async function syncChannelModels(): Promise<ImportResponse> {
+  const response = await api.post('/api/pricing-admin/channel-models/sync')
   return requirePricingSuccess(response.data)
 }
 
@@ -256,15 +223,6 @@ export async function getPricingCatalogOptions(
 ): Promise<PricingCatalogOptionsResponse> {
   const response = await api.get('/api/pricing-admin/catalog-options', {
     params: channelId ? { channel_id: channelId } : undefined,
-  })
-  return response.data
-}
-
-export async function getModelPriceOverview(
-  keyword?: string
-): Promise<PriceVersionResponse<ModelPriceOverview[]>> {
-  const response = await api.get('/api/pricing-admin/model-price-overview', {
-    params: { keyword },
   })
   return response.data
 }
@@ -297,13 +255,6 @@ export async function updateChannelModel(
   const response = await api.put(
     `/api/pricing-admin/channel-models/${id}`,
     input
-  )
-  return requirePricingSuccess(response.data)
-}
-
-export async function importLegacyOfficialPrices(): Promise<ImportResponse> {
-  const response = await api.post(
-    '/api/pricing-admin/official-prices/import-legacy'
   )
   return requirePricingSuccess(response.data)
 }
@@ -446,57 +397,8 @@ export async function updatePurchaseDraft(
   return requirePricingSuccess(response.data)
 }
 
-export async function getRetailPriceVersions(
-  channelModelId: number
-): Promise<PriceVersionResponse<RetailPriceVersion[]>> {
-  const response = await api.get('/api/pricing-admin/retail-prices', {
-    params: { channel_model_id: channelModelId },
-  })
-  return response.data
-}
-
-export async function getActivePriceBundle(
-  channelModelId: number
-): Promise<PriceVersionResponse<ActivePriceBundle>> {
-  const response = await api.get('/api/pricing-admin/active-price-bundle', {
-    params: { channel_model_id: channelModelId },
-    skipBusinessError: true,
-    skipErrorHandler: true,
-  })
-  return requirePricingSuccess(response.data)
-}
-
-export type RetailDraftPayload = {
-  channel_model_id: number
-  purchase_price_version_id: number
-  total_variable_cost_rate: string
-  effective_tax_rate: string
-  target_net_margin: string
-  minimum_margin_rate: string
-  remark: string
-  expected_updated_at?: number
-}
-
-export async function createRetailDraft(
-  input: RetailDraftPayload
-): Promise<PriceVersionResponse<RetailPriceVersion>> {
-  const response = await api.post('/api/pricing-admin/drafts/retail', input)
-  return requirePricingSuccess(response.data)
-}
-
-export async function updateRetailDraft(
-  id: number,
-  input: RetailDraftPayload
-): Promise<PriceVersionResponse<RetailPriceVersion>> {
-  const response = await api.put(
-    `/api/pricing-admin/drafts/retail/${id}`,
-    input
-  )
-  return requirePricingSuccess(response.data)
-}
-
 export async function publishPriceVersion(
-  kind: 'official' | 'purchase' | 'retail',
+  kind: 'official' | 'purchase',
   id: number
 ): Promise<PriceVersionResponse<null>> {
   const response = await api.post(
@@ -506,7 +408,7 @@ export async function publishPriceVersion(
 }
 
 export async function suspendPriceVersion(
-  kind: 'official' | 'purchase' | 'retail',
+  kind: 'official' | 'purchase',
   id: number
 ): Promise<PriceVersionResponse<null>> {
   const response = await api.post(
@@ -516,32 +418,9 @@ export async function suspendPriceVersion(
 }
 
 export async function deletePriceDraft(
-  kind: 'official' | 'purchase' | 'retail',
+  kind: 'official' | 'purchase',
   id: number
 ): Promise<PriceVersionResponse<null>> {
   const response = await api.delete(`/api/pricing-admin/${kind}-prices/${id}`)
-  return requirePricingSuccess(response.data)
-}
-
-export async function simulatePrice(input: {
-  channel_model_id: number
-  purchase_price_version_id: number
-  retail_price_version_id: number
-  prompt_tokens: number
-  completion_tokens: number
-  cache_read_tokens: number
-  cache_write_tokens: number
-  image_input_tokens: number
-  image_output_tokens: number
-  audio_input_tokens: number
-  audio_output_tokens: number
-  request_count: number
-  image_count: number
-  audio_seconds: number
-  video_seconds: number
-  character_count: number
-  request_body: string
-}): Promise<PriceVersionResponse<PriceSimulationResult>> {
-  const response = await api.post('/api/pricing-admin/simulate', input)
   return requirePricingSuccess(response.data)
 }

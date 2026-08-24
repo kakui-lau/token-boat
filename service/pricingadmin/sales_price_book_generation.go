@@ -354,7 +354,7 @@ func buildSalesPriceBookItem(
 		)
 	}
 
-	preview, err := BuildRetailPricePreview(RetailDraftInput{
+	preview, err := BuildSalesPricePreview(SalesPriceGenerationInput{
 		ChannelModelId: selected.ChannelModelId, PurchasePriceVersionId: selected.Id,
 		TotalVariableCostRate: version.TotalVariableCostRate,
 		EffectiveTaxRate:      version.EffectiveTaxRate,
@@ -364,7 +364,7 @@ func buildSalesPriceBookItem(
 	if err != nil {
 		return model.SalesPriceBookItem{}, nil, err
 	}
-	factor, err := NewRetailPriceCalculator(
+	factor, err := NewSalesPriceCalculator(
 		version.TotalVariableCostRate,
 		version.EffectiveTaxRate,
 		version.TargetNetMargin,
@@ -379,8 +379,8 @@ func buildSalesPriceBookItem(
 	item := model.SalesPriceBookItem{
 		ModelId: sources[0].ModelId, Status: SalesPriceItemStatusEnabled,
 		BillingMode: preview.BillingMode, PriceStructure: preview.PriceStructure,
-		PriceComponents: preview.PriceComponents, SalesBillingExpr: preview.RetailBillingExpr,
-		SalesExprHash:    billingexpr.ExprHashString(preview.RetailBillingExpr),
+		PriceComponents: preview.PriceComponents, SalesBillingExpr: preview.SalesBillingExpr,
+		SalesExprHash:    billingexpr.ExprHashString(preview.SalesBillingExpr),
 		ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 		PricingMethod: "cost_plus", SellingFactor: sellingFactor.String(),
 		MinimumMarginOverride: version.MinimumMarginRate, Currency: preview.Currency,

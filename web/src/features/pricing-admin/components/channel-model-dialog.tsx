@@ -118,8 +118,7 @@ export function ChannelModelDialog(props: ChannelModelDialogProps) {
     upstreamModelName.trim() !== '' &&
     Number.isInteger(Number(priority)) &&
     Number.isInteger(Number(weight)) &&
-    Number(weight) >= 0 &&
-    !(props.channelModel?.runtime_mode === 'v2' && status === '0')
+    Number(weight) >= 0
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>

@@ -5,11 +5,66 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
-func TestBackfillProviderCostTrackingClassifiesLegacySnapshots(t *testing.T) {
+func TestLegacyChannelRetailPricingMigrationConvergesToSalesPricing(t *testing.T) {
+	originalDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() { DB = originalDB })
+
+	require.NoError(t, DB.Exec(`
+		CREATE TABLE request_pricing_snapshots (
+			id integer primary key,
+			retail_amount text,
+			base_retail_amount text,
+			retail_price_version_id integer
+		)
+	`).Error)
+	require.NoError(t, DB.Exec(`
+		INSERT INTO request_pricing_snapshots
+			(id, retail_amount, base_retail_amount, retail_price_version_id)
+		VALUES (1, '1.25', '1.10', 9)
+	`).Error)
+	require.NoError(t, DB.Exec(`CREATE TABLE channel_models (id integer primary key, runtime_mode text)`).Error)
+	require.NoError(t, DB.Exec(`CREATE TABLE channel_model_retail_price_versions (id integer primary key)`).Error)
+
+	require.NoError(t, renameLegacyPricingSnapshotColumns())
+	require.True(t, DB.Migrator().HasColumn(&RequestPricingSnapshot{}, "sales_amount"))
+	require.True(t, DB.Migrator().HasColumn(&RequestPricingSnapshot{}, "base_sales_amount"))
+	require.False(t, DB.Migrator().HasColumn(&RequestPricingSnapshot{}, "retail_amount"))
+	require.False(t, DB.Migrator().HasColumn(&RequestPricingSnapshot{}, "base_retail_amount"))
+
+	var migrated struct {
+		SalesAmount     string `gorm:"column:sales_amount"`
+		BaseSalesAmount string `gorm:"column:base_sales_amount"`
+	}
+	require.NoError(t, DB.Table("request_pricing_snapshots").Where("id = ?", 1).Take(&migrated).Error)
+	assert.Equal(t, "1.25", migrated.SalesAmount)
+	assert.Equal(t, "1.10", migrated.BaseSalesAmount)
+
+	require.NoError(t, retireLegacyChannelRetailPricing())
+	assert.False(t, DB.Migrator().HasTable("channel_model_retail_price_versions"))
+	var retiredColumnCount int64
+	require.NoError(t, DB.Raw(`
+		SELECT COUNT(*) FROM pragma_table_info('channel_models') WHERE name = 'runtime_mode'
+	`).Scan(&retiredColumnCount).Error)
+	assert.Zero(t, retiredColumnCount)
+	require.NoError(t, DB.Raw(`
+		SELECT COUNT(*) FROM pragma_table_info('request_pricing_snapshots')
+		WHERE name = 'retail_price_version_id'
+	`).Scan(&retiredColumnCount).Error)
+	assert.Zero(t, retiredColumnCount)
+	require.NoError(t, renameLegacyPricingSnapshotColumns())
+	require.NoError(t, retireLegacyChannelRetailPricing())
+}
+
+func TestBackfillProviderCostTrackingClassifiesExistingSnapshots(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 	require.NoError(t, DB.Create([]Channel{
 		{Id: 301, Name: "openai-compatible", Type: constant.ChannelTypeOpenAI},
@@ -25,26 +80,26 @@ func TestBackfillProviderCostTrackingClassifiesLegacySnapshots(t *testing.T) {
 	}).Error)
 	require.NoError(t, DB.Create([]RequestPricingSnapshot{
 		{
-			RequestId: "legacy-estimated", UserId: 1, ModelId: 301, ChannelModelId: 301,
-			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
-			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD", Status: "settled",
+			RequestId: "existing-estimated", UserId: 1, ModelId: 301, ChannelModelId: 301,
+			PurchasePriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", SalesAmount: "0.2", Currency: "USD", Status: "settled",
 		},
 		{
-			RequestId: "legacy-pending", UserId: 1, ModelId: 302, ChannelModelId: 302,
-			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
-			PurchaseCost: "0.1", RetailAmount: "0.2", Currency: "USD", Status: "settled",
+			RequestId: "existing-pending", UserId: 1, ModelId: 302, ChannelModelId: 302,
+			PurchasePriceVersionId: 1, BillingMode: "token",
+			PurchaseCost: "0.1", SalesAmount: "0.2", Currency: "USD", Status: "settled",
 		},
 		{
-			RequestId: "legacy-confirmed", UserId: 1, ModelId: 302, ChannelModelId: 302,
-			PurchasePriceVersionId: 1, RetailPriceVersionId: 1, BillingMode: "token",
+			RequestId: "existing-confirmed", UserId: 1, ModelId: 302, ChannelModelId: 302,
+			PurchasePriceVersionId: 1, BillingMode: "token",
 			PurchaseCost: "0.1", ProviderReportedCost: "0.11", ProviderCostKnown: true,
-			RetailAmount: "0.2", Currency: "USD", Status: "settled",
+			SalesAmount: "0.2", Currency: "USD", Status: "settled",
 		},
 	}).Error)
 	require.NoError(t, DB.Model(&Channel{}).Where("id IN ?", []int{301, 302}).
 		Update("provider_cost_mode", "").Error)
 	require.NoError(t, DB.Model(&RequestPricingSnapshot{}).
-		Where("request_id IN ?", []string{"legacy-estimated", "legacy-pending", "legacy-confirmed"}).
+		Where("request_id IN ?", []string{"existing-estimated", "existing-pending", "existing-confirmed"}).
 		Updates(map[string]any{
 			"provider_cost_mode":         "",
 			"provider_cost_status":       "",
@@ -62,7 +117,7 @@ func TestBackfillProviderCostTrackingClassifiesLegacySnapshots(t *testing.T) {
 	var snapshots []RequestPricingSnapshot
 	require.NoError(t, DB.Where(
 		"request_id IN ?",
-		[]string{"legacy-estimated", "legacy-pending", "legacy-confirmed"},
+		[]string{"existing-estimated", "existing-pending", "existing-confirmed"},
 	).Order("request_id").Find(&snapshots).Error)
 	require.Len(t, snapshots, 3)
 	assert.Equal(t, ProviderCostStatusConfirmed, snapshots[0].ProviderCostStatus)
@@ -81,12 +136,10 @@ func resetChannelModelPricingTestTables(t *testing.T) {
 		&ChannelModel{},
 		&OfficialModelPriceVersion{},
 		&ChannelModelPurchasePriceVersion{},
-		&ChannelModelRetailPriceVersion{},
 		&RequestPricingSnapshot{},
 	))
 	for _, table := range []string{
 		"request_pricing_snapshots",
-		"channel_model_retail_price_versions",
 		"channel_model_purchase_price_versions",
 		"official_model_price_versions",
 		"channel_models",
@@ -128,7 +181,7 @@ func TestSearchChannelsByRoutingAbilityUsesLogicalModelAndExactGroup(t *testing.
 	assert.Equal(t, "mapped-internal", channels[0].Name)
 }
 
-func TestInitializeChannelModelsFromAbilitiesKeepsLegacyRuntimeAndAggregatesGroups(t *testing.T) {
+func TestInitializeChannelModelsFromAbilitiesAggregatesGroups(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 
 	modelMapping := `{"gpt-test":"provider-gpt-test"}`
@@ -179,10 +232,9 @@ func TestInitializeChannelModelsFromAbilitiesKeepsLegacyRuntimeAndAggregatesGrou
 	assert.Equal(t, 1, channelModel.Status)
 	assert.Equal(t, int64(20), channelModel.Priority)
 	assert.Equal(t, uint(30), channelModel.Weight)
-	assert.Equal(t, "legacy", channelModel.RuntimeMode)
 }
 
-func TestInitializeChannelModelsFromAbilitiesRepairsLegacyUpstreamModelName(t *testing.T) {
+func TestInitializeChannelModelsFromAbilitiesRepairsUpstreamModelName(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 
 	modelMapping := `{"gpt-test":"provider-gpt-test"}`
@@ -203,7 +255,6 @@ func TestInitializeChannelModelsFromAbilitiesRepairsLegacyUpstreamModelName(t *t
 		ModelId:           101,
 		UpstreamModelName: "gpt-test",
 		Status:            1,
-		RuntimeMode:       "legacy",
 	}).Error)
 
 	result, err := InitializeChannelModelsFromAbilities()

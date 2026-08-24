@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCheck, DatabaseZap, Search } from 'lucide-react'
+import { ArrowLeft, CheckCheck, Search } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -36,7 +36,6 @@ import {
   deletePriceDraft,
   getOfficialPriceOverview,
   getOfficialPriceVersions,
-  importLegacyOfficialPrices,
   publishLatestOfficialPriceDrafts,
   publishPriceVersion,
 } from '@/features/pricing-admin/api'
@@ -137,27 +136,6 @@ export function OfficialPricing(props: OfficialPricingProps) {
       toast.success(t('Price draft deleted'))
     },
   })
-  const importMutation = useMutation({
-    mutationFn: importLegacyOfficialPrices,
-    onSuccess: async (response) => {
-      await queryClient.invalidateQueries({
-        queryKey: ['pricing-admin', 'official-prices'],
-      })
-      await queryClient.invalidateQueries({
-        queryKey: ['pricing-admin', 'official-price-overview'],
-      })
-      toast.success(
-        t(
-          'Legacy import completed: {{created}} created, {{existing}} existing, {{unpriced}} unpriced',
-          {
-            created: response.data.created,
-            existing: response.data.skipped_existing ?? 0,
-            unpriced: response.data.skipped_unpriced ?? 0,
-          }
-        )
-      )
-    },
-  })
   const bulkPublishMutation = useMutation({
     mutationFn: publishLatestOfficialPriceDrafts,
     onSuccess: async (response) => {
@@ -197,16 +175,6 @@ export function OfficialPricing(props: OfficialPricingProps) {
           >
             <CheckCheck data-icon='inline-start' />
             {t('Publish Latest')}
-          </Button>
-        ) : null}
-        {canWrite ? (
-          <Button
-            variant='outline'
-            disabled={importMutation.isPending}
-            onClick={() => importMutation.mutate()}
-          >
-            <DatabaseZap data-icon='inline-start' />
-            {t('Import Legacy Pricing')}
           </Button>
         ) : null}
         <ConfirmDialog

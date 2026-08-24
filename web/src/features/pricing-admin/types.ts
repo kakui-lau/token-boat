@@ -29,9 +29,10 @@ export type ChannelModel = {
   priority: number
   weight: number
   region: string
-  runtime_mode: 'legacy' | 'v2'
-  active_retail_price_version_id: number
-  active_retail_price_version: number
+  active_purchase_price_version_id: number
+  active_purchase_price_version: number
+  purchase_pricing_mode: string
+  purchase_discount: string
 }
 
 export type ChannelModelListResponse = {
@@ -47,7 +48,7 @@ export type ChannelModelListResponse = {
 
 export type PricingRuntimeStatus = {
   total_channel_models: number
-  v2_channel_models: number
+  priced_channel_models: number
   complete_group_model_scopes: number
   live_traffic_enabled: boolean
   distributed_circuit_state: boolean
@@ -117,7 +118,9 @@ export type RequestPricingSnapshot = {
   channel_name: string
   billing_mode: string
   purchase_price_version_id?: number
-  retail_price_version_id?: number
+  sales_price_book_id?: number
+  sales_price_book_version_id?: number
+  sales_price_book_item_id?: number
   estimated_usage?: string
   actual_usage?: string
   reserved_quota: number
@@ -153,8 +156,8 @@ export type RequestPricingSnapshot = {
   cost_variance?: string
   gross_margin?: string
   gross_margin_known?: boolean
-  retail_amount: string
-  base_retail_amount?: string
+  sales_amount: string
+  base_sales_amount?: string
   estimated_customer_charge?: string
   customer_charge?: string | null
   applied_group?: string
@@ -333,35 +336,6 @@ export type PurchasePriceVersion = {
   updated_at?: number
 }
 
-export type RetailPriceVersion = {
-  id: number
-  channel_model_id: number
-  purchase_price_version_id: number
-  billing_mode: string
-  price_structure: string
-  price_components: string
-  input_unit_price: string
-  output_unit_price: string
-  cache_read_unit_price: string
-  cache_write_unit_price: string
-  currency: string
-  version: number
-  status: PriceVersionStatus
-  total_variable_cost_rate: string
-  effective_tax_rate: string
-  target_net_margin: string
-  minimum_margin_rate: string
-  retail_billing_expr: string
-  expression_source: string
-  expression_schema_version: string
-  price_unit: string
-  remark: string
-  effective_from: number
-  effective_to: number
-  created_at?: number
-  updated_at?: number
-}
-
 export type PriceVersionResponse<T> = {
   success: boolean
   message?: string
@@ -379,22 +353,6 @@ export type FlatTokenPrices = {
   audio_output_unit_price: string
 }
 
-export type PriceSimulationResult = {
-  purchase_cost: string
-  retail_amount: string
-  variable_cost: string
-  pre_tax_profit: string
-  tax_expense: string
-  net_profit: string
-  gross_margin_rate: string
-  net_margin_rate: string
-  minimum_margin_rate: string
-  meets_minimum_margin: boolean
-  currency: string
-  purchase_matched_tier: string
-  retail_matched_tier: string
-}
-
 export type PricingCatalogOption = {
   id: number
   name: string
@@ -407,51 +365,4 @@ export type PricingCatalogOptionsResponse = {
     channels: PricingCatalogOption[]
     models: PricingCatalogOption[]
   }
-}
-
-export type LowestPriceComponent = {
-  unit_price: string
-  currency: string
-  channel_model_id: number
-  channel_name: string
-}
-
-export type ModelPriceOverview = {
-  model_id: number
-  model_name: string
-  currency: string
-  active_channel_count: number
-  input?: LowestPriceComponent
-  output?: LowestPriceComponent
-  cache_read?: LowestPriceComponent
-  cache_write?: LowestPriceComponent
-  endpoints: ProviderPriceEndpoint[]
-}
-
-export type ProviderPriceEndpoint = {
-  channel_model_id: number
-  channel_name: string
-  upstream_model_name: string
-  runtime_mode: 'legacy' | 'v2'
-  billing_mode: string
-  price_structure: string
-  purchase_pricing_mode?: string
-  purchase_currency?: string
-  purchase_price_components?: string
-  purchase_input_unit_price?: string
-  purchase_output_unit_price?: string
-  retail_price_components?: string
-  retail_input_unit_price: string
-  retail_output_unit_price: string
-  retail_cache_read_unit_price: string
-  retail_cache_write_unit_price: string
-  target_net_margin?: string
-}
-
-export type ActivePriceBundle = {
-  channel_model: ChannelModel
-  official_price?: OfficialPriceVersion
-  purchase_price: PurchasePriceVersion
-  retail_price: RetailPriceVersion
-  revision: string
 }

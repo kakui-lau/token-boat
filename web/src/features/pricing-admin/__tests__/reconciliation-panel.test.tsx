@@ -109,7 +109,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           channel_name: 'video-provider',
           billing_mode: 'video_duration',
           purchase_price_version_id: 12,
-          retail_price_version_id: 13,
+          sales_price_book_version_id: 13,
           estimated_usage: '{"video_seconds":3}',
           actual_usage: '',
           created_at: 1_800_000_000,
@@ -123,7 +123,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           purchase_cost: '0.4',
           provider_cost_mode: 'invoice',
           provider_cost_status: 'pending',
-          retail_amount: '0.8',
+          sales_amount: '0.8',
           currency: 'USD',
           status: 'pending',
           updated_at: 1_800_000_000,
@@ -154,7 +154,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     screen.getByRole('button', { name: 'Confirm Refunded' })
   ).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'View details' }))
-  expect(screen.getByText('P#12 · R#13')).toBeInTheDocument()
+  expect(screen.getByText('P#12 · PB#13')).toBeInTheDocument()
   expect(screen.getByText(/"video_seconds": 3/)).toBeInTheDocument()
   expect(screen.getByText('#7')).toBeInTheDocument()
   expect(screen.getByText('0.4 USD')).toBeInTheDocument()
@@ -163,7 +163,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     screen.getByRole('columnheader', { name: 'Purchase cost' })
   ).toBeInTheDocument()
   expect(
-    screen.getByRole('columnheader', { name: 'Base retail amount' })
+    screen.getByRole('columnheader', { name: 'Base sales amount' })
   ).toBeInTheDocument()
   expect(
     screen.getByRole('columnheader', { name: 'Estimated charge' })
@@ -258,7 +258,7 @@ test('confirms an audited refund after explicit confirmation', async () => {
           pre_consume_captured: true,
           settled_quota: 0,
           purchase_cost: '0.01',
-          retail_amount: '0.02',
+          sales_amount: '0.02',
           currency: 'USD',
           status: 'pending',
           updated_at: 1,
@@ -544,7 +544,7 @@ test('allows provider cost reconciliation for a refunded request', async () => {
           reserved_quota: 10,
           settled_quota: 0,
           purchase_cost: '0.01',
-          retail_amount: '0.02',
+          sales_amount: '0.02',
           currency: 'USD',
           status: 'refunded',
           provider_cost_known: false,

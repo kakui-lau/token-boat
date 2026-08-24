@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
+func TestPrepareMidjourneyPricingCreatesFrozenRequestAudit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -31,7 +31,11 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 		&model.ChannelModel{},
 		&model.ModelOfficialPrice{},
 		&model.ChannelModelPurchasePriceVersion{},
-		&model.ChannelModelRetailPriceVersion{},
+		&model.SalesPriceBook{},
+		&model.SalesPriceBookVersion{},
+		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookDefault{},
+		&model.UserPriceBookAssignment{},
 		&model.RequestPricingSnapshot{},
 	))
 	t.Cleanup(func() {
@@ -40,7 +44,7 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 	})
 
 	const purchaseExpression = `v2:tier("base", req * 1)`
-	const retailExpression = `v2:tier("base", req * 2)`
+	const salesExpression = `v2:tier("base", req * 2)`
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 1, ModelName: "mj_imagine",
 	}).Error)
@@ -52,7 +56,7 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModel{
 		Id: 3, ChannelId: 2, ModelId: 1, UpstreamModelName: "mj_imagine",
-		Status: 1, RuntimeMode: pricingruntime.RuntimeModeV2,
+		Status: 1,
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
 		Id: 4, ChannelModelId: 3, BillingMode: "request",
@@ -62,15 +66,27 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
 		Status: model.PricingVersionStatusActive,
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.ChannelModelRetailPriceVersion{
-		Id: 5, ChannelModelId: 3, PurchasePriceVersionId: 4,
-		BillingMode: "request", PriceStructure: "flat",
-		RetailBillingExpr:       retailExpression,
-		RetailExprHash:          billingexpr.ExprHashString(retailExpression),
-		ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
-		Status:            model.PricingVersionStatusActive,
+	currentVersionID := 5
+	require.NoError(t, model.DB.Create(&model.SalesPriceBook{
+		Id: 5, Code: "toc-default", Name: "TOC Default", Audience: "toc",
+		Currency: "USD", Status: model.SalesPriceBookStatusEnabled,
+		CurrentVersionId: &currentVersionID,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookVersion{
+		Id: 5, PriceBookId: 5, Version: 1,
+		Status:            model.SalesPriceBookVersionStatusActive,
 		MinimumMarginRate: "0.1", TargetNetMargin: "0.2",
-		TotalVariableCostRate: "0", EffectiveTaxRate: "0",
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0", EffectiveFrom: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookItem{
+		Id: 5, PriceBookVersionId: 5, ModelId: 1, Status: "enabled",
+		BillingMode: "request", PriceStructure: "flat",
+		SalesBillingExpr:        salesExpression,
+		SalesExprHash:           billingexpr.ExprHashString(salesExpression),
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: 5,
 	}).Error)
 	require.NoError(t, pricingruntime.RefreshCatalog())
 
@@ -83,7 +99,7 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 	)
 	context.Request.Header.Set("Content-Type", "application/json")
 	info := &relaycommon.RelayInfo{
-		RequestId:       "mj-v2-request",
+		RequestId:       "mj-priced-request",
 		UserId:          7,
 		UserGroup:       "default",
 		UsingGroup:      "default",
@@ -91,7 +107,7 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 		ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 2},
 	}
 
-	priceData, err := prepareMidjourneyV2Pricing(context, info, "mj_imagine")
+	priceData, err := prepareMidjourneyPricing(context, info, "mj_imagine")
 	require.NoError(t, err)
 	assert.Equal(t, int(2*common.QuotaPerUnit), priceData.Quota)
 	require.NotNil(t, info.DynamicPricingSnapshot)
@@ -100,5 +116,5 @@ func TestPrepareMidjourneyV2PricingCreatesFrozenRequestAudit(t *testing.T) {
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
 	assert.Equal(t, pricingruntime.PricingSnapshotStatusReserved, snapshot.Status)
 	assert.Equal(t, "1", snapshot.PurchaseCost)
-	assert.Equal(t, "2", snapshot.RetailAmount)
+	assert.Equal(t, "2", snapshot.SalesAmount)
 }

@@ -53,7 +53,7 @@ type PurchaseDraftInput struct {
 	ExpectedUpdatedAt      int64               `json:"expected_updated_at"`
 }
 
-type RetailDraftInput struct {
+type SalesPriceGenerationInput struct {
 	ChannelModelId         int    `json:"channel_model_id"`
 	PurchasePriceVersionId int    `json:"purchase_price_version_id"`
 	TotalVariableCostRate  string `json:"total_variable_cost_rate"`
@@ -61,7 +61,19 @@ type RetailDraftInput struct {
 	TargetNetMargin        string `json:"target_net_margin"`
 	MinimumMarginRate      string `json:"minimum_margin_rate"`
 	Remark                 string `json:"remark"`
-	ExpectedUpdatedAt      int64  `json:"expected_updated_at"`
+}
+
+type SalesPricePreview struct {
+	BillingMode         string
+	PriceStructure      string
+	PriceComponents     string
+	InputUnitPrice      string
+	OutputUnitPrice     string
+	CacheReadUnitPrice  string
+	CacheWriteUnitPrice string
+	PriceUnit           string
+	SalesBillingExpr    string
+	Currency            string
 }
 
 type flatTokenPriceComponents struct {
@@ -325,159 +337,59 @@ func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPu
 	return updated, err
 }
 
-func CreateRetailDraft(input RetailDraftInput, userId int) (model.ChannelModelRetailPriceVersion, error) {
-	version, err := buildRetailDraft(input)
-	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	if err := CreateRetailPriceVersion(&version, userId); err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	return version, nil
-}
-
-func UpdateRetailDraft(id int, input RetailDraftInput) (model.ChannelModelRetailPriceVersion, error) {
-	if input.ExpectedUpdatedAt <= 0 {
-		return model.ChannelModelRetailPriceVersion{}, errors.New("expected_updated_at is required")
-	}
-	replacement, err := buildRetailDraft(input)
-	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	var updated model.ChannelModelRetailPriceVersion
-	err = model.DB.Transaction(func(tx *gorm.DB) error {
-		current, err := model.GetRetailPriceVersionForUpdate(tx, id)
-		if err != nil {
-			return err
-		}
-		if current.Status != model.PricingVersionStatusDraft {
-			return errors.New("only retail price drafts can be updated")
-		}
-		if current.UpdatedAt != input.ExpectedUpdatedAt {
-			return errors.New("retail price draft was updated by another administrator; reload before saving")
-		}
-		if current.ChannelModelId != replacement.ChannelModelId {
-			return errors.New("retail price draft channel model cannot be changed")
-		}
-		var purchase model.ChannelModelPurchasePriceVersion
-		if err := tx.First(&purchase, replacement.PurchasePriceVersionId).Error; err != nil {
-			return err
-		}
-		if err := validateRetailPriceLimits(tx, purchase, replacement); err != nil {
-			return err
-		}
-		replacement.RetailExprHash = billingexpr.ExprHashString(replacement.RetailBillingExpr)
-		updatedAt := common.GetTimestamp()
-		if updatedAt <= current.UpdatedAt {
-			updatedAt = current.UpdatedAt + 1
-		}
-		updates := map[string]any{
-			"purchase_price_version_id": replacement.PurchasePriceVersionId,
-			"billing_mode":              replacement.BillingMode,
-			"price_structure":           replacement.PriceStructure,
-			"price_components":          replacement.PriceComponents,
-			"input_unit_price":          replacement.InputUnitPrice,
-			"output_unit_price":         replacement.OutputUnitPrice,
-			"cache_read_unit_price":     replacement.CacheReadUnitPrice,
-			"cache_write_unit_price":    replacement.CacheWriteUnitPrice,
-			"price_unit":                replacement.PriceUnit,
-			"retail_billing_expr":       replacement.RetailBillingExpr,
-			"retail_expr_hash":          replacement.RetailExprHash,
-			"expression_source":         replacement.ExpressionSource,
-			"expression_schema_version": replacement.ExpressionSchemaVersion,
-			"currency":                  replacement.Currency,
-			"total_variable_cost_rate":  replacement.TotalVariableCostRate,
-			"effective_tax_rate":        replacement.EffectiveTaxRate,
-			"target_net_margin":         replacement.TargetNetMargin,
-			"minimum_margin_rate":       replacement.MinimumMarginRate,
-			"remark":                    replacement.Remark,
-			"updated_at":                updatedAt,
-		}
-		if err := tx.Model(&model.ChannelModelRetailPriceVersion{}).
-			Where("id = ? AND status = ?", id, model.PricingVersionStatusDraft).
-			UpdateColumns(updates).Error; err != nil {
-			return err
-		}
-		return tx.First(&updated, id).Error
-	})
-	return updated, err
-}
-
-func buildRetailDraft(input RetailDraftInput) (model.ChannelModelRetailPriceVersion, error) {
-	var purchase model.ChannelModelPurchasePriceVersion
-	if err := model.DB.First(&purchase, input.PurchasePriceVersionId).Error; err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
-	}
-	return BuildRetailPricePreview(input, purchase)
-}
-
-// BuildRetailPricePreview applies the same retail pricing rules used by draft
-// creation without persisting a new price version.
-func BuildRetailPricePreview(
-	input RetailDraftInput,
+// BuildSalesPricePreview generates a sales expression for a price-book item
+// without persisting a channel-specific customer price.
+func BuildSalesPricePreview(
+	input SalesPriceGenerationInput,
 	purchase model.ChannelModelPurchasePriceVersion,
-) (model.ChannelModelRetailPriceVersion, error) {
+) (SalesPricePreview, error) {
 	if purchase.ChannelModelId != input.ChannelModelId {
-		return model.ChannelModelRetailPriceVersion{}, errors.New(
-			"purchase and retail versions belong to different channel models",
+		return SalesPricePreview{}, errors.New(
+			"purchase price belongs to a different channel model",
 		)
 	}
-	calculator, err := NewRetailPriceCalculator(
+	calculator, err := NewSalesPriceCalculator(
 		input.TotalVariableCostRate,
 		input.EffectiveTaxRate,
 		input.TargetNetMargin,
 	)
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
 	if _, err := validateRate("minimum_margin_rate", input.MinimumMarginRate); err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
 	if _, err := calculator.SellingFactor(); err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
 	if purchase.BillingMode != "token" || purchase.PriceStructure != "flat" {
-		return buildExpressionRetailDraft(input, purchase, calculator)
+		return buildExpressionSalesPricePreview(input, purchase, calculator)
 	}
 	purchasePrices, err := unmarshalFlatPriceComponents(purchase.PriceComponents)
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
-	retailPrices, err := calculateRetailFlatPrices(purchasePrices, calculator)
+	salesPrices, err := calculateSalesFlatPrices(purchasePrices, calculator)
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
-	_, retailExpression, componentsJSON, err := normalizeFlatTokenPrices(retailPrices)
+	_, salesExpression, componentsJSON, err := normalizeFlatTokenPrices(salesPrices)
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
-	version := model.ChannelModelRetailPriceVersion{
-		ChannelModelId:          input.ChannelModelId,
-		PurchasePriceVersionId:  input.PurchasePriceVersionId,
-		BillingMode:             purchase.BillingMode,
-		PriceStructure:          purchase.PriceStructure,
-		PriceComponents:         componentsJSON,
-		InputUnitPrice:          retailPrices.InputUnitPrice,
-		OutputUnitPrice:         retailPrices.OutputUnitPrice,
-		CacheReadUnitPrice:      retailPrices.CacheReadUnitPrice,
-		CacheWriteUnitPrice:     retailPrices.CacheWriteUnitPrice,
-		PriceUnit:               purchase.PriceUnit,
-		RetailBillingExpr:       retailExpression,
-		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: "v2",
-		Currency:                purchase.Currency,
-		TotalVariableCostRate:   input.TotalVariableCostRate,
-		EffectiveTaxRate:        input.EffectiveTaxRate,
-		TargetNetMargin:         input.TargetNetMargin,
-		MinimumMarginRate:       input.MinimumMarginRate,
-		Remark:                  strings.TrimSpace(input.Remark),
+	preview := SalesPricePreview{
+		BillingMode: purchase.BillingMode, PriceStructure: purchase.PriceStructure,
+		PriceComponents: componentsJSON, InputUnitPrice: salesPrices.InputUnitPrice,
+		OutputUnitPrice: salesPrices.OutputUnitPrice, CacheReadUnitPrice: salesPrices.CacheReadUnitPrice,
+		CacheWriteUnitPrice: salesPrices.CacheWriteUnitPrice, PriceUnit: purchase.PriceUnit,
+		SalesBillingExpr: salesExpression, Currency: purchase.Currency,
 	}
-	return version, nil
+	return preview, nil
 }
 
-func calculateRetailFlatPrices(
+func calculateSalesFlatPrices(
 	input FlatTokenPriceInput,
-	calculator RetailPriceCalculator,
+	calculator SalesPriceCalculator,
 ) (FlatTokenPriceInput, error) {
 	result := FlatTokenPriceInput{}
 	type component struct {
@@ -508,23 +420,23 @@ func calculateRetailFlatPrices(
 		if err != nil {
 			return result, err
 		}
-		*item.target = sellingPrice.StringFixed(retailSellingPriceDecimalPlaces)
+		*item.target = sellingPrice.StringFixed(salesSellingPriceDecimalPlaces)
 	}
 	return result, nil
 }
 
-func buildExpressionRetailDraft(
-	input RetailDraftInput,
+func buildExpressionSalesPricePreview(
+	input SalesPriceGenerationInput,
 	purchase model.ChannelModelPurchasePriceVersion,
-	calculator RetailPriceCalculator,
-) (model.ChannelModelRetailPriceVersion, error) {
+	calculator SalesPriceCalculator,
+) (SalesPricePreview, error) {
 	factor, err := calculator.SellingFactor()
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
 	expression, err := scaleBillingExpression(purchase.PurchaseBillingExpr, factor)
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
 	componentsJSON, err := scalePriceComponents(
 		purchase.PriceComponents,
@@ -532,26 +444,14 @@ func buildExpressionRetailDraft(
 		true,
 	)
 	if err != nil {
-		return model.ChannelModelRetailPriceVersion{}, err
+		return SalesPricePreview{}, err
 	}
-	version := model.ChannelModelRetailPriceVersion{
-		ChannelModelId:          input.ChannelModelId,
-		PurchasePriceVersionId:  input.PurchasePriceVersionId,
-		BillingMode:             purchase.BillingMode,
-		PriceStructure:          purchase.PriceStructure,
-		PriceComponents:         componentsJSON,
-		PriceUnit:               purchase.PriceUnit,
-		RetailBillingExpr:       expression,
-		ExpressionSource:        "generated",
-		ExpressionSchemaVersion: "v2",
-		Currency:                purchase.Currency,
-		TotalVariableCostRate:   input.TotalVariableCostRate,
-		EffectiveTaxRate:        input.EffectiveTaxRate,
-		TargetNetMargin:         input.TargetNetMargin,
-		MinimumMarginRate:       input.MinimumMarginRate,
-		Remark:                  strings.TrimSpace(input.Remark),
+	preview := SalesPricePreview{
+		BillingMode: purchase.BillingMode, PriceStructure: purchase.PriceStructure,
+		PriceComponents: componentsJSON, PriceUnit: purchase.PriceUnit,
+		SalesBillingExpr: expression, Currency: purchase.Currency,
 	}
-	return version, nil
+	return preview, nil
 }
 
 func buildOfficialRatioPurchaseDraft(input PurchaseDraftInput) (model.ChannelModelPurchasePriceVersion, error) {
@@ -972,7 +872,7 @@ func scaleOptionalPrice(value string, factor decimal.Decimal) (string, error) {
 func scalePriceComponents(
 	raw string,
 	factor decimal.Decimal,
-	roundRetailPrice bool,
+	roundSalesPrice bool,
 ) (string, error) {
 	var components map[string]any
 	if err := common.UnmarshalJsonStr(raw, &components); err != nil {
@@ -1018,9 +918,9 @@ func scalePriceComponents(
 			if scaled.GreaterThan(maxPricingUnitPrice) {
 				return nil, fmt.Errorf("%s must not exceed %s USD", key, maxPricingUnitPrice)
 			}
-			if roundRetailPrice {
-				scaled = scaled.RoundCeil(retailSellingPriceDecimalPlaces)
-				return scaled.StringFixed(retailSellingPriceDecimalPlaces), nil
+			if roundSalesPrice {
+				scaled = scaled.RoundCeil(salesSellingPriceDecimalPlaces)
+				return scaled.StringFixed(salesSellingPriceDecimalPlaces), nil
 			}
 			return scaled.String(), nil
 		default:

@@ -30,12 +30,12 @@ func TestBuildPlanCalculatesCommercialPriceChain(t *testing.T) {
 	assert.Equal(t, "2.55", result.PurchaseInput)
 	assert.Equal(t, "12.75", result.PurchaseOutput)
 	assert.Equal(t, "0.255", result.PurchaseCacheRead)
-	assert.Equal(t, "2.98570", result.RetailInput)
-	assert.Equal(t, "14.92849", result.RetailOutput)
-	assert.Equal(t, "0.29857", result.RetailCacheRead)
+	assert.Equal(t, "2.98570", result.SalesInput)
+	assert.Equal(t, "14.92849", result.SalesOutput)
+	assert.Equal(t, "0.29857", result.SalesCacheRead)
 }
 
-func TestBuildPlanRejectsRetailAtOrAboveOfficialPrice(t *testing.T) {
+func TestBuildPlanRejectsSalesPriceAtOrAboveOfficialPrice(t *testing.T) {
 	cfg := validConfig()
 	cfg.PurchaseDiscount = "1"
 	_, err := buildPlan(cfg)

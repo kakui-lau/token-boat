@@ -21,8 +21,7 @@ export type ChannelModelFilterValues = {
   channelId: string
   status: string
   routingStatus: string
-  runtimeMode: string
-  retailStatus: string
+  purchaseStatus: string
 }
 
 export const EMPTY_CHANNEL_MODEL_FILTERS: ChannelModelFilterValues = {
@@ -30,6 +29,5 @@ export const EMPTY_CHANNEL_MODEL_FILTERS: ChannelModelFilterValues = {
   channelId: '',
   status: '',
   routingStatus: '',
-  runtimeMode: '',
-  retailStatus: '',
+  purchaseStatus: '',
 }

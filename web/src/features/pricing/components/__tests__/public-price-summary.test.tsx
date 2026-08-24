@@ -113,7 +113,7 @@ describe('public price summary', () => {
     expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
   })
 
-  test('applies recharge rate only to the customer retail comparison', () => {
+  test('applies recharge rate only to the customer sales price comparison', () => {
     const summary: PublicPriceSummary = {
       currency: 'USD',
       billing_mode: 'request',

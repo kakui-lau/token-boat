@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -42,9 +41,8 @@ func scopePricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]
 func markPricingAvailability(pricing []model.Pricing) []model.Pricing {
 	for index := range pricing {
 		hasUsableRoute := len(pricing[index].EnableGroup) > 0
-		hasActiveV2Price := pricing[index].PricingSource == "v2_dynamic" ||
-			pricing[index].PricingSource == "sales_price_book"
-		if hasActiveV2Price && hasUsableRoute {
+		hasSalesPrice := pricing[index].PricingSource == "sales_price_book"
+		if hasSalesPrice && hasUsableRoute {
 			pricing[index].Available = true
 			pricing[index].AvailabilityStatus = model.PricingAvailabilityAvailable
 			continue
@@ -77,19 +75,15 @@ func GetPricing(c *gin.Context) {
 		groupRatio[usableGroupName] = service.GetUserGroupRatio(group, usableGroupName)
 	}
 	pricing = scopePricingByUsableGroups(pricing, usableGroup)
-	if setting.SalesPriceBookRuntimeEnabled {
-		resolvedUserId := 0
-		if exists {
-			resolvedUserId = userId.(int)
-		}
-		pricing = pricingruntime.ApplySalesPriceBookPricing(
-			pricing,
-			resolvedUserId,
-			usableGroup,
-		)
-	} else {
-		pricing = pricingruntime.ApplyV2RetailPricing(pricing, usableGroup, groupRatio)
+	resolvedUserId := 0
+	if exists {
+		resolvedUserId = userId.(int)
 	}
+	pricing = pricingruntime.ApplySalesPriceBookPricing(
+		pricing,
+		resolvedUserId,
+		usableGroup,
+	)
 	pricing = markPricingAvailability(pricing)
 
 	c.JSON(200, gin.H{
@@ -142,28 +136,18 @@ func QuotePricing(c *gin.Context) {
 	if requestedGroup == "auto" {
 		quoteGroups = service.GetUserAutoGroup(userGroup)
 	}
-	var quoteRange pricingruntime.RetailQuoteRange
+	var quoteRange pricingruntime.SalesQuoteRange
 	selectedGroup := ""
 	for _, quoteGroup := range quoteGroups {
-		if !pricingruntime.HasRuntimePricing(quoteGroup, input.ModelName) {
+		if !pricingruntime.HasCompletePricing(quoteGroup, input.ModelName) {
 			continue
 		}
-		var err error
-		if setting.SalesPriceBookRuntimeEnabled {
-			quoteRange, err = pricingruntime.QuoteSalesPriceBookRange(
-				c.GetInt("id"),
-				quoteGroup,
-				input.ModelName,
-				input.Usage,
-			)
-		} else {
-			quoteRange, err = pricingruntime.QuoteRetailRange(
-				quoteGroup,
-				input.ModelName,
-				input.Usage,
-				service.GetUserGroupRatio(userGroup, quoteGroup),
-			)
-		}
+		quoteRange, err = pricingruntime.QuoteSalesPrice(
+			c.GetInt("id"),
+			quoteGroup,
+			input.ModelName,
+			input.Usage,
+		)
 		if err != nil {
 			if requestedGroup == "auto" && errors.Is(
 				err,
@@ -178,7 +162,7 @@ func QuotePricing(c *gin.Context) {
 		break
 	}
 	if selectedGroup == "" {
-		common.ApiError(c, errors.New("no complete v2 price is available for this model and group"))
+		common.ApiError(c, errors.New("no complete purchase and sales price is available for this model and group"))
 		return
 	}
 	common.ApiSuccess(c, gin.H{
@@ -186,7 +170,7 @@ func QuotePricing(c *gin.Context) {
 		"resolved_model_name":        input.ModelName,
 		"group":                      selectedGroup,
 		"currency":                   quoteRange.Currency,
-		"minimum_retail_amount":      quoteRange.MinimumRetailAmount,
+		"sales_amount":               quoteRange.SalesAmount,
 		"maximum_reservation_amount": quoteRange.MaximumReservationAmount,
 		"eligible_candidate_count":   quoteRange.EligibleCandidateCount,
 	})

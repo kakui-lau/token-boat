@@ -5,7 +5,7 @@ readiness job because it creates billable external requests. Do not run this
 matrix against production until the operator has approved the provider test
 accounts, models and maximum budget.
 
-For every provider/model contract enabled in V2, record:
+For every provider/model contract enabled for priced routing, record:
 
 | Check | Required evidence |
 |---|---|

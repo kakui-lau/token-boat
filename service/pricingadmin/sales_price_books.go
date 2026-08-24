@@ -425,7 +425,7 @@ func PublishSalesPriceBookVersion(id int, userId int) error {
 		if err := model.ActivateSalesPriceBookVersion(tx, version, userId, common.GetTimestamp()); err != nil {
 			return err
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "sales_price_book_version",
 			ObjectId:   version.Id,
 			Action:     "publish",
@@ -505,7 +505,7 @@ func CloneSalesPriceBookVersion(priceBookId int, sourceVersionId int, userId int
 				}
 			}
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "sales_price_book_version",
 			ObjectId:   cloned.Id,
 			Action:     "clone",
@@ -541,7 +541,7 @@ func DisableSalesPriceBook(id int, userId int) error {
 			}).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "sales_price_book",
 			ObjectId:   id,
 			Action:     "disable",
@@ -587,7 +587,7 @@ func AssignUserToSalesPriceBook(input *model.UserPriceBookAssignment, userId int
 		if err := model.ReplaceUserPriceBookAssignment(tx, input); err != nil {
 			return err
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "user_price_book_assignment",
 			ObjectId:   input.Id,
 			Action:     "assign",
@@ -618,7 +618,7 @@ func CancelUserPriceBookAssignment(id int, userId int) error {
 			}).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "user_price_book_assignment",
 			ObjectId:   id,
 			Action:     "cancel",
@@ -746,7 +746,7 @@ func SetDefaultSalesPriceBook(defaultKey string, priceBookId int, userId int) er
 			if err := tx.Create(&value).Error; err != nil {
 				return err
 			}
-			return tx.Create(&model.PricingApprovalRecord{
+			return tx.Create(&model.PricingAuditRecord{
 				ObjectType: "sales_price_book_default",
 				ObjectId:   priceBookId,
 				Action:     "set_default",
@@ -766,7 +766,7 @@ func SetDefaultSalesPriceBook(defaultKey string, priceBookId int, userId int) er
 			}).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "sales_price_book_default",
 			ObjectId:   priceBookId,
 			Action:     "set_default",

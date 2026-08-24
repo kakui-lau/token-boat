@@ -70,6 +70,80 @@ func TestLegacyChannelRetailPricingMigrationConvergesToSalesPricing(t *testing.T
 	require.NoError(t, retireLegacyChannelRetailPricing())
 }
 
+func TestPricingAuditMigrationRenamesLegacyApprovalTableAndPreservesRows(t *testing.T) {
+	originalDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() { DB = originalDB })
+	require.NoError(t, DB.Exec(`
+		CREATE TABLE pricing_approval_records (
+			id integer primary key,
+			object_type text,
+			object_id integer,
+			action text,
+			operator_id integer,
+			comment text,
+			created_at integer
+		)
+	`).Error)
+	require.NoError(t, DB.Exec(`
+		INSERT INTO pricing_approval_records
+			(id, object_type, object_id, action, operator_id, comment, created_at)
+		VALUES (1, 'sales_price_book_version', 8, 'publish', 3, '', 100)
+	`).Error)
+	require.NoError(t, DB.Exec(`
+		CREATE INDEX idx_pricing_approval_object
+		ON pricing_approval_records (object_type, object_id)
+	`).Error)
+
+	require.NoError(t, renamePricingAuditTable())
+	require.NoError(t, DB.Migrator().CreateIndex(&PricingAuditRecord{}, "idx_pricing_audit_object"))
+	require.NoError(t, retirePricingApprovalIndex())
+	assert.False(t, DB.Migrator().HasTable("pricing_approval_records"))
+	assert.True(t, DB.Migrator().HasTable("pricing_audit_records"))
+	assert.False(t, DB.Migrator().HasIndex(&PricingAuditRecord{}, "idx_pricing_approval_object"))
+	assert.True(t, DB.Migrator().HasIndex(&PricingAuditRecord{}, "idx_pricing_audit_object"))
+	var audit PricingAuditRecord
+	require.NoError(t, DB.First(&audit, 1).Error)
+	assert.Equal(t, "publish", audit.Action)
+	assert.Equal(t, 3, audit.OperatorId)
+	require.NoError(t, renamePricingAuditTable())
+}
+
+func TestPricingChangeBatchMigrationRemovesApprovalWorkflowColumns(t *testing.T) {
+	originalDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() { DB = originalDB })
+	require.NoError(t, DB.Exec(`
+		CREATE TABLE pricing_change_batches (
+			id integer primary key,
+			batch_no text,
+			approved_by integer,
+			approved_at integer,
+			applied_by integer,
+			applied_at integer
+		)
+	`).Error)
+	require.NoError(t, DB.Exec(`
+		INSERT INTO pricing_change_batches
+			(id, batch_no, approved_by, approved_at, applied_by, applied_at)
+		VALUES (1, 'legacy-batch', 2, 100, 3, 200)
+	`).Error)
+
+	require.NoError(t, retirePricingChangeBatchApprovalColumns())
+	for _, column := range []string{"approved_by", "approved_at", "applied_by", "applied_at"} {
+		assert.False(t, DB.Migrator().HasColumn(&legacyPricingChangeBatchApprovalMigration{}, column))
+	}
+	var batchNo string
+	require.NoError(t, DB.Table("pricing_change_batches").Where("id = ?", 1).
+		Pluck("batch_no", &batchNo).Error)
+	assert.Equal(t, "legacy-batch", batchNo)
+	require.NoError(t, retirePricingChangeBatchApprovalColumns())
+}
+
 func TestBackfillProviderCostTrackingClassifiesExistingSnapshots(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 	require.NoError(t, DB.Create([]Channel{

@@ -143,6 +143,22 @@ func SyncOfficialPrices(input OfficialPriceSyncInput, userId int) (OfficialPrice
 		batch.ErrorMessage = message
 		return OfficialPriceSyncResult{Batch: batch}, processErr
 	}
+	if input.AutoActivate {
+		var activated []model.OfficialModelPriceVersion
+		if err := model.DB.Where(
+			"sync_batch_id = ? AND status = ?", batch.Id, model.PricingVersionStatusActive,
+		).Order("id ASC").Find(&activated).Error; err != nil {
+			return OfficialPriceSyncResult{Batch: batch}, err
+		}
+		for _, version := range activated {
+			if _, err := AutoCreatePurchaseDraftsForOfficialPrice(version.Id, userId); err != nil {
+				return OfficialPriceSyncResult{Batch: batch}, fmt.Errorf(
+					"official price sync completed, but purchase draft generation failed for version %d: %w",
+					version.Id, err,
+				)
+			}
+		}
+	}
 	return OfficialPriceSyncResult{Batch: batch}, nil
 }
 

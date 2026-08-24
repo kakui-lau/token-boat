@@ -129,6 +129,28 @@ func AdminListSalesPriceBookItems(c *gin.Context) {
 	common.ApiSuccess(c, items)
 }
 
+func AdminCompareSalesPriceBookVersions(c *gin.Context) {
+	targetVersionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	baseVersionId, err := optionalPositiveQueryId(c, "base_version_id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if baseVersionId == 0 {
+		common.ApiError(c, errors.New("base_version_id must be provided"))
+		return
+	}
+	diff, err := pricingadmin.CompareSalesPriceBookVersions(baseVersionId, targetVersionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, diff)
+}
+
 func AdminExportSalesPriceBookItems(c *gin.Context) {
 	versionId, ok := positivePathId(c)
 	if !ok {
@@ -218,6 +240,27 @@ func AdminGetPricingChangeBatch(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"batch": batch, "items": items})
+}
+
+func AdminListPricingChangeBatches(c *gin.Context) {
+	page, pageSize, err := salesPriceBookPageQuery(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items, total, err := pricingadmin.ListPricingChangeBatches(
+		pricingadmin.PricingChangeBatchListFilter{
+			Keyword: c.Query("keyword"), Status: c.Query("status"),
+			TriggerType: c.Query("trigger_type"), Page: page, PageSize: pageSize,
+		},
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": items, "total": total, "page": page, "page_size": pageSize,
+	})
 }
 
 func AdminPublishSalesPriceBookVersion(c *gin.Context) {

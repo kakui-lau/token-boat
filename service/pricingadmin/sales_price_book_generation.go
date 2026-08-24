@@ -19,12 +19,15 @@ const (
 	PricingChangeBatchStatusReviewRequired = "review_required"
 	PricingChangeBatchItemStatusGenerated  = "generated"
 	PricingChangeBatchItemStatusReview     = "review_required"
+	PricingChangeBatchItemStatusUnchanged  = "unchanged"
 )
 
 type SalesPriceBookGenerationInput struct {
 	ChannelModelIds        []int       `json:"channel_model_ids"`
 	IdempotencyKey         string      `json:"idempotency_key"`
 	DesignatedChannelModel map[int]int `json:"designated_channel_models,omitempty"`
+	TriggerType            string      `json:"-"`
+	TriggerId              *int        `json:"-"`
 }
 
 type SalesPriceBookGenerationResult struct {
@@ -49,6 +52,11 @@ func GenerateSalesPriceBookItems(
 		return result, errors.New("sales price book version is required")
 	}
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	input.TriggerType = strings.TrimSpace(input.TriggerType)
+	if input.TriggerType == "" {
+		input.TriggerType = "manual_price_book_generation"
+		input.TriggerId = &versionId
+	}
 	if input.IdempotencyKey == "" {
 		return result, errors.New("idempotency key is required")
 	}
@@ -76,8 +84,8 @@ func GenerateSalesPriceBookItems(
 		var existing model.PricingChangeBatch
 		err := tx.First(&existing, "idempotency_key = ?", input.IdempotencyKey).Error
 		if err == nil {
-			if existing.TriggerType != "manual_price_book_generation" ||
-				existing.TriggerId == nil || *existing.TriggerId != versionId {
+			if existing.TriggerType != input.TriggerType ||
+				!optionalIntEqual(existing.TriggerId, input.TriggerId) {
 				return errors.New("idempotency key was already used for another pricing operation")
 			}
 			result.Batch = existing
@@ -164,8 +172,8 @@ func GenerateSalesPriceBookItems(
 		result.Batch = model.PricingChangeBatch{
 			BatchNo:        fmt.Sprintf("PB-%d-%s", versionId, keyHash[:12]),
 			IdempotencyKey: input.IdempotencyKey,
-			TriggerType:    "manual_price_book_generation",
-			TriggerId:      &versionId,
+			TriggerType:    input.TriggerType,
+			TriggerId:      input.TriggerId,
 			Status:         PricingChangeBatchStatusCompleted,
 			ScopeSpec:      string(scope),
 			RequestedBy:    userId,
@@ -212,9 +220,16 @@ func GenerateSalesPriceBookItems(
 				"price_book_version_id = ? AND model_id = ?", versionId, modelId,
 			).Error
 			oldHash := ""
+			oldReferencePrice, oldReferenceCost, marginBefore := "", "", ""
+			oldPurchaseVersions := []int{}
 			action := "create"
 			if err == nil {
 				oldHash = current.SalesExprHash
+				oldReferencePrice, oldReferenceCost, marginBefore,
+					oldPurchaseVersions, err = salesPriceBookItemReferenceTx(tx, current, version)
+				if err != nil {
+					return err
+				}
 				action = "update"
 				generated.Id = current.Id
 				if err := tx.Model(&model.SalesPriceBookItem{}).Where("id = ?", current.Id).
@@ -254,23 +269,77 @@ func GenerateSalesPriceBookItems(
 					return err
 				}
 			}
+			newReferencePrice, newReferenceCost, marginAfter,
+				newPurchaseVersions, err := salesPriceBookItemReferenceTx(tx, generated, version)
+			if err != nil {
+				return err
+			}
+			priceChangeRate := decimalChangeRate(oldReferencePrice, newReferencePrice)
+			newItem := SalesPriceBookItemListItem{SalesPriceBookItem: generated}
+			diff := SalesPriceBookItemDiff{
+				NewItem:           &newItem,
+				OldReferencePrice: oldReferencePrice, NewReferencePrice: newReferencePrice,
+				OldReferenceCost: oldReferenceCost, NewReferenceCost: newReferenceCost,
+				PriceChangeRate: priceChangeRate, MarginBefore: marginBefore, MarginAfter: marginAfter,
+				OldPurchaseVersions: oldPurchaseVersions, NewPurchaseVersions: newPurchaseVersions,
+			}
+			if oldHash != "" {
+				oldItem := SalesPriceBookItemListItem{SalesPriceBookItem: current}
+				diff.OldItem = &oldItem
+			}
+			risks := salesPriceBookDiffRisks(diff, version)
+			batchItemStatus := PricingChangeBatchItemStatusGenerated
+			riskCode := ""
+			if len(risks) > 0 {
+				batchItemStatus = PricingChangeBatchItemStatusReview
+				riskCode = risks[0]
+				generated.Status = SalesPriceItemStatusReviewRequired
+				if err := tx.Model(&model.SalesPriceBookItem{}).Where("id = ?", generated.Id).
+					Update("status", generated.Status).Error; err != nil {
+					return err
+				}
+				result.Batch.ReviewCount++
+				result.Batch.Status = PricingChangeBatchStatusReviewRequired
+			}
+			unchanged := oldHash != "" && oldHash == generated.SalesExprHash &&
+				intSlicesEqual(oldPurchaseVersions, newPurchaseVersions) && len(risks) == 0
+			if unchanged {
+				batchItemStatus = PricingChangeBatchItemStatusUnchanged
+				action = "unchanged"
+				result.Batch.UnchangedCount++
+			} else {
+				result.Batch.ChangedCount++
+			}
+			diffDetail, err := common.Marshal(map[string]any{
+				"old_purchase_version_ids": oldPurchaseVersions,
+				"new_purchase_version_ids": newPurchaseVersions,
+				"price_change_rate":        priceChangeRate,
+				"risk_codes":               risks,
+			})
+			if err != nil {
+				return err
+			}
 			itemId := generated.Id
 			if err := tx.Create(&model.PricingChangeBatchItem{
 				BatchId: result.Batch.Id, TargetType: "sales_price_book_item",
 				TargetId: &itemId, ModelId: modelId, PriceBookId: &version.PriceBookId,
 				Action: action, OldExprHash: oldHash, NewExprHash: generated.SalesExprHash,
-				Status: PricingChangeBatchItemStatusGenerated,
+				OldReferenceCost: oldReferenceCost, NewReferenceCost: newReferenceCost,
+				OldReferencePrice: oldReferencePrice, NewReferencePrice: newReferencePrice,
+				MarginBefore: marginBefore, MarginAfter: marginAfter,
+				RiskCode: riskCode, Status: batchItemStatus, DiffDetail: string(diffDetail),
 			}).Error; err != nil {
 				return err
 			}
-			result.Batch.ChangedCount++
 			result.GeneratedItems = append(result.GeneratedItems, generated)
 		}
 
 		if err := tx.Model(&model.PricingChangeBatch{}).Where("id = ?", result.Batch.Id).
 			Updates(map[string]any{
 				"status": result.Batch.Status, "total_count": result.Batch.TotalCount,
-				"changed_count": result.Batch.ChangedCount, "review_count": result.Batch.ReviewCount,
+				"changed_count":   result.Batch.ChangedCount,
+				"unchanged_count": result.Batch.UnchangedCount,
+				"review_count":    result.Batch.ReviewCount,
 			}).Error; err != nil {
 			return err
 		}
@@ -278,7 +347,7 @@ func GenerateSalesPriceBookItems(
 			Updates(map[string]any{"change_batch_id": result.Batch.Id, "updated_at": now}).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.PricingApprovalRecord{
+		return tx.Create(&model.PricingAuditRecord{
 			ObjectType: "pricing_change_batch", ObjectId: result.Batch.Id,
 			Action: "generate", OperatorId: userId,
 		}).Error
@@ -286,9 +355,16 @@ func GenerateSalesPriceBookItems(
 	return result, err
 }
 
+func optionalIntEqual(left *int, right *int) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
 func GetPricingChangeBatch(id int) (
 	model.PricingChangeBatch,
-	[]model.PricingChangeBatchItem,
+	[]PricingChangeBatchItemListItem,
 	error,
 ) {
 	var batch model.PricingChangeBatch
@@ -298,9 +374,16 @@ func GetPricingChangeBatch(id int) (
 	if err := model.DB.First(&batch, id).Error; err != nil {
 		return batch, nil, err
 	}
-	var items []model.PricingChangeBatchItem
-	if err := model.DB.Where("batch_id = ?", id).
-		Order("model_id ASC, id ASC").Find(&items).Error; err != nil {
+	var items []PricingChangeBatchItemListItem
+	if err := model.DB.Table("pricing_change_batch_items AS items").
+		Select(`items.*, models.model_name AS model_name,
+			channels.name AS channel_name, sales_price_books.name AS price_book_name`).
+		Joins("LEFT JOIN models ON models.id = items.model_id").
+		Joins("LEFT JOIN channel_models ON channel_models.id = items.channel_model_id").
+		Joins("LEFT JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("LEFT JOIN sales_price_books ON sales_price_books.id = items.price_book_id").
+		Where("items.batch_id = ?", id).
+		Order("items.model_id ASC, items.id ASC").Scan(&items).Error; err != nil {
 		return batch, nil, err
 	}
 	return batch, items, nil

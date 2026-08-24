@@ -23,11 +23,14 @@ import type {
   CreateSalesPriceBookInput,
   CreateSalesPriceBookVersionInput,
   PricingChangeBatch,
+  PricingChangeBatchItem,
+  PricingChangeBatchListFilters,
   PaginatedSalesPriceBookList,
   SalesPriceBook,
   SalesPriceBookItem,
   SalesPriceBookListFilters,
   SalesPriceBookVersion,
+  SalesPriceBookVersionDiff,
   UserPriceBookAssignment,
   UserPriceBookAssignmentListFilters,
 } from './types'
@@ -104,6 +107,17 @@ export async function getSalesPriceBookItems(versionId: number) {
   return requireSuccess(response.data)
 }
 
+export async function compareSalesPriceBookVersions(
+  baseVersionId: number,
+  targetVersionId: number
+) {
+  const response = await api.get<ApiResponse<SalesPriceBookVersionDiff>>(
+    `/api/pricing-admin/price-book-versions/${targetVersionId}/diff`,
+    { params: { base_version_id: baseVersionId } }
+  )
+  return requireSuccess(response.data)
+}
+
 export async function generateSalesPriceBookItems(
   versionId: number,
   input: { channel_model_ids: number[]; idempotency_key: string }
@@ -114,6 +128,22 @@ export async function generateSalesPriceBookItems(
       generated_items: SalesPriceBookItem[]
     }>
   >(`/api/pricing-admin/price-book-versions/${versionId}/generate-items`, input)
+  return requireSuccess(response.data)
+}
+
+export async function getPricingChangeBatches(
+  params: PricingChangeBatchListFilters
+) {
+  const response = await api.get<
+    ApiResponse<PaginatedSalesPriceBookList<PricingChangeBatch>>
+  >('/api/pricing-admin/pricing-change-batches', { params })
+  return requireSuccess(response.data)
+}
+
+export async function getPricingChangeBatch(id: number) {
+  const response = await api.get<
+    ApiResponse<{ batch: PricingChangeBatch; items: PricingChangeBatchItem[] }>
+  >(`/api/pricing-admin/pricing-change-batches/${id}`)
   return requireSuccess(response.data)
 }
 

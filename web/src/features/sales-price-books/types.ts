@@ -123,9 +123,87 @@ export type UserPriceBookAssignmentListFilters = {
 export type PricingChangeBatch = {
   id: number
   batch_no: string
+  trigger_type: string
+  trigger_id?: number
   status: 'completed' | 'review_required'
   total_count: number
   changed_count: number
+  unchanged_count: number
+  review_count: number
+  failed_count: number
+  requested_by: number
+  requested_by_username: string
+  created_at: number
+  error_message: string
+}
+
+export type PricingChangeBatchItem = {
+  id: number
+  batch_id: number
+  target_type: 'sales_price_book_item' | 'purchase_price_version'
+  target_id?: number
+  model_id: number
+  model_name: string
+  channel_model_id?: number
+  channel_name: string
+  price_book_id?: number
+  price_book_name: string
+  action: string
+  old_version_id?: number
+  new_version_id?: number
+  old_reference_cost: string
+  new_reference_cost: string
+  old_reference_price: string
+  new_reference_price: string
+  margin_before: string
+  margin_after: string
+  risk_code: string
+  status: string
+  diff_detail: string
+  error_message: string
+}
+
+export type PricingChangeBatchListFilters = {
+  keyword?: string
+  status?: PricingChangeBatch['status']
+  trigger_type?: string
+  p: number
+  page_size: number
+}
+
+export type SalesPriceBookPolicyChange = {
+  field: string
+  old_value: string
+  new_value: string
+}
+
+export type SalesPriceBookItemDiff = {
+  model_id: number
+  model_name: string
+  change_type: 'added' | 'changed' | 'removed' | 'unchanged'
+  old_item?: SalesPriceBookItem
+  new_item?: SalesPriceBookItem
+  old_reference_cost: string
+  new_reference_cost: string
+  old_reference_price: string
+  new_reference_price: string
+  price_change_rate: string
+  margin_before: string
+  margin_after: string
+  old_purchase_version_ids: number[]
+  new_purchase_version_ids: number[]
+  risk_codes: string[]
+}
+
+export type SalesPriceBookVersionDiff = {
+  base_version: SalesPriceBookVersion
+  target_version: SalesPriceBookVersion
+  policy_changes: SalesPriceBookPolicyChange[]
+  items: SalesPriceBookItemDiff[]
+  added_count: number
+  changed_count: number
+  removed_count: number
+  unchanged_count: number
   review_count: number
 }
 

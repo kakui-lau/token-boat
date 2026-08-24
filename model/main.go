@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -260,6 +261,9 @@ func migrateDB() error {
 	if err := renameLegacyPricingSnapshotColumns(); err != nil {
 		return err
 	}
+	if err := renamePricingAuditTable(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -311,7 +315,7 @@ func migrateDB() error {
 		&UserPriceBookAssignment{},
 		&PricingChangeBatch{},
 		&PricingChangeBatchItem{},
-		&PricingApprovalRecord{},
+		&PricingAuditRecord{},
 		&RequestPricingSnapshot{},
 		&PricingCircuitEvent{},
 		&PaymentCallbackEvent{},
@@ -321,6 +325,12 @@ func migrateDB() error {
 		return err
 	}
 	if err := retireLegacyChannelRetailPricing(); err != nil {
+		return err
+	}
+	if err := retirePricingChangeBatchApprovalColumns(); err != nil {
+		return err
+	}
+	if err := retirePricingApprovalIndex(); err != nil {
 		return err
 	}
 	if err := retireLegacyModelPricingOptions(); err != nil {
@@ -352,6 +362,9 @@ func migrateDB() error {
 
 func migrateDBFast() error {
 	if err := renameLegacyPricingSnapshotColumns(); err != nil {
+		return err
+	}
+	if err := renamePricingAuditTable(); err != nil {
 		return err
 	}
 
@@ -408,7 +421,7 @@ func migrateDBFast() error {
 		{&UserPriceBookAssignment{}, "UserPriceBookAssignment"},
 		{&PricingChangeBatch{}, "PricingChangeBatch"},
 		{&PricingChangeBatchItem{}, "PricingChangeBatchItem"},
-		{&PricingApprovalRecord{}, "PricingApprovalRecord"},
+		{&PricingAuditRecord{}, "PricingAuditRecord"},
 		{&RequestPricingSnapshot{}, "RequestPricingSnapshot"},
 		{&PricingCircuitEvent{}, "PricingCircuitEvent"},
 		{&PaymentCallbackEvent{}, "PaymentCallbackEvent"},
@@ -438,6 +451,12 @@ func migrateDBFast() error {
 		}
 	}
 	if err := retireLegacyChannelRetailPricing(); err != nil {
+		return err
+	}
+	if err := retirePricingChangeBatchApprovalColumns(); err != nil {
+		return err
+	}
+	if err := retirePricingApprovalIndex(); err != nil {
 		return err
 	}
 	if err := retireLegacyModelPricingOptions(); err != nil {
@@ -473,6 +492,48 @@ type legacyChannelModelPricingMigration struct {
 	RuntimeMode string `gorm:"column:runtime_mode"`
 }
 
+func renamePricingAuditTable() error {
+	const oldTable = "pricing_approval_records"
+	const newTable = "pricing_audit_records"
+	oldExists := DB.Migrator().HasTable(oldTable)
+	newExists := DB.Migrator().HasTable(newTable)
+	if !oldExists {
+		return nil
+	}
+	if !newExists {
+		common.SysLog("renaming pricing approval records to pricing audit records")
+		return DB.Migrator().RenameTable(oldTable, newTable)
+	}
+	var oldCount int64
+	if err := DB.Table(oldTable).Count(&oldCount).Error; err != nil {
+		return err
+	}
+	if oldCount == 0 {
+		return DB.Migrator().DropTable(oldTable)
+	}
+	var newCount int64
+	if err := DB.Table(newTable).Count(&newCount).Error; err != nil {
+		return err
+	}
+	if newCount > 0 {
+		return errors.New("both pricing approval and pricing audit tables contain data")
+	}
+	if err := DB.Migrator().DropTable(newTable); err != nil {
+		return err
+	}
+	return DB.Migrator().RenameTable(oldTable, newTable)
+}
+
+func retirePricingApprovalIndex() error {
+	const legacyIndex = "idx_pricing_approval_object"
+	if !DB.Migrator().HasTable(&PricingAuditRecord{}) ||
+		!DB.Migrator().HasIndex(&PricingAuditRecord{}, legacyIndex) {
+		return nil
+	}
+	common.SysLog("dropping retired pricing approval index")
+	return DB.Migrator().DropIndex(&PricingAuditRecord{}, legacyIndex)
+}
+
 func (legacyChannelModelPricingMigration) TableName() string {
 	return "channel_models"
 }
@@ -485,6 +546,46 @@ type legacyRequestPricingSnapshotMigration struct {
 
 func (legacyRequestPricingSnapshotMigration) TableName() string {
 	return "request_pricing_snapshots"
+}
+
+type legacyPricingChangeBatchApprovalMigration struct {
+	Id         int
+	ApprovedBy int   `gorm:"column:approved_by"`
+	AppliedBy  int   `gorm:"column:applied_by"`
+	ApprovedAt int64 `gorm:"column:approved_at"`
+	AppliedAt  int64 `gorm:"column:applied_at"`
+}
+
+func (legacyPricingChangeBatchApprovalMigration) TableName() string {
+	return "pricing_change_batches"
+}
+
+func retirePricingChangeBatchApprovalColumns() error {
+	if !DB.Migrator().HasTable(&legacyPricingChangeBatchApprovalMigration{}) {
+		return nil
+	}
+	columns := []struct {
+		field string
+		name  string
+	}{
+		{field: "ApprovedBy", name: "approved_by"},
+		{field: "ApprovedAt", name: "approved_at"},
+		{field: "AppliedBy", name: "applied_by"},
+		{field: "AppliedAt", name: "applied_at"},
+	}
+	for _, column := range columns {
+		if !DB.Migrator().HasColumn(&legacyPricingChangeBatchApprovalMigration{}, column.field) {
+			continue
+		}
+		common.SysLog("dropping retired pricing change batch approval column " + column.name)
+		// DROP COLUMN uses the same syntax on the supported SQLite, MySQL, and
+		// PostgreSQL versions. Avoid GORM's SQLite table reconstruction here:
+		// the legacy-only migration struct cannot describe the retained columns.
+		if err := DB.Exec("ALTER TABLE pricing_change_batches DROP COLUMN " + column.name).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func retireLegacyChannelRetailPricing() error {

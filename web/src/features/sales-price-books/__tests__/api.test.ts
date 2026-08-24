@@ -22,10 +22,13 @@ import { api } from '@/lib/api'
 
 import {
   assignUserPriceBook,
+  compareSalesPriceBookVersions,
   createSalesPriceBookVersion,
   exportSalesPriceBookItems,
   generateSalesPriceBookItems,
   getSalesPriceBooks,
+  getPricingChangeBatch,
+  getPricingChangeBatches,
   getUserPriceBookAssignments,
   setDefaultSalesPriceBook,
 } from '../api'
@@ -97,6 +100,44 @@ test('exports every model price item from the selected immutable version', async
   expect(api.get).toHaveBeenCalledWith(
     '/api/pricing-admin/price-book-versions/31/items/export',
     { responseType: 'blob' }
+  )
+})
+
+test('compares the selected version with an explicit base version', async () => {
+  await compareSalesPriceBookVersions(12, 18)
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/18/diff',
+    { params: { base_version_id: 12 } }
+  )
+})
+
+test('lists pricing change batches and loads the selected batch details', async () => {
+  await getPricingChangeBatches({
+    keyword: 'PB-12',
+    status: 'review_required',
+    trigger_type: 'purchase_price_publish',
+    p: 1,
+    page_size: 200,
+  })
+  await getPricingChangeBatch(72)
+
+  expect(api.get).toHaveBeenNthCalledWith(
+    1,
+    '/api/pricing-admin/pricing-change-batches',
+    {
+      params: {
+        keyword: 'PB-12',
+        status: 'review_required',
+        trigger_type: 'purchase_price_publish',
+        p: 1,
+        page_size: 200,
+      },
+    }
+  )
+  expect(api.get).toHaveBeenNthCalledWith(
+    2,
+    '/api/pricing-admin/pricing-change-batches/72'
   )
 })
 

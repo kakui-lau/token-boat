@@ -23,7 +23,7 @@ func setupSalesPriceBookTestDB(t *testing.T) {
 		&model.UserPriceBookAssignment{},
 		&model.PricingChangeBatch{},
 		&model.PricingChangeBatchItem{},
-		&model.PricingApprovalRecord{},
+		&model.PricingAuditRecord{},
 	))
 }
 
@@ -275,7 +275,7 @@ func TestCloneSalesPriceBookVersionCopiesItemsAndBasisSourcesIntoDraft(t *testin
 	require.Len(t, clonedSources, 1)
 	assert.Equal(t, "maximum eligible cost", clonedSources[0].SelectionReason)
 
-	var audit model.PricingApprovalRecord
+	var audit model.PricingAuditRecord
 	require.NoError(t, model.DB.Where(
 		"object_type = ? AND object_id = ? AND action = ?",
 		"sales_price_book_version", cloned.Id, "clone",
@@ -329,7 +329,7 @@ func TestDisableSalesPriceBookKeepsPublishedHistoryAndWritesAudit(t *testing.T) 
 	require.NoError(t, model.DB.First(&stored, book.Id).Error)
 	assert.Equal(t, model.SalesPriceBookStatusDisabled, stored.Status)
 
-	var audit model.PricingApprovalRecord
+	var audit model.PricingAuditRecord
 	require.NoError(t, model.DB.Where(
 		"object_type = ? AND object_id = ? AND action = ?",
 		"sales_price_book", book.Id, "disable",
@@ -410,4 +410,186 @@ func TestGenerateSalesPriceBookItemsMarksUnsafeExpressionComparisonForReview(t *
 	require.NoError(t, model.DB.First(&batchItem, "batch_id = ?", result.Batch.Id).Error)
 	assert.Equal(t, PricingChangeBatchItemStatusReview, batchItem.Status)
 	assert.Contains(t, batchItem.ErrorMessage, "same billing mode")
+}
+
+func TestCompareSalesPriceBookVersionsReturnsReferencePriceMarginAndSources(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	createSalesPriceBookPurchaseSource(t, 1011, 1021, 1031, "diff-model", "1", "2")
+	book := model.SalesPriceBook{
+		Code: "diff-book", Name: "Diff Book", Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	base := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&base, 1))
+	generated, err := GenerateSalesPriceBookItems(base.Id, SalesPriceBookGenerationInput{
+		ChannelModelIds: []int{1021}, IdempotencyKey: "diff-base-generation",
+	}, 1)
+	require.NoError(t, err)
+	require.Len(t, generated.GeneratedItems, 1)
+	require.NoError(t, PublishSalesPriceBookVersion(base.Id, 1))
+	target, err := CloneSalesPriceBookVersion(book.Id, base.Id, 2)
+	require.NoError(t, err)
+	var targetItem model.SalesPriceBookItem
+	require.NoError(t, model.DB.First(
+		&targetItem, "price_book_version_id = ? AND model_id = ?", target.Id, 1031,
+	).Error)
+	targetItem.SalesBillingExpr = `v2:(p * 2.5 + c * 5) / 1000000`
+	targetItem.PriceComponents = `{"input_unit_price":"2.5","output_unit_price":"5"}`
+	require.NoError(t, SaveSalesPriceBookItem(&targetItem))
+
+	diff, err := CompareSalesPriceBookVersions(base.Id, target.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 1, diff.ChangedCount)
+	assert.Zero(t, diff.UnchangedCount)
+	require.Len(t, diff.Items, 1)
+	assert.Equal(t, "changed", diff.Items[0].ChangeType)
+	assert.NotEmpty(t, diff.Items[0].OldReferencePrice)
+	assert.NotEmpty(t, diff.Items[0].NewReferencePrice)
+	assert.NotEmpty(t, diff.Items[0].MarginBefore)
+	assert.NotEmpty(t, diff.Items[0].MarginAfter)
+	assert.NotEmpty(t, diff.Items[0].PriceChangeRate)
+	assert.Len(t, diff.Items[0].OldPurchaseVersions, 1)
+	assert.Equal(t, diff.Items[0].OldPurchaseVersions, diff.Items[0].NewPurchaseVersions)
+}
+
+func TestDesignatedChannelReferenceMarginUsesOnlySelectedPurchaseCost(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	createSalesPriceBookPurchaseSource(t, 1041, 1051, 1061, "designated-model", "1", "2")
+	createSalesPriceBookPurchaseSource(t, 1042, 1052, 1061, "designated-model", "9", "18")
+	book := model.SalesPriceBook{
+		Code: "designated-book", Name: "Designated Book", Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	version.CostBasisStrategy = "designated_channel"
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+	generated, err := GenerateSalesPriceBookItems(version.Id, SalesPriceBookGenerationInput{
+		ChannelModelIds: []int{1051, 1052}, IdempotencyKey: "designated-reference-cost",
+		DesignatedChannelModel: map[int]int{1061: 1051},
+	}, 1)
+	require.NoError(t, err)
+	require.Len(t, generated.GeneratedItems, 1)
+
+	_, referenceCost, _, purchaseVersions, err := salesPriceBookItemReferenceTx(
+		model.DB, generated.GeneratedItems[0], version,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "3", referenceCost)
+	assert.Len(t, purchaseVersions, 2)
+}
+
+func TestPurchasePricePublishCanGenerateIdempotentSalesPriceBookDrafts(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	createSalesPriceBookPurchaseSource(t, 1111, 1121, 1131, "auto-reprice-model", "1", "2")
+	book := model.SalesPriceBook{
+		Code: "auto-reprice-book", Name: "Auto Reprice Book", Audience: "toc", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	base := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&base, 1))
+	_, err := GenerateSalesPriceBookItems(base.Id, SalesPriceBookGenerationInput{
+		ChannelModelIds: []int{1121}, IdempotencyKey: "auto-reprice-base",
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishSalesPriceBookVersion(base.Id, 1))
+	prices, expression, components, err := normalizeFlatTokenPrices(FlatTokenPriceInput{
+		InputUnitPrice: "1.5", OutputUnitPrice: "3",
+	})
+	require.NoError(t, err)
+	purchase := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 1121, BillingMode: "token", PricingMode: "fixed_unit_price",
+		PriceStructure: "flat", PriceComponents: components,
+		InputUnitPrice: prices.InputUnitPrice, OutputUnitPrice: prices.OutputUnitPrice,
+		PurchaseBillingExpr: expression, ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}
+	require.NoError(t, CreatePurchasePriceVersion(&purchase, 2))
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+
+	results, err := AutoRepriceSalesPriceBooksForPurchaseVersion(purchase.Id, 2)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, book.Id, results[0].PriceBookId)
+	assert.Equal(t, PricingChangeBatchStatusCompleted, results[0].Status)
+	var draft model.SalesPriceBookVersion
+	require.NoError(t, model.DB.First(&draft, results[0].PriceBookVersionId).Error)
+	assert.Equal(t, model.SalesPriceBookVersionStatusDraft, draft.Status)
+	require.NotNil(t, draft.ChangeBatchId)
+	assert.Equal(t, results[0].BatchId, *draft.ChangeBatchId)
+	diff, err := CompareSalesPriceBookVersions(base.Id, draft.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 1, diff.ChangedCount)
+	require.Len(t, diff.Items, 1)
+	assert.Contains(t, diff.Items[0].NewPurchaseVersions, purchase.Id)
+	batches, total, err := ListPricingChangeBatches(PricingChangeBatchListFilter{
+		TriggerType: SalesPriceBookTriggerPurchasePricePublished,
+		Status:      PricingChangeBatchStatusCompleted, Page: 1, PageSize: 200,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, batches, 1)
+	assert.Equal(t, results[0].BatchId, batches[0].Id)
+	_, batchItems, err := GetPricingChangeBatch(results[0].BatchId)
+	require.NoError(t, err)
+	require.Len(t, batchItems, 1)
+	assert.Equal(t, "auto-reprice-model", batchItems[0].ModelName)
+	assert.Equal(t, "Auto Reprice Book", batchItems[0].PriceBookName)
+
+	repeated, err := AutoRepriceSalesPriceBooksForPurchaseVersion(purchase.Id, 2)
+	require.NoError(t, err)
+	assert.Equal(t, results, repeated)
+	var versionCount int64
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookVersion{}).
+		Where("price_book_id = ?", book.Id).Count(&versionCount).Error)
+	assert.Equal(t, int64(2), versionCount)
+}
+
+func TestOfficialPricePublishCanGenerateIdempotentRatioPurchaseDrafts(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 1201, ModelName: "official-refresh-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 1202, Name: "official-refresh-channel", Key: "test-key", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 1203, ChannelId: 1202, ModelId: 1201,
+		UpstreamModelName: "official-refresh-model", Status: 1,
+	}).Error)
+	firstOfficial, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 1201, Currency: "USD", Source: "provider-docs",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "4"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(firstOfficial.Id))
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 1203, OfficialPriceVersionId: &firstOfficial.Id,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+		QuoteReference: "contract-discount-50",
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+	secondOfficial, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 1201, Currency: "USD", Source: "provider-docs",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "3", OutputUnitPrice: "6"},
+	}, 2)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(secondOfficial.Id))
+
+	results, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 2)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, 1203, results[0].ChannelModelId)
+	assert.Equal(t, PricingChangeBatchItemStatusGenerated, results[0].Status)
+	var refreshed model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.First(&refreshed, results[0].PurchasePriceVersionId).Error)
+	assert.Equal(t, model.PricingVersionStatusDraft, refreshed.Status)
+	require.NotNil(t, refreshed.OfficialPriceVersionId)
+	assert.Equal(t, secondOfficial.Id, *refreshed.OfficialPriceVersionId)
+	assert.Equal(t, "0.5", refreshed.PurchaseDiscount)
+	assert.NotEqual(t, purchase.PurchaseExprHash, refreshed.PurchaseExprHash)
+
+	repeated, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 2)
+	require.NoError(t, err)
+	assert.Equal(t, results, repeated)
 }

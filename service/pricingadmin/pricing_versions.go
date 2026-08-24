@@ -259,10 +259,16 @@ func PublishOfficialPriceVersion(id int) error {
 type PublishLatestOfficialPriceDraftsResult struct {
 	Published          int `json:"published"`
 	SkippedUnsupported int `json:"skipped_unsupported"`
+	PurchaseDrafts     int `json:"purchase_drafts"`
 }
 
-func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult, error) {
+func PublishLatestOfficialPriceDrafts(userIds ...int) (PublishLatestOfficialPriceDraftsResult, error) {
 	var result PublishLatestOfficialPriceDraftsResult
+	userId := 0
+	if len(userIds) > 0 {
+		userId = userIds[0]
+	}
+	publishedIds := make([]int, 0)
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		var drafts []model.OfficialModelPriceVersion
 		if err := tx.Where("status = ?", model.PricingVersionStatusDraft).
@@ -284,6 +290,7 @@ func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult,
 				return fmt.Errorf("publish official price draft %d: %w", id, err)
 			}
 			result.Published++
+			publishedIds = append(publishedIds, id)
 		}
 		return nil
 	})
@@ -291,6 +298,16 @@ func PublishLatestOfficialPriceDrafts() (PublishLatestOfficialPriceDraftsResult,
 		result.Published = 0
 	} else {
 		pricingruntime.InvalidateCatalog()
+		for _, id := range publishedIds {
+			drafts, refreshErr := AutoCreatePurchaseDraftsForOfficialPrice(id, userId)
+			if refreshErr != nil {
+				return result, fmt.Errorf(
+					"official prices were published, but purchase draft generation failed for version %d: %w",
+					id, refreshErr,
+				)
+			}
+			result.PurchaseDrafts += len(drafts)
+		}
 	}
 	return result, err
 }

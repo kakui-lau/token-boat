@@ -1902,11 +1902,31 @@ func AdminPublishOfficialPriceVersion(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	results, err := pricingadmin.AutoCreatePurchaseDraftsForOfficialPrice(id, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, fmt.Errorf(
+			"official price was published, but automatic purchase draft generation failed: %w", err,
+		))
+		return
+	}
+	common.ApiSuccess(c, results)
+}
+
+func AdminRefreshPurchaseDraftsForOfficialPrice(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	results, err := pricingadmin.AutoCreatePurchaseDraftsForOfficialPrice(id, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, results)
 }
 
 func AdminPublishLatestOfficialPriceDrafts(c *gin.Context) {
-	result, err := pricingadmin.PublishLatestOfficialPriceDrafts()
+	result, err := pricingadmin.PublishLatestOfficialPriceDrafts(c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -2019,7 +2039,27 @@ func AdminPublishPurchasePriceVersion(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	results, err := pricingadmin.AutoRepriceSalesPriceBooksForPurchaseVersion(id, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, fmt.Errorf(
+			"purchase price was published, but automatic sales repricing failed: %w", err,
+		))
+		return
+	}
+	common.ApiSuccess(c, results)
+}
+
+func AdminRepriceSalesPriceBooksForPurchaseVersion(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	results, err := pricingadmin.AutoRepriceSalesPriceBooksForPurchaseVersion(id, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, results)
 }
 
 func AdminSuspendPurchasePriceVersion(c *gin.Context) {

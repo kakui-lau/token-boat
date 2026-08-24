@@ -79,10 +79,12 @@ import {
   setDefaultSalesPriceBook,
 } from './api'
 import { AssignUserDialog } from './components/assign-user-dialog'
+import { ChangeBatchesPanel } from './components/change-batches-panel'
 import { CreateBookDialog } from './components/create-book-dialog'
 import { CreateVersionDialog } from './components/create-version-dialog'
 import { GenerateItemsDialog } from './components/generate-items-dialog'
 import { ListPagination } from './components/list-pagination'
+import { VersionDiffCard } from './components/version-diff-card'
 import type {
   SalesPriceBookAudience,
   SalesPriceBookStatus,
@@ -193,6 +195,9 @@ export function SalesPriceBooks() {
   const versions = versionsQuery.data?.data ?? []
   const selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? versions[0]
+  const comparisonBaseVersion = selectedVersion
+    ? versions.find((version) => version.version < selectedVersion.version)
+    : undefined
   const selectedVersionQueryId = selectedVersion?.id ?? 0
   const itemsQuery = useQuery({
     queryKey: ['sales-price-books', 'items', selectedVersionQueryId],
@@ -327,6 +332,9 @@ export function SalesPriceBooks() {
               <TabsTrigger value='books'>{t('Price books')}</TabsTrigger>
               <TabsTrigger value='assignments'>
                 {t('User assignments')}
+              </TabsTrigger>
+              <TabsTrigger value='change-batches'>
+                {t('Pricing change batches')}
               </TabsTrigger>
             </TabsList>
             <TabsContent value='books' className='mt-4 flex flex-col gap-4'>
@@ -730,6 +738,13 @@ export function SalesPriceBooks() {
                   </CardContent>
                 </Card>
               ) : null}
+
+              {selectedVersion && comparisonBaseVersion ? (
+                <VersionDiffCard
+                  baseVersion={comparisonBaseVersion}
+                  targetVersion={selectedVersion}
+                />
+              ) : null}
             </TabsContent>
 
             <TabsContent value='assignments' className='mt-4'>
@@ -862,6 +877,9 @@ export function SalesPriceBooks() {
                   ) : null}
                 </CardContent>
               </Card>
+            </TabsContent>
+            <TabsContent value='change-batches' className='mt-4'>
+              <ChangeBatchesPanel />
             </TabsContent>
           </Tabs>
         </div>

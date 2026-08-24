@@ -217,11 +217,7 @@ type PricingChangeBatch struct {
 	ReviewCount    int    `json:"review_count"`
 	FailedCount    int    `json:"failed_count"`
 	RequestedBy    int    `json:"requested_by" gorm:"not null"`
-	ApprovedBy     int    `json:"approved_by"`
-	AppliedBy      int    `json:"applied_by"`
 	CreatedAt      int64  `json:"created_at" gorm:"bigint;not null"`
-	ApprovedAt     int64  `json:"approved_at" gorm:"bigint"`
-	AppliedAt      int64  `json:"applied_at" gorm:"bigint"`
 	ErrorMessage   string `json:"error_message" gorm:"type:text"`
 }
 
@@ -261,17 +257,17 @@ func (i *PricingChangeBatchItem) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-type PricingApprovalRecord struct {
+type PricingAuditRecord struct {
 	Id         int    `json:"id"`
-	ObjectType string `json:"object_type" gorm:"type:varchar(32);not null;index:idx_pricing_approval_object,priority:1"`
-	ObjectId   int    `json:"object_id" gorm:"not null;index:idx_pricing_approval_object,priority:2"`
+	ObjectType string `json:"object_type" gorm:"type:varchar(32);not null;index:idx_pricing_audit_object,priority:1"`
+	ObjectId   int    `json:"object_id" gorm:"not null;index:idx_pricing_audit_object,priority:2"`
 	Action     string `json:"action" gorm:"type:varchar(24);not null;index"`
 	OperatorId int    `json:"operator_id" gorm:"not null;index"`
 	Comment    string `json:"comment" gorm:"type:text"`
 	CreatedAt  int64  `json:"created_at" gorm:"bigint;not null;index"`
 }
 
-func (r *PricingApprovalRecord) BeforeCreate(tx *gorm.DB) error {
+func (r *PricingAuditRecord) BeforeCreate(tx *gorm.DB) error {
 	r.CreatedAt = common.GetTimestamp()
 	return nil
 }

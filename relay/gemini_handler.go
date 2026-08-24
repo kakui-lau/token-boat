@@ -80,7 +80,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 				containPrice := pricingruntime.HasCompletePricing(
 					info.UsingGroup,
 					noThinkingModelName,
-				) || helper.HasModelBillingConfig(noThinkingModelName)
+				)
 				if containPrice {
 					info.OriginModelName = noThinkingModelName
 					info.UpstreamModelName = noThinkingModelName

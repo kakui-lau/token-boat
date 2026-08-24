@@ -23,7 +23,8 @@ func TestLegacyChannelRetailPricingMigrationConvergesToSalesPricing(t *testing.T
 			id integer primary key,
 			retail_amount text,
 			base_retail_amount text,
-			retail_price_version_id integer
+			retail_price_version_id integer,
+			applied_group_ratio text
 		)
 	`).Error)
 	require.NoError(t, DB.Exec(`
@@ -58,6 +59,11 @@ func TestLegacyChannelRetailPricingMigrationConvergesToSalesPricing(t *testing.T
 	require.NoError(t, DB.Raw(`
 		SELECT COUNT(*) FROM pragma_table_info('request_pricing_snapshots')
 		WHERE name = 'retail_price_version_id'
+	`).Scan(&retiredColumnCount).Error)
+	assert.Zero(t, retiredColumnCount)
+	require.NoError(t, DB.Raw(`
+		SELECT COUNT(*) FROM pragma_table_info('request_pricing_snapshots')
+		WHERE name = 'applied_group_ratio'
 	`).Scan(&retiredColumnCount).Error)
 	assert.Zero(t, retiredColumnCount)
 	require.NoError(t, renameLegacyPricingSnapshotColumns())

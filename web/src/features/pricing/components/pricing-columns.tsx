@@ -98,7 +98,7 @@ export function usePricingColumns(
 
     // Type column
     {
-      accessorKey: 'quota_type',
+      id: 'billing_mode',
       header: t('Type'),
       cell: ({ row }) => (
         <ModelBillingModeBadge model={row.original} className='-ml-1.5' />

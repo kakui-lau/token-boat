@@ -47,21 +47,11 @@ func oaiImage2AliImageRequest(info *relaycommon.RelayInfo, request dto.ImageRequ
 		}
 	}
 
-	if strings.Contains(request.Model, "z-image") {
-		// z-image 开启prompt_extend后，按2倍计费
-		if imageRequest.Parameters.PromptExtendValue() {
-			info.PriceData.AddOtherRatio("prompt_extend", 2)
-		}
-	}
-
 	// Parameters may come from Extra["parameters"], bypassing the standard
 	// top-level n validation; enforce the same bound before it becomes a
 	// billing multiplier.
 	if imageRequest.Parameters.N < 0 || imageRequest.Parameters.N > dto.MaxImageN {
 		return nil, fmt.Errorf("parameters.n must be an integer between 1 and %d", dto.MaxImageN)
-	}
-	if imageRequest.Parameters.N != 0 {
-		info.PriceData.AddOtherRatio("n", float64(imageRequest.Parameters.N))
 	}
 
 	// 同步图片模型和异步图片模型请求格式不一样
@@ -333,11 +323,6 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 	}
 
 	imageResponses := responseAli2OpenAIImage(c, aliResponse, originRespBody, info, responseFormat)
-	if aliResponse.Usage.ImageCount != 0 {
-		info.PriceData.AddOtherRatio("n", float64(aliResponse.Usage.ImageCount))
-	} else if len(imageResponses.Data) != 0 {
-		info.PriceData.AddOtherRatio("n", float64(len(imageResponses.Data)))
-	}
 	jsonResponse, err := common.Marshal(imageResponses)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil

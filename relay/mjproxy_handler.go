@@ -40,24 +40,17 @@ func prepareMidjourneyPricing(
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
-	priceData, ok, err := pricingruntime.PrepareRelayPricing(
+	priceData, err := pricingruntime.PrepareRelayPricing(
 		info,
 		info.UsingGroup,
 		info.ChannelId,
 		0,
 		0,
-		helper.HandleGroupRatio(c, info),
 		requestInput,
 		pricingengine.Usage{RequestCount: 1},
 	)
 	if err != nil {
 		return hosttypes.PriceData{}, err
-	}
-	if !ok {
-		return hosttypes.PriceData{}, fmt.Errorf(
-			"model %s has no complete purchase and sales price",
-			modelName,
-		)
 	}
 	priceData.Quota = priceData.QuotaToPreConsume
 	info.PriceData = priceData
@@ -303,8 +296,9 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			}
 
 			tokenName := c.GetString("token_name")
-			logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, constant.MjActionSwapFace)
-			other := service.GenerateMjOtherInfo(info, priceData)
+			logContent := fmt.Sprintf("销售报价结算，操作 %s", constant.MjActionSwapFace)
+			other := service.GenerateMjOtherInfo(info)
+			service.InjectGeneralBillingAudit(other, info, priceData.Quota, nil)
 			model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 				ChannelId: info.ChannelId,
 				ModelName: modelName,
@@ -631,8 +625,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 				common.SysError("settle Midjourney pricing snapshot: " + err.Error())
 			}
 			tokenName := c.GetString("token_name")
-			logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
-			other := service.GenerateMjOtherInfo(relayInfo, priceData)
+			logContent := fmt.Sprintf("销售报价结算，操作 %s，ID %s", midjRequest.Action, midjResponse.Result)
+			other := service.GenerateMjOtherInfo(relayInfo)
+			service.InjectGeneralBillingAudit(other, relayInfo, priceData.Quota, nil)
 			model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
 				ChannelId: relayInfo.ChannelId,
 				ModelName: modelName,

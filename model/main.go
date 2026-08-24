@@ -323,6 +323,9 @@ func migrateDB() error {
 	if err := retireLegacyChannelRetailPricing(); err != nil {
 		return err
 	}
+	if err := retireLegacyModelPricingOptions(); err != nil {
+		return err
+	}
 	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
@@ -437,6 +440,9 @@ func migrateDBFast() error {
 	if err := retireLegacyChannelRetailPricing(); err != nil {
 		return err
 	}
+	if err := retireLegacyModelPricingOptions(); err != nil {
+		return err
+	}
 	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
@@ -473,7 +479,8 @@ func (legacyChannelModelPricingMigration) TableName() string {
 
 type legacyRequestPricingSnapshotMigration struct {
 	Id                   int
-	RetailPriceVersionId int `gorm:"column:retail_price_version_id"`
+	RetailPriceVersionId int    `gorm:"column:retail_price_version_id"`
+	AppliedGroupRatio    string `gorm:"column:applied_group_ratio"`
 }
 
 func (legacyRequestPricingSnapshotMigration) TableName() string {
@@ -507,6 +514,34 @@ func retireLegacyChannelRetailPricing() error {
 		} else if err := DB.Migrator().DropColumn(&legacyRequestPricingSnapshotMigration{}, "RetailPriceVersionId"); err != nil {
 			return err
 		}
+	}
+	if DB.Migrator().HasColumn(&legacyRequestPricingSnapshotMigration{}, "AppliedGroupRatio") {
+		common.SysLog("dropping retired group ratio from pricing snapshots")
+		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+			if err := DB.Exec("ALTER TABLE `request_pricing_snapshots` DROP COLUMN `applied_group_ratio`").Error; err != nil {
+				return err
+			}
+		} else if err := DB.Migrator().DropColumn(&legacyRequestPricingSnapshotMigration{}, "AppliedGroupRatio"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func retireLegacyModelPricingOptions() error {
+	if !DB.Migrator().HasTable(&Option{}) {
+		return nil
+	}
+	keys := make([]string, 0, len(retiredModelPricingOptionKeys))
+	for key := range retiredModelPricingOptionKeys {
+		keys = append(keys, key)
+	}
+	result := DB.Where("key IN ?", keys).Delete(&Option{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		common.SysLog(fmt.Sprintf("removed %d retired model pricing options", result.RowsAffected))
 	}
 	return nil
 }

@@ -98,24 +98,12 @@ model-12-cheap
 | `abilities.model` | 模型、渠道和分组的路由能力 | 使用公开名称 |
 | `models.model_name` | 模型广场元数据 | 使用公开名称 |
 | `models.vendor_id` | 模型厂商和图标归属 | 必须关联正确厂商 |
-| `options` 定价 JSON | 模型价格、倍率和计费方式 | Key 使用公开名称 |
+| `official_model_price_versions` | 官方价格版本 | 使用公开模型 ID |
+| `channel_model_purchase_price_versions` | 渠道采购价格版本 | 关联渠道模型 |
+| `sales_price_books` / `sales_price_book_items` | 对外报价版本和模型销售表达式 | 使用公开模型 ID |
+| `sales_price_book_bindings` | 用户或默认报价绑定 | 关联报价版本 |
 
-模型价格主要位于 `options.value` 的 JSON 对象中：
-
-```text
-ModelPrice
-ModelRatio
-CompletionRatio
-CacheRatio
-CreateCacheRatio
-ImageRatio
-AudioRatio
-AudioCompletionRatio
-billing_setting.billing_mode
-billing_setting.billing_expr
-```
-
-分组价格还涉及 `GroupRatio` 和 `GroupGroupRatio`。
+旧版 `options` 模型价格、倍率和计费表达式已停用并会在迁移时删除。分组配置只负责访问范围和自动路由，不再改变销售报价。
 
 ## 5. 模型元数据规范
 

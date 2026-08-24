@@ -206,26 +206,6 @@ export type ModelSettings = {
   'claude.thinking_adapter_budget_tokens_percentage': number
   'grok.violation_deduction_enabled': boolean
   'grok.violation_deduction_amount': number
-  ModelPrice: string
-  ModelRatio: string
-  CacheRatio: string
-  CreateCacheRatio: string
-  CompletionRatio: string
-  ImageRatio: string
-  AudioRatio: string
-  AudioCompletionRatio: string
-  ExposeRatioEnabled: boolean
-  'billing_setting.billing_mode': string
-  'billing_setting.billing_expr': string
-  'tool_price_setting.prices': string
-  TopupGroupRatio: string
-  GroupRatio: string
-  UserUsableGroups: string
-  GroupGroupRatio: string
-  AutoGroups: string
-  MaxTokenAutoGroups: number
-  DefaultUseAutoGroup: boolean
-  'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
@@ -261,17 +241,6 @@ export type BillingSettings = {
   'general_setting.custom_currency_exchange_rate': number
   DisplayInCurrencyEnabled: boolean
   DisplayTokenStatEnabled: boolean
-  ModelPrice: string
-  ModelRatio: string
-  CacheRatio: string
-  CreateCacheRatio: string
-  CompletionRatio: string
-  ImageRatio: string
-  AudioRatio: string
-  AudioCompletionRatio: string
-  ExposeRatioEnabled: boolean
-  'billing_setting.billing_mode': string
-  'billing_setting.billing_expr': string
   'tool_price_setting.prices': string
   TopupGroupRatio: string
   GroupRatio: string
@@ -387,68 +356,4 @@ export type SecuritySettings = {
   'fetch_setting.allowed_ports': number[]
   'fetch_setting.apply_ip_filter_for_domain': boolean
   'token_setting.max_user_tokens': number
-}
-
-export type UpstreamChannel = {
-  id: number
-  name: string
-  base_url: string
-  status: number
-  type?: number
-}
-
-export type RatioType =
-  | 'model_ratio'
-  | 'completion_ratio'
-  | 'cache_ratio'
-  | 'create_cache_ratio'
-  | 'image_ratio'
-  | 'audio_ratio'
-  | 'audio_completion_ratio'
-  | 'model_price'
-  | 'billing_mode'
-  | 'billing_expr'
-
-export type RatioDifference = {
-  current: number | string | null
-  upstreams: Record<string, number | string | 'same'>
-  confidence: Record<string, boolean>
-}
-
-export type DifferencesMap = Record<
-  string,
-  Partial<Record<RatioType, RatioDifference>>
->
-
-export type UpstreamChannelsResponse = {
-  success: boolean
-  message: string
-  data: UpstreamChannel[]
-}
-
-export type UpstreamConfig = {
-  id: number
-  name: string
-  base_url: string
-  endpoint: string
-}
-
-export type FetchUpstreamRatiosRequest = {
-  upstreams: UpstreamConfig[]
-  timeout: number
-}
-
-export type TestResult = {
-  name: string
-  status: 'success' | 'error'
-  error?: string
-}
-
-export type UpstreamRatiosResponse = {
-  success: boolean
-  message: string
-  data: {
-    differences: DifferencesMap
-    test_results: TestResult[]
-  }
 }

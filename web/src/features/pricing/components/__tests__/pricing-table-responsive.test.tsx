@@ -54,9 +54,6 @@ beforeAll(() => {
 
 const model: PricingModel = {
   model_name: 'mobile-table-model',
-  quota_type: 0,
-  model_ratio: 1,
-  completion_ratio: 1,
   enable_groups: ['default'],
   available: true,
   availability_status: 'available',

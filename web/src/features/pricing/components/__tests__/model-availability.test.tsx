@@ -32,9 +32,6 @@ afterEach(cleanup)
 
 const baseModel: PricingModel = {
   model_name: 'catalog-model',
-  quota_type: 0,
-  model_ratio: 1,
-  completion_ratio: 1,
   enable_groups: [],
   available: false,
   availability_status: 'price_unavailable',

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 
 import type { TokenUnit } from './types'
 
@@ -117,18 +117,6 @@ export const SIDEBAR_WIDTH = 'w-64'
 
 /** Excluded groups */
 export const EXCLUDED_GROUPS = ['', 'auto']
-
-/** Quota type values */
-export const QUOTA_TYPE_VALUES = {
-  TOKEN: 0,
-  REQUEST: 1,
-} as const
-
-/** Token unit divisors */
-export const TOKEN_UNIT_DIVISORS = {
-  M: 1,
-  K: 1000,
-} as const
 
 /** Default token unit for pricing display */
 export const DEFAULT_TOKEN_UNIT: TokenUnit = 'M'

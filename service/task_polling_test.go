@@ -52,10 +52,6 @@ func (a *pollingHTTPErrorAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo
 	return relaycommon.FailTaskInfo("must not parse HTTP errors"), nil
 }
 
-func (a *pollingHTTPErrorAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
-	return 0
-}
-
 func (a *sunoFailurePollingAdaptor) Init(_ *relaycommon.RelayInfo) {}
 
 func (a *sunoFailurePollingAdaptor) FetchTask(_ string, _ string, body map[string]any, _ string) (*http.Response, error) {
@@ -85,10 +81,6 @@ func (a *sunoFailurePollingAdaptor) FetchTask(_ string, _ string, body map[strin
 
 func (a *sunoFailurePollingAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
 	return nil, nil
-}
-
-func (a *sunoFailurePollingAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
-	return 0
 }
 
 func (a *taskPollingFetchAdaptor) Init(_ *relaycommon.RelayInfo) {}
@@ -134,10 +126,6 @@ func (a *taskPollingFetchAdaptor) FetchTask(_ string, _ string, body map[string]
 
 func (a *taskPollingFetchAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
 	return &relaycommon.TaskInfo{Status: model.TaskStatusInProgress}, nil
-}
-
-func (a *taskPollingFetchAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
-	return 0
 }
 
 func (a *taskPollingFetchAdaptor) fetchCount() int {

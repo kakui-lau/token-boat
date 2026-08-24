@@ -766,7 +766,7 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 		"provider_cost_mode", "provider_cost_status", "provider_cost_source",
 		"provider_reported_cost", "provider_cost_scope", "cost_variance",
 		"gross_margin", "gross_margin_known", "base_sales_amount",
-		"estimated_customer_charge", "customer_charge", "applied_group", "applied_group_ratio", "net_margin_rate",
+		"estimated_customer_charge", "customer_charge", "applied_group", "net_margin_rate",
 		"margin_compliant",
 		"status", "created_at", "updated_at",
 	})
@@ -793,7 +793,6 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 			row.EstimatedCustomerCharge,
 			nullablePricingString(row.CustomerCharge),
 			spreadsheetSafeCSVCell(row.AppliedGroup),
-			row.AppliedGroupRatio,
 			row.NetMarginRate,
 			strconv.FormatBool(row.MarginCompliant),
 			row.Status,

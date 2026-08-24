@@ -96,7 +96,6 @@ type RelayInfo struct {
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
 	IsPlayground           bool
-	UsePrice               bool
 	RelayMode              int
 	OriginModelName        string
 	RequestedModelName     string
@@ -296,11 +295,6 @@ func (info *RelayInfo) ToString() string {
 	// Reasoning
 	if info.ReasoningEffort != "" {
 		fmt.Fprintf(b, "ReasoningEffort: %q, ", info.ReasoningEffort)
-	}
-
-	// Price data (non-sensitive)
-	if info.PriceData.UsePrice {
-		fmt.Fprintf(b, "PriceData{ %s }, ", info.PriceData.ToSetting())
 	}
 
 	// Channel metadata (mask ApiKey)

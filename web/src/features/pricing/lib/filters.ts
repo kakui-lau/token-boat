@@ -20,13 +20,13 @@ import {
   SORT_OPTIONS,
   FILTER_ALL,
   QUOTA_TYPES,
-  QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
 } from '../constants'
 import type { PricingModel } from '../types'
 import {
   getDisplayedSalesPrice,
   isModelAvailableForGroup,
+  isTokenBasedModel,
 } from './model-helpers'
 
 // ----------------------------------------------------------------------------
@@ -84,11 +84,8 @@ export function filterByQuotaType(
   quotaType: string
 ): PricingModel[] {
   if (quotaType === QUOTA_TYPES.ALL) return models
-  const targetType =
-    quotaType === QUOTA_TYPES.TOKEN
-      ? QUOTA_TYPE_VALUES.TOKEN
-      : QUOTA_TYPE_VALUES.REQUEST
-  return models.filter((m) => m.quota_type === targetType)
+  const tokenBased = quotaType === QUOTA_TYPES.TOKEN
+  return models.filter((model) => isTokenBasedModel(model) === tokenBased)
 }
 
 /**

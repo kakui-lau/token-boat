@@ -11,8 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -23,20 +21,9 @@ type Pricing struct {
 	Icon                   string                         `json:"icon,omitempty"`
 	Tags                   string                         `json:"tags,omitempty"`
 	VendorID               int                            `json:"vendor_id,omitempty"`
-	QuotaType              int                            `json:"quota_type"`
-	ModelRatio             float64                        `json:"model_ratio"`
-	ModelPrice             float64                        `json:"model_price"`
 	OwnerBy                string                         `json:"owner_by"`
-	CompletionRatio        float64                        `json:"completion_ratio"`
-	CacheRatio             *float64                       `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                       `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                       `json:"image_ratio,omitempty"`
-	AudioRatio             *float64                       `json:"audio_ratio,omitempty"`
-	AudioCompletionRatio   *float64                       `json:"audio_completion_ratio,omitempty"`
 	EnableGroup            []string                       `json:"enable_groups"`
 	SupportedEndpointTypes []constant.EndpointType        `json:"supported_endpoint_types"`
-	BillingMode            string                         `json:"billing_mode,omitempty"`
-	BillingExpr            string                         `json:"billing_expr,omitempty"`
 	PricingVersion         string                         `json:"pricing_version,omitempty"`
 	PricingSource          string                         `json:"pricing_source,omitempty"`
 	OfficialPrice          *PublicPriceSummary            `json:"official_price,omitempty"`
@@ -81,7 +68,6 @@ type PublicPriceItem struct {
 	WithAudio         string `json:"with_audio,omitempty"`
 	AppliedGroup      string `json:"applied_group,omitempty"`
 	AppliedGroupLabel string `json:"applied_group_label,omitempty"`
-	AppliedGroupRatio string `json:"applied_group_ratio,omitempty"`
 }
 
 type PricingVendor struct {
@@ -101,7 +87,6 @@ var (
 
 	// 缓存映射：模型名 -> 启用分组 / 计费类型
 	modelEnableGroups     = make(map[string][]string)
-	modelQuotaTypeMap     = make(map[string]int)
 	modelEnableGroupsLock = sync.RWMutex{}
 )
 
@@ -231,42 +216,6 @@ func appendPricingEndpoint(endpoints []string, endpoint string) []string {
 		return endpoints
 	}
 	return append(endpoints, endpoint)
-}
-
-func applyLegacyPricingFields(pricing *Pricing) {
-	modelPrice, findPrice := ratio_setting.GetModelPrice(pricing.ModelName, false)
-	if findPrice {
-		pricing.ModelPrice = modelPrice
-		pricing.QuotaType = 1
-	} else {
-		modelRatio, _, _ := ratio_setting.GetModelRatio(pricing.ModelName)
-		pricing.ModelRatio = modelRatio
-		pricing.CompletionRatio = ratio_setting.GetCompletionRatio(pricing.ModelName)
-		pricing.QuotaType = 0
-	}
-	if cacheRatio, ok := ratio_setting.GetCacheRatio(pricing.ModelName); ok {
-		pricing.CacheRatio = &cacheRatio
-	}
-	if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(pricing.ModelName); ok {
-		pricing.CreateCacheRatio = &createCacheRatio
-	}
-	if imageRatio, ok := ratio_setting.GetImageRatio(pricing.ModelName); ok {
-		pricing.ImageRatio = &imageRatio
-	}
-	if ratio_setting.ContainsAudioRatio(pricing.ModelName) {
-		audioRatio := ratio_setting.GetAudioRatio(pricing.ModelName)
-		pricing.AudioRatio = &audioRatio
-	}
-	if ratio_setting.ContainsAudioCompletionRatio(pricing.ModelName) {
-		audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(pricing.ModelName)
-		pricing.AudioCompletionRatio = &audioCompletionRatio
-	}
-	if billingMode := billing_setting.GetBillingMode(pricing.ModelName); billingMode == "tiered_expr" {
-		if expr, ok := billing_setting.GetBillingExpr(pricing.ModelName); ok && strings.TrimSpace(expr) != "" {
-			pricing.BillingMode = billingMode
-			pricing.BillingExpr = expr
-		}
-	}
 }
 
 func updatePricing() {
@@ -468,7 +417,6 @@ func updatePricing() {
 				pricing.ID = meta.Id
 			}
 		}
-		applyLegacyPricingFields(&pricing)
 		pricingMap = append(pricingMap, pricing)
 	}
 
@@ -510,7 +458,6 @@ func updatePricing() {
 			EnableGroup:            make([]string, 0),
 			SupportedEndpointTypes: modelSupportEndpointTypes[meta.ModelName],
 		}
-		applyLegacyPricingFields(&pricing)
 		publicPricingMap = append(publicPricingMap, pricing)
 	}
 	sort.Slice(publicPricingMap, func(left int, right int) bool {
@@ -520,10 +467,8 @@ func updatePricing() {
 	// 刷新缓存映射，供高并发快速查询
 	modelEnableGroupsLock.Lock()
 	modelEnableGroups = make(map[string][]string)
-	modelQuotaTypeMap = make(map[string]int)
 	for _, p := range pricingMap {
 		modelEnableGroups[p.ModelName] = p.EnableGroup
-		modelQuotaTypeMap[p.ModelName] = p.QuotaType
 	}
 	modelEnableGroupsLock.Unlock()
 

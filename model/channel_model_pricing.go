@@ -179,7 +179,6 @@ type RequestPricingSnapshot struct {
 	EstimatedCustomerCharge string  `json:"estimated_customer_charge" gorm:"type:decimal(36,18)"`
 	CustomerCharge          *string `json:"customer_charge" gorm:"type:decimal(36,18)"`
 	AppliedGroup            string  `json:"applied_group" gorm:"type:varchar(64)"`
-	AppliedGroupRatio       string  `json:"applied_group_ratio" gorm:"type:decimal(36,18)"`
 	QuotaPerUnit            string  `json:"quota_per_unit" gorm:"type:decimal(36,18)"`
 	TotalVariableCostRate   string  `json:"total_variable_cost_rate" gorm:"type:decimal(18,12)"`
 	PaymentFeeRate          string  `json:"payment_fee_rate" gorm:"type:decimal(18,12)"`
@@ -272,9 +271,6 @@ func (s *RequestPricingSnapshot) BeforeCreate(tx *gorm.DB) error {
 	if s.EstimatedCustomerCharge == "" {
 		s.EstimatedCustomerCharge = s.SalesAmount
 	}
-	if s.AppliedGroupRatio == "" {
-		s.AppliedGroupRatio = "1"
-	}
 	if s.QuotaPerUnit == "" {
 		s.QuotaPerUnit = decimal.NewFromFloat(common.QuotaPerUnit).String()
 	}
@@ -302,7 +298,7 @@ func (s *RequestPricingSnapshot) BeforeUpdate(tx *gorm.DB) error {
 }
 
 // InitializeChannelModelsFromAbilities imports the legacy routing catalog
-// without changing Ability or enabling V2 runtime routing.
+// without changing Ability or enabling priced runtime routing.
 func InitializeChannelModelsFromAbilities() (ChannelModelImportResult, error) {
 	result := ChannelModelImportResult{}
 	var abilities []Ability

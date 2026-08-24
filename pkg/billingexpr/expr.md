@@ -12,7 +12,7 @@ The expression is the billing contract between the administrator and the system.
 
 2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c` and priced at their rate. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
 
-3. **Prices are real prices** — Expression coefficients are actual $/1M tokens prices as published by providers. No ratio conversion and no `/2` convention. In the new V2 catalog contract, `$2.50 / 1M` is stored as `p * 2.5 / 1000000`; legacy V1 writes `p * 2.5` and relies on the V1 settlement conversion.
+3. **Prices are real prices** — Expression coefficients are actual prices. No ratio conversion and no `/2` convention. New catalog records use an explicit `v2:` expression; `$2.50 / 1M` is stored as `v2:(p * 2.5) / 1000000`.
 
 4. **Upstream-agnostic** — The expression doesn't need to know whether the upstream API is OpenAI-format (prompt_tokens includes cache) or Claude-format (input_tokens excludes cache). The system normalizes token counts before evaluation based on the upstream response format.
 
@@ -123,15 +123,15 @@ runtime language.
 
 ### Version Prefix Policy
 
-- New official, purchase, and retail price records are stored with an explicit
+- New official, purchase, and sales price-book records are stored with an explicit
   `v2:` prefix, including token pricing.
 - The admin API adds the selected schema prefix automatically when an operator
   enters an unprefixed expression; operators do not need to type it manually.
-- When a V1 expression is copied, imported, edited, or synchronized into a new
-  catalog record, the service wraps it with the equivalent `/ 1000000`
-  conversion and stores it as V2 without changing its currency result.
-- Existing new-api expressions without a prefix remain valid and execute as V1
-  for backward compatibility. Existing immutable V1 snapshots are not rewritten.
+- Import tooling converts a V1 expression to the equivalent V2 expression before
+  creating a catalog revision. Admin APIs do not create new V1 pricing records.
+- Unprefixed V1 expressions remain executable only so immutable historical
+  request snapshots can still be settled and audited; they are not a live
+  pricing configuration source.
 - V1 coefficients are USD per one million tokens and conversion divides the
   expression result by 1,000,000.
 - V2 expressions return an actual USD amount; token rules must include their
@@ -149,38 +149,37 @@ Frontend Editor → Storage → Pre-consume → Settlement → Log Display
 
 ### 1. Frontend Editor
 
-**File**: `web/src/pages/Setting/Ratio/components/TieredPricingEditor.jsx`
-
-Two editing modes:
-- **Visual mode**: Fill in prices per variable, conditions per tier. Generates expression via `generateExprFromVisualConfig()`.
-- **Raw mode**: Edit the expression string directly. Includes preset templates for common models.
-
-The editor outputs a billing expression string and an optional request rule expression string. These are combined via `combineBillingExpr(billingExpr, requestRuleExpr)` before storage.
+Pricing editors live in the official-price, purchase-price, and sales
+price-book administration pages. Structured forms generate one expression;
+raw mode edits the same expression directly.
 
 ### 2. Storage
 
-**File**: `setting/billing_setting/tiered_billing.go`
+Expressions are immutable versioned records in:
 
-Two option maps stored in the `options` DB table:
-- `ModelBillingMode`: `{ "model-name": "tiered_expr" }` — activates tiered billing for a model
-- `ModelBillingExpr`: `{ "model-name": "tier(\"base\", p * 2.5 + c * 15)" }` — the expression
+- `official_model_price_versions` for official reference prices
+- `channel_model_purchase_price_versions` for upstream purchase contracts
+- `sales_price_book_items` for customer-facing sales prices
+- `request_pricing_snapshots` for the exact expressions selected by a request
 
-On save, the expression is validated:
+The retired model-ratio and model-billing option rows are deleted during
+startup migration and rejected by the option API.
+
+Before a draft can be published, the expression is validated:
 1. Compiled via `billingexpr.CompileFromCache()` — syntax check
 2. Smoke-tested with sample token vectors — ensures non-negative results
 
 ### 3. Pre-consume (Quota Estimation)
 
-**File**: `relay/helper/price.go` → `modelPriceHelperTiered()`
-
 When a request arrives and the model uses `tiered_expr` billing:
-1. Loads expression from `billing_setting.GetBillingExpr()`
+1. Resolves the user's active sales price book and the selected channel's active purchase-price revision.
 2. Builds `RequestInput` (headers + body) for `param()` / `header()` functions
-3. Runs expression with estimated tokens: `RunExprWithRequest(expr, {P, C}, requestInput)`
+3. Runs the frozen sales expression with estimated usage.
 4. Converts output to quota through `CurrencyAmount()`:
    - V1: `rawCost / 1,000,000 * QuotaPerUnit`
    - V2: `rawCost * QuotaPerUnit`
-5. Creates `BillingSnapshot` and stores it on `RelayInfo`. Expression and request state stay frozen for settlement. An auto-group retry refreshes group-dependent fields from the selected group before the next upstream attempt. If a free initial group skipped pre-consume and the retry selects a paid group, the billing session is created before that attempt. If an existing session moves to a more expensive group, its reservation is raised to that group's estimate before sending; cheaper groups are refunded only after actual usage is settled.
+5. Persists a `RequestPricingSnapshot`. Purchase revision, sales price-book
+   version, expression, request state, and reservation stay frozen for settlement.
 
 ### 4. Settlement (Actual Billing)
 
@@ -239,17 +238,19 @@ V1 expression coefficients are $/1M tokens. V2 expressions return the actual
 currency amount. Conversion to internal quota is version-dispatched:
 
 ```
-V1 quota = exprOutput / 1,000,000 * QuotaPerUnit * groupRatio
-V2 quota = exprOutput * QuotaPerUnit * groupRatio
+V1 historical quota = exprOutput / 1,000,000 * QuotaPerUnit * frozenGroupRatio
+V2 active quota = exprOutput * QuotaPerUnit
 ```
 
-This matches the per-call billing pattern: `quota = modelPrice * QuotaPerUnit * groupRatio`.
+Active pricing uses the bound sales price book as the complete customer price.
+Access groups affect routing eligibility only and are recorded by name, without
+an additional billing multiplier.
 
 ### Expression Versioning
 
 Expressions can carry a version prefix such as `v1:` or `v2:`. No prefix
-continues to mean V1 only for legacy new-api compatibility. New pricing catalog
-records always use explicit V2.
+continues to mean V1 only for settlement of immutable historical snapshots. New
+pricing catalog records always use explicit V2.
 
 Version controls:
 - Compile environment (available variables and functions)
@@ -296,11 +297,12 @@ normalize and bound the corresponding usage before a non-token mode is enabled.
 | Layer | Files |
 |-------|-------|
 | Expression engine | `pkg/billingexpr/compile.go`, `run.go`, `settle.go`, `normalize.go`, `round.go`, `types.go` |
-| Storage | `setting/billing_setting/tiered_billing.go` |
-| Pre-consume | `relay/helper/price.go`, `relay/helper/billing_expr_request.go` |
+| Storage | `model/channel_model_pricing.go`, `model/sales_price_book.go` |
+| Catalog administration | `service/pricingadmin/`, `controller/pricing_admin*.go` |
+| Runtime resolution / pre-consume | `service/pricingruntime/`, `controller/relay.go`, `relay/relay_task.go` |
 | Settlement | `service/tiered_settle.go`, `service/quota.go` |
 | Log injection | `service/log_info_generate.go` |
-| Frontend editor | `web/src/features/system-settings/models/tiered-pricing-editor.tsx`, `web/src/features/pricing-admin/components/official-price-configuration-editor.tsx` |
+| Frontend editor | `web/src/features/system-settings/models/tiered-pricing-editor.tsx`, `web/src/features/pricing-admin/components/official-price-configuration-editor.tsx`, `web/src/features/sales-price-books/` |
 | Frontend expression helpers | `web/src/features/pricing/lib/billing-expr.ts`, `web/src/features/pricing/lib/tier-expr.ts` |
 | Model detail | `web/src/features/pricing/components/model-details.tsx`, `web/src/features/pricing/components/dynamic-pricing-breakdown.tsx` |
 | Admin version detail | `web/src/features/pricing-admin/components/official-price-version-dialog.tsx` |

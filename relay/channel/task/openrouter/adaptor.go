@@ -16,7 +16,6 @@ import (
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -133,10 +132,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	mode, configured := billing_setting.GetConfiguredBillingMode(info.OriginModelName)
-	if !configured || mode != billing_setting.BillingModeVideoSecond {
-		return nil
-	}
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
@@ -370,21 +365,6 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 		response.Error = task.FailReason
 	}
 	return common.Marshal(response)
-}
-
-func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, result *relaycommon.TaskInfo) int {
-	if task == nil || result == nil {
-		return 0
-	}
-	// Customer revenue is determined by the frozen local SKU snapshot captured
-	// at submit time. OpenRouter usage.cost is supplier cost (and for BYOK can be
-	// only the platform fee), so it is retained in task data for cost accounting
-	// but must never rewrite the customer charge.
-	return task.Quota
-}
-
-func (a *TaskAdaptor) AdjustBillingOnSubmit(_ *relaycommon.RelayInfo, _ []byte) map[string]float64 {
-	return nil
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

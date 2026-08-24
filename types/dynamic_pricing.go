@@ -39,7 +39,6 @@ type DynamicPricingSnapshot struct {
 	EstimatedPromptTokens     int
 	EstimatedCompletionTokens int
 	Group                     string
-	GroupRatio                float64
 	QuotaPerUnit              float64
 	EstimatedUsage            string
 	Selected                  *DynamicPriceCandidate

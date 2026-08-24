@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -110,33 +109,6 @@ func initModelListColumnNames(t *testing.T) {
 	}
 }
 
-func withTieredBillingConfig(t *testing.T, modes map[string]string, exprs map[string]string) {
-	t.Helper()
-
-	saved := map[string]string{}
-	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
-		if strings.HasPrefix(key, "billing_setting.") {
-			saved[key] = value
-		}
-		return nil
-	}))
-	t.Cleanup(func() {
-		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
-		model.InvalidatePricingCache()
-	})
-
-	modeBytes, err := common.Marshal(modes)
-	require.NoError(t, err)
-	exprBytes, err := common.Marshal(exprs)
-	require.NoError(t, err)
-
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode": string(modeBytes),
-		"billing_setting.billing_expr": string(exprBytes),
-	}))
-	model.InvalidatePricingCache()
-}
-
 func withSelfUseModeDisabled(t *testing.T) {
 	t.Helper()
 
@@ -155,6 +127,61 @@ func withSelfUseModeEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		operation_setting.SelfUseModeEnabled = original
 	})
+}
+
+type pricedModelListFixture struct {
+	modelId      int
+	channelId    int
+	channelModel int
+	modelName    string
+}
+
+func seedPricedModelListCatalog(t *testing.T, db *gorm.DB, fixtureId int, fixtures []pricedModelListFixture) {
+	t.Helper()
+	purchaseExpression := `v2:tier("base", p * 1 / 1000000)`
+	salesExpression := `v2:tier("base", p * 2 / 1000000)`
+	bookId := fixtureId
+	versionId := fixtureId
+	require.NoError(t, db.Create(&model.SalesPriceBook{
+		Id: bookId, Code: fmt.Sprintf("test-book-%d", fixtureId), Name: "Test Price Book",
+		Audience: "toc", Currency: "USD", Status: model.SalesPriceBookStatusEnabled,
+		CurrentVersionId: &versionId,
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookVersion{
+		Id: versionId, PriceBookId: bookId, Version: 1,
+		Status: model.SalesPriceBookVersionStatusActive, EffectiveFrom: 1,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0", MinimumMarginRate: "0.1",
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: bookId,
+	}).Error)
+	for index, fixture := range fixtures {
+		require.NoError(t, db.Create(&model.Model{
+			Id: fixture.modelId, ModelName: fixture.modelName, Status: 1,
+		}).Error)
+		require.NoError(t, db.Create(&model.ChannelModel{
+			Id: fixture.channelModel, ChannelId: fixture.channelId, ModelId: fixture.modelId,
+			UpstreamModelName: fixture.modelName, Status: 1,
+		}).Error)
+		require.NoError(t, db.Create(&model.ChannelModelPurchasePriceVersion{
+			Id: fixtureId + index + 1, ChannelModelId: fixture.channelModel,
+			BillingMode: "token", PricingMode: "fixed_unit_price", PriceStructure: "flat",
+			PriceComponents: `{"input_unit_price":"1"}`, PurchaseBillingExpr: purchaseExpression,
+			PurchaseExprHash:        billingexpr.ExprHashString(purchaseExpression),
+			ExpressionSchemaVersion: "v2", Currency: "USD", Version: 1,
+			Status: model.PricingVersionStatusActive,
+		}).Error)
+		require.NoError(t, db.Create(&model.SalesPriceBookItem{
+			Id: fixtureId + index + 1, PriceBookVersionId: versionId, ModelId: fixture.modelId,
+			Status: "enabled", BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{"input_unit_price":"2"}`, SalesBillingExpr: salesExpression,
+			SalesExprHash:           billingexpr.ExprHashString(salesExpression),
+			ExpressionSchemaVersion: "v2", Currency: "USD",
+		}).Error)
+	}
+	pricingruntime.InvalidateCatalog()
+	require.NoError(t, pricingruntime.RefreshCatalog())
+	t.Cleanup(pricingruntime.InvalidateCatalog)
 }
 
 func decodeListModelsPayload(t *testing.T, recorder *httptest.ResponseRecorder) listModelsResponse {
@@ -281,62 +308,6 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	assert.Equal(t, "zz-default-model", models[2])
 }
 
-func TestListModelsIncludesTieredBillingModel(t *testing.T) {
-	withSelfUseModeDisabled(t)
-	withTieredBillingConfig(t, map[string]string{
-		"zz-tiered-visible-model":      "tiered_expr",
-		"zz-tiered-empty-expr-model":   "tiered_expr",
-		"zz-tiered-missing-expr-model": "tiered_expr",
-	}, map[string]string{
-		"zz-tiered-visible-model":    `tier("base", p * 1 + c * 2)`,
-		"zz-tiered-empty-expr-model": "   ",
-	})
-
-	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&model.User{
-		Id:       1001,
-		Username: "model-list-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
-	}).Error)
-	require.NoError(t, db.Create(&[]model.Ability{
-		{Group: "default", Model: "zz-tiered-visible-model", ChannelId: 1, Enabled: true},
-		{Group: "default", Model: "zz-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
-		{Group: "default", Model: "zz-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
-		{Group: "default", Model: "zz-unpriced-model", ChannelId: 1, Enabled: true},
-	}).Error)
-
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	ctx.Set("id", 1001)
-
-	ListModels(ctx, constant.ChannelTypeOpenAI)
-
-	ids := decodeListModelsResponse(t, recorder)
-	require.Contains(t, ids, "zz-tiered-visible-model")
-	require.NotContains(t, ids, "zz-tiered-empty-expr-model")
-	require.NotContains(t, ids, "zz-tiered-missing-expr-model")
-	require.NotContains(t, ids, "zz-unpriced-model")
-
-	pricingByName := pricingByModelName(model.GetPricing())
-	visiblePricing, ok := pricingByName["zz-tiered-visible-model"]
-	require.True(t, ok)
-	require.Equal(t, "tiered_expr", visiblePricing.BillingMode)
-	require.NotEmpty(t, visiblePricing.BillingExpr)
-
-	emptyExprPricing, ok := pricingByName["zz-tiered-empty-expr-model"]
-	require.True(t, ok)
-	require.Empty(t, emptyExprPricing.BillingMode)
-	require.Empty(t, emptyExprPricing.BillingExpr)
-
-	missingExprPricing, ok := pricingByName["zz-tiered-missing-expr-model"]
-	require.True(t, ok)
-	require.Empty(t, missingExprPricing.BillingMode)
-	require.Empty(t, missingExprPricing.BillingExpr)
-}
-
 func TestListModelsIncludesModelWithPurchaseAndSalesPricing(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	db := setupModelListControllerTestDB(t)
@@ -461,6 +432,10 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 		ChannelId: 701,
 		Enabled:   true,
 	}).Error)
+	seedPricedModelListCatalog(t, db, 1701, []pricedModelListFixture{{
+		modelId: 1701, channelId: 701, channelModel: 1701,
+		modelName: "gemini-3.5-flash",
+	}})
 
 	model.InitChannelCache()
 	model.GetPricing()
@@ -481,45 +456,6 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 	}, payload.Data[0].SupportedEndpointTypes)
 }
 
-func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
-	withSelfUseModeDisabled(t)
-	withTieredBillingConfig(t, map[string]string{
-		"zz-token-tiered-visible-model":      "tiered_expr",
-		"zz-token-tiered-empty-expr-model":   "tiered_expr",
-		"zz-token-tiered-missing-expr-model": "tiered_expr",
-	}, map[string]string{
-		"zz-token-tiered-visible-model":    `tier("base", p * 1 + c * 2)`,
-		"zz-token-tiered-empty-expr-model": "",
-	})
-	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.Create(&[]model.Ability{
-		{Group: "default", Model: "zz-token-tiered-visible-model", ChannelId: 1, Enabled: true},
-		{Group: "default", Model: "zz-token-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
-		{Group: "default", Model: "zz-token-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
-		{Group: "default", Model: "zz-token-unpriced-model", ChannelId: 1, Enabled: true},
-	}).Error)
-
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
-	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
-		"zz-token-tiered-visible-model":      true,
-		"zz-token-tiered-empty-expr-model":   true,
-		"zz-token-tiered-missing-expr-model": true,
-		"zz-token-unpriced-model":            true,
-	})
-
-	ListModels(ctx, constant.ChannelTypeOpenAI)
-
-	ids := decodeListModelsResponse(t, recorder)
-	require.Contains(t, ids, "zz-token-tiered-visible-model")
-	require.NotContains(t, ids, "zz-token-tiered-empty-expr-model")
-	require.NotContains(t, ids, "zz-token-tiered-missing-expr-model")
-	require.NotContains(t, ids, "zz-token-unpriced-model")
-}
-
 func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	withSelfUseModeEnabled(t)
 	originalMax := setting.GetMaxTokenAutoGroups()
@@ -535,11 +471,20 @@ func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
 	})
 
 	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1, Name: "auto-group-channel", Type: constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled, Group: "vip,default",
+	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Group: "vip", Model: "zz-vip-allowed", ChannelId: 1, Enabled: true},
 		{Group: "vip", Model: "zz-vip-denied", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-default-outside-snapshot", ChannelId: 1, Enabled: true},
 	}).Error)
+	seedPricedModelListCatalog(t, db, 1800, []pricedModelListFixture{
+		{modelId: 1801, channelId: 1, channelModel: 1801, modelName: "zz-vip-allowed"},
+		{modelId: 1802, channelId: 1, channelModel: 1802, modelName: "zz-vip-denied"},
+		{modelId: 1803, channelId: 1, channelModel: 1803, modelName: "zz-default-outside-snapshot"},
+	})
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)

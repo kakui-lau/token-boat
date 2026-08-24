@@ -40,7 +40,7 @@ describe('sales discount calculator', () => {
 
     expect(screen.getByLabelText('Variable cost rate (%)')).toHaveValue('11.00')
     expect(screen.getByLabelText('Sales discount')).toHaveTextContent(
-      '8.19603 折'
+      '8.19398 折'
     )
     expect(screen.getByLabelText('Sales discount')).not.toHaveTextContent('%')
     expect(screen.getByText('Below official price')).toBeVisible()

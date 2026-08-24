@@ -22,7 +22,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -166,14 +165,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 	if !isSupportedSeedanceModel(req.Model) {
-		if billing_setting.GetBillingMode(req.Model) != billing_setting.BillingModeTieredExpr {
-			return nil
-		}
-		return service.TaskErrorWrapperLocal(
-			fmt.Errorf("tiered expression billing is only supported for Seedance 2.0 and 2.5 on DoubaoVideo"),
-			"unsupported_tiered_billing",
-			http.StatusBadRequest,
-		)
+		return nil
 	}
 
 	estimatedTokens, err := estimateMaxBillingTokens(req)

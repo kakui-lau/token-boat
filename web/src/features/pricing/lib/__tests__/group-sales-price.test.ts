@@ -49,9 +49,6 @@ const vipSummary: PublicPriceSummary = {
 
 const model: PricingModel = {
   model_name: 'priced-model',
-  quota_type: 0,
-  model_ratio: 1,
-  completion_ratio: 1,
   enable_groups: ['default', 'vip'],
   available: true,
   availability_status: 'available',

@@ -16,12 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  ENDPOINT_TYPES,
-  EXCLUDED_GROUPS,
-  FILTER_ALL,
-  QUOTA_TYPE_VALUES,
-} from '../constants'
+import { ENDPOINT_TYPES, EXCLUDED_GROUPS, FILTER_ALL } from '../constants'
 import type { PricingModel, PublicPriceSummary } from '../types'
 
 // ----------------------------------------------------------------------------
@@ -143,7 +138,9 @@ export function replaceModelInPath(path: string, modelName: string): string {
  * Check if model is token-based pricing
  */
 export function isTokenBasedModel(model: PricingModel): boolean {
-  return model.quota_type === QUOTA_TYPE_VALUES.TOKEN
+  const billingMode =
+    model.lowest_price?.billing_mode || model.official_price?.billing_mode
+  return billingMode === 'token'
 }
 
 /**
@@ -154,7 +151,7 @@ export function isTokenBasedModel(model: PricingModel): boolean {
  * so a WHITELIST on text endpoints lets image/video/embedding models slip in.
  *
  * Model is considered NON-text LLM (excluded) if ANY of these hold:
- *   1. Not token-priced (quota_type !== TOKEN). Catches per-request image/video.
+ *   1. The active structured price is not token-based.
  *   2. Declares any non-text endpoint (image-generation, openai-video,
  *      embeddings, jina-rerank). Takes priority over text endpoints because
  *      the backend always injects `openai` alongside the real type.

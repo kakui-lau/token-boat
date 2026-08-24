@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,46 +81,6 @@ func TestParseTaskResult(t *testing.T) {
 			assert.Equal(t, test.remoteURL, result.RemoteUrl)
 		})
 	}
-}
-
-func TestAdjustBillingOnCompleteKeepsFrozenCustomerCharge(t *testing.T) {
-	adaptor := &TaskAdaptor{}
-	task := &model.Task{
-		Quota:      9072,
-		Properties: model.Properties{UpstreamModelName: "bytedance/seedance-2.0-fast"},
-		PrivateData: model.TaskPrivateData{
-			BillingContext: &model.TaskBillingContext{GroupRatio: 1.5, ModelPrice: 0.12096},
-		},
-	}
-	result := &relaycommon.TaskInfo{Cost: 0.25}
-
-	quota := adaptor.AdjustBillingOnComplete(task, result)
-
-	assert.Equal(t, task.Quota, quota)
-	assert.Nil(t, result.QuotaClamp)
-}
-
-func TestAdjustBillingOnCompleteDoesNotUseByokPlatformCost(t *testing.T) {
-	adaptor := &TaskAdaptor{}
-	task := &model.Task{
-		Quota:      12096,
-		Properties: model.Properties{UpstreamModelName: "bytedance/seedance-2.0-fast"},
-		PrivateData: model.TaskPrivateData{
-			BillingContext: &model.TaskBillingContext{GroupRatio: 1.25, ModelPrice: 0.12096 * 1.2},
-		},
-	}
-	result := &relaycommon.TaskInfo{Cost: 0.0001}
-
-	quota := adaptor.AdjustBillingOnComplete(task, result)
-
-	assert.Equal(t, task.Quota, quota)
-}
-
-func TestAdjustBillingOnCompleteKeepsPrechargeWithoutCost(t *testing.T) {
-	adaptor := &TaskAdaptor{}
-	result := &relaycommon.TaskInfo{}
-
-	assert.Zero(t, adaptor.AdjustBillingOnComplete(&model.Task{}, result))
 }
 
 func TestConvertToOpenAIVideoUsesPublicURLs(t *testing.T) {
@@ -285,18 +244,6 @@ func TestBuildRequestBodyPinsBillableDefaults(t *testing.T) {
 }
 
 func TestMappedSeedanceAliasUsesUpstreamCapabilitiesAndDefaultDuration(t *testing.T) {
-	saved := map[string]string{}
-	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
-		saved[key] = value
-		return nil
-	}))
-	t.Cleanup(func() {
-		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
-	})
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode": `{"public-video-alias":"video_per_second"}`,
-	}))
-
 	context, info := newVideoTestContext(`{"model":"public-video-alias","prompt":"ocean","resolution":"1080p"}`)
 	info.OriginModelName = "public-video-alias"
 	info.UpstreamModelName = "bytedance/seedance-2.0-fast"
@@ -314,35 +261,13 @@ func TestMappedSeedanceAliasUsesUpstreamCapabilitiesAndDefaultDuration(t *testin
 	assert.Equal(t, float64(15), ratio["seconds"])
 }
 
-func TestEstimateBillingOnlyAppliesVideoSecondModeWhenConfigured(t *testing.T) {
-	saved := map[string]string{}
-	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
-		saved[key] = value
-		return nil
-	}))
-	t.Cleanup(func() {
-		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
-	})
-
+func TestEstimateBillingReturnsVideoUsageForPriceExpression(t *testing.T) {
 	context, info := newVideoTestContext(`{"model":"bytedance/seedance-2.0","prompt":"ocean","duration":8,"resolution":"1080p"}`)
 	info.OriginModelName = "bytedance/seedance-2.0"
 	info.UpstreamModelName = "bytedance/seedance-2.0"
 	adaptor := &TaskAdaptor{}
 	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
 
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode": `{}`,
-	}))
-	assert.Nil(t, adaptor.EstimateBilling(context, info))
-
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode": `{"bytedance/seedance-2.0":"per_request"}`,
-	}))
-	assert.Nil(t, adaptor.EstimateBilling(context, info))
-
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode": `{"bytedance/seedance-2.0":"video_per_second"}`,
-	}))
 	ratios := adaptor.EstimateBilling(context, info)
 	assert.Equal(t, float64(8), ratios["seconds"])
 	assert.Equal(t, 2.25, ratios["resolution"])

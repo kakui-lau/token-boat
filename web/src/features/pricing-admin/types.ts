@@ -161,7 +161,6 @@ export type RequestPricingSnapshot = {
   estimated_customer_charge?: string
   customer_charge?: string | null
   applied_group?: string
-  applied_group_ratio?: string
   quota_per_unit?: string
   total_variable_cost_rate?: string
   effective_tax_rate?: string

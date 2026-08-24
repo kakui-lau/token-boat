@@ -110,8 +110,7 @@ describe('model routing form', () => {
     expect(screen.queryByLabelText('Visibility')).not.toBeInTheDocument()
     expect(screen.getByText('No duplicate pricing required')).toBeVisible()
 
-    const pricingHeading = screen.getByText('Pricing Configuration')
-    expect(pricingHeading.closest('section')).toHaveClass('hidden')
+    expect(screen.queryByText('Pricing Configuration')).not.toBeInTheDocument()
     const matchingHeading = screen.getByText('Matching Rules')
     expect(matchingHeading.closest('section')).toHaveClass('hidden')
 

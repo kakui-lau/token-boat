@@ -90,8 +90,6 @@ func TestOpenaiImageStreamHandlerForwardsSSEAndUsage(t *testing.T) {
 	}, "\n")
 
 	c, recorder, resp, info := newImageTestContext(t, body, "text/event-stream", true)
-	info.PriceData.UsePrice = true
-	info.PriceData.AddOtherRatio("n", 3)
 
 	usage, err := OpenaiImageStreamHandler(c, info, resp)
 	require.Nil(t, err)
@@ -105,7 +103,6 @@ func TestOpenaiImageStreamHandlerForwardsSSEAndUsage(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `data: {"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"input_tokens_details":{"image_tokens":2,"text_tokens":1}}}`)
 	require.Contains(t, recorder.Body.String(), `data: [DONE]`)
 	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
-	require.Equal(t, 3.0, info.PriceData.OtherRatios()["n"], "streams without completed events keep the requested count")
 }
 
 func TestOpenaiImageStreamHandlerUsesCompletedEventCount(t *testing.T) {
@@ -129,14 +126,11 @@ func TestOpenaiImageStreamHandlerUsesCompletedEventCount(t *testing.T) {
 	}, "\n")
 
 	c, _, resp, info := newImageTestContext(t, body, "text/event-stream", true)
-	info.PriceData.UsePrice = true
-	info.PriceData.AddOtherRatio("n", 3)
 
 	usage, err := OpenaiImageStreamHandler(c, info, resp)
 
 	require.Nil(t, err)
 	require.Equal(t, 7, usage.TotalTokens)
-	require.Equal(t, 2.0, info.PriceData.OtherRatios()["n"])
 }
 
 // blockingBody serves one SSE chunk, then blocks until Close (the scanner's
@@ -215,12 +209,9 @@ func newDisconnectingImageStream(t *testing.T, sseBody, disconnectAfter string) 
 	return c, recorder, resp, info
 }
 
-// TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount guards the
-// billing invariant: completed-event counting must not lower the charge when
-// the client aborts the stream. Upstream already generated (and charged for)
-// all requested images, so a disconnect after the first completed event keeps
-// the requested n instead of dropping it to 1.
-func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.T) {
+// TestOpenaiImageStreamHandlerClientDisconnect records an interrupted stream
+// without losing data already forwarded to the client.
+func TestOpenaiImageStreamHandlerClientDisconnect(t *testing.T) {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() { gin.SetMode(oldMode) })
@@ -231,8 +222,6 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 
 	body := "data: {\"type\":\"image_generation.completed\",\"b64_json\":\"first\"}\n\n"
 	c, recorder, resp, info := newDisconnectingImageStream(t, body, "first")
-	info.PriceData.UsePrice = true
-	info.PriceData.AddOtherRatio("n", 3)
 
 	usage, err := OpenaiImageStreamHandler(c, info, resp)
 
@@ -245,41 +234,6 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 		[]relaycommon.StreamEndReason{relaycommon.StreamEndReasonClientGone, relaycommon.StreamEndReasonHandlerStop},
 		info.StreamStatus.EndReason)
 	require.Contains(t, recorder.Body.String(), `"b64_json":"first"`)
-	require.Equal(t, 3.0, info.PriceData.OtherRatios()["n"], "client abort must not reduce the billed image count")
-}
-
-// TestOpenaiImageStreamHandlerClientDisconnectRaisesCount covers the other
-// direction of the abort guard: when completed events already exceed the
-// recorded n, the higher actual count is billed even though the client aborted.
-func TestOpenaiImageStreamHandlerClientDisconnectRaisesCount(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
-
-	oldTimeout := constant.StreamingTimeout
-	constant.StreamingTimeout = 30
-	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
-
-	body := strings.Join([]string{
-		`data: {"type":"image_generation.completed","b64_json":"first"}`,
-		``,
-		`data: {"type":"image_generation.completed","b64_json":"second"}`,
-		``,
-		``,
-	}, "\n")
-	c, _, resp, info := newDisconnectingImageStream(t, body, "second")
-	info.PriceData.UsePrice = true
-	info.PriceData.AddOtherRatio("n", 1)
-
-	usage, err := OpenaiImageStreamHandler(c, info, resp)
-
-	require.Nil(t, err)
-	require.NotNil(t, usage)
-	require.NotNil(t, info.StreamStatus)
-	require.Contains(t,
-		[]relaycommon.StreamEndReason{relaycommon.StreamEndReasonClientGone, relaycommon.StreamEndReasonHandlerStop},
-		info.StreamStatus.EndReason)
-	require.Equal(t, 2.0, info.PriceData.OtherRatios()["n"], "completed events beyond the recorded n must raise the charge even on abort")
 }
 
 // TestOpenaiImageStreamHandlerWrapsJSONResponse covers the non-SSE fallback:
@@ -292,8 +246,6 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 	body := `{"created":1710000000,"data":[{"b64_json":"first","revised_prompt":"draw a cat"},{"b64_json":"second"}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"input_tokens_details":{"image_tokens":2,"text_tokens":1}}}`
 
 	c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
-	info.PriceData.UsePrice = true
-	info.PriceData.AddOtherRatio("n", 3)
 
 	usage, err := OpenaiImageStreamHandler(c, info, resp)
 	require.Nil(t, err)
@@ -311,54 +263,6 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"revised_prompt":"draw a cat"`)
 	require.Contains(t, recorder.Body.String(), `data: [DONE]`)
 	require.Equal(t, 2, strings.Count(recorder.Body.String(), `event: image_generation.completed`))
-	require.Equal(t, 2.0, info.PriceData.OtherRatios()["n"])
-}
-
-func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
-	oldMode := gin.Mode()
-	gin.SetMode(gin.TestMode)
-	t.Cleanup(func() { gin.SetMode(oldMode) })
-	longImage := strings.Repeat("a", 4096)
-
-	tests := []struct {
-		name      string
-		body      string
-		usePrice  bool
-		wantCount float64
-	}{
-		{
-			name:      "fixed price uses data length",
-			body:      `{"data":[{"b64_json":"` + longImage + `"},{"b64_json":"second"}]}`,
-			usePrice:  true,
-			wantCount: 2,
-		},
-		{
-			name:      "empty data keeps requested count",
-			body:      `{"data":[]}`,
-			usePrice:  true,
-			wantCount: 3,
-		},
-		{
-			name:      "ratio billing ignores data length",
-			body:      `{"data":[{"b64_json":"first"},{"b64_json":"second"}]}`,
-			usePrice:  false,
-			wantCount: 3,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, recorder, resp, info := newImageTestContext(t, tt.body, "application/json", false)
-			info.PriceData.UsePrice = tt.usePrice
-			info.PriceData.AddOtherRatio("n", 3)
-
-			_, err := OpenaiImageHandler(c, info, resp)
-
-			require.Nil(t, err)
-			require.Equal(t, tt.wantCount, info.PriceData.OtherRatios()["n"])
-			require.Equal(t, tt.body, recorder.Body.String())
-		})
-	}
 }
 
 // TestOpenaiImageHandlersReturnJSONError covers JSON error responses for both

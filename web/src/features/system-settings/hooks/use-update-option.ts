@@ -40,19 +40,10 @@ const STATUS_RELATED_KEYS = new Set([
 ])
 
 const PRICING_RELATED_KEYS = new Set([
-  'ModelRatio',
-  'ModelPrice',
   'GroupRatio',
   'GroupGroupRatio',
-  'CompletionRatio',
-  'CacheRatio',
-  'CreateCacheRatio',
-  'ImageRatio',
-  'AudioRatio',
-  'AudioCompletionRatio',
   'AutoGroups',
   'UserUsableGroups',
-  'ExposeRatioEnabled',
 ])
 
 export function useUpdateOption() {

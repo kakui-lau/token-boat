@@ -46,21 +46,6 @@ type TaskAdaptor interface {
 	// Return nil to use the base model price without extra ratios.
 	EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64
 
-	// AdjustBillingOnSubmit returns adjusted OtherRatios from the upstream
-	// submit response. Called after a successful DoResponse.
-	// If the upstream returned actual parameters that differ from the estimate
-	// (e.g. actual seconds), return updated ratios so the caller can recalculate
-	// the quota and settle the delta with the pre-charge.
-	// Return nil if no adjustment is needed.
-	AdjustBillingOnSubmit(info *relaycommon.RelayInfo, taskData []byte) map[string]float64
-
-	// AdjustBillingOnComplete returns the actual quota when a task reaches a
-	// terminal state (success/failure) during polling.
-	// Called by the polling loop after ParseTaskResult.
-	// Return a positive value to trigger delta settlement (supplement / refund).
-	// Return 0 to keep the pre-charged amount unchanged.
-	AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int
-
 	// ── Request / Response ───────────────────────────────────────────
 
 	BuildRequestURL(info *relaycommon.RelayInfo) (string, error)

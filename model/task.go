@@ -13,7 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -170,16 +169,10 @@ func SaveTaskUpstreamRequest(id int64, request TaskUpstreamRequest) error {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
-	RequestId       string                       `json:"request_id,omitempty"`        // V2 价格快照请求 ID
-	ModelPrice      float64                      `json:"model_price,omitempty"`       // 模型单价
-	GroupRatio      float64                      `json:"group_ratio,omitempty"`       // 分组倍率
-	ModelRatio      float64                      `json:"model_ratio,omitempty"`       // 模型倍率
-	QuotaPerUnit    float64                      `json:"quota_per_unit,omitempty"`    // 提交时的 USD 额度换算率
-	OtherRatios     map[string]float64           `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
-	OriginModelName string                       `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
-	PerCallBilling  bool                         `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
-	TieredSnapshot  *billingexpr.BillingSnapshot `json:"tiered_snapshot,omitempty"`
-	TieredRequest   *billingexpr.RequestInput    `json:"tiered_request,omitempty"`
+	RequestId       string             `json:"request_id,omitempty"`        // 请求价格快照 ID
+	QuotaPerUnit    float64            `json:"quota_per_unit,omitempty"`    // 提交时的 USD 额度换算率
+	BusinessUsage   map[string]float64 `json:"business_usage,omitempty"`    // 时长、分辨率等已校验业务用量
+	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为 OriginModelName
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）

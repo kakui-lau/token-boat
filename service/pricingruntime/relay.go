@@ -110,10 +110,9 @@ func PrepareRelayPricing(
 	selectedChannelId int,
 	promptTokens int,
 	maxCompletionTokens int,
-	groupRatioInfo hosttypes.GroupRatioInfo,
 	requestInput billingexpr.RequestInput,
 	businessUsage pricingengine.Usage,
-) (hosttypes.PriceData, bool, error) {
+) (hosttypes.PriceData, error) {
 	bundles := GetCandidateBundles(group, info.OriginModelName)
 	selectedHasCompletePricing := selectedChannelId == 0
 	for _, bundle := range bundles {
@@ -129,7 +128,7 @@ func PrepareRelayPricing(
 	// does not enter this recovery path.
 	if selectedChannelId > 0 && (len(bundles) == 0 || !selectedHasCompletePricing) {
 		if err := RefreshCatalog(); err != nil {
-			return hosttypes.PriceData{}, false, fmt.Errorf(
+			return hosttypes.PriceData{}, fmt.Errorf(
 				"refresh pricing catalog for selected channel: %w",
 				err,
 			)
@@ -144,14 +143,18 @@ func PrepareRelayPricing(
 		}
 	}
 	if len(bundles) == 0 {
-		return hosttypes.PriceData{}, false, nil
+		return hosttypes.PriceData{}, fmt.Errorf(
+			"model %s has no complete purchase and sales price for group %s",
+			info.OriginModelName,
+			group,
+		)
 	}
 	if !selectedHasCompletePricing {
-		return hosttypes.PriceData{}, false, nil
+		return hosttypes.PriceData{}, errors.New("selected channel has no complete purchase and sales price")
 	}
 	resolvedSales, err := ResolveSalesPrice(info.UserId, info.OriginModelName, 0)
 	if err != nil {
-		return hosttypes.PriceData{}, false, fmt.Errorf("resolve sales price book: %w", err)
+		return hosttypes.PriceData{}, fmt.Errorf("resolve sales price book: %w", err)
 	}
 	billingMode := resolvedSales.Item.BillingMode
 	usedVars := usedPricingVars(bundles)
@@ -164,9 +167,7 @@ func PrepareRelayPricing(
 		requestInput.Body = nil
 	}
 	requestInput = billingexpr.FreezeRequestInput(requestInput)
-	if maxCompletionTokens <= 0 &&
-		groupRatioInfo.GroupRatio != 0 &&
-		usedVars["c"] {
+	if maxCompletionTokens <= 0 && usedVars["c"] {
 		maxCompletionTokens = defaultEstimatedCompletionTokens
 	}
 	usage := businessUsage
@@ -180,21 +181,21 @@ func PrepareRelayPricing(
 		}
 		expressions = append(expressions, resolvedSales.Item.SalesBillingExpr)
 		if err := validateVideoPricingRequest(expressions, requestInput); err != nil {
-			return hosttypes.PriceData{}, false, err
+			return hosttypes.PriceData{}, err
 		}
 	}
 	if billingMode == "audio_duration" && usage.AudioSeconds <= 0 {
-		return hosttypes.PriceData{}, false, nil
+		return hosttypes.PriceData{}, errors.New("audio duration is required to calculate the price")
 	}
 	if billingMode == "video_duration" && usage.VideoSeconds <= 0 {
-		return hosttypes.PriceData{}, false, nil
+		return hosttypes.PriceData{}, errors.New("video duration is required to calculate the price")
 	}
 	if !pricingUsageRequirementsMet(usedVars, usage) {
-		return hosttypes.PriceData{}, false, nil
+		return hosttypes.PriceData{}, errors.New("request usage is incomplete for the configured price expression")
 	}
 	estimatedUsageJSON, err := common.Marshal(usage)
 	if err != nil {
-		return hosttypes.PriceData{}, false, err
+		return hosttypes.PriceData{}, err
 	}
 	quotes, err := QuoteCandidates(
 		group,
@@ -204,7 +205,7 @@ func PrepareRelayPricing(
 		resolvedSales,
 	)
 	if err != nil {
-		return hosttypes.PriceData{}, false, err
+		return hosttypes.PriceData{}, err
 	}
 	bundleById := make(map[int]ActivePriceBundle, len(bundles))
 	for _, bundle := range bundles {
@@ -220,15 +221,15 @@ func PrepareRelayPricing(
 		bundle := bundleById[quote.ChannelModelId]
 		purchaseAmount, err := decimal.NewFromString(quote.PurchaseCost)
 		if err != nil {
-			return hosttypes.PriceData{}, false, err
+			return hosttypes.PriceData{}, err
 		}
 		salesAmount, err := decimal.NewFromString(quote.SalesAmount)
 		if err != nil {
-			return hosttypes.PriceData{}, false, err
+			return hosttypes.PriceData{}, err
 		}
 		customerCharge, err := decimal.NewFromString(quote.CustomerCharge)
 		if err != nil {
-			return hosttypes.PriceData{}, false, err
+			return hosttypes.PriceData{}, err
 		}
 		if customerCharge.GreaterThan(maximumCustomerCharge) {
 			maximumCustomerCharge = customerCharge
@@ -281,14 +282,14 @@ func PrepareRelayPricing(
 		routeChannelIds = append(routeChannelIds, candidate.ChannelId)
 	}
 	if len(routeChannelIds) == 0 {
-		return hosttypes.PriceData{}, false, ErrNoEligiblePriceCandidate
+		return hosttypes.PriceData{}, ErrNoEligiblePriceCandidate
 	}
 	maximumCustomerChargeFloat, _ := maximumCustomerCharge.Float64()
 	reservationQuota, err := common.QuotaCeilStrict(
 		maximumCustomerChargeFloat * common.QuotaPerUnit,
 	)
 	if err != nil {
-		return hosttypes.PriceData{}, false, err
+		return hosttypes.PriceData{}, err
 	}
 	info.DynamicPricingSnapshot = &hosttypes.DynamicPricingSnapshot{
 		CandidatesByChannelId:     candidates,
@@ -297,23 +298,19 @@ func PrepareRelayPricing(
 		EstimatedPromptTokens:     promptTokens,
 		EstimatedCompletionTokens: maxCompletionTokens,
 		Group:                     group,
-		GroupRatio:                1,
 		QuotaPerUnit:              common.QuotaPerUnit,
 		EstimatedUsage:            string(estimatedUsageJSON),
 	}
 	info.BillingRequestInput = &requestInput
-	effectiveGroupRatioInfo := groupRatioInfo
-	effectiveGroupRatioInfo.GroupRatio = 1
 	info.PriceData = hosttypes.PriceData{
-		GroupRatioInfo:    effectiveGroupRatioInfo,
 		QuotaToPreConsume: reservationQuota,
 	}
 	if selectedChannelId > 0 {
 		if err := BindSelectedChannel(info, selectedChannelId); err != nil {
-			return hosttypes.PriceData{}, false, err
+			return hosttypes.PriceData{}, err
 		}
 	}
-	return info.PriceData, true, nil
+	return info.PriceData, nil
 }
 
 func BindSelectedChannel(
@@ -349,7 +346,7 @@ func BindSelectedChannel(
 		ModelName:                 info.OriginModelName,
 		ExprString:                candidate.SalesExpression,
 		ExprHash:                  candidate.SalesExpressionHash,
-		GroupRatio:                info.DynamicPricingSnapshot.GroupRatio,
+		GroupRatio:                1,
 		EstimatedPromptTokens:     info.DynamicPricingSnapshot.EstimatedPromptTokens,
 		EstimatedCompletionTokens: info.DynamicPricingSnapshot.EstimatedCompletionTokens,
 		EstimatedQuotaAfterGroup:  info.DynamicPricingSnapshot.ReservationQuota,

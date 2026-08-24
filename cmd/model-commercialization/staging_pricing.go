@@ -14,9 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	hosttypes "github.com/QuantumNous/new-api/types"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
@@ -98,21 +95,6 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 		}
 	}
 
-	legacyMode, legacyModeConfigured := billing_setting.GetConfiguredBillingMode(logicalModel)
-	legacyExpr, legacyExprConfigured := billing_setting.GetBillingExpr(logicalModel)
-	legacyModelPrice, legacyModelPriceConfigured := ratio_setting.GetModelPriceCopy()[logicalModel]
-	legacyModelRatio, legacyModelRatioConfigured := ratio_setting.GetModelRatioCopy()[logicalModel]
-	legacyCompletionRatio, legacyCompletionRatioConfigured := ratio_setting.GetCompletionRatioCopy()[logicalModel]
-	legacyCacheRatio, legacyCacheRatioConfigured := ratio_setting.GetCacheRatioCopy()[logicalModel]
-	legacyCreateCacheRatio, legacyCreateCacheRatioConfigured := ratio_setting.GetCreateCacheRatioCopy()[logicalModel]
-	fmt.Printf(
-		"legacy model_price=%g configured=%t model_ratio=%g configured=%t completion_ratio=%g configured=%t cache_ratio=%g configured=%t create_cache_ratio=%g configured=%t billing_mode=%q configured=%t billing_expr=%q configured=%t\n",
-		legacyModelPrice, legacyModelPriceConfigured, legacyModelRatio, legacyModelRatioConfigured,
-		legacyCompletionRatio, legacyCompletionRatioConfigured, legacyCacheRatio, legacyCacheRatioConfigured,
-		legacyCreateCacheRatio, legacyCreateCacheRatioConfigured, legacyMode, legacyModeConfigured,
-		legacyExpr, legacyExprConfigured,
-	)
-
 	for group := range groups {
 		bundles := pricingruntime.GetCandidateBundles(group, logicalModel)
 		candidateIDs := make([]string, 0, len(bundles))
@@ -128,20 +110,18 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 		if selectedChannelID <= 0 {
 			continue
 		}
-		groupRatio := ratio_setting.GetGroupRatio(group)
 		info := &relaycommon.RelayInfo{OriginModelName: logicalModel, UsingGroup: group}
-		_, usesV2, err := pricingruntime.PrepareRelayPricing(
+		_, err := pricingruntime.PrepareRelayPricing(
 			info,
 			group,
 			selectedChannelID,
 			1,
 			4096,
-			hosttypes.GroupRatioInfo{GroupRatio: groupRatio},
 			billingexpr.RequestInput{},
 			pricingengine.Usage{RequestCount: 1},
 		)
 		if err != nil {
-			fmt.Printf("estimate group=%q selected_channel_id=%d uses_v2=%t error=%q\n", group, selectedChannelID, usesV2, err.Error())
+			fmt.Printf("estimate group=%q selected_channel_id=%d error=%q\n", group, selectedChannelID, err.Error())
 			continue
 		}
 		routeChannelIDs := ""
@@ -153,8 +133,8 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 			routeChannelIDs = strings.Join(ids, ",")
 		}
 		fmt.Printf(
-			"estimate group=%q selected_channel_id=%d uses_v2=%t group_ratio=%g route_channel_ids=%q reservation_quota=%d selected_quota=%d\n",
-			group, selectedChannelID, usesV2, groupRatio, routeChannelIDs,
+			"estimate group=%q selected_channel_id=%d route_channel_ids=%q reservation_quota=%d selected_quota=%d\n",
+			group, selectedChannelID, routeChannelIDs,
 			info.PriceData.QuotaToPreConsume, info.PriceData.Quota,
 		)
 	}

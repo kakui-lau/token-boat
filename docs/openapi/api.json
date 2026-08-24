@@ -374,31 +374,6 @@
         ]
       }
     },
-    "/api/ratio_config": {
-      "get": {
-        "summary": "获取倍率配置",
-        "deprecated": false,
-        "description": "🔓 无需鉴权",
-        "tags": [
-          "系统"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "headers": {}
-          }
-        },
-        "security": [
-          {
-            "Combination343": []
-          },
-          {
-            "Combination1243": []
-          }
-        ]
-      }
-    },
     "/api/verification": {
       "get": {
         "summary": "发送邮箱验证码",
@@ -5135,81 +5110,6 @@
         "summary": "更新系统选项",
         "deprecated": false,
         "description": "👑 需要超级管理员权限（Root）。兼容期内 theme.frontend=default 可幂等写入，其他主题值会被拒绝。",
-        "tags": [
-          "系统设置"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "headers": {}
-          }
-        },
-        "security": [
-          {
-            "Combination343": []
-          },
-          {
-            "Combination1243": []
-          }
-        ]
-      }
-    },
-    "/api/option/rest_model_ratio": {
-      "post": {
-        "summary": "重置模型倍率",
-        "deprecated": false,
-        "description": "👑 需要超级管理员权限（Root）",
-        "tags": [
-          "系统设置"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "headers": {}
-          }
-        },
-        "security": [
-          {
-            "Combination343": []
-          },
-          {
-            "Combination1243": []
-          }
-        ]
-      }
-    },
-    "/api/ratio_sync/channels": {
-      "get": {
-        "summary": "获取可同步渠道",
-        "deprecated": false,
-        "description": "👑 需要超级管理员权限（Root）",
-        "tags": [
-          "系统设置"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "headers": {}
-          }
-        },
-        "security": [
-          {
-            "Combination343": []
-          },
-          {
-            "Combination1243": []
-          }
-        ]
-      }
-    },
-    "/api/ratio_sync/fetch": {
-      "post": {
-        "summary": "获取上游倍率",
-        "deprecated": false,
-        "description": "👑 需要超级管理员权限（Root）",
         "tags": [
           "系统设置"
         ],

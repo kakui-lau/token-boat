@@ -7,7 +7,6 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingengine"
-	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -152,19 +151,16 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 		UserId:          1001,
 		RequestId:       "sales-price-book-snapshot",
 	}
-	priceData, used, err := PrepareRelayPricing(
+	_, err := PrepareRelayPricing(
 		info,
 		"default",
 		891,
 		1_000_000,
 		0,
-		hosttypes.GroupRatioInfo{GroupRatio: 0.5},
 		billingexpr.RequestInput{},
 		pricingengine.Usage{},
 	)
 	require.NoError(t, err)
-	require.True(t, used)
-	assert.Equal(t, float64(1), priceData.GroupRatioInfo.GroupRatio)
 	require.NotNil(t, info.DynamicPricingSnapshot)
 	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
 	selected := info.DynamicPricingSnapshot.Selected
@@ -181,7 +177,6 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 	assert.Equal(t, book.Id, snapshot.SalesPriceBookId)
 	assert.Equal(t, version.Id, snapshot.SalesPriceBookVersionId)
 	assert.Equal(t, item.Id, snapshot.SalesPriceBookItemId)
-	assert.Equal(t, "1", snapshot.AppliedGroupRatio)
 }
 
 func createResolvedPriceFixture(
@@ -298,7 +293,6 @@ func TestApplySalesPriceBookPricingPublishesOneCustomerPriceAcrossGroups(t *test
 	require.Contains(t, result[0].SalesPricesByGroup, "vip")
 	assert.Equal(t, "2", result[0].SalesPricesByGroup["default"].Items[0].Amount)
 	assert.Equal(t, "2", result[0].SalesPricesByGroup["vip"].Items[0].Amount)
-	assert.Equal(t, "1", result[0].SalesPricesByGroup["vip"].Items[0].AppliedGroupRatio)
 }
 
 func TestResolveSalesPricePrefersUserAssignmentOverTOCDefault(t *testing.T) {

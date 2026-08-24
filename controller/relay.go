@@ -162,19 +162,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 	pricingUsage := estimatedPricingUsage(request, relayInfo, tokens)
-	priceData, usesV2Pricing, err := pricingruntime.PrepareRelayPricing(
+	priceData, err := pricingruntime.PrepareRelayPricing(
 		relayInfo,
 		relayInfo.UsingGroup,
 		common.GetContextKeyInt(c, constant.ContextKeyChannelId),
 		tokens,
 		meta.MaxTokens,
-		helper.HandleGroupRatio(c, relayInfo),
 		requestInput,
 		pricingUsage,
 	)
 	_, hasSpecificChannel := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 	if relayInfo.TokenGroup == "auto" && !hasSpecificChannel &&
-		(!usesV2Pricing || errors.Is(err, pricingruntime.ErrNoEligiblePriceCandidate)) {
+		errors.Is(err, pricingruntime.ErrNoEligiblePriceCandidate) {
 		initialGroup := relayInfo.UsingGroup
 		for _, fallbackGroup := range service.GetUserAutoGroup(relayInfo.UserGroup) {
 			if fallbackGroup == initialGroup ||
@@ -183,17 +182,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 			common.SetContextKey(c, constant.ContextKeyAutoGroup, fallbackGroup)
 			relayInfo.UsingGroup = fallbackGroup
-			priceData, usesV2Pricing, err = pricingruntime.PrepareRelayPricing(
+			priceData, err = pricingruntime.PrepareRelayPricing(
 				relayInfo,
 				fallbackGroup,
 				0,
 				tokens,
 				meta.MaxTokens,
-				helper.HandleGroupRatio(c, relayInfo),
 				requestInput,
 				pricingUsage,
 			)
-			if err == nil && usesV2Pricing {
+			if err == nil {
 				break
 			}
 			if err != nil && !errors.Is(err, pricingruntime.ErrNoEligiblePriceCandidate) {
@@ -201,17 +199,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 		}
 	}
-	if err == nil && !usesV2Pricing {
-		err = fmt.Errorf(
-			"模型 %s 的请求用量无法由 V2 价格链安全预估",
-			relayInfo.OriginModelName,
-		)
-	}
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
-	if usesV2Pricing {
+	{
 		selected := false
 		for _, channelId := range relayInfo.DynamicPricingSnapshot.RouteChannelIds {
 			channel, getErr := model.CacheGetChannel(channelId)
@@ -253,7 +245,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if !selected {
 			newAPIError = types.NewError(
 				fmt.Errorf(
-					"分组 %s 下模型 %s 没有可用的 V2 渠道",
+					"分组 %s 下模型 %s 没有可用的定价渠道",
 					relayInfo.UsingGroup,
 					relayInfo.OriginModelName,
 				),
@@ -279,7 +271,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			relayInfo.Billing.Refund(c)
 		}
 		newAPIError = types.NewError(
-			fmt.Errorf("create v2 pricing snapshot: %w", err),
+			fmt.Errorf("create pricing snapshot: %w", err),
 			types.ErrorCodeModelPriceError,
 			types.ErrOptionWithSkipRetry(),
 		)
@@ -338,11 +330,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		addUsedChannel(c, channel.Id)
-		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
-			newAPIError = billingErr
-			break
-		}
-
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
 			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
@@ -433,7 +420,7 @@ func addUsedChannel(c *gin.Context, channelId int) {
 }
 
 // circuitModelIdForChannel returns the model id bound to the channel in the
-// V2 dynamic pricing snapshot, or 0 when no snapshot/model is known. Circuit
+// dynamic pricing snapshot, or 0 when no snapshot/model is known. Circuit
 // state is tracked per (channel, model) pair so that one failing model does
 // not trip the whole channel.
 func circuitModelIdForChannel(
@@ -531,7 +518,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			channel, err := model.CacheGetChannel(channelId)
 			if err != nil || channel == nil {
 				return nil, types.NewError(
-					fmt.Errorf("获取 V2 首选渠道 %d 失败: %v", channelId, err),
+					fmt.Errorf("获取定价首选渠道 %d 失败: %v", channelId, err),
 					types.ErrorCodeGetChannelFailed,
 					types.ErrOptionWithSkipRetry(),
 				)
@@ -576,17 +563,16 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			}
 			if bindErr := pricingruntime.BindSelectedChannel(info, channel.Id); bindErr != nil {
 				return nil, types.NewError(
-					fmt.Errorf("渠道 %d 缺少请求冻结的 V2 价格: %w", channel.Id, bindErr),
+					fmt.Errorf("渠道 %d 缺少请求冻结价格: %w", channel.Id, bindErr),
 					types.ErrorCodeModelPriceError,
 					types.ErrOptionWithSkipRetry(),
 				)
 			}
-			info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 			return channel, nil
 		}
 		return nil, types.NewError(
 			fmt.Errorf(
-				"分组 %s 下模型 %s 没有剩余的 V2 重试渠道",
+				"分组 %s 下模型 %s 没有剩余的定价重试渠道",
 				info.UsingGroup,
 				info.OriginModelName,
 			),
@@ -602,15 +588,13 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
-
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
 	if err := pricingruntime.BindSelectedChannel(info, channel.Id); err != nil {
 		return nil, types.NewError(
-			fmt.Errorf("渠道 %d 缺少请求冻结的 V2 价格: %w", channel.Id, err),
+			fmt.Errorf("渠道 %d 缺少请求冻结价格: %w", channel.Id, err),
 			types.ErrorCodeModelPriceError,
 			types.ErrOptionWithSkipRetry(),
 		)
@@ -629,7 +613,7 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	// request and its frozen pricing snapshot to stay on that channel.
 	// Channel-scoped errors are normally retried, so this guard must run before
 	// IsChannelError or a failed specified channel can silently fall through to
-	// another V2 candidate.
+	// another priced candidate.
 	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
 		return false
 	}

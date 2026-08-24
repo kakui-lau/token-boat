@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -298,10 +297,7 @@ func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 		},
 	}
 
-	quota, result := settleTestQuota(info, types.PriceData{
-		ModelRatio:      1,
-		CompletionRatio: 2,
-	}, &dto.Usage{
+	quota, result := settleTestQuota(info, &dto.Usage{
 		PromptTokens: 1000,
 	})
 
@@ -321,16 +317,7 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 		},
 		ChannelMeta: &relaycommon.ChannelMeta{},
 	}
-	priceData := types.PriceData{
-		GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
-	}
-	usage := &dto.Usage{
-		PromptTokensDetails: dto.InputTokenDetails{
-			CachedTokens: 12,
-		},
-	}
-
-	other := buildTestLogOther(ctx, info, priceData, usage, &billingexpr.TieredResult{
+	other := buildTestLogOther(ctx, info, &billingexpr.TieredResult{
 		MatchedTier: "base",
 	})
 

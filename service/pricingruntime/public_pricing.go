@@ -106,8 +106,6 @@ func ApplySalesPriceBookPricing(
 
 		pricing[index].PricingSource = "sales_price_book"
 		pricing[index].PricingGroups = eligibleGroups
-		pricing[index].BillingMode = "tiered_expr"
-		pricing[index].BillingExpr = resolved.Item.SalesBillingExpr
 		pricing[index].PricingVersion = resolved.Version.ContentHash
 
 		baseSummary := buildPublicPriceSummary(
@@ -141,7 +139,6 @@ func ApplySalesPriceBookPricing(
 				summary.Items[itemIndex].BaseAmount = summary.Items[itemIndex].Amount
 				summary.Items[itemIndex].AppliedGroup = group
 				summary.Items[itemIndex].AppliedGroupLabel = usableGroups[group]
-				summary.Items[itemIndex].AppliedGroupRatio = "1"
 			}
 			pricesByGroup[group] = summary
 		}

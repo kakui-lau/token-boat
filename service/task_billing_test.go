@@ -4,20 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"math"
-	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -143,8 +140,6 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 			SubscriptionId: subscriptionId,
 			TokenId:        tokenId,
 			BillingContext: &model.TaskBillingContext{
-				ModelPrice:      0.02,
-				GroupRatio:      1.0,
 				OriginModelName: "test-model",
 			},
 		},
@@ -175,140 +170,22 @@ func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
 	assert.NotContains(t, nextSnapshot, "new")
 }
 
-func TestPriceDataReplaceAndApplyOtherRatios(t *testing.T) {
-	priceData := types.PriceData{}
-
-	replaced := priceData.ReplaceOtherRatios(map[string]float64{
-		"zero":     0,
-		"negative": -3,
-		"nan":      math.NaN(),
-		"inf":      math.Inf(1),
-		"one":      1,
-		"duration": 2,
-		"size":     1.5,
-	})
-
-	require.True(t, replaced)
-	assert.Equal(t, 3.0, priceData.OtherRatioMultiplier())
-	assert.Equal(t, 30.0, priceData.ApplyOtherRatiosToFloat(10))
-	assert.Equal(t, 10.0, priceData.RemoveOtherRatiosFromFloat(30))
-	assert.True(t, decimal.NewFromInt(30).Equal(priceData.ApplyOtherRatiosToDecimal(decimal.NewFromInt(10))))
-
-	replaced = priceData.ReplaceOtherRatios(map[string]float64{
-		"zero": 0,
-		"nan":  math.NaN(),
-	})
-
-	require.False(t, replaced)
-	assert.Nil(t, priceData.OtherRatios())
-	assert.Equal(t, 1.0, priceData.OtherRatioMultiplier())
-}
-
-func TestNewTaskBillingContextFreezesExpressionAndRedactsSecrets(t *testing.T) {
-	snapshot := &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", ExprString: `tier("x", c)`}
+func TestNewTaskBillingContextKeepsFrozenPriceAuditIdentity(t *testing.T) {
 	info := &relaycommon.RelayInfo{
-		OriginModelName:       "bytedance/seedance-2.0",
-		TieredBillingSnapshot: snapshot,
-		BillingRequestInput: &billingexpr.RequestInput{
-			Headers: map[string]string{
-				"Authorization": "Bearer secret",
-				"Cookie":        "session=secret",
-				"X-Plan":        "pro",
-			},
-			Body: []byte(`{"metadata":{"resolution":"1080p"}}`),
-		},
-	}
-
-	bc := NewTaskBillingContext(info)
-	require.Same(t, snapshot, bc.TieredSnapshot)
-	assert.Equal(t, common.QuotaPerUnit, bc.QuotaPerUnit)
-	require.NotNil(t, bc.TieredRequest)
-	assert.NotContains(t, bc.TieredRequest.Headers, "Authorization")
-	assert.NotContains(t, bc.TieredRequest.Headers, "Cookie")
-	assert.Equal(t, "pro", bc.TieredRequest.Headers["X-Plan"])
-	assert.JSONEq(t, `{"metadata":{"resolution":"1080p"}}`, string(bc.TieredRequest.Body))
-}
-
-func TestNewTaskBillingContextTreatsV2VideoUsageAsFixedAtSubmission(t *testing.T) {
-	info := &relaycommon.RelayInfo{
-		RequestId:       "request-task-v2",
+		RequestId:       "request-task",
 		OriginModelName: "video-model",
-		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
-			BillingMode: "tiered_expr",
-			ExprString:  `v2:tier("video", video_s * 0.08)`,
-		},
 		DynamicPricingSnapshot: &types.DynamicPricingSnapshot{
-			EstimatedUsage: `{"request_count":1,"video_seconds":10}`,
-			QuotaPerUnit:   2_000_000,
-		},
-		BillingRequestInput: &billingexpr.RequestInput{
-			Body: []byte(`{"prompt":"private video prompt"}`),
+			QuotaPerUnit: 2_000_000,
 		},
 	}
+	info.PriceData.AddOtherRatio("seconds", 10)
 
 	bc := NewTaskBillingContext(info)
 
-	assert.True(t, bc.PerCallBilling)
-	assert.Equal(t, "request-task-v2", bc.RequestId)
+	assert.Equal(t, "request-task", bc.RequestId)
+	assert.Equal(t, "video-model", bc.OriginModelName)
 	assert.Equal(t, 2_000_000.0, bc.QuotaPerUnit)
-	assert.Nil(t, bc.TieredSnapshot)
-	assert.Nil(t, bc.TieredRequest)
-}
-
-func TestComputeTieredTaskQuotaUsesTotalWithoutDoubleCountingCompletion(t *testing.T) {
-	task := &model.Task{PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
-		TieredSnapshot: &billingexpr.BillingSnapshot{
-			BillingMode:  "tiered_expr",
-			ExprString:   `tier("video", (p + c) * 31)`,
-			ExprHash:     billingexpr.ExprHashString(`tier("video", (p + c) * 31)`),
-			GroupRatio:   1,
-			QuotaPerUnit: common.QuotaPerUnit,
-			ExprVersion:  1,
-		},
-	}}}
-
-	quota, result, ok := computeTieredTaskQuota(task, &relaycommon.TaskInfo{
-		TotalTokens:      1000,
-		CompletionTokens: 200,
-	})
-	require.True(t, ok)
-	require.NotNil(t, result)
-	assert.Equal(t, 15_500, quota)
-
-	quota, _, ok = computeTieredTaskQuota(task, &relaycommon.TaskInfo{
-		TotalTokens:      1000,
-		CompletionTokens: 1200,
-	})
-	require.True(t, ok)
-	assert.Equal(t, 15_500, quota)
-
-	quota, _, ok = computeTieredTaskQuota(task, &relaycommon.TaskInfo{TotalTokens: 1000})
-	require.True(t, ok)
-	assert.Equal(t, 15_500, quota)
-}
-
-func TestPrepareTieredTaskSettlementRequiresUpstreamUsage(t *testing.T) {
-	task := &model.Task{
-		Quota:            12345,
-		SettlementStatus: model.TaskSettlementStatusCompleted,
-		PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
-			TieredSnapshot: &billingexpr.BillingSnapshot{
-				BillingMode:  "tiered_expr",
-				ExprString:   `tier("video", c * 31)`,
-				ExprHash:     billingexpr.ExprHashString(`tier("video", c * 31)`),
-				GroupRatio:   1,
-				QuotaPerUnit: common.QuotaPerUnit,
-				ExprVersion:  1,
-			},
-		}},
-	}
-
-	ok := prepareTieredTaskSettlement(task, &relaycommon.TaskInfo{})
-
-	assert.False(t, ok)
-	assert.Equal(t, model.TaskSettlementStatusManual, task.SettlementStatus)
-	assert.Equal(t, 12345, task.SettlementTargetQuota)
-	assert.Contains(t, task.SettlementError, "usage missing")
+	assert.Equal(t, 10.0, bc.BusinessUsage["seconds"])
 }
 
 func TestHasTaskPollingWorkIncludesSuccessfulPendingSettlement(t *testing.T) {
@@ -340,47 +217,15 @@ func TestRecalculateTaskQuotaCanSettleToZero(t *testing.T) {
 	assert.Equal(t, model.TaskSettlementStatusCompleted, task.SettlementStatus)
 }
 
-func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
+func TestTaskBillingOtherIncludesBusinessUsage(t *testing.T) {
 	task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
-	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
-		"seconds":  2,
-		"identity": 1,
-		"zero":     0,
-		"negative": -1,
-		"nan":      math.NaN(),
-		"inf":      math.Inf(1),
+	task.PrivateData.BillingContext.BusinessUsage = map[string]float64{
+		"seconds": 2,
 	}
 
 	other := taskBillingOther(task)
 
-	assert.Equal(t, 2.0, other["seconds"])
-	assert.Equal(t, 1.0, other["identity"])
-	assert.NotContains(t, other, "zero")
-	assert.NotContains(t, other, "negative")
-	assert.NotContains(t, other, "nan")
-	assert.NotContains(t, other, "inf")
-}
-
-func TestTaskBillingContextPriceDataFiltersMultiplier(t *testing.T) {
-	priceData := taskBillingContextPriceData(&model.TaskBillingContext{
-		OtherRatios: map[string]float64{
-			"seconds":  2,
-			"size":     3,
-			"identity": 1,
-			"zero":     0,
-			"negative": -1,
-			"nan":      math.NaN(),
-			"inf":      math.Inf(1),
-		},
-	})
-
-	require.NotNil(t, priceData)
-	assert.Equal(t, 6.0, priceData.OtherRatioMultiplier())
-	assert.Equal(t, map[string]float64{
-		"seconds":  2,
-		"size":     3,
-		"identity": 1,
-	}, priceData.OtherRatios())
+	assert.Equal(t, task.PrivateData.BillingContext.BusinessUsage, other["business_usage"])
 }
 
 // ---------------------------------------------------------------------------
@@ -1076,111 +921,4 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 	var reloaded model.Task
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.Equal(t, "50%", reloaded.Progress)
-}
-
-// ===========================================================================
-// Mock adaptor for settleTaskBillingOnComplete tests
-// ===========================================================================
-
-type mockAdaptor struct {
-	adjustReturn int
-}
-
-func (m *mockAdaptor) Init(_ *relaycommon.RelayInfo) {}
-func (m *mockAdaptor) FetchTask(string, string, map[string]any, string) (*http.Response, error) {
-	return nil, nil
-}
-func (m *mockAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) { return nil, nil }
-func (m *mockAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
-	return m.adjustReturn
-}
-
-// ===========================================================================
-// PerCallBilling tests — settleTaskBillingOnComplete
-// ===========================================================================
-
-func TestSettle_PerCallBilling_SkipsAdaptorAdjust(t *testing.T) {
-	truncate(t)
-	ctx := context.Background()
-
-	const userID, tokenID, channelID = 30, 30, 30
-	const initQuota, preConsumed = 10000, 5000
-	const tokenRemain = 8000
-
-	seedUser(t, userID, initQuota)
-	seedToken(t, tokenID, userID, "sk-percall-adaptor", tokenRemain)
-	seedChannel(t, channelID)
-
-	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
-	task.PrivateData.BillingContext.PerCallBilling = true
-
-	adaptor := &mockAdaptor{adjustReturn: 2000}
-	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess}
-
-	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
-
-	// Per-call: no adjustment despite adaptor returning 2000
-	assert.Equal(t, initQuota, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
-	assert.Equal(t, preConsumed, task.Quota)
-	assert.Equal(t, int64(0), countLogs(t))
-}
-
-func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
-	truncate(t)
-	ctx := context.Background()
-
-	const userID, tokenID, channelID = 31, 31, 31
-	const initQuota, preConsumed = 10000, 4000
-	const tokenRemain = 7000
-
-	seedUser(t, userID, initQuota)
-	seedToken(t, tokenID, userID, "sk-percall-tokens", tokenRemain)
-	seedChannel(t, channelID)
-
-	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
-	task.PrivateData.BillingContext.PerCallBilling = true
-
-	adaptor := &mockAdaptor{adjustReturn: 0}
-	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, TotalTokens: 9999}
-
-	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
-
-	// Per-call: no recalculation by tokens
-	assert.Equal(t, initQuota, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
-	assert.Equal(t, preConsumed, task.Quota)
-	assert.Equal(t, int64(0), countLogs(t))
-}
-
-func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {
-	truncate(t)
-	ctx := context.Background()
-
-	const userID, tokenID, channelID = 32, 32, 32
-	const initQuota, preConsumed = 10000, 5000
-	const adaptorQuota = 3000
-	const tokenRemain = 8000
-
-	seedUser(t, userID, initQuota)
-	seedToken(t, tokenID, userID, "sk-nonpercall-adj", tokenRemain)
-	seedChannel(t, channelID)
-
-	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
-	require.NoError(t, model.DB.Create(task).Error)
-	// PerCallBilling defaults to false
-
-	adaptor := &mockAdaptor{adjustReturn: adaptorQuota}
-	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess}
-
-	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
-
-	// Non-per-call: adaptor adjustment applies (refund 2000)
-	assert.Equal(t, initQuota+(preConsumed-adaptorQuota), getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain+(preConsumed-adaptorQuota), getTokenRemainQuota(t, tokenID))
-	assert.Equal(t, adaptorQuota, task.Quota)
-
-	log := getLastLog(t)
-	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
 }

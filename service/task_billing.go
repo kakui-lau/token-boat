@@ -4,19 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
@@ -83,22 +78,7 @@ func ManuallyFailAndRefundTask(ctx context.Context, taskID, reason string) (Manu
 func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuota int) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
-	// 支持任务仅按次计费
-	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
-		logContent = fmt.Sprintf("%s，按次计费", logContent)
-	} else {
-		if otherRatios := info.PriceData.OtherRatios(); len(otherRatios) > 0 {
-			var contents []string
-			for key, ra := range otherRatios {
-				if 1.0 != ra {
-					contents = append(contents, fmt.Sprintf("%s: %.2f", key, ra))
-				}
-			}
-			if len(contents) > 0 {
-				logContent = fmt.Sprintf("%s, 计算参数：%s", logContent, strings.Join(contents, ", "))
-			}
-		}
-	}
+	logContent = fmt.Sprintf("%s，销售报价已冻结", logContent)
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["billing_stage"] = "submitted"
@@ -107,20 +87,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuot
 	other["local_estimated_quota"] = info.PriceData.Quota
 	other["actual_pre_consumed_quota"] = info.FinalPreConsumedQuota
 	other["request_path"] = c.Request.URL.Path
-	other["model_price"] = info.PriceData.ModelPrice
-	if info.PriceData.ModelRatio > 0 {
-		other["model_ratio"] = info.PriceData.ModelRatio
-	}
-	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
-	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
-		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
-	}
 	if info.IsModelMapped {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
-	}
-	for key, ratio := range info.PriceData.OtherRatios() {
-		other[key] = ratio
 	}
 	InjectGeneralBillingAudit(other, info, chargedQuota, nil)
 	attachQuotaSaturation(c, info, other)
@@ -159,18 +128,11 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	other["is_task"] = true
 	other["task_id"] = task.TaskID
 	if bc := task.PrivateData.BillingContext; bc != nil {
-		other["model_price"] = bc.ModelPrice
-		if bc.ModelRatio > 0 {
-			other["model_ratio"] = bc.ModelRatio
-		}
-		other["group_ratio"] = bc.GroupRatio
 		if bc.QuotaPerUnit > 0 {
 			other["quota_per_unit"] = bc.QuotaPerUnit
 		}
-		if priceData := taskBillingContextPriceData(bc); priceData != nil {
-			for k, v := range priceData.OtherRatios() {
-				other[k] = v
-			}
+		if len(bc.BusinessUsage) > 0 {
+			other["business_usage"] = bc.BusinessUsage
 		}
 	}
 	props := task.Properties
@@ -283,61 +245,20 @@ func taskBillingAdminInfo(task *model.Task, finalQuota int) map[string]interface
 	return adminInfo
 }
 
-func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData {
-	if bc == nil || len(bc.OtherRatios) == 0 {
-		return nil
-	}
-	priceData := &types.PriceData{}
-	if !priceData.ReplaceOtherRatios(bc.OtherRatios) {
-		return nil
-	}
-	return priceData
-}
-
 // NewTaskBillingContext freezes every value required to settle an asynchronous
 // task. Sensitive credentials are deliberately excluded from the persisted
 // request headers.
 func NewTaskBillingContext(info *relaycommon.RelayInfo) *model.TaskBillingContext {
-	usesV2Pricing := info.DynamicPricingSnapshot != nil
 	quotaPerUnit := common.QuotaPerUnit
-	if usesV2Pricing && info.DynamicPricingSnapshot.QuotaPerUnit > 0 {
+	if info.DynamicPricingSnapshot != nil && info.DynamicPricingSnapshot.QuotaPerUnit > 0 {
 		quotaPerUnit = info.DynamicPricingSnapshot.QuotaPerUnit
 	}
-	bc := &model.TaskBillingContext{
+	return &model.TaskBillingContext{
 		RequestId:       info.RequestId,
-		ModelPrice:      info.PriceData.ModelPrice,
-		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
-		ModelRatio:      info.PriceData.ModelRatio,
 		QuotaPerUnit:    quotaPerUnit,
-		OtherRatios:     info.PriceData.OtherRatios(),
+		BusinessUsage:   info.PriceData.OtherRatios(),
 		OriginModelName: info.OriginModelName,
-		PerCallBilling:  usesV2Pricing || common.StringsContains(constant.TaskPricePatches, info.OriginModelName) || info.PriceData.UsePrice,
 	}
-	if !usesV2Pricing {
-		bc.TieredSnapshot = info.TieredBillingSnapshot
-	}
-	if usesV2Pricing {
-		return bc
-	}
-	if info.BillingRequestInput == nil {
-		return bc
-	}
-
-	requestInput := &billingexpr.RequestInput{
-		Headers:         make(map[string]string),
-		Body:            append([]byte(nil), info.BillingRequestInput.Body...),
-		EvaluatedAtUnix: info.BillingRequestInput.EvaluatedAtUnix,
-	}
-	for key, value := range info.BillingRequestInput.Headers {
-		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key":
-			continue
-		default:
-			requestInput.Headers[key] = value
-		}
-	}
-	bc.TieredRequest = requestInput
-	return bc
 }
 
 // taskModelName 从 BillingContext 或 Properties 中获取模型名称。
@@ -547,56 +468,4 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		NodeName:         task.PrivateData.NodeName,
 	})
 	updateTaskBillingAudit(task, string(model.TaskStatusSuccess), actualQuota, 0, promptTokens, completionTokens)
-}
-
-// RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
-// 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
-// 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
-func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens, promptTokens, completionTokens int) {
-	if totalTokens <= 0 {
-		return
-	}
-
-	modelName := taskModelName(task)
-
-	// 获取模型价格和倍率
-	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
-	if !hasRatioSetting || modelRatio <= 0 {
-		return
-	}
-
-	// 获取用户和组的倍率信息
-	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
-		}
-	}
-	if group == "" {
-		return
-	}
-
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
-	} else {
-		finalGroupRatio = groupRatio
-	}
-
-	// 计算 OtherRatios 乘积（视频折扣、时长等）
-	otherMultiplier := 1.0
-	if priceData := taskBillingContextPriceData(task.PrivateData.BillingContext); priceData != nil {
-		otherMultiplier = priceData.OtherRatioMultiplier()
-	}
-
-	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
-	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
-
-	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason, promptTokens, completionTokens, clamp)
 }

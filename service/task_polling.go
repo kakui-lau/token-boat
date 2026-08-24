@@ -16,7 +16,6 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -31,9 +30,6 @@ type TaskPollingAdaptor interface {
 	Init(info *relaycommon.RelayInfo)
 	FetchTask(baseURL string, key string, body map[string]any, proxy string) (*http.Response, error)
 	ParseTaskResult(body []byte) (*relaycommon.TaskInfo, error)
-	// AdjustBillingOnComplete 在任务到达终态（成功/失败）时由轮询循环调用。
-	// 返回正数触发差额结算（补扣/退还），返回 0 保持预扣费金额不变。
-	AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int
 }
 
 // GetTaskAdaptorFunc 由 main 包注入，用于获取指定平台的任务适配器。
@@ -689,10 +685,6 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if taskResult.Progress != "" {
 		task.Progress = taskResult.Progress
 	}
-	if shouldSettle {
-		shouldSettle = prepareTieredTaskSettlement(task, taskResult)
-	}
-
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure ||
 		task.Status == model.TaskStatusCancelled || task.Status == model.TaskStatusExpired
 	terminalTransitionPersisted := false
@@ -719,25 +711,17 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	if shouldSettle {
-		if settleTaskBillingOnComplete(ctx, adaptor, task, taskResult) {
-			if task.SettlementStatus == model.TaskSettlementStatusCompleted {
-				promptTokens := 0
-				completionTokens := taskResult.TotalTokens
-				if taskResult.CompletionTokens > 0 && taskResult.CompletionTokens <= taskResult.TotalTokens {
-					completionTokens = taskResult.CompletionTokens
-					promptTokens = taskResult.TotalTokens - completionTokens
-					if promptTokens < 0 {
-						promptTokens = 0
-					}
+		if task.SettlementStatus == model.TaskSettlementStatusCompleted {
+			promptTokens := 0
+			completionTokens := taskResult.TotalTokens
+			if taskResult.CompletionTokens > 0 && taskResult.CompletionTokens <= taskResult.TotalTokens {
+				completionTokens = taskResult.CompletionTokens
+				promptTokens = taskResult.TotalTokens - completionTokens
+				if promptTokens < 0 {
+					promptTokens = 0
 				}
-				updateTaskBillingAudit(task, string(model.TaskStatusSuccess), task.Quota, 0, promptTokens, completionTokens)
 			}
-		} else if err := model.MarkTaskSettlementManualReview(
-			task.ID,
-			task.Quota,
-			"tiered expression settlement failed after terminal update",
-		); err != nil {
-			logger.LogError(ctx, fmt.Sprintf("标记任务人工对账失败 task %s: %s", task.TaskID, err.Error()))
+			updateTaskBillingAudit(task, string(model.TaskStatusSuccess), task.Quota, 0, promptTokens, completionTokens)
 		}
 	}
 	if shouldRefund {
@@ -832,105 +816,4 @@ func truncateBase64(s string) string {
 		return s
 	}
 	return s[:maxKeep] + "..."
-}
-
-// settleTaskBillingOnComplete 任务完成时的统一计费调整。
-// 优先级：1. adaptor.AdjustBillingOnComplete 返回正数 → 使用 adaptor 计算的额度
-//
-//  2. taskResult.TotalTokens > 0 → 按 token 重算
-//  3. 都不满足 → 保持预扣额度不变
-func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) bool {
-	promptTokens := 0
-	completionTokens := taskResult.TotalTokens
-	if taskResult.CompletionTokens > 0 && taskResult.CompletionTokens <= taskResult.TotalTokens {
-		completionTokens = taskResult.CompletionTokens
-		promptTokens = taskResult.TotalTokens - completionTokens
-		if promptTokens < 0 {
-			promptTokens = 0
-		}
-	}
-	// 0. 表达式计费必须使用提交时冻结的表达式、分组倍率和请求参数。
-	if bc := task.PrivateData.BillingContext; bc != nil && bc.TieredSnapshot != nil {
-		actualQuota, result, ok := computeTieredTaskQuota(task, taskResult)
-		if !ok {
-			logger.LogError(ctx, fmt.Sprintf("任务 %s 表达式计费结算失败，保持预扣额度", task.TaskID))
-			return false
-		}
-		RecalculateTaskQuota(ctx, task, actualQuota, "表达式计费重算", promptTokens, completionTokens, result.Clamp)
-		return true
-	}
-	// 0. 按次计费的任务不做差额结算
-	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
-		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
-		return true
-	}
-	// 1. 优先让 adaptor 决定最终额度
-	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
-		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", promptTokens, completionTokens, taskResult.QuotaClamp)
-		return true
-	}
-	// 2. 回退到 token 重算
-	if taskResult.TotalTokens > 0 {
-		RecalculateTaskQuotaByTokens(ctx, task, taskResult.TotalTokens, promptTokens, completionTokens)
-		return true
-	}
-	// 3. 无调整，保持预扣额度
-	return true
-}
-
-func prepareTieredTaskSettlement(task *model.Task, taskResult *relaycommon.TaskInfo) bool {
-	bc := task.PrivateData.BillingContext
-	if bc == nil || bc.TieredSnapshot == nil {
-		return true
-	}
-	actualQuota, result, ok := computeTieredTaskQuota(task, taskResult)
-	if !ok {
-		task.SettlementStatus = model.TaskSettlementStatusManual
-		task.SettlementTargetQuota = task.Quota
-		task.SettlementError = "upstream usage missing or tiered expression settlement failed"
-		return false
-	}
-	task.SettlementStatus = model.TaskSettlementStatusPending
-	task.SettlementTargetQuota = actualQuota
-	task.SettlementError = ""
-	taskResult.QuotaClamp = result.Clamp
-	return true
-}
-
-func computeTieredTaskQuota(task *model.Task, taskResult *relaycommon.TaskInfo) (int, *billingexpr.TieredResult, bool) {
-	bc := task.PrivateData.BillingContext
-	if bc == nil || bc.TieredSnapshot == nil {
-		return 0, nil, false
-	}
-	if taskResult.TotalTokens <= 0 {
-		return 0, nil, false
-	}
-	completionTokens := taskResult.CompletionTokens
-	if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
-		completionTokens = taskResult.TotalTokens
-	}
-	promptTokens := taskResult.TotalTokens - completionTokens
-	if promptTokens < 0 {
-		promptTokens = 0
-	}
-	result, err := billingexpr.ComputeTieredQuotaWithRequest(
-		bc.TieredSnapshot,
-		billingexpr.TokenParams{
-			P:   float64(promptTokens),
-			C:   float64(completionTokens),
-			Len: float64(promptTokens),
-		},
-		taskTieredRequest(bc),
-	)
-	if err != nil {
-		return 0, nil, false
-	}
-	return result.ActualQuotaAfterGroup, &result, true
-}
-
-func taskTieredRequest(bc *model.TaskBillingContext) billingexpr.RequestInput {
-	if bc == nil || bc.TieredRequest == nil {
-		return billingexpr.RequestInput{}
-	}
-	return *bc.TieredRequest
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,16 +155,6 @@ func TestConvertToRequestPayloadMarksInputImagesAsReferences(t *testing.T) {
 
 func TestValidateProvidesSafeEstimateForSeedance2(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	saved := map[string]string{}
-	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
-		saved[key] = value
-		return nil
-	}))
-	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
-	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode": `{"bytedance/seedance-2.0":"tiered_expr"}`,
-	}))
-
 	adaptor := &TaskAdaptor{}
 	legacyContext, legacyInfo := newDoubaoVideoTestContext(
 		`{"model":"doubao-seedance-1-5-pro-251215","prompt":"test","duration":30,"resolution":"2k"}`,

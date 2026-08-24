@@ -55,7 +55,6 @@ describe('model availability metrics eligibility', () => {
       isModelEligibleForAvailabilityMetrics(
         pricedTextModel({
           model_name: 'bytedance/seedance-2.0-fast-upscale',
-          quota_type: 1,
           supported_endpoint_types: ['openai-video'],
         })
       )
@@ -66,9 +65,6 @@ describe('model availability metrics eligibility', () => {
 function pricedTextModel(overrides: Partial<PricingModel> = {}): PricingModel {
   return {
     model_name: 'openai/gpt-5.4-nano',
-    quota_type: 0,
-    model_ratio: 1,
-    completion_ratio: 1,
     enable_groups: ['default'],
     supported_endpoint_types: ['openai'],
     available: true,

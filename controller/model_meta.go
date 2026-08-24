@@ -2,7 +2,6 @@ package controller
 
 import (
 	"encoding/json"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -254,7 +253,6 @@ func enrichModels(models []*model.Model) {
 			}
 			mm.BoundChannels = chs
 			mm.EnableGroups = model.GetModelEnableGroups(name)
-			mm.QuotaTypes = model.GetModelQuotaTypes(name)
 		}
 	}
 
@@ -269,7 +267,6 @@ func enrichModels(models []*model.Model) {
 	matchedNamesByIdx := make(map[int][]string)
 	endpointSetByIdx := make(map[int]map[constant.EndpointType]struct{})
 	groupSetByIdx := make(map[int]map[string]struct{})
-	quotaSetByIdx := make(map[int]map[int]struct{})
 
 	for _, p := range pricings {
 		for _, idx := range ruleIndices {
@@ -306,12 +303,6 @@ func enrichModels(models []*model.Model) {
 				gs[g] = struct{}{}
 			}
 
-			qs := quotaSetByIdx[idx]
-			if qs == nil {
-				qs = make(map[int]struct{})
-				quotaSetByIdx[idx] = qs
-			}
-			qs[p.QuotaType] = struct{}{}
 		}
 	}
 
@@ -350,16 +341,6 @@ func enrichModels(models []*model.Model) {
 				groups = append(groups, g)
 			}
 			mm.EnableGroups = groups
-		}
-
-		// 配额类型集合（保持去重并排序）
-		if qs, ok := quotaSetByIdx[idx]; ok {
-			arr := make([]int, 0, len(qs))
-			for k := range qs {
-				arr = append(arr, k)
-			}
-			sort.Ints(arr)
-			mm.QuotaTypes = arr
 		}
 
 		// 渠道并集

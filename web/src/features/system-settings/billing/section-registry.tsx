@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -18,27 +20,24 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
+import { SettingsSection } from '../components/settings-section'
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
+import { ToolPriceSettings } from '../models/tool-price-settings'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
-const getModelDefaults = (settings: BillingSettings) => ({
-  ModelPrice: settings.ModelPrice,
-  ModelRatio: settings.ModelRatio,
-  CacheRatio: settings.CacheRatio,
-  CreateCacheRatio: settings.CreateCacheRatio,
-  CompletionRatio: settings.CompletionRatio,
-  ImageRatio: settings.ImageRatio,
-  AudioRatio: settings.AudioRatio,
-  AudioCompletionRatio: settings.AudioCompletionRatio,
-  ExposeRatioEnabled: settings.ExposeRatioEnabled,
-  BillingMode: settings['billing_setting.billing_mode'],
-  BillingExpr: settings['billing_setting.billing_expr'],
-})
+function ToolPriceSettingsSection({ defaultValue }: { defaultValue: string }) {
+  const { t } = useTranslation()
+  return (
+    <SettingsSection title={t('Tool prices')}>
+      <ToolPriceSettings defaultValue={defaultValue} />
+    </SettingsSection>
+  )
+}
 
 const getGroupDefaults = (settings: BillingSettings) => ({
   TopupGroupRatio: settings.TopupGroupRatio,
@@ -107,15 +106,11 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'model-pricing',
-    titleKey: 'Model Pricing',
+    id: 'tool-pricing',
+    titleKey: 'Tool prices',
     build: (settings: BillingSettings) => (
-      <RatioSettingsCard
-        titleKey='Model Pricing'
-        modelDefaults={getModelDefaults(settings)}
-        groupDefaults={getGroupDefaults(settings)}
-        toolPricesDefault={settings['tool_price_setting.prices']}
-        visibleTabs={['models', 'unset-models', 'tool-prices', 'upstream-sync']}
+      <ToolPriceSettingsSection
+        defaultValue={settings['tool_price_setting.prices']}
       />
     ),
   },
@@ -125,10 +120,7 @@ const BILLING_SECTIONS = [
     build: (settings: BillingSettings) => (
       <RatioSettingsCard
         titleKey='Group Pricing'
-        modelDefaults={getModelDefaults(settings)}
         groupDefaults={getGroupDefaults(settings)}
-        toolPricesDefault={settings['tool_price_setting.prices']}
-        visibleTabs={['groups']}
       />
     ),
   },

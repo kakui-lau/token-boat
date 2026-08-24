@@ -45,7 +45,7 @@ export const defaultSalesDiscountCalculatorValues: SalesDiscountCalculatorValues
     paymentFee: 4,
     distributionFee: 5,
     laborCost: 2,
-    profitTaxRate: 16.5,
+    profitTaxRate: 16,
     targetNetMargin: 3,
   }
 

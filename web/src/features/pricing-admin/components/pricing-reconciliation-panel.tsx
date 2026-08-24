@@ -651,9 +651,6 @@ export function PricingReconciliationPanel() {
                   </TableCell>
                   <TableCell className='whitespace-nowrap'>
                     {row.applied_group || '—'}
-                    {row.applied_group_ratio
-                      ? ` · ×${row.applied_group_ratio}`
-                      : ''}
                   </TableCell>
                   <TableCell
                     className={

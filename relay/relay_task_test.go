@@ -7,26 +7,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestHasSafePreSubmitTaskUsageRequiresPositiveValidatedEstimate(t *testing.T) {
-	assert.False(t, hasSafePreSubmitTaskUsage(nil))
-	assert.False(t, hasSafePreSubmitTaskUsage(&relaycommon.RelayInfo{
-		TaskRelayInfo: &relaycommon.TaskRelayInfo{TaskPreConsumeTokens: 100},
-	}))
-	assert.False(t, hasSafePreSubmitTaskUsage(&relaycommon.RelayInfo{
-		TaskRelayInfo: &relaycommon.TaskRelayInfo{TaskTieredEstimateReady: true},
-	}))
-	assert.True(t, hasSafePreSubmitTaskUsage(&relaycommon.RelayInfo{
-		TaskRelayInfo: &relaycommon.TaskRelayInfo{
-			TaskTieredEstimateReady: true,
-			TaskPreConsumeTokens:    100,
-		},
-	}))
-}
 
 func TestBuildOpenRouterVideoResponseUsesDirectProviderURLs(t *testing.T) {
 	costPerUnit := 500000.0

@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -173,29 +172,5 @@ func QuotePricing(c *gin.Context) {
 		"sales_amount":               quoteRange.SalesAmount,
 		"maximum_reservation_amount": quoteRange.MaximumReservationAmount,
 		"eligible_candidate_count":   quoteRange.EligibleCandidateCount,
-	})
-}
-
-func ResetModelRatio(c *gin.Context) {
-	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
-	err := model.UpdateOption("ModelRatio", defaultStr)
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	err = ratio_setting.UpdateModelRatioByJSONString(defaultStr)
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "重置模型倍率成功",
 	})
 }

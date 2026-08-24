@@ -20,7 +20,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
-	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -107,11 +106,10 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		info.ApiKey = key
 	}
 
-	// 提取 remix 参数（时长、分辨率 → OtherRatios）
+	// 提取 remix 的已校验业务用量。
 	if info.Action == constant.TaskActionRemix {
 		if originTask.PrivateData.BillingContext != nil {
-			// 新的 remix 逻辑：直接从原始任务的 BillingContext 中提取 OtherRatios（如果存在）
-			for s, f := range originTask.PrivateData.BillingContext.OtherRatios {
+			for s, f := range originTask.PrivateData.BillingContext.BusinessUsage {
 				info.PriceData.AddOtherRatio(s, f)
 			}
 		} else {
@@ -142,7 +140,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 // RelayTaskSubmit 完成 task 提交的全部流程（每次尝试调用一次）：
 // 刷新渠道元数据 → 确定 platform/adaptor → 验证请求 →
 // 估算计费(EstimateBilling) → 计算价格 → 预扣费（仅首次）→
-// 构建/发送/解析上游请求 → 提交后计费调整(AdjustBillingOnSubmit)。
+// 构建、发送并解析上游请求。
 // 控制器负责 defer Refund 和成功后 Settle。
 func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitResult, *dto.TaskError) {
 	info.InitChannelMeta(c)
@@ -200,180 +198,98 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		info.GenerationID = model.GenerateVideoGenerationID()
 	}
 
-	// 4. 价格计算：任务请求必须由完整 V2 价格链接管。无法在提交前
-	// 安全确定计费用量时明确拒绝，禁止静默回退旧计费。
+	// 4. 价格计算：任务请求必须由完整采购价和销售报价链接管。
+	// 无法在提交前安全确定计费用量时明确拒绝。
 	info.OriginModelName = modelName
 	if !pricingruntime.HasCompletePricing(info.UsingGroup, info.OriginModelName) {
 		return nil, service.TaskErrorWrapper(
-			fmt.Errorf("model %s has no complete v2 price chain", info.OriginModelName),
+			fmt.Errorf("model %s has no complete purchase and sales price", info.OriginModelName),
 			"model_price_error",
 			http.StatusServiceUnavailable,
 		)
 	}
-	v2CandidateSelected := info.DynamicPricingSnapshot != nil
-	if !v2CandidateSelected {
+	selectedCandidate := info.DynamicPricingSnapshot != nil
+	if !selectedCandidate {
 		for _, bundle := range pricingruntime.GetCandidateBundles(info.UsingGroup, info.OriginModelName) {
 			if bundle.ChannelModel.ChannelId == info.ChannelId {
-				v2CandidateSelected = true
+				selectedCandidate = true
 				break
 			}
 		}
-		fixedPricingSupported := pricingruntime.SupportsFixedVideoTaskPricing(
-			info.UserId,
-			info.UsingGroup,
-			info.OriginModelName,
-		)
-		if v2CandidateSelected &&
-			!fixedPricingSupported &&
-			!hasSafePreSubmitTaskUsage(info) {
-			return nil, service.TaskErrorWrapper(
-				fmt.Errorf(
-					"model %s v2 price requires usage unavailable before task submission",
-					info.OriginModelName,
-				),
-				"model_price_error",
-				http.StatusBadRequest,
-			)
-		}
 	}
-	if !v2CandidateSelected {
+	if !selectedCandidate {
 		return nil, service.TaskErrorWrapper(
-			fmt.Errorf("selected channel has no v2 price candidate"),
+			fmt.Errorf("selected channel has no complete purchase and sales price"),
 			"model_price_error",
 			http.StatusServiceUnavailable,
 		)
 	}
-	if v2CandidateSelected {
-		if info.DynamicPricingSnapshot == nil {
-			info.PriceData = hosttypes.PriceData{
-				GroupRatioInfo: helper.HandleGroupRatio(c, info),
-			}
-		}
-	}
 
-	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
-	//    旧版基础价格和 V2 空价格容器都已就绪；ResolveOriginTask 可能已在
-	//    remix 路径中预设 OtherRatios，此处合并。
-	if info.DynamicPricingSnapshot == nil && info.TieredBillingSnapshot == nil {
-		if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
-			for k, v := range estimatedRatios {
-				info.PriceData.AddOtherRatio(k, v)
-			}
-		}
-	}
-
-	usesV2Pricing := info.DynamicPricingSnapshot != nil
-	if info.DynamicPricingSnapshot != nil {
-		if err := pricingruntime.BindSelectedChannel(info, info.ChannelId); err != nil {
-			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
-		}
-		selectedQuota := info.PriceData.Quota
-		frozenRatios := info.PriceData.OtherRatios()
-		info.PriceData = hosttypes.PriceData{
-			GroupRatioInfo:    helper.HandleGroupRatio(c, info),
-			Quota:             selectedQuota,
-			QuotaToPreConsume: info.DynamicPricingSnapshot.ReservationQuota,
-		}
-		for name, ratio := range frozenRatios {
+	// 5. 让适配器补充时长、分辨率等请求数据，再冻结本次价格。
+	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+		for name, ratio := range estimatedRatios {
 			info.PriceData.AddOtherRatio(name, ratio)
 		}
-	} else {
-		seconds := info.PriceData.OtherRatios()["seconds"]
-		if seconds <= 0 && v2CandidateSelected {
-			taskRequest, requestErr := relaycommon.GetTaskRequest(c)
-			if requestErr != nil {
-				return nil, service.TaskErrorWrapperLocal(
-					requestErr,
-					"invalid_request",
-					http.StatusBadRequest,
-				)
-			}
-			switch {
-			case taskRequest.Duration > 0:
-				seconds = float64(taskRequest.Duration)
-			case taskRequest.Seconds != "":
-				parsedSeconds, parseErr := strconv.Atoi(taskRequest.Seconds)
-				if parseErr != nil {
-					return nil, service.TaskErrorWrapperLocal(
-						fmt.Errorf("invalid video duration: %w", parseErr),
-						"invalid_request",
-						http.StatusBadRequest,
-					)
-				}
-				seconds = float64(parsedSeconds)
-			default:
-				if metadataDuration, ok := taskRequest.Metadata["duration"].(float64); ok {
-					seconds = metadataDuration
-				}
-			}
+	}
+	estimatedRatios := info.PriceData.OtherRatios()
+	seconds := estimatedRatios["seconds"]
+	if seconds <= 0 {
+		taskRequest, requestErr := relaycommon.GetTaskRequest(c)
+		if requestErr != nil {
+			return nil, service.TaskErrorWrapperLocal(requestErr, "invalid_request", http.StatusBadRequest)
 		}
-		if seconds > 0 || hasSafePreSubmitTaskUsage(info) {
-			if seconds > relaycommon.MaxTaskDurationSeconds {
+		switch {
+		case taskRequest.Duration > 0:
+			seconds = float64(taskRequest.Duration)
+		case taskRequest.Seconds != "":
+			parsedSeconds, parseErr := strconv.Atoi(taskRequest.Seconds)
+			if parseErr != nil {
 				return nil, service.TaskErrorWrapperLocal(
-					fmt.Errorf("video duration exceeds %d seconds", relaycommon.MaxTaskDurationSeconds),
+					fmt.Errorf("invalid video duration: %w", parseErr),
 					"invalid_request",
 					http.StatusBadRequest,
 				)
 			}
-			requestInput, requestErr := helper.ResolveIncomingBillingExprRequestInput(c, info)
-			if requestErr != nil {
-				return nil, service.TaskErrorWrapper(requestErr, "model_price_error", http.StatusBadRequest)
-			}
-			v2PriceData, ok, pricingErr := pricingruntime.PrepareRelayPricing(
-				info,
-				info.UsingGroup,
-				info.ChannelId,
-				info.TaskPreConsumeTokens,
-				0,
-				helper.HandleGroupRatio(c, info),
-				requestInput,
-				pricingengine.Usage{
-					RequestCount: 1,
-					VideoSeconds: seconds,
-				},
-			)
-			if pricingErr != nil {
-				return nil, service.TaskErrorWrapper(pricingErr, "model_price_error", http.StatusBadRequest)
-			}
-			if ok {
-				usesV2Pricing = true
-				estimatedRatios := info.PriceData.OtherRatios()
-				info.PriceData = v2PriceData
-				info.PriceData.Quota = v2PriceData.QuotaToPreConsume
-				for name, ratio := range estimatedRatios {
-					info.PriceData.AddOtherRatio(name, ratio)
-				}
+			seconds = float64(parsedSeconds)
+		default:
+			if metadataDuration, ok := taskRequest.Metadata["duration"].(float64); ok {
+				seconds = metadataDuration
 			}
 		}
 	}
-	if v2CandidateSelected && !usesV2Pricing {
-		return nil, service.TaskErrorWrapper(
-			fmt.Errorf(
-				"model %s request usage cannot be safely estimated by v2 pricing",
-				info.OriginModelName,
-			),
-			"model_price_error",
+	if seconds > relaycommon.MaxTaskDurationSeconds {
+		return nil, service.TaskErrorWrapperLocal(
+			fmt.Errorf("video duration exceeds %d seconds", relaycommon.MaxTaskDurationSeconds),
+			"invalid_request",
 			http.StatusBadRequest,
 		)
 	}
-
-	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
-	if !usesV2Pricing && !common.StringsContains(constant.TaskPricePatches, modelName) {
-		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
-		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
-		info.PriceData.Quota = quota
-		noteTaskQuotaClamp(info, clamp)
+	requestInput, requestErr := helper.ResolveIncomingBillingExprRequestInput(c, info)
+	if requestErr != nil {
+		return nil, service.TaskErrorWrapper(requestErr, "model_price_error", http.StatusBadRequest)
+	}
+	priceData, pricingErr := pricingruntime.PrepareRelayPricing(
+		info,
+		info.UsingGroup,
+		info.ChannelId,
+		info.TaskPreConsumeTokens,
+		0,
+		requestInput,
+		pricingengine.Usage{RequestCount: 1, VideoSeconds: seconds},
+	)
+	if pricingErr != nil {
+		return nil, service.TaskErrorWrapper(pricingErr, "model_price_error", http.StatusBadRequest)
+	}
+	info.PriceData = priceData
+	for name, ratio := range estimatedRatios {
+		info.PriceData.AddOtherRatio(name, ratio)
 	}
 
-	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
+	// 6. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	firstPreConsume := info.Billing == nil
 	if firstPreConsume && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
-		quotaToPreConsume := info.PriceData.Quota
-		if usesV2Pricing {
-			quotaToPreConsume = info.PriceData.QuotaToPreConsume
-		}
-		if apiErr := service.PreConsumeBilling(c, quotaToPreConsume, info); apiErr != nil {
+		if apiErr := service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
 		}
 	}
@@ -442,16 +358,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	info.AcceptedUpstreamTaskID = upstreamTaskID
 	info.AcceptedTaskData = append(info.AcceptedTaskData[:0], taskData...)
 
-	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
+	// 11. 最终销售价来自请求开始时冻结的报价；提交后的上游字段不会改写客户价格。
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); !usesV2Pricing && info.TieredBillingSnapshot == nil && len(adjustedRatios) > 0 {
-		if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
-			// 基于调整后的 ratios 重新计算 quota
-			finalQuota = adjustedQuota
-			info.PriceData.ReplaceOtherRatios(adjustedRatios)
-			info.PriceData.Quota = finalQuota
-		}
-	}
 	if info.PersistedTaskID > 0 {
 		task, err := model.GetTaskByID(info.PersistedTaskID)
 		if err != nil {
@@ -476,10 +384,6 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
-}
-
-func hasSafePreSubmitTaskUsage(info *relaycommon.RelayInfo) bool {
-	return info != nil && info.TaskTieredEstimateReady && info.TaskPreConsumeTokens > 0
 }
 
 func persistOpenRouterTaskBeforeSubmit(info *relaycommon.RelayInfo, platform constant.TaskPlatform) error {
@@ -510,34 +414,6 @@ func persistOpenRouterTaskBeforeSubmit(info *relaycommon.RelayInfo, platform con
 	}
 	info.PersistedTaskID = task.ID
 	return nil
-}
-
-// recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
-// 公式: baseQuota × ∏(ratio) — 其中 baseQuota 是不含 OtherRatios 的基础额度。
-func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float64) (int, bool) {
-	// 从 PriceData 获取不含 OtherRatios 的基础价格
-	baseQuota := info.PriceData.RemoveOtherRatiosFromFloat(float64(info.PriceData.Quota))
-	priceData := info.PriceData
-	if !priceData.ReplaceOtherRatios(ratios) {
-		return 0, false
-	}
-	// 应用新的 ratios
-	result := priceData.ApplyOtherRatiosToFloat(baseQuota)
-	quota, clamp := common.QuotaFromFloatChecked(result)
-	noteTaskQuotaClamp(info, clamp)
-	return quota, true
-}
-
-// noteTaskQuotaClamp records the first quota saturation event onto the task's
-// RelayInfo so LogTaskConsumption can surface it on the submit log's
-// admin_info. First non-nil clamp wins.
-func noteTaskQuotaClamp(info *relaycommon.RelayInfo, clamp *common.QuotaClamp) {
-	if clamp == nil || info == nil {
-		return
-	}
-	if info.QuotaClamp == nil {
-		info.QuotaClamp = clamp
-	}
 }
 
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){

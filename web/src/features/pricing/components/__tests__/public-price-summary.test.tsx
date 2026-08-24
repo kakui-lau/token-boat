@@ -66,7 +66,6 @@ describe('public price summary', () => {
             amount: item.component === 'token_input' ? '1.25' : '7.5',
             applied_group: 'default',
             applied_group_label: 'Default',
-            applied_group_ratio: '0.8',
           })),
         }}
         tokenUnit='M'
@@ -80,7 +79,7 @@ describe('public price summary', () => {
     expect(screen.getByText('$1.25')).toHaveClass('text-primary')
     expect(screen.getByText('$7.5')).toHaveClass('text-primary')
     expect(screen.getByText('Effective group')).toBeVisible()
-    expect(screen.getByText('Default · ×0.8')).toBeVisible()
+    expect(screen.getByText('Default')).toBeVisible()
     expect(screen.getAllByText(/1M tokens/)).toHaveLength(2)
   })
 

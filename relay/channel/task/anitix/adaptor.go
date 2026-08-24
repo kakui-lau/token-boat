@@ -19,7 +19,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -195,10 +194,6 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	mode, configured := billing_setting.GetConfiguredBillingMode(info.OriginModelName)
-	if !configured || mode != billing_setting.BillingModeVideoSecond {
-		return nil
-	}
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil || req.Duration <= 0 {
 		return nil

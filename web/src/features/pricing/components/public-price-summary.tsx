@@ -78,10 +78,7 @@ function firstPriceItems(summary?: PublicPriceSummary): PublicPriceItem[] {
 }
 
 function appliedGroupContext(item: PublicPriceItem): string {
-  const group = item.applied_group_label || item.applied_group
-  const ratio = item.applied_group_ratio
-  if (!group || !ratio) return ''
-  return `${group} · ×${ratio}`
+  return item.applied_group_label || item.applied_group || ''
 }
 
 function commonAppliedGroupContext(items: PublicPriceItem[]): string {

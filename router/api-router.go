@@ -392,6 +392,7 @@ func SetApiRouter(router *gin.Engine) {
 			pricingAdminRoute.POST("/price-books/:id/versions/clone", middleware.RequirePermission(authz.PricingWrite), controller.AdminCloneSalesPriceBookVersion)
 			pricingAdminRoute.POST("/price-books/:id/disable", middleware.RequirePermission(authz.PricingPublish), controller.AdminDisableSalesPriceBook)
 			pricingAdminRoute.GET("/price-book-versions/:id/items", middleware.RequirePermission(authz.PricingRead), controller.AdminListSalesPriceBookItems)
+			pricingAdminRoute.GET("/price-book-versions/:id/items/export", middleware.RequirePermission(authz.PricingExport), controller.AdminExportSalesPriceBookItems)
 			pricingAdminRoute.POST("/price-book-versions/:id/items", middleware.RequirePermission(authz.PricingWrite), controller.AdminSaveSalesPriceBookItem)
 			pricingAdminRoute.POST("/price-book-versions/:id/generate-items", middleware.RequirePermission(authz.PricingWrite), controller.AdminGenerateSalesPriceBookItems)
 			pricingAdminRoute.POST("/price-book-versions/:id/publish", middleware.RequirePermission(authz.PricingPublish), controller.AdminPublishSalesPriceBookVersion)

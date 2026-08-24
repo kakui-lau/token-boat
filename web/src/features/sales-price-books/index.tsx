@@ -16,7 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { Download } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -40,6 +46,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -50,12 +57,20 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
+import { downloadCSV } from '@/lib/download-csv'
 import { handleServerError } from '@/lib/handle-server-error'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   cancelUserPriceBookAssignment,
   cloneSalesPriceBookVersion,
   disableSalesPriceBook,
+  exportSalesPriceBookItems,
   getSalesPriceBookItems,
   getSalesPriceBooks,
   getSalesPriceBookVersions,
@@ -67,7 +82,13 @@ import { AssignUserDialog } from './components/assign-user-dialog'
 import { CreateBookDialog } from './components/create-book-dialog'
 import { CreateVersionDialog } from './components/create-version-dialog'
 import { GenerateItemsDialog } from './components/generate-items-dialog'
-import type { SalesPriceBookStatus, SalesPriceBookVersionStatus } from './types'
+import { ListPagination } from './components/list-pagination'
+import type {
+  SalesPriceBookAudience,
+  SalesPriceBookStatus,
+  SalesPriceBookVersionStatus,
+  UserPriceBookAssignment,
+} from './types'
 
 function bookStatusLabel(
   status: SalesPriceBookStatus,
@@ -111,7 +132,25 @@ function percent(value: string) {
 export function SalesPriceBooks() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const canExport = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.EXPORT
+  )
   const [keyword, setKeyword] = useState('')
+  const [bookAudience, setBookAudience] = useState<SalesPriceBookAudience | ''>(
+    ''
+  )
+  const [bookStatus, setBookStatus] = useState<SalesPriceBookStatus | ''>('')
+  const [bookPage, setBookPage] = useState(1)
+  const [bookPageSize, setBookPageSize] = useState(200)
+  const [assignmentKeyword, setAssignmentKeyword] = useState('')
+  const [assignmentStatus, setAssignmentStatus] = useState<
+    UserPriceBookAssignment['status'] | ''
+  >('')
+  const [assignmentPage, setAssignmentPage] = useState(1)
+  const [assignmentPageSize, setAssignmentPageSize] = useState(200)
   const [selectedBookId, setSelectedBookId] = useState<number>()
   const [selectedVersionId, setSelectedVersionId] = useState<number>()
   const [createBookOpen, setCreateBookOpen] = useState(false)
@@ -119,20 +158,30 @@ export function SalesPriceBooks() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
   const deferredKeyword = useDeferredValue(keyword)
+  const deferredAssignmentKeyword = useDeferredValue(assignmentKeyword)
 
   const booksQuery = useQuery({
-    queryKey: ['sales-price-books', 'list'],
-    queryFn: getSalesPriceBooks,
+    queryKey: [
+      'sales-price-books',
+      'list',
+      deferredKeyword,
+      bookAudience,
+      bookStatus,
+      bookPage,
+      bookPageSize,
+    ],
+    queryFn: () =>
+      getSalesPriceBooks({
+        keyword: deferredKeyword.trim() || undefined,
+        audience: bookAudience || undefined,
+        status: bookStatus || undefined,
+        p: bookPage,
+        page_size: bookPageSize,
+      }),
+    placeholderData: keepPreviousData,
   })
-  const books = booksQuery.data?.data ?? []
-  const filteredBooks = books.filter((book) => {
-    const search = deferredKeyword.trim().toLowerCase()
-    return (
-      !search ||
-      book.name.toLowerCase().includes(search) ||
-      book.code.toLowerCase().includes(search)
-    )
-  })
+  const books = booksQuery.data?.data.items ?? []
+  const booksTotal = booksQuery.data?.data.total ?? 0
   const selectedBook =
     books.find((book) => book.id === selectedBookId) ?? books[0]
   const selectedBookQueryId = selectedBook?.id ?? 0
@@ -151,9 +200,36 @@ export function SalesPriceBooks() {
     enabled: Boolean(selectedVersion),
   })
   const assignmentsQuery = useQuery({
-    queryKey: ['sales-price-books', 'assignments'],
-    queryFn: () => getUserPriceBookAssignments(),
+    queryKey: [
+      'sales-price-books',
+      'assignments',
+      deferredAssignmentKeyword,
+      assignmentStatus,
+      assignmentPage,
+      assignmentPageSize,
+    ],
+    queryFn: () =>
+      getUserPriceBookAssignments({
+        keyword: deferredAssignmentKeyword.trim() || undefined,
+        status: assignmentStatus || undefined,
+        p: assignmentPage,
+        page_size: assignmentPageSize,
+      }),
+    placeholderData: keepPreviousData,
   })
+  const assignmentBooksQuery = useQuery({
+    queryKey: ['sales-price-books', 'list', 'assignment-options'],
+    queryFn: () =>
+      getSalesPriceBooks({
+        audience: 'tob',
+        status: 'enabled',
+        p: 1,
+        page_size: 200,
+      }),
+  })
+  const assignments = assignmentsQuery.data?.data.items ?? []
+  const assignmentsTotal = assignmentsQuery.data?.data.total ?? 0
+  const assignmentBooks = assignmentBooksQuery.data?.data.items ?? []
 
   const refreshBooks = async () => {
     await queryClient.invalidateQueries({
@@ -212,6 +288,17 @@ export function SalesPriceBooks() {
     },
     onError: handleServerError,
   })
+  const exportItemsMutation = useMutation({
+    mutationFn: exportSalesPriceBookItems,
+    onSuccess: (blob) => {
+      if (!selectedBook || !selectedVersion) return
+      downloadCSV(
+        blob,
+        `sales-price-book-${selectedBook.code}-v${selectedVersion.version}`
+      )
+    },
+    onError: handleServerError,
+  })
 
   return (
     <SectionPageLayout>
@@ -251,20 +338,68 @@ export function SalesPriceBooks() {
                       'Select a price book to manage versions and model prices.'
                     )}
                   </CardDescription>
-                  <CardAction>
+                </CardHeader>
+                <CardContent className='flex flex-col gap-4'>
+                  <div className='grid gap-3 md:grid-cols-[minmax(240px,1fr)_180px_180px]'>
                     <Input
                       value={keyword}
-                      onChange={(event) => setKeyword(event.target.value)}
+                      onChange={(event) => {
+                        setKeyword(event.target.value)
+                        setBookPage(1)
+                      }}
                       placeholder={t('Search name or code')}
                       aria-label={t('Search name or code')}
                     />
-                  </CardAction>
-                </CardHeader>
-                <CardContent>
+                    <NativeSelect
+                      aria-label={t('Audience')}
+                      value={bookAudience}
+                      onChange={(event) => {
+                        setBookAudience(
+                          event.target.value as SalesPriceBookAudience | ''
+                        )
+                        setBookPage(1)
+                      }}
+                    >
+                      <NativeSelectOption value=''>
+                        {t('All audiences')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='toc'>TOC</NativeSelectOption>
+                      <NativeSelectOption value='tob'>TOB</NativeSelectOption>
+                      <NativeSelectOption value='internal'>
+                        {t('Internal')}
+                      </NativeSelectOption>
+                    </NativeSelect>
+                    <NativeSelect
+                      aria-label={t('Status')}
+                      value={bookStatus}
+                      onChange={(event) => {
+                        setBookStatus(
+                          event.target.value as SalesPriceBookStatus | ''
+                        )
+                        setBookPage(1)
+                      }}
+                    >
+                      <NativeSelectOption value=''>
+                        {t('All statuses')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='draft'>
+                        {t('Draft')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='enabled'>
+                        {t('Enabled')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='disabled'>
+                        {t('Disabled')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='archived'>
+                        {t('Archived')}
+                      </NativeSelectOption>
+                    </NativeSelect>
+                  </div>
                   {booksQuery.isLoading ? (
                     <Skeleton className='h-40 w-full' />
                   ) : null}
-                  {!booksQuery.isLoading && filteredBooks.length === 0 ? (
+                  {!booksQuery.isLoading && books.length === 0 ? (
                     <Empty className='min-h-40'>
                       <EmptyHeader>
                         <EmptyTitle>{t('No sales price books')}</EmptyTitle>
@@ -276,7 +411,7 @@ export function SalesPriceBooks() {
                       </EmptyHeader>
                     </Empty>
                   ) : null}
-                  {filteredBooks.length > 0 ? (
+                  {books.length > 0 ? (
                     <Table className='min-w-[58rem]'>
                       <TableHeader>
                         <TableRow>
@@ -291,7 +426,7 @@ export function SalesPriceBooks() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredBooks.map((book) => (
+                        {books.map((book) => (
                           <TableRow
                             key={book.id}
                             data-state={
@@ -366,6 +501,19 @@ export function SalesPriceBooks() {
                         ))}
                       </TableBody>
                     </Table>
+                  ) : null}
+                  {!booksQuery.isLoading ? (
+                    <ListPagination
+                      page={bookPage}
+                      pageSize={bookPageSize}
+                      total={booksTotal}
+                      isFetching={booksQuery.isFetching}
+                      onPageChange={setBookPage}
+                      onPageSizeChange={(pageSize) => {
+                        setBookPageSize(pageSize)
+                        setBookPage(1)
+                      }}
+                    />
                   ) : null}
                 </CardContent>
               </Card>
@@ -514,6 +662,21 @@ export function SalesPriceBooks() {
                         'One logical model has one customer price in each version.'
                       )}
                     </CardDescription>
+                    {canExport ? (
+                      <CardAction>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          disabled={exportItemsMutation.isPending}
+                          onClick={() =>
+                            exportItemsMutation.mutate(selectedVersion.id)
+                          }
+                        >
+                          <Download data-icon='inline-start' />
+                          {t('Export model pricing')}
+                        </Button>
+                      </CardAction>
+                    ) : null}
                   </CardHeader>
                   <CardContent>
                     {itemsQuery.isLoading ? (
@@ -582,14 +745,54 @@ export function SalesPriceBooks() {
                     </Button>
                   </CardAction>
                 </CardHeader>
-                <CardContent>
+                <CardContent className='flex flex-col gap-4'>
+                  <div className='grid gap-3 md:grid-cols-[minmax(260px,1fr)_180px]'>
+                    <Input
+                      value={assignmentKeyword}
+                      onChange={(event) => {
+                        setAssignmentKeyword(event.target.value)
+                        setAssignmentPage(1)
+                      }}
+                      placeholder={t('Search username, quote, or contract')}
+                      aria-label={t('Search username, quote, or contract')}
+                    />
+                    <NativeSelect
+                      aria-label={t('Status')}
+                      value={assignmentStatus}
+                      onChange={(event) => {
+                        setAssignmentStatus(
+                          event.target.value as
+                            | UserPriceBookAssignment['status']
+                            | ''
+                        )
+                        setAssignmentPage(1)
+                      }}
+                    >
+                      <NativeSelectOption value=''>
+                        {t('All statuses')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='scheduled'>
+                        {t('Scheduled')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='active'>
+                        {t('Active')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='expired'>
+                        {t('Expired')}
+                      </NativeSelectOption>
+                      <NativeSelectOption value='cancelled'>
+                        {t('Cancelled')}
+                      </NativeSelectOption>
+                    </NativeSelect>
+                  </div>
                   {assignmentsQuery.isLoading ? (
                     <Skeleton className='h-40 w-full' />
                   ) : null}
-                  {(assignmentsQuery.data?.data.length ?? 0) > 0 ? (
+                  {assignments.length > 0 ? (
                     <Table className='min-w-[70rem]'>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>{t('Username')}</TableHead>
                           <TableHead>{t('User ID')}</TableHead>
                           <TableHead>{t('Sales price book')}</TableHead>
                           <TableHead>{t('Version policy')}</TableHead>
@@ -600,13 +803,15 @@ export function SalesPriceBooks() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {assignmentsQuery.data?.data.map((assignment) => (
+                        {assignments.map((assignment) => (
                           <TableRow key={assignment.id}>
+                            <TableCell className='font-medium'>
+                              {assignment.username}
+                            </TableCell>
                             <TableCell>{assignment.user_id}</TableCell>
                             <TableCell>
-                              {books.find(
-                                (book) => book.id === assignment.price_book_id
-                              )?.name ?? assignment.price_book_id}
+                              {assignment.price_book_name ||
+                                assignment.price_book_id}
                             </TableCell>
                             <TableCell>
                               {assignment.version_policy === 'follow_current'
@@ -642,6 +847,19 @@ export function SalesPriceBooks() {
                       </TableBody>
                     </Table>
                   ) : null}
+                  {!assignmentsQuery.isLoading ? (
+                    <ListPagination
+                      page={assignmentPage}
+                      pageSize={assignmentPageSize}
+                      total={assignmentsTotal}
+                      isFetching={assignmentsQuery.isFetching}
+                      onPageChange={setAssignmentPage}
+                      onPageSizeChange={(pageSize) => {
+                        setAssignmentPageSize(pageSize)
+                        setAssignmentPage(1)
+                      }}
+                    />
+                  ) : null}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -668,7 +886,7 @@ export function SalesPriceBooks() {
         ) : null}
         <AssignUserDialog
           open={assignOpen}
-          books={books}
+          books={assignmentBooks}
           onOpenChange={setAssignOpen}
         />
       </SectionPageLayout.Content>

@@ -134,6 +134,71 @@ func TestSalesPriceBookRejectsVariableCostBreakdownMismatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "must equal")
 }
 
+func TestListSalesPriceBooksAppliesServerFiltersAndPagination(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	for _, input := range []model.SalesPriceBook{
+		{Code: "toc-standard", Name: "Consumer Standard", Audience: "toc", Currency: "USD"},
+		{Code: "tob-enterprise-a", Name: "Enterprise Alpha", Audience: "tob", Currency: "USD"},
+		{Code: "tob-enterprise-b", Name: "Enterprise Beta", Audience: "tob", Currency: "USD"},
+	} {
+		book := input
+		require.NoError(t, CreateSalesPriceBook(&book, 1))
+	}
+
+	items, total, err := ListSalesPriceBooks(SalesPriceBookListFilter{
+		Keyword: "ENTERPRISE", Audience: "tob", Status: "draft", Page: 1, PageSize: 1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, items, 1)
+	assert.Equal(t, "tob-enterprise-b", items[0].Code)
+
+	items, total, err = ListSalesPriceBooks(SalesPriceBookListFilter{
+		Keyword: "enterprise", Audience: "tob", Status: "draft", Page: 2, PageSize: 1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, items, 1)
+	assert.Equal(t, "tob-enterprise-a", items[0].Code)
+
+	_, _, err = ListSalesPriceBooks(SalesPriceBookListFilter{Audience: "partner"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported")
+}
+
+func TestListUserPriceBookAssignmentsSearchesUsernameAndReturnsBookIdentity(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create([]model.User{
+		{Id: 611, Username: "acme-owner", Password: "12345678", AffCode: "aff-acme"},
+		{Id: 612, Username: "other-owner", Password: "12345678", AffCode: "aff-other"},
+	}).Error)
+	book := model.SalesPriceBook{
+		Code: "acme-contract", Name: "ACME Contract", Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	require.NoError(t, model.DB.Create([]model.UserPriceBookAssignment{
+		{
+			UserId: 611, PriceBookId: book.Id, VersionPolicy: "follow_current",
+			Status: model.PriceBookAssignmentStatusActive, EffectiveFrom: 1,
+		},
+		{
+			UserId: 612, PriceBookId: book.Id, VersionPolicy: "follow_current",
+			Status: model.PriceBookAssignmentStatusExpired, EffectiveFrom: 1,
+		},
+	}).Error)
+
+	items, total, err := ListUserPriceBookAssignments(UserPriceBookAssignmentListFilter{
+		Keyword: "ACME-OWNER", Status: model.PriceBookAssignmentStatusActive,
+		Page: 1, PageSize: 200,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	assert.Equal(t, "acme-owner", items[0].Username)
+	assert.Equal(t, "ACME Contract", items[0].PriceBookName)
+	assert.Equal(t, "acme-contract", items[0].PriceBookCode)
+}
+
 func TestUserPriceBookAssignmentReplacesPreviousActiveBinding(t *testing.T) {
 	setupSalesPriceBookTestDB(t)
 	require.NoError(t, model.DB.Create(&model.User{Id: 601, Username: "enterprise-user", Password: "12345678"}).Error)

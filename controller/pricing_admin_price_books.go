@@ -1,8 +1,12 @@
 package controller
 
 import (
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -11,12 +15,25 @@ import (
 )
 
 func AdminListSalesPriceBooks(c *gin.Context) {
-	books, err := pricingadmin.ListSalesPriceBooks()
+	page, pageSize, err := salesPriceBookPageQuery(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, books)
+	books, total, err := pricingadmin.ListSalesPriceBooks(pricingadmin.SalesPriceBookListFilter{
+		Keyword:  c.Query("keyword"),
+		Audience: c.Query("audience"),
+		Status:   c.Query("status"),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": books, "total": total, "page": page, "page_size": pageSize,
+	})
 }
 
 func AdminCreateSalesPriceBook(c *gin.Context) {
@@ -112,6 +129,48 @@ func AdminListSalesPriceBookItems(c *gin.Context) {
 	common.ApiSuccess(c, items)
 }
 
+func AdminExportSalesPriceBookItems(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	items, err := pricingadmin.ListSalesPriceBookItems(versionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filename := fmt.Sprintf(
+		"sales-price-book-version-%d-items-%s.csv",
+		versionId,
+		time.Now().UTC().Format("20060102-150405"),
+	)
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Status(200)
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+	writer := csv.NewWriter(c.Writer)
+	_ = writer.Write([]string{
+		"模型名称", "状态", "计费模式", "价格结构", "定价方式", "销售系数",
+		"官方折扣", "币种", "销售表达式", "表达式哈希", "备注",
+	})
+	for _, item := range items {
+		_ = writer.Write([]string{
+			spreadsheetSafeCSVCell(item.ModelName),
+			item.Status,
+			item.BillingMode,
+			item.PriceStructure,
+			item.PricingMethod,
+			item.SellingFactor,
+			item.OfficialDiscount,
+			item.Currency,
+			spreadsheetSafeCSVCell(item.SalesBillingExpr),
+			item.SalesExprHash,
+			spreadsheetSafeCSVCell(item.Remark),
+		})
+	}
+	writer.Flush()
+}
+
 func AdminSaveSalesPriceBookItem(c *gin.Context) {
 	versionId, ok := positivePathId(c)
 	if !ok {
@@ -174,21 +233,77 @@ func AdminPublishSalesPriceBookVersion(c *gin.Context) {
 }
 
 func AdminListUserPriceBookAssignments(c *gin.Context) {
-	userId := 0
-	if raw := c.Query("user_id"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			common.ApiError(c, errors.New("user_id must be a positive integer"))
-			return
-		}
-		userId = parsed
-	}
-	assignments, err := pricingadmin.ListUserPriceBookAssignments(userId)
+	page, pageSize, err := salesPriceBookPageQuery(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, assignments)
+	userId, err := optionalPositiveQueryId(c, "user_id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	priceBookId, err := optionalPositiveQueryId(c, "price_book_id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	assignments, total, err := pricingadmin.ListUserPriceBookAssignments(
+		pricingadmin.UserPriceBookAssignmentListFilter{
+			Keyword:     c.Query("keyword"),
+			UserId:      userId,
+			PriceBookId: priceBookId,
+			Status:      c.Query("status"),
+			Page:        page,
+			PageSize:    pageSize,
+		},
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": assignments, "total": total, "page": page, "page_size": pageSize,
+	})
+}
+
+func salesPriceBookPageQuery(c *gin.Context) (int, int, error) {
+	page := 1
+	if rawPage := strings.TrimSpace(c.Query("p")); rawPage != "" {
+		parsed, err := strconv.Atoi(rawPage)
+		if err != nil || parsed <= 0 {
+			return 0, 0, errors.New("p must be a positive integer")
+		}
+		page = parsed
+	}
+	pageSize := pricingadmin.SalesPriceBookDefaultPageSize
+	rawPageSize := strings.TrimSpace(c.Query("page_size"))
+	if rawPageSize == "" {
+		rawPageSize = strings.TrimSpace(c.Query("ps"))
+	}
+	if rawPageSize == "" {
+		rawPageSize = strings.TrimSpace(c.Query("size"))
+	}
+	if rawPageSize != "" {
+		parsed, err := strconv.Atoi(rawPageSize)
+		if err != nil || parsed <= 0 {
+			return 0, 0, errors.New("page_size must be a positive integer")
+		}
+		pageSize = min(parsed, pricingadmin.SalesPriceBookMaximumPageSize)
+	}
+	return page, pageSize, nil
+}
+
+func optionalPositiveQueryId(c *gin.Context, key string) (int, error) {
+	raw := strings.TrimSpace(c.Query(key))
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return parsed, nil
 }
 
 func AdminAssignUserToSalesPriceBook(c *gin.Context) {

@@ -91,6 +91,33 @@ export type UserPriceBookAssignment = {
   quote_reference: string
   contract_reference: string
   remark: string
+  username: string
+  price_book_name: string
+  price_book_code: string
+}
+
+export type PaginatedSalesPriceBookList<T> = {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type SalesPriceBookListFilters = {
+  keyword?: string
+  audience?: SalesPriceBookAudience
+  status?: SalesPriceBookStatus
+  p: number
+  page_size: number
+}
+
+export type UserPriceBookAssignmentListFilters = {
+  keyword?: string
+  user_id?: number
+  price_book_id?: number
+  status?: UserPriceBookAssignment['status']
+  p: number
+  page_size: number
 }
 
 export type PricingChangeBatch = {

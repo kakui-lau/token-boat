@@ -23,10 +23,13 @@ import type {
   CreateSalesPriceBookInput,
   CreateSalesPriceBookVersionInput,
   PricingChangeBatch,
+  PaginatedSalesPriceBookList,
   SalesPriceBook,
   SalesPriceBookItem,
+  SalesPriceBookListFilters,
   SalesPriceBookVersion,
   UserPriceBookAssignment,
+  UserPriceBookAssignmentListFilters,
 } from './types'
 
 function requireSuccess<T>(response: ApiResponse<T>): ApiResponse<T> {
@@ -36,10 +39,10 @@ function requireSuccess<T>(response: ApiResponse<T>): ApiResponse<T> {
   return response
 }
 
-export async function getSalesPriceBooks() {
-  const response = await api.get<ApiResponse<SalesPriceBook[]>>(
-    '/api/pricing-admin/price-books'
-  )
+export async function getSalesPriceBooks(params: SalesPriceBookListFilters) {
+  const response = await api.get<
+    ApiResponse<PaginatedSalesPriceBookList<SalesPriceBook>>
+  >('/api/pricing-admin/price-books', { params })
   return requireSuccess(response.data)
 }
 
@@ -114,12 +117,21 @@ export async function generateSalesPriceBookItems(
   return requireSuccess(response.data)
 }
 
-export async function getUserPriceBookAssignments(userId?: number) {
-  const response = await api.get<ApiResponse<UserPriceBookAssignment[]>>(
-    '/api/pricing-admin/user-price-book-assignments',
-    { params: userId ? { user_id: userId } : undefined }
-  )
+export async function getUserPriceBookAssignments(
+  params: UserPriceBookAssignmentListFilters
+) {
+  const response = await api.get<
+    ApiResponse<PaginatedSalesPriceBookList<UserPriceBookAssignment>>
+  >('/api/pricing-admin/user-price-book-assignments', { params })
   return requireSuccess(response.data)
+}
+
+export async function exportSalesPriceBookItems(versionId: number) {
+  const response = await api.get(
+    `/api/pricing-admin/price-book-versions/${versionId}/items/export`,
+    { responseType: 'blob' }
+  )
+  return response.data as Blob
 }
 
 export async function assignUserPriceBook(input: {

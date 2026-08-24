@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -107,6 +108,77 @@ func TestAdminListChannelModelsReturnsPublishedPurchaseStatus(t *testing.T) {
 	assert.Equal(t, int64(2), response.Data.Items[0].ActivePurchasePriceVersion)
 	assert.Equal(t, "official_ratio", response.Data.Items[0].PurchasePricingMode)
 	assert.Equal(t, "0.85", response.Data.Items[0].PurchaseDiscount)
+}
+
+func TestAdminListSalesPriceBooksUsesServerFiltersAndDefaultPageSize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create([]model.SalesPriceBook{
+		{Code: "consumer", Name: "Consumer", Audience: "toc", Currency: "USD", Status: model.SalesPriceBookStatusDraft},
+		{Code: "enterprise", Name: "Enterprise Contract", Audience: "tob", Currency: "USD", Status: model.SalesPriceBookStatusDraft},
+	}).Error)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/api/pricing-admin/price-books?keyword=contract&audience=tob&status=draft",
+		nil,
+	)
+
+	AdminListSalesPriceBooks(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items    []pricingadmin.SalesPriceBookListItem `json:"items"`
+			Total    int64                                 `json:"total"`
+			Page     int                                   `json:"page"`
+			PageSize int                                   `json:"page_size"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.Equal(t, int64(1), response.Data.Total)
+	assert.Equal(t, 1, response.Data.Page)
+	assert.Equal(t, 200, response.Data.PageSize)
+	require.Len(t, response.Data.Items, 1)
+	assert.Equal(t, "enterprise", response.Data.Items[0].Code)
+}
+
+func TestAdminExportSalesPriceBookItemsWritesSpreadsheetSafeCSV(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 91, ModelName: "=unsafe-model-name",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookItem{
+		PriceBookVersionId: 92,
+		ModelId:            91,
+		Status:             pricingadmin.SalesPriceItemStatusEnabled,
+		BillingMode:        "token",
+		PriceStructure:     "flat",
+		PricingMethod:      "fixed",
+		Currency:           "USD",
+		SalesBillingExpr:   "v2:p / 1000000",
+		SalesExprHash:      "hash",
+	}).Error)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/api/pricing-admin/price-book-versions/92/items/export",
+		nil,
+	)
+	context.Params = gin.Params{{Key: "id", Value: "92"}}
+
+	AdminExportSalesPriceBookItems(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Header().Get("Content-Type"), "text/csv")
+	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "sales-price-book-version-92-items")
+	body := strings.TrimPrefix(recorder.Body.String(), "\ufeff")
+	assert.Contains(t, body, "模型名称")
+	assert.Contains(t, body, "'=unsafe-model-name")
 }
 
 func TestAdminUpdateChannelModelRejectsIdentityMutation(t *testing.T) {

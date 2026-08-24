@@ -23,7 +23,10 @@ import { api } from '@/lib/api'
 import {
   assignUserPriceBook,
   createSalesPriceBookVersion,
+  exportSalesPriceBookItems,
   generateSalesPriceBookItems,
+  getSalesPriceBooks,
+  getUserPriceBookAssignments,
   setDefaultSalesPriceBook,
 } from '../api'
 
@@ -37,8 +40,64 @@ vi.mock('@/lib/api', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(api.get).mockResolvedValue({
+    data: {
+      success: true,
+      data: { items: [], total: 0, page: 1, page_size: 200 },
+    },
+  })
   vi.mocked(api.post).mockResolvedValue({ data: { success: true, data: {} } })
   vi.mocked(api.put).mockResolvedValue({ data: { success: true, data: null } })
+})
+
+test('lists price books and user assignments with server pagination filters', async () => {
+  await getSalesPriceBooks({
+    keyword: 'enterprise',
+    audience: 'tob',
+    status: 'enabled',
+    p: 2,
+    page_size: 200,
+  })
+  await getUserPriceBookAssignments({
+    keyword: 'acme',
+    status: 'active',
+    p: 1,
+    page_size: 50,
+  })
+
+  expect(api.get).toHaveBeenNthCalledWith(1, '/api/pricing-admin/price-books', {
+    params: {
+      keyword: 'enterprise',
+      audience: 'tob',
+      status: 'enabled',
+      p: 2,
+      page_size: 200,
+    },
+  })
+  expect(api.get).toHaveBeenNthCalledWith(
+    2,
+    '/api/pricing-admin/user-price-book-assignments',
+    {
+      params: {
+        keyword: 'acme',
+        status: 'active',
+        p: 1,
+        page_size: 50,
+      },
+    }
+  )
+})
+
+test('exports every model price item from the selected immutable version', async () => {
+  const blob = new Blob(['model'])
+  vi.mocked(api.get).mockResolvedValueOnce({ data: blob })
+
+  await exportSalesPriceBookItems(31)
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/31/items/export',
+    { responseType: 'blob' }
+  )
 })
 
 test('creates an immutable price book draft with the exact cost breakdown', async () => {

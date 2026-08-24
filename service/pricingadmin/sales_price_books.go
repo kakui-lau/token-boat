@@ -18,11 +18,21 @@ const (
 	SalesPriceItemStatusEnabled        = "enabled"
 	SalesPriceItemStatusDisabled       = "disabled"
 	SalesPriceItemStatusReviewRequired = "review_required"
+	SalesPriceBookDefaultPageSize      = 200
+	SalesPriceBookMaximumPageSize      = 200
 )
 
 var (
 	validPriceBookAudiences = map[string]struct{}{
 		"toc": {}, "tob": {}, "internal": {},
+	}
+	validPriceBookStatuses = map[string]struct{}{
+		model.SalesPriceBookStatusDraft: {}, model.SalesPriceBookStatusEnabled: {},
+		model.SalesPriceBookStatusDisabled: {}, model.SalesPriceBookStatusArchived: {},
+	}
+	validPriceBookAssignmentStatuses = map[string]struct{}{
+		model.PriceBookAssignmentStatusScheduled: {}, model.PriceBookAssignmentStatusActive: {},
+		model.PriceBookAssignmentStatusExpired: {}, model.PriceBookAssignmentStatusCancelled: {},
 	}
 	validCostBasisStrategies = map[string]struct{}{
 		"max_eligible_cost": {}, "designated_channel": {},
@@ -52,6 +62,30 @@ type SalesPriceBookItemListItem struct {
 	ModelName string `json:"model_name"`
 }
 
+type SalesPriceBookListFilter struct {
+	Keyword  string
+	Audience string
+	Status   string
+	Page     int
+	PageSize int
+}
+
+type UserPriceBookAssignmentListFilter struct {
+	Keyword     string
+	UserId      int
+	PriceBookId int
+	Status      string
+	Page        int
+	PageSize    int
+}
+
+type UserPriceBookAssignmentListItem struct {
+	model.UserPriceBookAssignment
+	Username      string `json:"username"`
+	PriceBookName string `json:"price_book_name"`
+	PriceBookCode string `json:"price_book_code"`
+}
+
 func CreateSalesPriceBook(input *model.SalesPriceBook, userId int) error {
 	if input == nil {
 		return errors.New("sales price book is required")
@@ -76,36 +110,125 @@ func CreateSalesPriceBook(input *model.SalesPriceBook, userId int) error {
 	return model.DB.Create(input).Error
 }
 
-func ListSalesPriceBooks() ([]SalesPriceBookListItem, error) {
-	var books []model.SalesPriceBook
-	if err := model.DB.Order("id DESC").Find(&books).Error; err != nil {
-		return nil, err
+func ListSalesPriceBooks(filter SalesPriceBookListFilter) ([]SalesPriceBookListItem, int64, error) {
+	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	filter.Audience = strings.ToLower(strings.TrimSpace(filter.Audience))
+	filter.Status = strings.ToLower(strings.TrimSpace(filter.Status))
+	filter.Page, filter.PageSize = normalizeSalesPriceBookPage(filter.Page, filter.PageSize)
+	if filter.Audience != "" {
+		if _, ok := validPriceBookAudiences[filter.Audience]; !ok {
+			return nil, 0, fmt.Errorf("unsupported sales price book audience %q", filter.Audience)
+		}
 	}
+	if filter.Status != "" {
+		if _, ok := validPriceBookStatuses[filter.Status]; !ok {
+			return nil, 0, fmt.Errorf("unsupported sales price book status %q", filter.Status)
+		}
+	}
+
+	query := model.DB.Model(&model.SalesPriceBook{})
+	if filter.Keyword != "" {
+		pattern := "%" + strings.ToLower(filter.Keyword) + "%"
+		query = query.Where("LOWER(name) LIKE ? OR LOWER(code) LIKE ?", pattern, pattern)
+	}
+	if filter.Audience != "" {
+		query = query.Where("audience = ?", filter.Audience)
+	}
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var books []model.SalesPriceBook
+	if err := query.Order("id DESC").
+		Offset((filter.Page - 1) * filter.PageSize).
+		Limit(filter.PageSize).
+		Find(&books).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(books) == 0 {
+		return []SalesPriceBookListItem{}, total, nil
+	}
+
+	bookIds := make([]int, 0, len(books))
+	currentVersionIds := make([]int, 0, len(books))
+	for _, book := range books {
+		bookIds = append(bookIds, book.Id)
+		if book.CurrentVersionId != nil {
+			currentVersionIds = append(currentVersionIds, *book.CurrentVersionId)
+		}
+	}
+	versionsById := make(map[int]model.SalesPriceBookVersion, len(currentVersionIds))
+	modelCountsByVersion := make(map[int]int64, len(currentVersionIds))
+	if len(currentVersionIds) > 0 {
+		var versions []model.SalesPriceBookVersion
+		if err := model.DB.Where("id IN ?", currentVersionIds).Find(&versions).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, version := range versions {
+			versionsById[version.Id] = version
+		}
+		var counts []struct {
+			PriceBookVersionId int
+			Count              int64
+		}
+		if err := model.DB.Model(&model.SalesPriceBookItem{}).
+			Select("price_book_version_id, COUNT(*) AS count").
+			Where("price_book_version_id IN ? AND status = ?", currentVersionIds, SalesPriceItemStatusEnabled).
+			Group("price_book_version_id").Scan(&counts).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, count := range counts {
+			modelCountsByVersion[count.PriceBookVersionId] = count.Count
+		}
+	}
+	assignedUsersByBook := make(map[int]int64, len(bookIds))
+	var assignmentCounts []struct {
+		PriceBookId int
+		Count       int64
+	}
+	if err := model.DB.Model(&model.UserPriceBookAssignment{}).
+		Select("price_book_id, COUNT(*) AS count").
+		Where("price_book_id IN ? AND status IN ?", bookIds, []string{
+			model.PriceBookAssignmentStatusActive,
+			model.PriceBookAssignmentStatusScheduled,
+		}).Group("price_book_id").Scan(&assignmentCounts).Error; err != nil {
+		return nil, 0, err
+	}
+	for _, count := range assignmentCounts {
+		assignedUsersByBook[count.PriceBookId] = count.Count
+	}
+
 	items := make([]SalesPriceBookListItem, 0, len(books))
 	for _, book := range books {
-		item := SalesPriceBookListItem{SalesPriceBook: book}
-		if book.CurrentVersionId != nil {
-			var version model.SalesPriceBookVersion
-			if err := model.DB.First(&version, *book.CurrentVersionId).Error; err != nil {
-				return nil, err
-			}
-			item.CurrentVersion = &version
-			if err := model.DB.Model(&model.SalesPriceBookItem{}).
-				Where("price_book_version_id = ? AND status = ?", version.Id, SalesPriceItemStatusEnabled).
-				Count(&item.ModelCount).Error; err != nil {
-				return nil, err
-			}
+		item := SalesPriceBookListItem{
+			SalesPriceBook: book,
+			AssignedUsers:  assignedUsersByBook[book.Id],
 		}
-		if err := model.DB.Model(&model.UserPriceBookAssignment{}).
-			Where("price_book_id = ? AND status IN ?", book.Id, []string{
-				model.PriceBookAssignmentStatusActive,
-				model.PriceBookAssignmentStatusScheduled,
-			}).Count(&item.AssignedUsers).Error; err != nil {
-			return nil, err
+		if book.CurrentVersionId != nil {
+			if version, ok := versionsById[*book.CurrentVersionId]; ok {
+				item.CurrentVersion = &version
+				item.ModelCount = modelCountsByVersion[version.Id]
+			}
 		}
 		items = append(items, item)
 	}
-	return items, nil
+	return items, total, nil
+}
+
+func normalizeSalesPriceBookPage(page int, pageSize int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = SalesPriceBookDefaultPageSize
+	}
+	if pageSize > SalesPriceBookMaximumPageSize {
+		pageSize = SalesPriceBookMaximumPageSize
+	}
+	return page, pageSize
 }
 
 func CreateSalesPriceBookVersion(input *model.SalesPriceBookVersion, userId int) error {
@@ -552,14 +675,52 @@ func ListSalesPriceBookItems(versionId int) ([]SalesPriceBookItemListItem, error
 	return items, err
 }
 
-func ListUserPriceBookAssignments(userId int) ([]model.UserPriceBookAssignment, error) {
-	query := model.DB.Order("id DESC")
-	if userId > 0 {
-		query = query.Where("user_id = ?", userId)
+func ListUserPriceBookAssignments(
+	filter UserPriceBookAssignmentListFilter,
+) ([]UserPriceBookAssignmentListItem, int64, error) {
+	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	filter.Status = strings.ToLower(strings.TrimSpace(filter.Status))
+	filter.Page, filter.PageSize = normalizeSalesPriceBookPage(filter.Page, filter.PageSize)
+	if filter.UserId < 0 || filter.PriceBookId < 0 {
+		return nil, 0, errors.New("user and sales price book filters cannot be negative")
 	}
-	var assignments []model.UserPriceBookAssignment
-	err := query.Find(&assignments).Error
-	return assignments, err
+	if filter.Status != "" {
+		if _, ok := validPriceBookAssignmentStatuses[filter.Status]; !ok {
+			return nil, 0, fmt.Errorf("unsupported price book assignment status %q", filter.Status)
+		}
+	}
+
+	query := model.DB.Table("user_price_book_assignments").
+		Joins("JOIN users ON users.id = user_price_book_assignments.user_id").
+		Joins("JOIN sales_price_books ON sales_price_books.id = user_price_book_assignments.price_book_id")
+	if filter.Keyword != "" {
+		pattern := "%" + strings.ToLower(filter.Keyword) + "%"
+		query = query.Where(
+			"LOWER(users.username) LIKE ? OR LOWER(user_price_book_assignments.quote_reference) LIKE ? OR LOWER(user_price_book_assignments.contract_reference) LIKE ?",
+			pattern, pattern, pattern,
+		)
+	}
+	if filter.UserId > 0 {
+		query = query.Where("user_price_book_assignments.user_id = ?", filter.UserId)
+	}
+	if filter.PriceBookId > 0 {
+		query = query.Where("user_price_book_assignments.price_book_id = ?", filter.PriceBookId)
+	}
+	if filter.Status != "" {
+		query = query.Where("user_price_book_assignments.status = ?", filter.Status)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var assignments []UserPriceBookAssignmentListItem
+	err := query.Select(
+		"user_price_book_assignments.*, users.username AS username, sales_price_books.name AS price_book_name, sales_price_books.code AS price_book_code",
+	).Order("user_price_book_assignments.id DESC").
+		Offset((filter.Page - 1) * filter.PageSize).
+		Limit(filter.PageSize).
+		Scan(&assignments).Error
+	return assignments, total, err
 }
 
 func SetDefaultSalesPriceBook(defaultKey string, priceBookId int, userId int) error {

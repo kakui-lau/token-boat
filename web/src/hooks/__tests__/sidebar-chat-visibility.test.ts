@@ -118,6 +118,7 @@ describe('sidebar chat preset visibility', () => {
         expect.objectContaining({ url: '/official-pricing' }),
         expect.objectContaining({ url: '/pricing-admin' }),
         expect.objectContaining({ url: '/sales-price-generator' }),
+        expect.objectContaining({ url: '/sales-discount-calculator' }),
       ])
     )
     expect(adminGroup?.items).not.toEqual(
@@ -140,6 +141,7 @@ describe('sidebar chat preset visibility', () => {
         expect.objectContaining({ url: '/official-pricing' }),
         expect.objectContaining({ url: '/pricing-admin' }),
         expect.objectContaining({ url: '/sales-price-generator' }),
+        expect.objectContaining({ url: '/sales-discount-calculator' }),
         expect.objectContaining({ url: '/finance' }),
       ])
     )
@@ -163,6 +165,7 @@ describe('sidebar chat preset visibility', () => {
         expect.objectContaining({ url: '/official-pricing' }),
         expect.objectContaining({ url: '/pricing-admin' }),
         expect.objectContaining({ url: '/sales-price-generator' }),
+        expect.objectContaining({ url: '/sales-discount-calculator' }),
         expect.objectContaining({ url: '/pricing-reconciliation' }),
         expect.objectContaining({ url: '/circuit-analysis' }),
         expect.objectContaining({ url: '/finance' }),

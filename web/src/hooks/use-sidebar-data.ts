@@ -21,6 +21,7 @@ import {
   BadgeDollarSign,
   BookOpen,
   Box,
+  Calculator,
   ChartNoAxesCombined,
   CircleDollarSign,
   ClipboardCheck,
@@ -169,6 +170,15 @@ export function useSidebarData(): SidebarData {
             title: t('Sales Price Books'),
             url: '/sales-price-books',
             icon: BookOpen,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.PRICING,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
+          },
+          {
+            title: t('Sales Discount Calculator'),
+            url: '/sales-discount-calculator',
+            icon: Calculator,
             requiredPermission: {
               resource: ADMIN_PERMISSION_RESOURCES.PRICING,
               action: ADMIN_PERMISSION_ACTIONS.READ,

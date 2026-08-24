@@ -183,6 +183,14 @@ type RequestPricingSnapshot struct {
 	ChannelModelId          int     `json:"channel_model_id" gorm:"not null;index"`
 	PurchasePriceVersionId  int     `json:"purchase_price_version_id" gorm:"not null"`
 	RetailPriceVersionId    int     `json:"retail_price_version_id" gorm:"not null"`
+	SalesPriceBookId        int     `json:"sales_price_book_id" gorm:"index"`
+	SalesPriceBookVersionId int     `json:"sales_price_book_version_id" gorm:"index"`
+	SalesPriceBookItemId    int     `json:"sales_price_book_item_id" gorm:"index"`
+	PriceBookAssignmentId   int     `json:"price_book_assignment_id" gorm:"index"`
+	SalesBillingExpr        string  `json:"sales_billing_expr" gorm:"type:text"`
+	SalesExprHash           string  `json:"sales_expr_hash" gorm:"type:varchar(64)"`
+	SalesPricingSource      string  `json:"sales_pricing_source" gorm:"type:varchar(24);index"`
+	SalesPriceResolvedAt    int64   `json:"sales_price_resolved_at" gorm:"bigint;index"`
 	BillingMode             string  `json:"billing_mode" gorm:"type:varchar(32);not null"`
 	EstimatedUsage          string  `json:"estimated_usage" gorm:"type:text"`
 	ActualUsage             string  `json:"actual_usage" gorm:"type:text"`
@@ -210,7 +218,11 @@ type RequestPricingSnapshot struct {
 	AppliedGroupRatio       string  `json:"applied_group_ratio" gorm:"type:decimal(36,18)"`
 	QuotaPerUnit            string  `json:"quota_per_unit" gorm:"type:decimal(36,18)"`
 	TotalVariableCostRate   string  `json:"total_variable_cost_rate" gorm:"type:decimal(18,12)"`
+	PaymentFeeRate          string  `json:"payment_fee_rate" gorm:"type:decimal(18,12)"`
+	DistributionFeeRate     string  `json:"distribution_fee_rate" gorm:"type:decimal(18,12)"`
+	OperationsLaborRate     string  `json:"operations_labor_rate" gorm:"type:decimal(18,12)"`
 	EffectiveTaxRate        string  `json:"effective_tax_rate" gorm:"type:decimal(18,12)"`
+	TargetNetMargin         string  `json:"target_net_margin" gorm:"type:decimal(18,12)"`
 	MinimumMarginRate       string  `json:"minimum_margin_rate" gorm:"type:decimal(18,12)"`
 	NetMarginRate           string  `json:"net_margin_rate" gorm:"type:decimal(36,18)"`
 	MarginCompliant         bool    `json:"margin_compliant"`

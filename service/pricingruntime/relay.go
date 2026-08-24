@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingengine"
+	"github.com/QuantumNous/new-api/setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/shopspring/decimal"
 )
@@ -145,8 +146,26 @@ func PrepareRelayPricing(
 	if !selectedIsV2 {
 		return hosttypes.PriceData{}, false, nil
 	}
+	var resolvedSales *ResolvedSalesPrice
+	if setting.SalesPriceBookRuntimeEnabled {
+		resolved, err := ResolveSalesPrice(info.UserId, info.OriginModelName, 0)
+		if err != nil {
+			return hosttypes.PriceData{}, false, fmt.Errorf("resolve sales price book: %w", err)
+		}
+		resolvedSales = &resolved
+	}
 	billingMode := bundles[0].Purchase.BillingMode
+	if resolvedSales != nil {
+		billingMode = resolvedSales.Item.BillingMode
+	}
 	usedVars := usedPricingVars(bundles)
+	if resolvedSales != nil {
+		for name, used := range billingexpr.UsedVars(resolvedSales.Item.SalesBillingExpr) {
+			if used {
+				usedVars[name] = true
+			}
+		}
+	}
 	if !usedVars["param"] {
 		requestInput.Body = nil
 	}
@@ -161,9 +180,15 @@ func PrepareRelayPricing(
 	usage.CompletionTokens = float64(maxCompletionTokens)
 	usage.RequestBody = string(requestInput.Body)
 	if billingMode == "video_duration" {
-		expressions := make([]string, 0, len(bundles)*2)
+		expressions := make([]string, 0, len(bundles)*2+1)
 		for _, bundle := range bundles {
-			expressions = append(expressions, bundle.Purchase.PurchaseBillingExpr, bundle.Retail.RetailBillingExpr)
+			expressions = append(expressions, bundle.Purchase.PurchaseBillingExpr)
+			if resolvedSales == nil {
+				expressions = append(expressions, bundle.Retail.RetailBillingExpr)
+			}
+		}
+		if resolvedSales != nil {
+			expressions = append(expressions, resolvedSales.Item.SalesBillingExpr)
 		}
 		if err := validateVideoPricingRequest(expressions, requestInput); err != nil {
 			return hosttypes.PriceData{}, false, err
@@ -182,13 +207,24 @@ func PrepareRelayPricing(
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}
-	quotes, err := QuoteCandidatesWithRequestAndGroupRatio(
-		group,
-		info.OriginModelName,
-		usage,
-		requestInput,
-		groupRatioInfo.GroupRatio,
-	)
+	var quotes []Quote
+	if resolvedSales != nil {
+		quotes, err = QuoteCandidatesWithSalesPrice(
+			group,
+			info.OriginModelName,
+			usage,
+			requestInput,
+			*resolvedSales,
+		)
+	} else {
+		quotes, err = QuoteCandidatesWithRequestAndGroupRatio(
+			group,
+			info.OriginModelName,
+			usage,
+			requestInput,
+			groupRatioInfo.GroupRatio,
+		)
+	}
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}
@@ -219,28 +255,71 @@ func PrepareRelayPricing(
 		if customerCharge.GreaterThan(maximumCustomerCharge) {
 			maximumCustomerCharge = customerCharge
 		}
+		retailPriceVersion := bundle.Retail.Id
+		retailExpression := bundle.Retail.RetailBillingExpr
+		retailExpressionHash := bundle.Retail.RetailExprHash
+		currency := bundle.Retail.Currency
+		totalVariableCostRate := bundle.Retail.TotalVariableCostRate
+		effectiveTaxRate := bundle.Retail.EffectiveTaxRate
+		minimumMarginRate := bundle.Retail.MinimumMarginRate
+		salesPriceBookId := 0
+		salesPriceBookVersionId := 0
+		salesPriceBookItemId := 0
+		priceBookAssignmentId := 0
+		salesPricingSource := "legacy_channel_retail"
+		paymentFeeRate := ""
+		distributionFeeRate := ""
+		operationsLaborRate := ""
+		targetNetMargin := bundle.Retail.TargetNetMargin
+		if resolvedSales != nil {
+			retailPriceVersion = 0
+			retailExpression = resolvedSales.Item.SalesBillingExpr
+			retailExpressionHash = resolvedSales.Item.SalesExprHash
+			currency = resolvedSales.Item.Currency
+			totalVariableCostRate = resolvedSales.Version.TotalVariableCostRate
+			effectiveTaxRate = resolvedSales.Version.EffectiveTaxRate
+			minimumMarginRate = quote.MinimumMarginRate
+			salesPriceBookId = resolvedSales.PriceBookId
+			salesPriceBookVersionId = resolvedSales.PriceBookVersionId
+			salesPriceBookItemId = resolvedSales.PriceBookItemId
+			priceBookAssignmentId = resolvedSales.AssignmentId
+			salesPricingSource = resolvedSales.Source
+			paymentFeeRate = resolvedSales.Version.PaymentFeeRate
+			distributionFeeRate = resolvedSales.Version.DistributionFeeRate
+			operationsLaborRate = resolvedSales.Version.OperationsLaborRate
+			targetNetMargin = resolvedSales.Version.TargetNetMargin
+		}
 		candidates[bundle.ChannelModel.ChannelId] = hosttypes.DynamicPriceCandidate{
 			ChannelModelId:             bundle.ChannelModel.Id,
 			ChannelId:                  bundle.ChannelModel.ChannelId,
 			ModelId:                    bundle.ChannelModel.ModelId,
 			BillingMode:                bundle.Purchase.BillingMode,
 			PurchasePriceVersion:       bundle.Purchase.Id,
-			RetailPriceVersion:         bundle.Retail.Id,
+			RetailPriceVersion:         retailPriceVersion,
 			PurchaseExpression:         bundle.Purchase.PurchaseBillingExpr,
 			PurchaseExpressionHash:     bundle.Purchase.PurchaseExprHash,
-			RetailExpression:           bundle.Retail.RetailBillingExpr,
-			RetailExpressionHash:       bundle.Retail.RetailExprHash,
+			RetailExpression:           retailExpression,
+			RetailExpressionHash:       retailExpressionHash,
 			PricingRevision:            bundle.Revision,
-			Currency:                   bundle.Retail.Currency,
+			Currency:                   currency,
 			ProviderCostMode:           bundle.ProviderCostMode,
 			EstimatedPurchaseUSD:       purchaseAmount.String(),
 			EstimatedRetailUSD:         retailAmount.String(),
 			EstimatedCustomerChargeUSD: customerCharge.String(),
-			TotalVariableCostRate:      bundle.Retail.TotalVariableCostRate,
-			EffectiveTaxRate:           bundle.Retail.EffectiveTaxRate,
-			MinimumMarginRate:          bundle.Retail.MinimumMarginRate,
+			TotalVariableCostRate:      totalVariableCostRate,
+			EffectiveTaxRate:           effectiveTaxRate,
+			MinimumMarginRate:          minimumMarginRate,
 			EstimatedNetMarginRate:     quote.EstimatedNetMarginRate,
 			MarginCompliant:            quote.MeetsMinimumMargin,
+			SalesPriceBookId:           salesPriceBookId,
+			SalesPriceBookVersionId:    salesPriceBookVersionId,
+			SalesPriceBookItemId:       salesPriceBookItemId,
+			PriceBookAssignmentId:      priceBookAssignmentId,
+			SalesPricingSource:         salesPricingSource,
+			PaymentFeeRate:             paymentFeeRate,
+			DistributionFeeRate:        distributionFeeRate,
+			OperationsLaborRate:        operationsLaborRate,
+			TargetNetMargin:            targetNetMargin,
 		}
 		routeCandidates = append(routeCandidates, RouteCandidate{
 			ChannelId:      bundle.ChannelModel.ChannelId,
@@ -268,6 +347,10 @@ func PrepareRelayPricing(
 	if err != nil {
 		return hosttypes.PriceData{}, false, err
 	}
+	effectiveGroupRatio := groupRatioInfo.GroupRatio
+	if resolvedSales != nil {
+		effectiveGroupRatio = 1
+	}
 	info.DynamicPricingSnapshot = &hosttypes.DynamicPricingSnapshot{
 		CandidatesByChannelId:     candidates,
 		RouteChannelIds:           routeChannelIds,
@@ -275,13 +358,17 @@ func PrepareRelayPricing(
 		EstimatedPromptTokens:     promptTokens,
 		EstimatedCompletionTokens: maxCompletionTokens,
 		Group:                     group,
-		GroupRatio:                groupRatioInfo.GroupRatio,
+		GroupRatio:                effectiveGroupRatio,
 		QuotaPerUnit:              common.QuotaPerUnit,
 		EstimatedUsage:            string(estimatedUsageJSON),
 	}
 	info.BillingRequestInput = &requestInput
+	effectiveGroupRatioInfo := groupRatioInfo
+	if resolvedSales != nil {
+		effectiveGroupRatioInfo.GroupRatio = 1
+	}
 	info.PriceData = hosttypes.PriceData{
-		GroupRatioInfo:    groupRatioInfo,
+		GroupRatioInfo:    effectiveGroupRatioInfo,
 		QuotaToPreConsume: reservationQuota,
 	}
 	if selectedChannelId > 0 {

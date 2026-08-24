@@ -182,6 +182,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap["SalesPriceBookRuntimeEnabled"] = strconv.FormatBool(setting.SalesPriceBookRuntimeEnabled)
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -606,6 +607,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateGroupRatioByJSONString(value)
 	case "GroupGroupRatio":
 		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
+	case "SalesPriceBookRuntimeEnabled":
+		setting.SalesPriceBookRuntimeEnabled, _ = strconv.ParseBool(value)
 	case "UserUsableGroups":
 		err = setting.UpdateUserUsableGroupsByJSONString(value)
 	case "CompletionRatio":
@@ -662,6 +665,8 @@ func isPricingOption(key string) bool {
 		"CompletionRatio", "CacheRatio", "CreateCacheRatio", "ImageRatio",
 		"AudioRatio", "AudioCompletionRatio", "AutoGroups", "UserUsableGroups",
 		"ExposeRatioEnabled":
+		return true
+	case "SalesPriceBookRuntimeEnabled":
 		return true
 	default:
 		return strings.HasPrefix(key, "billing_setting.")

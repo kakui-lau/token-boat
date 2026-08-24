@@ -22,6 +22,15 @@ type DynamicPriceCandidate struct {
 	MinimumMarginRate          string
 	EstimatedNetMarginRate     string
 	MarginCompliant            bool
+	SalesPriceBookId           int
+	SalesPriceBookVersionId    int
+	SalesPriceBookItemId       int
+	PriceBookAssignmentId      int
+	SalesPricingSource         string
+	PaymentFeeRate             string
+	DistributionFeeRate        string
+	OperationsLaborRate        string
+	TargetNetMargin            string
 }
 
 type DynamicPricingSnapshot struct {

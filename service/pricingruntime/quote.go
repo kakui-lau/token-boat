@@ -170,6 +170,99 @@ func QuoteCandidatesWithRequestAndGroupRatio(
 	return quotes, nil
 }
 
+func QuoteCandidatesWithSalesPrice(
+	group string,
+	modelName string,
+	usage pricingengine.Usage,
+	requestInput billingexpr.RequestInput,
+	resolved ResolvedSalesPrice,
+) ([]Quote, error) {
+	requestInput = billingexpr.FreezeRequestInput(requestInput)
+	if err := pricingengine.ValidateUsage(usage); err != nil {
+		return nil, err
+	}
+	bundles := GetCandidateBundles(group, modelName)
+	if len(bundles) == 0 {
+		return nil, errors.New("no complete v2 purchase price is available for this model and group")
+	}
+	sales, err := pricingengine.EvaluateWithRequest(
+		resolved.Item.SalesBillingExpr,
+		resolved.Item.SalesExprHash,
+		usage,
+		requestInput,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("evaluate sales price book item %d: %w", resolved.Item.Id, err)
+	}
+	variableCostRate, err := parseRate(
+		"total variable cost rate",
+		resolved.Version.TotalVariableCostRate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	taxRate, err := parseRate("effective tax rate", resolved.Version.EffectiveTaxRate)
+	if err != nil {
+		return nil, err
+	}
+	minimumMarginValue := resolved.Version.MinimumMarginRate
+	if resolved.Item.MinimumMarginOverride != "" {
+		minimumMarginValue = resolved.Item.MinimumMarginOverride
+	}
+	minimumMargin, err := parseMargin(minimumMarginValue)
+	if err != nil {
+		return nil, err
+	}
+	quotes := make([]Quote, 0, len(bundles))
+	for _, bundle := range bundles {
+		if bundle.Purchase.BillingMode != resolved.Item.BillingMode {
+			return nil, fmt.Errorf(
+				"channel model %d purchase billing mode %q does not match sales price book mode %q",
+				bundle.ChannelModel.Id,
+				bundle.Purchase.BillingMode,
+				resolved.Item.BillingMode,
+			)
+		}
+		purchase, err := pricingengine.EvaluateWithRequest(
+			bundle.Purchase.PurchaseBillingExpr,
+			bundle.Purchase.PurchaseExprHash,
+			usage,
+			requestInput,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"evaluate purchase price for channel model %d: %w",
+				bundle.ChannelModel.Id,
+				err,
+			)
+		}
+		netMargin := calculateNetMargin(
+			purchase.Amount,
+			sales.Amount,
+			variableCostRate,
+			taxRate,
+		)
+		quotes = append(quotes, Quote{
+			ChannelModelId:         bundle.ChannelModel.Id,
+			ChannelId:              bundle.ChannelModel.ChannelId,
+			PurchasePriceVersion:   bundle.Purchase.Id,
+			RetailPriceVersion:     0,
+			PricingRevision:        resolved.Version.ContentHash,
+			PurchaseCost:           purchase.Amount.String(),
+			RetailAmount:           sales.Amount.String(),
+			CustomerCharge:         sales.Amount.String(),
+			AppliedGroupRatio:      "1",
+			Currency:               resolved.Item.Currency,
+			PurchaseMatchedTier:    purchase.MatchedTier,
+			RetailMatchedTier:      sales.MatchedTier,
+			MeetsMinimumMargin:     meetsMinimumMargin(netMargin, minimumMargin),
+			MinimumMarginRate:      minimumMargin.String(),
+			EstimatedNetMarginRate: netMargin.String(),
+		})
+	}
+	return quotes, nil
+}
+
 func calculateNetMargin(
 	purchaseCost decimal.Decimal,
 	customerCharge decimal.Decimal,

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   BadgeDollarSign,
+  BookOpen,
   Box,
   Calculator,
   ChartNoAxesCombined,
@@ -169,6 +170,15 @@ export function useSidebarData(): SidebarData {
             title: t('Sales Price Generator'),
             url: '/sales-price-generator',
             icon: Calculator,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.PRICING,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
+          },
+          {
+            title: t('Sales Price Books'),
+            url: '/sales-price-books',
+            icon: BookOpen,
             requiredPermission: {
               resource: ADMIN_PERMISSION_RESOURCES.PRICING,
               action: ADMIN_PERMISSION_ACTIONS.READ,

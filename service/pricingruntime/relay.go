@@ -101,6 +101,37 @@ func SupportsFixedVideoTaskPricing(group string, modelName string) bool {
 	return true
 }
 
+func SupportsFixedVideoTaskSalesPricing(userId int, group string, modelName string) bool {
+	bundles := GetPurchaseCandidateBundles(group, modelName)
+	if len(bundles) == 0 {
+		return false
+	}
+	resolved, err := ResolveSalesPrice(userId, modelName, 0)
+	if err != nil {
+		return false
+	}
+	usedVars := usedPricingVars(bundles)
+	for name, used := range billingexpr.UsedVars(resolved.Item.SalesBillingExpr) {
+		if used {
+			usedVars[name] = true
+		}
+	}
+	unsupported := map[string]bool{
+		"p": true, "c": true, "len": true,
+		"cr": true, "cc": true, "cc1h": true,
+		"img": true, "img_o": true, "ai": true, "ao": true,
+		"images": true, "audio_s": true, "chars": true,
+		"header": true, "hour": true, "minute": true,
+		"weekday": true, "month": true, "day": true,
+	}
+	for name, used := range usedVars {
+		if used && unsupported[name] {
+			return false
+		}
+	}
+	return true
+}
+
 func PrepareRelayPricing(
 	info *relaycommon.RelayInfo,
 	group string,
@@ -111,7 +142,7 @@ func PrepareRelayPricing(
 	requestInput billingexpr.RequestInput,
 	businessUsage pricingengine.Usage,
 ) (hosttypes.PriceData, bool, error) {
-	bundles := GetCandidateBundles(group, info.OriginModelName)
+	bundles := GetRuntimeCandidateBundles(group, info.OriginModelName)
 	selectedIsV2 := selectedChannelId == 0
 	for _, bundle := range bundles {
 		if bundle.ChannelModel.ChannelId == selectedChannelId {
@@ -131,7 +162,7 @@ func PrepareRelayPricing(
 				err,
 			)
 		}
-		bundles = GetCandidateBundles(group, info.OriginModelName)
+		bundles = GetRuntimeCandidateBundles(group, info.OriginModelName)
 		selectedIsV2 = false
 		for _, bundle := range bundles {
 			if bundle.ChannelModel.ChannelId == selectedChannelId {

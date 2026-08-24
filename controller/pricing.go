@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -41,7 +42,8 @@ func scopePricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]
 func markPricingAvailability(pricing []model.Pricing) []model.Pricing {
 	for index := range pricing {
 		hasUsableRoute := len(pricing[index].EnableGroup) > 0
-		hasActiveV2Price := pricing[index].PricingSource == "v2_dynamic"
+		hasActiveV2Price := pricing[index].PricingSource == "v2_dynamic" ||
+			pricing[index].PricingSource == "sales_price_book"
 		if hasActiveV2Price && hasUsableRoute {
 			pricing[index].Available = true
 			pricing[index].AvailabilityStatus = model.PricingAvailabilityAvailable
@@ -75,7 +77,19 @@ func GetPricing(c *gin.Context) {
 		groupRatio[usableGroupName] = service.GetUserGroupRatio(group, usableGroupName)
 	}
 	pricing = scopePricingByUsableGroups(pricing, usableGroup)
-	pricing = pricingruntime.ApplyV2RetailPricing(pricing, usableGroup, groupRatio)
+	if setting.SalesPriceBookRuntimeEnabled {
+		resolvedUserId := 0
+		if exists {
+			resolvedUserId = userId.(int)
+		}
+		pricing = pricingruntime.ApplySalesPriceBookPricing(
+			pricing,
+			resolvedUserId,
+			usableGroup,
+		)
+	} else {
+		pricing = pricingruntime.ApplyV2RetailPricing(pricing, usableGroup, groupRatio)
+	}
 	pricing = markPricingAvailability(pricing)
 
 	c.JSON(200, gin.H{
@@ -131,16 +145,25 @@ func QuotePricing(c *gin.Context) {
 	var quoteRange pricingruntime.RetailQuoteRange
 	selectedGroup := ""
 	for _, quoteGroup := range quoteGroups {
-		if !pricingruntime.HasCompleteV2Pricing(quoteGroup, input.ModelName) {
+		if !pricingruntime.HasRuntimePricing(quoteGroup, input.ModelName) {
 			continue
 		}
 		var err error
-		quoteRange, err = pricingruntime.QuoteRetailRange(
-			quoteGroup,
-			input.ModelName,
-			input.Usage,
-			service.GetUserGroupRatio(userGroup, quoteGroup),
-		)
+		if setting.SalesPriceBookRuntimeEnabled {
+			quoteRange, err = pricingruntime.QuoteSalesPriceBookRange(
+				c.GetInt("id"),
+				quoteGroup,
+				input.ModelName,
+				input.Usage,
+			)
+		} else {
+			quoteRange, err = pricingruntime.QuoteRetailRange(
+				quoteGroup,
+				input.ModelName,
+				input.Usage,
+				service.GetUserGroupRatio(userGroup, quoteGroup),
+			)
+		}
 		if err != nil {
 			if requestedGroup == "auto" && errors.Is(
 				err,

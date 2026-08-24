@@ -140,6 +140,178 @@ func ApplyV2RetailPricing(
 	return pricing
 }
 
+// ApplySalesPriceBookPricing publishes the customer-specific sales price book
+// while keeping upstream purchase prices and route selection private. The same
+// logical-model sales price is shown for every usable group that has at least
+// one margin-safe purchase route.
+func ApplySalesPriceBookPricing(
+	pricing []model.Pricing,
+	userId int,
+	usableGroups map[string]string,
+) []model.Pricing {
+	officialByModel := map[string]model.OfficialModelPriceVersion{}
+	if snapshot, ok := getCatalogSnapshot(); ok {
+		officialByModel = snapshot.OfficialByModelName
+	}
+	for index := range pricing {
+		if official, exists := officialByModel[pricing[index].ModelName]; exists {
+			pricing[index].OfficialPrice = buildPublicPriceSummary(
+				official.BillingMode,
+				official.PriceStructure,
+				official.Currency,
+				official.PriceComponents,
+				decimal.NewFromInt(1),
+			)
+		}
+
+		resolved, err := ResolveSalesPrice(userId, pricing[index].ModelName, 0)
+		if err != nil {
+			continue
+		}
+		groupNames := make([]string, 0, len(usableGroups))
+		for group := range usableGroups {
+			groupNames = append(groupNames, group)
+		}
+		sort.Strings(groupNames)
+		eligibleGroups := make([]string, 0, len(groupNames))
+		eligibleRoutes := make(map[int]struct{})
+		for _, group := range groupNames {
+			groupEligible := false
+			for _, bundle := range GetPurchaseCandidateBundles(group, pricing[index].ModelName) {
+				if !salesPriceBookCandidateHasSafeStructuredMargins(resolved, bundle) {
+					continue
+				}
+				groupEligible = true
+				eligibleRoutes[bundle.ChannelModel.Id] = struct{}{}
+			}
+			if groupEligible {
+				eligibleGroups = append(eligibleGroups, group)
+			}
+		}
+		if len(eligibleGroups) == 0 {
+			continue
+		}
+
+		pricing[index].PricingSource = "sales_price_book"
+		pricing[index].PricingGroups = eligibleGroups
+		pricing[index].BillingMode = "tiered_expr"
+		pricing[index].BillingExpr = resolved.Item.SalesBillingExpr
+		pricing[index].PricingVersion = resolved.Version.ContentHash
+
+		baseSummary := buildPublicPriceSummary(
+			resolved.Item.BillingMode,
+			resolved.Item.PriceStructure,
+			resolved.Item.Currency,
+			resolved.Item.PriceComponents,
+			decimal.NewFromInt(1),
+		)
+		if baseSummary == nil {
+			continue
+		}
+		baseSummary.ComparisonScope = "sales_price_book"
+		baseSummary.CandidateCount = len(eligibleRoutes)
+		pricing[index].LowestPrice = baseSummary
+		pricesByGroup := make(map[string]*model.PublicPriceSummary, len(eligibleGroups))
+		for _, group := range eligibleGroups {
+			summary := buildPublicPriceSummary(
+				resolved.Item.BillingMode,
+				resolved.Item.PriceStructure,
+				resolved.Item.Currency,
+				resolved.Item.PriceComponents,
+				decimal.NewFromInt(1),
+			)
+			if summary == nil {
+				continue
+			}
+			summary.ComparisonScope = "sales_price_book"
+			summary.CandidateCount = len(eligibleRoutes)
+			for itemIndex := range summary.Items {
+				summary.Items[itemIndex].BaseAmount = summary.Items[itemIndex].Amount
+				summary.Items[itemIndex].AppliedGroup = group
+				summary.Items[itemIndex].AppliedGroupLabel = usableGroups[group]
+				summary.Items[itemIndex].AppliedGroupRatio = "1"
+			}
+			pricesByGroup[group] = summary
+		}
+		if len(pricesByGroup) > 0 {
+			pricing[index].RetailPricesByGroup = pricesByGroup
+		}
+	}
+	return pricing
+}
+
+func salesPriceBookCandidateHasSafeStructuredMargins(
+	resolved ResolvedSalesPrice,
+	bundle ActivePriceBundle,
+) bool {
+	purchase := buildPublicPriceSummary(
+		bundle.Purchase.BillingMode,
+		bundle.Purchase.PriceStructure,
+		bundle.Purchase.Currency,
+		bundle.Purchase.PriceComponents,
+		decimal.NewFromInt(1),
+	)
+	sales := buildPublicPriceSummary(
+		resolved.Item.BillingMode,
+		resolved.Item.PriceStructure,
+		resolved.Item.Currency,
+		resolved.Item.PriceComponents,
+		decimal.NewFromInt(1),
+	)
+	if purchase == nil || sales == nil {
+		// Expression-only contracts cannot be evaluated without concrete usage.
+		// Request-time quoting remains authoritative and fails closed on margin.
+		return true
+	}
+	if purchase.Currency != sales.Currency {
+		return false
+	}
+	variableCostRate, err := parseRate(
+		"total variable cost rate",
+		resolved.Version.TotalVariableCostRate,
+	)
+	if err != nil {
+		return false
+	}
+	taxRate, err := parseRate("effective tax rate", resolved.Version.EffectiveTaxRate)
+	if err != nil {
+		return false
+	}
+	minimumMarginValue := resolved.Version.MinimumMarginRate
+	if resolved.Item.MinimumMarginOverride != "" {
+		minimumMarginValue = resolved.Item.MinimumMarginOverride
+	}
+	minimumMargin, err := parseMargin(minimumMarginValue)
+	if err != nil {
+		return false
+	}
+	purchaseByKey := make(map[string]decimal.Decimal, len(purchase.Items))
+	for _, item := range purchase.Items {
+		amount, parseErr := decimal.NewFromString(item.Amount)
+		if parseErr != nil {
+			return false
+		}
+		purchaseByKey[item.Key] = amount
+	}
+	if len(purchaseByKey) != len(sales.Items) {
+		return false
+	}
+	for _, item := range sales.Items {
+		purchaseAmount, exists := purchaseByKey[item.Key]
+		if !exists {
+			return false
+		}
+		salesAmount, parseErr := decimal.NewFromString(item.Amount)
+		if parseErr != nil || !meetsMinimumMargin(
+			calculateNetMargin(purchaseAmount, salesAmount, variableCostRate, taxRate),
+			minimumMargin,
+		) {
+			return false
+		}
+	}
+	return true
+}
+
 func publicPricingCandidates(
 	modelName string,
 	usableGroups map[string]string,

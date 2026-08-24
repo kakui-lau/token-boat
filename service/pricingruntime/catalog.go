@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"gorm.io/gorm"
 )
@@ -31,12 +32,15 @@ type ActivePriceBundle struct {
 }
 
 type CatalogSnapshot struct {
-	CreatedAt              time.Time
-	RevisionByChannelModel map[int]string
-	BundleByChannelModel   map[int]ActivePriceBundle
-	CandidatesByGroupModel map[string][]int
-	CompleteV2ByGroupModel map[string]bool
-	OfficialByModelName    map[string]model.OfficialModelPriceVersion
+	CreatedAt                      time.Time
+	RevisionByChannelModel         map[int]string
+	BundleByChannelModel           map[int]ActivePriceBundle
+	PurchaseBundleByChannelModel   map[int]ActivePriceBundle
+	CandidatesByGroupModel         map[string][]int
+	PurchaseCandidatesByGroupModel map[string][]int
+	CompleteV2ByGroupModel         map[string]bool
+	CompletePurchaseByGroupModel   map[string]bool
+	OfficialByModelName            map[string]model.OfficialModelPriceVersion
 }
 
 type RuntimeReadiness struct {
@@ -128,6 +132,76 @@ func loadActivePriceBundle(db *gorm.DB, channelModelId int) (ActivePriceBundle, 
 		bundle.Official = &official
 	}
 	bundle.Revision = bundleRevision(bundle)
+	return bundle, nil
+}
+
+func loadActivePurchaseBundle(db *gorm.DB, channelModelId int) (ActivePriceBundle, error) {
+	var bundle ActivePriceBundle
+	if channelModelId <= 0 {
+		return bundle, errors.New("channel model is required")
+	}
+	if err := db.First(&bundle.ChannelModel, channelModelId).Error; err != nil {
+		return bundle, err
+	}
+	var purchases []model.ChannelModelPurchasePriceVersion
+	if err := db.Where(
+		"channel_model_id = ? AND status = ?",
+		channelModelId,
+		model.PricingVersionStatusActive,
+	).Order("id ASC").Limit(2).Find(&purchases).Error; err != nil {
+		return bundle, err
+	}
+	if len(purchases) == 0 {
+		return bundle, fmt.Errorf("channel model %d has no active purchase price", channelModelId)
+	}
+	if len(purchases) > 1 {
+		return bundle, fmt.Errorf("channel model %d has multiple active purchase prices", channelModelId)
+	}
+	bundle.Purchase = purchases[0]
+	if bundle.Purchase.OfficialPriceVersionId != nil {
+		var official model.OfficialModelPriceVersion
+		if err := db.First(&official, *bundle.Purchase.OfficialPriceVersionId).Error; err != nil {
+			return bundle, err
+		}
+		bundle.Official = &official
+	}
+	bundle.Revision = fmt.Sprintf(
+		"purchase:%d:%s",
+		bundle.Purchase.Id,
+		bundle.Purchase.PurchaseExprHash,
+	)
+	return bundle, nil
+}
+
+func validateV2PurchaseActivation(db *gorm.DB, channelModelId int) (ActivePriceBundle, error) {
+	bundle, err := loadActivePurchaseBundle(db, channelModelId)
+	if err != nil {
+		return ActivePriceBundle{}, err
+	}
+	if bundle.ChannelModel.Status == 0 {
+		return ActivePriceBundle{}, errors.New("disabled channel model cannot provide purchase pricing")
+	}
+	if bundle.Purchase.Currency != "USD" {
+		return ActivePriceBundle{}, errors.New("v2 purchase runtime requires USD pricing")
+	}
+	supportedBillingModes := map[string]struct{}{
+		"token": {}, "request": {}, "image": {}, "character": {},
+		"audio_duration": {}, "video_duration": {}, "mixed": {},
+	}
+	if _, supported := supportedBillingModes[bundle.Purchase.BillingMode]; !supported {
+		return ActivePriceBundle{}, errors.New("v2 purchase runtime does not support this billing mode")
+	}
+	if bundle.Purchase.ExpressionSchemaVersion != "v2" ||
+		billingexpr.ExprVersion(bundle.Purchase.PurchaseBillingExpr) != 2 {
+		return ActivePriceBundle{}, errors.New("purchase price expression must use the v2 schema")
+	}
+	if bundle.Purchase.PurchaseExprHash == "" ||
+		bundle.Purchase.PurchaseExprHash != billingexpr.ExprHashString(bundle.Purchase.PurchaseBillingExpr) {
+		return ActivePriceBundle{}, errors.New("purchase price expression hash does not match")
+	}
+	if err := billing_setting.SmokeTestExpr(bundle.Purchase.PurchaseBillingExpr); err != nil {
+		return ActivePriceBundle{}, fmt.Errorf("execute purchase price expression smoke test: %w", err)
+	}
 	return bundle, nil
 }
 
@@ -278,6 +352,25 @@ func validateCandidateContracts(bundles []ActivePriceBundle) error {
 	return nil
 }
 
+func validatePurchaseCandidateContracts(bundles []ActivePriceBundle) error {
+	if len(bundles) < 2 {
+		return nil
+	}
+	reference := bundles[0].Purchase
+	for _, candidate := range bundles[1:] {
+		if candidate.Purchase.Currency != reference.Currency ||
+			candidate.Purchase.BillingMode != reference.BillingMode ||
+			candidate.Purchase.PriceStructure != reference.PriceStructure {
+			return fmt.Errorf(
+				"channel model %d purchase contract does not match channel model %d",
+				candidate.ChannelModel.Id,
+				bundles[0].ChannelModel.Id,
+			)
+		}
+	}
+	return nil
+}
+
 func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 	if runtimeMode != RuntimeModeLegacy && runtimeMode != RuntimeModeV2 {
 		return 0, fmt.Errorf("unsupported runtime mode %q", runtimeMode)
@@ -341,7 +434,13 @@ func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 			ids := make([]int, 0, len(channelModels))
 			bundles := make([]ActivePriceBundle, 0, len(channelModels))
 			for _, channelModel := range channelModels {
-				bundle, err := validateV2Activation(tx, channelModel.Id)
+				var bundle ActivePriceBundle
+				var err error
+				if setting.SalesPriceBookRuntimeEnabled {
+					bundle, err = validateV2PurchaseActivation(tx, channelModel.Id)
+				} else {
+					bundle, err = validateV2Activation(tx, channelModel.Id)
+				}
 				if err != nil {
 					return fmt.Errorf(
 						"channel model %d is not ready for V2: %w",
@@ -352,7 +451,11 @@ func SetModelRuntimeMode(modelName string, runtimeMode string) (int, error) {
 				ids = append(ids, channelModel.Id)
 				bundles = append(bundles, bundle)
 			}
-			if err := validateCandidateContracts(bundles); err != nil {
+			validateContracts := validateCandidateContracts
+			if setting.SalesPriceBookRuntimeEnabled {
+				validateContracts = validatePurchaseCandidateContracts
+			}
+			if err := validateContracts(bundles); err != nil {
 				return fmt.Errorf("model %q cannot enable V2: %w", modelName, err)
 			}
 			query = query.Where("id IN ?", ids)
@@ -409,15 +512,21 @@ func RefreshCatalog() error {
 		return err
 	}
 	next := &CatalogSnapshot{
-		CreatedAt:              time.Now(),
-		RevisionByChannelModel: make(map[int]string, len(channelModels)),
-		BundleByChannelModel:   make(map[int]ActivePriceBundle, len(channelModels)),
-		CandidatesByGroupModel: make(map[string][]int),
-		CompleteV2ByGroupModel: make(map[string]bool),
-		OfficialByModelName:    make(map[string]model.OfficialModelPriceVersion),
+		CreatedAt:                      time.Now(),
+		RevisionByChannelModel:         make(map[int]string, len(channelModels)),
+		BundleByChannelModel:           make(map[int]ActivePriceBundle, len(channelModels)),
+		PurchaseBundleByChannelModel:   make(map[int]ActivePriceBundle, len(channelModels)),
+		CandidatesByGroupModel:         make(map[string][]int),
+		PurchaseCandidatesByGroupModel: make(map[string][]int),
+		CompleteV2ByGroupModel:         make(map[string]bool),
+		CompletePurchaseByGroupModel:   make(map[string]bool),
+		OfficialByModelName:            make(map[string]model.OfficialModelPriceVersion),
 	}
 	for _, channelModel := range channelModels {
-		bundle, err := ValidateV2Activation(channelModel.Id)
+		providerCostMode, err := model.NormalizeProviderCostMode(
+			channelModel.ChannelType,
+			channelModel.ProviderCostMode,
+		)
 		if err != nil {
 			common.SysError(fmt.Sprintf(
 				"skip invalid v2 channel model %d and make its model unavailable: %v",
@@ -426,13 +535,22 @@ func RefreshCatalog() error {
 			))
 			continue
 		}
-		providerCostMode, err := model.NormalizeProviderCostMode(
-			channelModel.ChannelType,
-			channelModel.ProviderCostMode,
-		)
+		purchaseBundle, err := validateV2PurchaseActivation(model.DB, channelModel.Id)
 		if err != nil {
 			common.SysError(fmt.Sprintf(
-				"skip invalid v2 channel model %d and make its model unavailable: %v",
+				"skip invalid v2 purchase channel model %d: %v",
+				channelModel.Id,
+				err,
+			))
+			continue
+		}
+		purchaseBundle.ProviderCostMode = providerCostMode
+		next.PurchaseBundleByChannelModel[channelModel.Id] = purchaseBundle
+
+		bundle, err := ValidateV2Activation(channelModel.Id)
+		if err != nil {
+			common.SysError(fmt.Sprintf(
+				"skip legacy retail bundle for v2 channel model %d: %v",
 				channelModel.Id,
 				err,
 			))
@@ -500,16 +618,40 @@ func RefreshCatalog() error {
 		enabledCount[key]++
 		routeKey := fmt.Sprintf("%d\x00%s", ability.ChannelId, ability.Model)
 		for _, channelModelID := range channelModelsByRoute[routeKey] {
-			if _, valid := next.BundleByChannelModel[channelModelID]; !valid {
-				continue
+			if _, valid := next.PurchaseBundleByChannelModel[channelModelID]; valid {
+				next.PurchaseCandidatesByGroupModel[key] = append(
+					next.PurchaseCandidatesByGroupModel[key],
+					channelModelID,
+				)
 			}
-			next.CandidatesByGroupModel[key] = append(
-				next.CandidatesByGroupModel[key],
-				channelModelID,
-			)
+			if _, valid := next.BundleByChannelModel[channelModelID]; valid {
+				next.CandidatesByGroupModel[key] = append(
+					next.CandidatesByGroupModel[key],
+					channelModelID,
+				)
+			}
 		}
 	}
 	for key, count := range enabledCount {
+		purchaseCandidateIds := next.PurchaseCandidatesByGroupModel[key]
+		if count > 0 && len(purchaseCandidateIds) == count {
+			purchaseBundles := make([]ActivePriceBundle, 0, len(purchaseCandidateIds))
+			for _, channelModelId := range purchaseCandidateIds {
+				purchaseBundles = append(
+					purchaseBundles,
+					next.PurchaseBundleByChannelModel[channelModelId],
+				)
+			}
+			if err := validatePurchaseCandidateContracts(purchaseBundles); err != nil {
+				common.SysError(fmt.Sprintf(
+					"skip incompatible purchase candidate pool %q: %v",
+					strings.ReplaceAll(key, "\x00", "/"),
+					err,
+				))
+			} else {
+				next.CompletePurchaseByGroupModel[key] = true
+			}
+		}
 		candidateIds := next.CandidatesByGroupModel[key]
 		if count == 0 || len(candidateIds) != count {
 			continue
@@ -532,6 +674,25 @@ func RefreshCatalog() error {
 	return nil
 }
 
+func GetPurchaseCandidateBundles(group string, modelName string) []ActivePriceBundle {
+	snapshot, ok := getCatalogSnapshot()
+	if !ok {
+		return nil
+	}
+	key := group + "\x00" + modelName
+	if !snapshot.CompletePurchaseByGroupModel[key] {
+		return nil
+	}
+	ids := snapshot.PurchaseCandidatesByGroupModel[key]
+	bundles := make([]ActivePriceBundle, 0, len(ids))
+	for _, id := range ids {
+		if bundle, ok := snapshot.PurchaseBundleByChannelModel[id]; ok {
+			bundles = append(bundles, bundle)
+		}
+	}
+	return bundles
+}
+
 func GetCandidateBundles(group string, modelName string) []ActivePriceBundle {
 	snapshot, ok := getCatalogSnapshot()
 	if !ok {
@@ -552,6 +713,21 @@ func GetCandidateBundles(group string, modelName string) []ActivePriceBundle {
 
 func HasCompleteV2Pricing(group string, modelName string) bool {
 	return len(GetCandidateBundles(group, modelName)) > 0
+}
+
+func HasCompletePurchasePricing(group string, modelName string) bool {
+	return len(GetPurchaseCandidateBundles(group, modelName)) > 0
+}
+
+func GetRuntimeCandidateBundles(group string, modelName string) []ActivePriceBundle {
+	if setting.SalesPriceBookRuntimeEnabled {
+		return GetPurchaseCandidateBundles(group, modelName)
+	}
+	return GetCandidateBundles(group, modelName)
+}
+
+func HasRuntimePricing(group string, modelName string) bool {
+	return len(GetRuntimeCandidateBundles(group, modelName)) > 0
 }
 
 func GetRuntimeReadiness() (RuntimeReadiness, error) {

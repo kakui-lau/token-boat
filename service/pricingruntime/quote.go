@@ -181,7 +181,7 @@ func QuoteCandidatesWithSalesPrice(
 	if err := pricingengine.ValidateUsage(usage); err != nil {
 		return nil, err
 	}
-	bundles := GetCandidateBundles(group, modelName)
+	bundles := GetPurchaseCandidateBundles(group, modelName)
 	if len(bundles) == 0 {
 		return nil, errors.New("no complete v2 purchase price is available for this model and group")
 	}
@@ -309,6 +309,33 @@ func QuoteRetailRange(
 	if err != nil {
 		return RetailQuoteRange{}, err
 	}
+	return quoteRange(quotes, "USD")
+}
+
+func QuoteSalesPriceBookRange(
+	userId int,
+	group string,
+	modelName string,
+	usage pricingengine.Usage,
+) (RetailQuoteRange, error) {
+	resolved, err := ResolveSalesPrice(userId, modelName, 0)
+	if err != nil {
+		return RetailQuoteRange{}, err
+	}
+	quotes, err := QuoteCandidatesWithSalesPrice(
+		group,
+		modelName,
+		usage,
+		billingexpr.RequestInput{Body: []byte(usage.RequestBody)},
+		resolved,
+	)
+	if err != nil {
+		return RetailQuoteRange{}, err
+	}
+	return quoteRange(quotes, resolved.Item.Currency)
+}
+
+func quoteRange(quotes []Quote, currency string) (RetailQuoteRange, error) {
 	minimum := decimal.Zero
 	maximum := decimal.Zero
 	eligibleCount := 0
@@ -332,7 +359,7 @@ func QuoteRetailRange(
 		return RetailQuoteRange{}, ErrNoEligiblePriceCandidate
 	}
 	return RetailQuoteRange{
-		Currency:                 "USD",
+		Currency:                 currency,
 		MinimumRetailAmount:      minimum.String(),
 		MaximumReservationAmount: maximum.String(),
 		EligibleCandidateCount:   eligibleCount,

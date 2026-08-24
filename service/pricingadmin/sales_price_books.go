@@ -47,6 +47,11 @@ type SalesPriceBookListItem struct {
 	AssignedUsers  int64                        `json:"assigned_users"`
 }
 
+type SalesPriceBookItemListItem struct {
+	model.SalesPriceBookItem
+	ModelName string `json:"model_name"`
+}
+
 func CreateSalesPriceBook(input *model.SalesPriceBook, userId int) error {
 	if input == nil {
 		return errors.New("sales price book is required")
@@ -294,7 +299,131 @@ func PublishSalesPriceBookVersion(id int, userId int) error {
 			}).Error; err != nil {
 			return err
 		}
-		return model.ActivateSalesPriceBookVersion(tx, version, userId, common.GetTimestamp())
+		if err := model.ActivateSalesPriceBookVersion(tx, version, userId, common.GetTimestamp()); err != nil {
+			return err
+		}
+		return tx.Create(&model.PricingApprovalRecord{
+			ObjectType: "sales_price_book_version",
+			ObjectId:   version.Id,
+			Action:     "publish",
+			OperatorId: userId,
+		}).Error
+	})
+}
+
+func CloneSalesPriceBookVersion(priceBookId int, sourceVersionId int, userId int) (*model.SalesPriceBookVersion, error) {
+	if priceBookId <= 0 || sourceVersionId <= 0 {
+		return nil, errors.New("sales price book and source version are required")
+	}
+	var cloned model.SalesPriceBookVersion
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		book, err := model.GetSalesPriceBookForUpdate(tx, priceBookId)
+		if err != nil {
+			return err
+		}
+		if book.Status == model.SalesPriceBookStatusArchived {
+			return errors.New("archived sales price books cannot receive new versions")
+		}
+		var source model.SalesPriceBookVersion
+		if err := tx.First(&source, sourceVersionId).Error; err != nil {
+			return err
+		}
+		if source.PriceBookId != priceBookId {
+			return errors.New("source version does not belong to the sales price book")
+		}
+		var maxVersion int64
+		if err := tx.Model(&model.SalesPriceBookVersion{}).
+			Where("price_book_id = ?", priceBookId).
+			Select("COALESCE(MAX(version), 0)").Scan(&maxVersion).Error; err != nil {
+			return err
+		}
+		cloned = source
+		cloned.Id = 0
+		cloned.Version = maxVersion + 1
+		cloned.Status = model.SalesPriceBookVersionStatusDraft
+		cloned.EffectiveFrom = 0
+		cloned.EffectiveTo = 0
+		cloned.ChangeBatchId = nil
+		cloned.CreatedBy = userId
+		cloned.PublishedBy = 0
+		cloned.CreatedAt = 0
+		cloned.UpdatedAt = 0
+		cloned.PublishedAt = 0
+		cloned.ContentHash = emptySalesPriceBookContentHash(cloned)
+		if err := tx.Create(&cloned).Error; err != nil {
+			return err
+		}
+
+		var sourceItems []model.SalesPriceBookItem
+		if err := tx.Where("price_book_version_id = ?", sourceVersionId).
+			Order("id ASC").Find(&sourceItems).Error; err != nil {
+			return err
+		}
+		for _, sourceItem := range sourceItems {
+			oldItemId := sourceItem.Id
+			sourceItem.Id = 0
+			sourceItem.PriceBookVersionId = cloned.Id
+			sourceItem.GeneratedByBatchId = nil
+			sourceItem.CreatedAt = 0
+			if err := tx.Create(&sourceItem).Error; err != nil {
+				return err
+			}
+			var sources []model.SalesPriceBookItemBasisSource
+			if err := tx.Where("price_book_item_id = ?", oldItemId).
+				Order("id ASC").Find(&sources).Error; err != nil {
+				return err
+			}
+			for _, source := range sources {
+				source.Id = 0
+				source.PriceBookItemId = sourceItem.Id
+				source.CreatedAt = 0
+				if err := tx.Create(&source).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return tx.Create(&model.PricingApprovalRecord{
+			ObjectType: "sales_price_book_version",
+			ObjectId:   cloned.Id,
+			Action:     "clone",
+			OperatorId: userId,
+			Comment:    fmt.Sprintf("cloned from version %d", sourceVersionId),
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &cloned, nil
+}
+
+func DisableSalesPriceBook(id int, userId int) error {
+	if id <= 0 {
+		return errors.New("sales price book is required")
+	}
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		book, err := model.GetSalesPriceBookForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if book.Status == model.SalesPriceBookStatusArchived {
+			return errors.New("archived sales price books cannot be disabled")
+		}
+		if book.Status == model.SalesPriceBookStatusDisabled {
+			return nil
+		}
+		if err := tx.Model(&model.SalesPriceBook{}).Where("id = ?", id).
+			Updates(map[string]any{
+				"status":     model.SalesPriceBookStatusDisabled,
+				"updated_at": common.GetTimestamp(),
+			}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.PricingApprovalRecord{
+			ObjectType: "sales_price_book",
+			ObjectId:   id,
+			Action:     "disable",
+			OperatorId: userId,
+		}).Error
 	})
 }
 
@@ -332,7 +461,46 @@ func AssignUserToSalesPriceBook(input *model.UserPriceBookAssignment, userId int
 		} else {
 			input.PinnedVersionId = nil
 		}
-		return model.ReplaceUserPriceBookAssignment(tx, input)
+		if err := model.ReplaceUserPriceBookAssignment(tx, input); err != nil {
+			return err
+		}
+		return tx.Create(&model.PricingApprovalRecord{
+			ObjectType: "user_price_book_assignment",
+			ObjectId:   input.Id,
+			Action:     "assign",
+			OperatorId: userId,
+		}).Error
+	})
+}
+
+func CancelUserPriceBookAssignment(id int, userId int) error {
+	if id <= 0 {
+		return errors.New("price book assignment is required")
+	}
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		assignment, err := model.GetUserPriceBookAssignmentForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		if assignment.Status != model.PriceBookAssignmentStatusActive &&
+			assignment.Status != model.PriceBookAssignmentStatusScheduled {
+			return errors.New("only active or scheduled price book assignments can be cancelled")
+		}
+		now := common.GetTimestamp()
+		if err := tx.Model(&model.UserPriceBookAssignment{}).Where("id = ?", id).
+			Updates(map[string]any{
+				"status":       model.PriceBookAssignmentStatusCancelled,
+				"effective_to": now,
+				"updated_at":   now,
+			}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.PricingApprovalRecord{
+			ObjectType: "user_price_book_assignment",
+			ObjectId:   id,
+			Action:     "cancel",
+			OperatorId: userId,
+		}).Error
 	})
 }
 
@@ -373,10 +541,14 @@ func ListSalesPriceBookVersions(priceBookId int) ([]model.SalesPriceBookVersion,
 	return versions, err
 }
 
-func ListSalesPriceBookItems(versionId int) ([]model.SalesPriceBookItem, error) {
-	var items []model.SalesPriceBookItem
-	err := model.DB.Where("price_book_version_id = ?", versionId).
-		Order("model_id ASC").Find(&items).Error
+func ListSalesPriceBookItems(versionId int) ([]SalesPriceBookItemListItem, error) {
+	var items []SalesPriceBookItemListItem
+	err := model.DB.Table("sales_price_book_items").
+		Select("sales_price_book_items.*, models.model_name AS model_name").
+		Joins("JOIN models ON models.id = sales_price_book_items.model_id").
+		Where("sales_price_book_items.price_book_version_id = ?", versionId).
+		Order("models.model_name ASC, sales_price_book_items.model_id ASC").
+		Scan(&items).Error
 	return items, err
 }
 
@@ -410,17 +582,47 @@ func SetDefaultSalesPriceBook(defaultKey string, priceBookId int, userId int) er
 		var existing model.SalesPriceBookDefault
 		err = tx.First(&existing, "default_key = ?", defaultKey).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return tx.Create(&value).Error
+			if err := tx.Create(&value).Error; err != nil {
+				return err
+			}
+			return tx.Create(&model.PricingApprovalRecord{
+				ObjectType: "sales_price_book_default",
+				ObjectId:   priceBookId,
+				Action:     "set_default",
+				OperatorId: userId,
+				Comment:    defaultKey,
+			}).Error
 		}
 		if err != nil {
 			return err
 		}
-		return tx.Model(&model.SalesPriceBookDefault{}).
+		if err := tx.Model(&model.SalesPriceBookDefault{}).
 			Where("default_key = ?", defaultKey).
 			Updates(map[string]any{
 				"price_book_id": priceBookId,
 				"updated_by":    userId,
 				"updated_at":    value.UpdatedAt,
-			}).Error
+			}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.PricingApprovalRecord{
+			ObjectType: "sales_price_book_default",
+			ObjectId:   priceBookId,
+			Action:     "set_default",
+			OperatorId: userId,
+			Comment:    defaultKey,
+		}).Error
 	})
+}
+
+func GetDefaultSalesPriceBook(defaultKey string) (*model.SalesPriceBookDefault, error) {
+	defaultKey = strings.TrimSpace(defaultKey)
+	if defaultKey != "toc_default" {
+		return nil, fmt.Errorf("unsupported sales price book default %q", defaultKey)
+	}
+	var value model.SalesPriceBookDefault
+	if err := model.DB.First(&value, "default_key = ?", defaultKey).Error; err != nil {
+		return nil, err
+	}
+	return &value, nil
 }

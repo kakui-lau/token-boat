@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -114,15 +115,27 @@ func Distribute() func(c *gin.Context) {
 					routeGroups = service.GetRequestAutoGroups(c, userGroup)
 				}
 				for _, routeGroup := range routeGroups {
-					if !pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model) {
+					pricingReady := pricingruntime.HasCompleteV2Pricing(routeGroup, modelRequest.Model)
+					if setting.SalesPriceBookRuntimeEnabled {
+						pricingReady = pricingruntime.HasCompletePurchasePricing(routeGroup, modelRequest.Model)
+					}
+					if !pricingReady {
 						continue
 					}
 					v2PriceChainFound = true
-					routeCandidates, routeErr := pricingruntime.PlanV2RouteWithGroupRatio(
-						routeGroup,
-						modelRequest.Model,
-						service.GetUserGroupRatio(userGroup, routeGroup),
-					)
+					var routeCandidates []pricingruntime.RouteCandidate
+					var routeErr error
+					if setting.SalesPriceBookRuntimeEnabled {
+						routeCandidates, routeErr = pricingruntime.PlanSalesPriceBookRoute(
+							c.GetInt("id"), routeGroup, modelRequest.Model,
+						)
+					} else {
+						routeCandidates, routeErr = pricingruntime.PlanV2RouteWithGroupRatio(
+							routeGroup,
+							modelRequest.Model,
+							service.GetUserGroupRatio(userGroup, routeGroup),
+						)
+					}
 					if routeErr != nil {
 						common.SysError(fmt.Sprintf(
 							"plan v2 pricing route failed: group=%s model=%s error=%v",

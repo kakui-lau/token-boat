@@ -63,6 +63,42 @@ func AdminCreateSalesPriceBookVersion(c *gin.Context) {
 	common.ApiSuccess(c, &input)
 }
 
+func AdminCloneSalesPriceBookVersion(c *gin.Context) {
+	priceBookId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input struct {
+		SourceVersionId int `json:"source_version_id"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	version, err := pricingadmin.CloneSalesPriceBookVersion(
+		priceBookId,
+		input.SourceVersionId,
+		c.GetInt("id"),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, version)
+}
+
+func AdminDisableSalesPriceBook(c *gin.Context) {
+	priceBookId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.DisableSalesPriceBook(priceBookId, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminListSalesPriceBookItems(c *gin.Context) {
 	versionId, ok := positivePathId(c)
 	if !ok {
@@ -92,6 +128,37 @@ func AdminSaveSalesPriceBookItem(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, &input)
+}
+
+func AdminGenerateSalesPriceBookItems(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input pricingadmin.SalesPriceBookGenerationInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := pricingadmin.GenerateSalesPriceBookItems(versionId, input, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminGetPricingChangeBatch(c *gin.Context) {
+	batchId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	batch, items, err := pricingadmin.GetPricingChangeBatch(batchId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"batch": batch, "items": items})
 }
 
 func AdminPublishSalesPriceBookVersion(c *gin.Context) {
@@ -135,6 +202,28 @@ func AdminAssignUserToSalesPriceBook(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, &input)
+}
+
+func AdminCancelUserPriceBookAssignment(c *gin.Context) {
+	assignmentId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.CancelUserPriceBookAssignment(assignmentId, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminGetDefaultSalesPriceBook(c *gin.Context) {
+	defaultKey := c.DefaultQuery("default_key", "toc_default")
+	value, err := pricingadmin.GetDefaultSalesPriceBook(defaultKey)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, value)
 }
 
 func AdminSetDefaultSalesPriceBook(c *gin.Context) {

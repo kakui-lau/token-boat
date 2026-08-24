@@ -178,7 +178,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		initialGroup := relayInfo.UsingGroup
 		for _, fallbackGroup := range service.GetUserAutoGroup(relayInfo.UserGroup) {
 			if fallbackGroup == initialGroup ||
-				!pricingruntime.HasCompleteV2Pricing(fallbackGroup, relayInfo.OriginModelName) {
+				!pricingruntime.HasRuntimePricing(fallbackGroup, relayInfo.OriginModelName) {
 				continue
 			}
 			common.SetContextKey(c, constant.ContextKeyAutoGroup, fallbackGroup)

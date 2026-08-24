@@ -61,6 +61,7 @@ import { Route as AuthenticatedPricingReconciliationIndexRouteImport } from './r
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRechargeIndexRouteImport } from './routes/_authenticated/recharge/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
+import { Route as AuthenticatedSalesPriceBooksIndexRouteImport } from './routes/_authenticated/sales-price-books/index'
 import { Route as AuthenticatedSalesPriceGeneratorIndexRouteImport } from './routes/_authenticated/sales-price-generator/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
@@ -366,6 +367,12 @@ const AuthenticatedRedemptionCodesIndexRoute =
     path: '/redemption-codes/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSalesPriceBooksIndexRoute =
+  AuthenticatedSalesPriceBooksIndexRouteImport.update({
+    id: '/sales-price-books/',
+    path: '/sales-price-books/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSalesPriceGeneratorIndexRoute =
   AuthenticatedSalesPriceGeneratorIndexRouteImport.update({
     id: '/sales-price-generator/',
@@ -561,6 +568,7 @@ export interface FileRoutesByFullPath {
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/sales-price-books/': typeof AuthenticatedSalesPriceBooksIndexRoute
   '/sales-price-generator/': typeof AuthenticatedSalesPriceGeneratorIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
@@ -636,6 +644,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/recharge': typeof AuthenticatedRechargeIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/sales-price-books': typeof AuthenticatedSalesPriceBooksIndexRoute
   '/sales-price-generator': typeof AuthenticatedSalesPriceGeneratorIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
@@ -715,6 +724,7 @@ export interface FileRoutesById {
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/recharge/': typeof AuthenticatedRechargeIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/_authenticated/sales-price-books/': typeof AuthenticatedSalesPriceBooksIndexRoute
   '/_authenticated/sales-price-generator/': typeof AuthenticatedSalesPriceGeneratorIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
@@ -793,6 +803,7 @@ export interface FileRouteTypes {
     | '/profile/'
     | '/recharge/'
     | '/redemption-codes/'
+    | '/sales-price-books/'
     | '/sales-price-generator/'
     | '/subscriptions/'
     | '/system-info/'
@@ -868,6 +879,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/recharge'
     | '/redemption-codes'
+    | '/sales-price-books'
     | '/sales-price-generator'
     | '/subscriptions'
     | '/system-info'
@@ -946,6 +958,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile/'
     | '/_authenticated/recharge/'
     | '/_authenticated/redemption-codes/'
+    | '/_authenticated/sales-price-books/'
     | '/_authenticated/sales-price-generator/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-info/'
@@ -1362,6 +1375,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRedemptionCodesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/sales-price-books/': {
+      id: '/_authenticated/sales-price-books/'
+      path: '/sales-price-books'
+      fullPath: '/sales-price-books/'
+      preLoaderRoute: typeof AuthenticatedSalesPriceBooksIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/sales-price-generator/': {
       id: '/_authenticated/sales-price-generator/'
       path: '/sales-price-generator'
@@ -1641,6 +1661,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRechargeIndexRoute: typeof AuthenticatedRechargeIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
+  AuthenticatedSalesPriceBooksIndexRoute: typeof AuthenticatedSalesPriceBooksIndexRoute
   AuthenticatedSalesPriceGeneratorIndexRoute: typeof AuthenticatedSalesPriceGeneratorIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
@@ -1684,6 +1705,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRechargeIndexRoute: AuthenticatedRechargeIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
+  AuthenticatedSalesPriceBooksIndexRoute:
+    AuthenticatedSalesPriceBooksIndexRoute,
   AuthenticatedSalesPriceGeneratorIndexRoute:
     AuthenticatedSalesPriceGeneratorIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,

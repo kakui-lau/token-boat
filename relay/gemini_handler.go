@@ -77,7 +77,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			if !strings.Contains(info.OriginModelName, "-nothinking") {
 				// try to get no thinking model price
 				noThinkingModelName := info.OriginModelName + "-nothinking"
-				containPrice := pricingruntime.HasCompleteV2Pricing(
+				containPrice := pricingruntime.HasRuntimePricing(
 					info.UsingGroup,
 					noThinkingModelName,
 				) || helper.HasModelBillingConfig(noThinkingModelName)

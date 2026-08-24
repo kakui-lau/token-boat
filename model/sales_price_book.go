@@ -288,6 +288,12 @@ func GetSalesPriceBookVersionForUpdate(tx *gorm.DB, id int) (SalesPriceBookVersi
 	return version, err
 }
 
+func GetUserPriceBookAssignmentForUpdate(tx *gorm.DB, id int) (UserPriceBookAssignment, error) {
+	var assignment UserPriceBookAssignment
+	err := lockForUpdate(tx).First(&assignment, id).Error
+	return assignment, err
+}
+
 func ActivateSalesPriceBookVersion(
 	tx *gorm.DB,
 	version SalesPriceBookVersion,

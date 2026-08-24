@@ -5,7 +5,10 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/pricingengine"
+	"github.com/QuantumNous/new-api/setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,6 +74,162 @@ func TestQuoteCandidatesWithSalesPriceKeepsCustomerChargeConstantAcrossChannels(
 	assert.Zero(t, quotes[1].RetailPriceVersion)
 }
 
+func TestSalesPriceBookQuotesDoNotRequireLegacyChannelRetailPrice(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 851, RuntimeModeV2)
+	require.NoError(t, model.DB.Where("channel_model_id = ?", 851).
+		Delete(&model.ChannelModelRetailPriceVersion{}).Error)
+	require.NoError(t, RefreshCatalog())
+	assert.Empty(t, GetCandidateBundles("default", "runtime-model"))
+	require.Len(t, GetPurchaseCandidateBundles("default", "runtime-model"), 1)
+
+	salesExpression := `v2:tier("base", p * 2.5 / 1000000)`
+	resolved := ResolvedSalesPrice{
+		Version: model.SalesPriceBookVersion{
+			TotalVariableCostRate: "0", EffectiveTaxRate: "0", MinimumMarginRate: "0.1",
+		},
+		Item: model.SalesPriceBookItem{
+			Id: 99, BillingMode: "token", Currency: "USD",
+			SalesBillingExpr: salesExpression,
+			SalesExprHash:    billingexpr.ExprHashString(salesExpression),
+		},
+	}
+	quotes, err := QuoteCandidatesWithSalesPrice(
+		"default",
+		"runtime-model",
+		pricingengine.Usage{PromptTokens: 1_000_000},
+		billingexpr.RequestInput{},
+		resolved,
+	)
+	require.NoError(t, err)
+	require.Len(t, quotes, 1)
+	assert.Equal(t, "2.5", quotes[0].CustomerCharge)
+	assert.Zero(t, quotes[0].RetailPriceVersion)
+}
+
+func TestPlanSalesPriceBookRouteUsesPurchaseOnlyCatalog(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 861, RuntimeModeV2)
+	require.NoError(t, model.DB.Where("channel_model_id = ?", 861).
+		Delete(&model.ChannelModelRetailPriceVersion{}).Error)
+	require.NoError(t, model.DB.AutoMigrate(
+		&model.SalesPriceBook{},
+		&model.SalesPriceBookVersion{},
+		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookDefault{},
+		&model.UserPriceBookAssignment{},
+	))
+	book, _, item := createResolvedPriceFixture(t, "route-default", 861, 1)
+	salesExpression := `v2:tier("base", p * 2.5 / 1000000)`
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).Where("id = ?", item.Id).
+		Updates(map[string]any{
+			"sales_billing_expr": salesExpression,
+			"sales_expr_hash":    billingexpr.ExprHashString(salesExpression),
+		}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: 1,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	candidates, err := PlanSalesPriceBookRoute(1001, "default", "runtime-model")
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	assert.Equal(t, 861, candidates[0].ChannelModelId)
+	quoteRange, err := QuoteSalesPriceBookRange(
+		1001,
+		"default",
+		"runtime-model",
+		pricingengine.Usage{PromptTokens: 1_000_000},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "2.5", quoteRange.MinimumRetailAmount)
+	assert.Equal(t, "2.5", quoteRange.MaximumReservationAmount)
+}
+
+func TestSalesPriceBookRuntimeCanEnableV2WithoutLegacyRetailPrice(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 871, RuntimeModeLegacy)
+	require.NoError(t, model.DB.Where("channel_model_id = ?", 871).
+		Delete(&model.ChannelModelRetailPriceVersion{}).Error)
+	previous := setting.SalesPriceBookRuntimeEnabled
+	setting.SalesPriceBookRuntimeEnabled = true
+	t.Cleanup(func() { setting.SalesPriceBookRuntimeEnabled = previous })
+
+	updated, err := SetModelRuntimeMode("runtime-model", RuntimeModeV2)
+	require.NoError(t, err)
+	assert.Equal(t, 1, updated)
+	require.Len(t, GetPurchaseCandidateBundles("default", "runtime-model"), 1)
+	assert.Empty(t, GetCandidateBundles("default", "runtime-model"))
+}
+
+func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 891, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.Model{}).Where("id = ?", 891).
+		Update("status", 1).Error)
+	require.NoError(t, model.DB.Where("channel_model_id = ?", 891).
+		Delete(&model.ChannelModelRetailPriceVersion{}).Error)
+	require.NoError(t, model.DB.AutoMigrate(
+		&model.SalesPriceBook{},
+		&model.SalesPriceBookVersion{},
+		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookDefault{},
+		&model.UserPriceBookAssignment{},
+	))
+	book, version, item := createResolvedPriceFixture(t, "snapshot-default", 891, 1)
+	salesExpression := `v2:tier("base", p * 2 / 1000000)`
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).Where("id = ?", item.Id).
+		Updates(map[string]any{
+			"sales_billing_expr": salesExpression,
+			"sales_expr_hash":    billingexpr.ExprHashString(salesExpression),
+		}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: 1,
+	}).Error)
+	previous := setting.SalesPriceBookRuntimeEnabled
+	setting.SalesPriceBookRuntimeEnabled = true
+	t.Cleanup(func() { setting.SalesPriceBookRuntimeEnabled = previous })
+	require.NoError(t, RefreshCatalog())
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "runtime-model",
+		UserId:          1001,
+		RequestId:       "sales-price-book-snapshot",
+	}
+	priceData, used, err := PrepareRelayPricing(
+		info,
+		"default",
+		891,
+		1_000_000,
+		0,
+		hosttypes.GroupRatioInfo{GroupRatio: 0.5},
+		billingexpr.RequestInput{},
+		pricingengine.Usage{},
+	)
+	require.NoError(t, err)
+	require.True(t, used)
+	assert.Equal(t, float64(1), priceData.GroupRatioInfo.GroupRatio)
+	require.NotNil(t, info.DynamicPricingSnapshot)
+	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
+	selected := info.DynamicPricingSnapshot.Selected
+	assert.Equal(t, 891, selected.PurchasePriceVersion)
+	assert.Zero(t, selected.RetailPriceVersion)
+	assert.Equal(t, book.Id, selected.SalesPriceBookId)
+	assert.Equal(t, version.Id, selected.SalesPriceBookVersionId)
+	assert.Equal(t, item.Id, selected.SalesPriceBookItemId)
+	assert.Equal(t, "2", selected.EstimatedCustomerChargeUSD)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.Equal(t, 891, snapshot.PurchasePriceVersionId)
+	assert.Zero(t, snapshot.RetailPriceVersionId)
+	assert.Equal(t, book.Id, snapshot.SalesPriceBookId)
+	assert.Equal(t, version.Id, snapshot.SalesPriceBookVersionId)
+	assert.Equal(t, item.Id, snapshot.SalesPriceBookItemId)
+	assert.Equal(t, "1", snapshot.AppliedGroupRatio)
+}
+
 func createResolvedPriceFixture(
 	t *testing.T,
 	code string,
@@ -123,6 +282,76 @@ func TestResolveSalesPriceUsesTOCDefaultWithoutChangingRoute(t *testing.T) {
 	assert.Equal(t, version.Id, resolved.PriceBookVersionId)
 	assert.Equal(t, item.Id, resolved.PriceBookItemId)
 	assert.Zero(t, resolved.AssignmentId)
+}
+
+func TestResolveSalesPriceAllowsAnonymousTOCDefault(t *testing.T) {
+	setupSalesPriceResolverTestDB(t)
+	const at = int64(5500)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 711, ModelName: "anonymous-price-model", Status: 1,
+	}).Error)
+	book, version, item := createResolvedPriceFixture(t, "anonymous-toc", 711, at)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: at,
+	}).Error)
+
+	resolved, err := ResolveSalesPrice(0, "anonymous-price-model", at)
+	require.NoError(t, err)
+	assert.Equal(t, "toc_default", resolved.Source)
+	assert.Equal(t, version.Id, resolved.PriceBookVersionId)
+	assert.Equal(t, item.Id, resolved.PriceBookItemId)
+}
+
+func TestApplySalesPriceBookPricingPublishesOneCustomerPriceAcrossGroups(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 881, RuntimeModeV2)
+	require.NoError(t, model.DB.Model(&model.Model{}).Where("id = ?", 881).
+		Update("status", 1).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "vip", Model: "runtime-model", ChannelId: 881, Enabled: true,
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 881).
+		Update("price_components", `{"input_unit_price":"1"}`).Error)
+	require.NoError(t, model.DB.AutoMigrate(
+		&model.SalesPriceBook{},
+		&model.SalesPriceBookVersion{},
+		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookDefault{},
+		&model.UserPriceBookAssignment{},
+	))
+	book, version, item := createResolvedPriceFixture(t, "public-toc", 881, 1)
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).Where("id = ?", item.Id).
+		Updates(map[string]any{
+			"price_components":   `{"input_unit_price":"2"}`,
+			"sales_billing_expr": `v2:tier("base", p * 2 / 1000000)`,
+			"sales_expr_hash": billingexpr.ExprHashString(
+				`v2:tier("base", p * 2 / 1000000)`,
+			),
+		}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: 1,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	result := ApplySalesPriceBookPricing(
+		[]model.Pricing{{ModelName: "runtime-model"}},
+		0,
+		map[string]string{"default": "Default", "vip": "VIP"},
+	)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, "sales_price_book", result[0].PricingSource)
+	assert.Equal(t, version.ContentHash, result[0].PricingVersion)
+	assert.Equal(t, []string{"default", "vip"}, result[0].PricingGroups)
+	require.NotNil(t, result[0].LowestPrice)
+	assert.Equal(t, "2", result[0].LowestPrice.Items[0].Amount)
+	assert.Equal(t, "sales_price_book", result[0].LowestPrice.ComparisonScope)
+	require.Contains(t, result[0].RetailPricesByGroup, "default")
+	require.Contains(t, result[0].RetailPricesByGroup, "vip")
+	assert.Equal(t, "2", result[0].RetailPricesByGroup["default"].Items[0].Amount)
+	assert.Equal(t, "2", result[0].RetailPricesByGroup["vip"].Items[0].Amount)
+	assert.Equal(t, "1", result[0].RetailPricesByGroup["vip"].Items[0].AppliedGroupRatio)
 }
 
 func TestResolveSalesPricePrefersUserAssignmentOverTOCDefault(t *testing.T) {

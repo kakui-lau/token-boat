@@ -251,7 +251,7 @@ func ListModels(c *gin.Context, modelType int) {
 		if !acceptUnsetRatioModel && !helper.HasModelBillingConfig(modelName) {
 			hasV2Pricing := false
 			for _, group := range ownerGroups {
-				if pricingruntime.HasCompleteV2Pricing(group, modelName) {
+				if pricingruntime.HasRuntimePricing(group, modelName) {
 					hasV2Pricing = true
 					break
 				}

@@ -25,7 +25,7 @@ type ResolvedSalesPrice struct {
 // looking at, selecting, or mutating an upstream route.
 func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPrice, error) {
 	var result ResolvedSalesPrice
-	if userId <= 0 || modelName == "" {
+	if modelName == "" {
 		return result, ErrSalesPriceBookUnavailable
 	}
 	if at == 0 {
@@ -37,27 +37,30 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 		return result, err
 	}
 
-	var assignment model.UserPriceBookAssignment
-	err := model.DB.Where(
-		"user_id = ? AND status = ? AND effective_from <= ? AND (effective_to = 0 OR effective_to > ?)",
-		userId,
-		model.PriceBookAssignmentStatusActive,
-		at,
-		at,
-	).Order("effective_from DESC, id DESC").First(&assignment).Error
 	priceBookId := 0
 	versionId := 0
-	if err == nil {
-		result.AssignmentId = assignment.Id
-		result.Source = "user_assignment"
-		priceBookId = assignment.PriceBookId
-		if assignment.VersionPolicy == "pin_version" && assignment.PinnedVersionId != nil {
-			versionId = *assignment.PinnedVersionId
-			result.Source = "pinned_version"
+	if userId > 0 {
+		var assignment model.UserPriceBookAssignment
+		err := model.DB.Where(
+			"user_id = ? AND status = ? AND effective_from <= ? AND (effective_to = 0 OR effective_to > ?)",
+			userId,
+			model.PriceBookAssignmentStatusActive,
+			at,
+			at,
+		).Order("effective_from DESC, id DESC").First(&assignment).Error
+		if err == nil {
+			result.AssignmentId = assignment.Id
+			result.Source = "user_assignment"
+			priceBookId = assignment.PriceBookId
+			if assignment.VersionPolicy == "pin_version" && assignment.PinnedVersionId != nil {
+				versionId = *assignment.PinnedVersionId
+				result.Source = "pinned_version"
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return result, err
 		}
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return result, err
-	} else {
+	}
+	if priceBookId == 0 {
 		var defaultBook model.SalesPriceBookDefault
 		if err := model.DB.First(&defaultBook, "default_key = ?", "toc_default").Error; err != nil {
 			return result, ErrSalesPriceBookUnavailable

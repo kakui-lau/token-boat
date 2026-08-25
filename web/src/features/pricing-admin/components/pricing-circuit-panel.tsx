@@ -135,6 +135,19 @@ export function PricingCircuitPanel() {
           0
         ) / channels.length
       : 0
+  let circuitDescription = t(
+    'Tracks channel failures, cooldowns, half-open probes, and recoveries in this process.'
+  )
+  if (circuitQuery.data?.data.distributed) {
+    circuitDescription = t(
+      'Tracks channel failures, cooldowns, half-open probes, and recoveries across all replicas.'
+    )
+  }
+  if (circuitQuery.data?.data.enabled === false) {
+    circuitDescription = t(
+      'Circuit monitoring is disabled. All channel-model routes remain eligible.'
+    )
+  }
 
   return (
     <section className='space-y-3' aria-labelledby='pricing-circuit-status'>
@@ -143,15 +156,7 @@ export function PricingCircuitPanel() {
           <h2 id='pricing-circuit-status' className='font-medium'>
             {t('Channel Circuit Status')}
           </h2>
-          <p className='text-muted-foreground text-sm'>
-            {circuitQuery.data?.data.distributed
-              ? t(
-                  'Tracks channel failures, cooldowns, half-open probes, and recoveries across all replicas.'
-                )
-              : t(
-                  'Tracks channel failures, cooldowns, half-open probes, and recoveries in this process.'
-                )}
-          </p>
+          <p className='text-muted-foreground text-sm'>{circuitDescription}</p>
         </div>
         <Button
           size='sm'
@@ -207,9 +212,7 @@ export function PricingCircuitPanel() {
             </TableHeader>
             <TableBody>
               {channels.map((channel) => (
-                <TableRow
-                  key={`${channel.channel_id}:${channel.model_id}`}
-                >
+                <TableRow key={`${channel.channel_id}:${channel.model_id}`}>
                   <TableCell>
                     <div>
                       {channel.channel_name || `#${channel.channel_id}`}

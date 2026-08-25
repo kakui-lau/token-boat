@@ -3,9 +3,11 @@ package pricingruntime
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 const (
@@ -53,6 +55,7 @@ type ChannelCircuitOverview struct {
 	Channels    []ChannelCircuitStatus `json:"channels"`
 	Events      []ChannelCircuitEvent  `json:"events"`
 	Distributed bool                   `json:"distributed"`
+	Enabled     bool                   `json:"enabled"`
 }
 
 // channelCircuits keeps per (channel, model) circuit state. The outer map is
@@ -68,7 +71,38 @@ var channelCircuits = struct {
 	events:      make([]ChannelCircuitEvent, 0, channelCircuitEventLimit),
 }
 
+var circuitMonitoringWasEnabled atomic.Bool
+
+func init() {
+	circuitMonitoringWasEnabled.Store(true)
+}
+
+func circuitMonitoringEnabled() bool {
+	if operation_setting.IsCircuitBreakerEnabled() {
+		circuitMonitoringWasEnabled.Store(true)
+		return true
+	}
+	if circuitMonitoringWasEnabled.Swap(false) {
+		clearChannelCircuitRuntimeState()
+	}
+	return false
+}
+
+func clearChannelCircuitRuntimeState() {
+	if circuitRedisEnabled() {
+		if err := clearChannelCircuitStatesRedis(); err != nil {
+			common.SysError("pricing circuit Redis clear failed: " + err.Error())
+		}
+	}
+	channelCircuits.Lock()
+	channelCircuits.byChannelId = make(map[int]map[int]channelCircuitState)
+	channelCircuits.Unlock()
+}
+
 func TryAcquireChannel(channelId int, modelId int) bool {
+	if !circuitMonitoringEnabled() {
+		return true
+	}
 	if circuitRedisEnabled() {
 		acquired, err := tryAcquireChannelRedis(channelId, modelId, time.Now())
 		if err == nil {
@@ -106,6 +140,9 @@ func RecordChannelSuccess(channelId int, modelId int) {
 }
 
 func RecordChannelSuccessWithLatency(channelId int, modelId int, latency time.Duration) {
+	if !circuitMonitoringEnabled() {
+		return
+	}
 	if circuitRedisEnabled() {
 		if err := recordChannelSuccessRedis(channelId, modelId, latency, time.Now()); err == nil {
 			return
@@ -135,6 +172,9 @@ func RecordChannelSuccessWithLatency(channelId int, modelId int, latency time.Du
 }
 
 func ResetChannelCircuit(channelId int, modelId int) bool {
+	if !circuitMonitoringEnabled() {
+		return false
+	}
 	if channelId <= 0 {
 		return false
 	}
@@ -181,6 +221,9 @@ func RemoveChannelCircuit(channelId int) {
 }
 
 func RecordChannelFailure(channelId int, modelId int, statusCode int) {
+	if !circuitMonitoringEnabled() {
+		return
+	}
 	if circuitRedisEnabled() {
 		if err := recordChannelFailureRedis(channelId, modelId, statusCode, time.Now()); err == nil {
 			return
@@ -224,9 +267,13 @@ func recordChannelFailureAt(channelId int, modelId int, statusCode int, now time
 }
 
 func GetChannelCircuitOverview() ChannelCircuitOverview {
+	if !circuitMonitoringEnabled() {
+		return ChannelCircuitOverview{Distributed: circuitRedisEnabled()}
+	}
 	if circuitRedisEnabled() {
 		overview, err := getChannelCircuitOverviewRedis(time.Now())
 		if err == nil {
+			overview.Enabled = true
 			return overview
 		}
 		common.SysError("pricing circuit Redis overview failed: " + err.Error())
@@ -274,7 +321,11 @@ func GetChannelCircuitOverview() ChannelCircuitOverview {
 		return channels[i].ModelId < channels[j].ModelId
 	})
 	events := append([]ChannelCircuitEvent(nil), channelCircuits.events...)
-	return ChannelCircuitOverview{Channels: channels, Events: events}
+	return ChannelCircuitOverview{
+		Channels: channels,
+		Events:   events,
+		Enabled:  true,
+	}
 }
 
 type ChannelRouteMetrics struct {
@@ -283,6 +334,9 @@ type ChannelRouteMetrics struct {
 }
 
 func GetChannelRouteMetrics(channelId int, modelId int) ChannelRouteMetrics {
+	if !circuitMonitoringEnabled() {
+		return ChannelRouteMetrics{SuccessRate: 0.99, AverageLatencyMs: 1000}
+	}
 	if circuitRedisEnabled() {
 		metrics, err := getChannelRouteMetricsRedis(channelId, modelId)
 		if err == nil {

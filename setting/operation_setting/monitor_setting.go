@@ -11,6 +11,7 @@ type MonitorSetting struct {
 	AutoTestChannelEnabled bool    `json:"auto_test_channel_enabled"`
 	AutoTestChannelMinutes float64 `json:"auto_test_channel_minutes"`
 	ChannelTestMode        string  `json:"channel_test_mode"`
+	CircuitBreakerEnabled  bool    `json:"circuit_breaker_enabled"`
 }
 
 const (
@@ -23,6 +24,7 @@ var monitorSetting = MonitorSetting{
 	AutoTestChannelEnabled: false,
 	AutoTestChannelMinutes: 10,
 	ChannelTestMode:        ChannelTestModeScheduledAll,
+	CircuitBreakerEnabled:  true,
 }
 
 func init() {
@@ -49,4 +51,8 @@ func GetMonitorSetting() *MonitorSetting {
 		monitorSetting.ChannelTestMode = ChannelTestModeScheduledAll
 	}
 	return &monitorSetting
+}
+
+func IsCircuitBreakerEnabled() bool {
+	return monitorSetting.CircuitBreakerEnabled
 }

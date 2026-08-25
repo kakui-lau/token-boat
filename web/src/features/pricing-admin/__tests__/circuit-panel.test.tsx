@@ -64,6 +64,7 @@ test('shows open channels and recent circuit transitions', async () => {
     success: true,
     data: {
       distributed: true,
+      enabled: true,
       channels: [
         {
           channel_id: 12,
@@ -119,6 +120,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
     success: true,
     data: {
       distributed: false,
+      enabled: true,
       channels: [
         {
           channel_id: 15,
@@ -162,7 +164,7 @@ test('requires confirmation before manually resetting a channel circuit', async 
 test('shows healthy and empty-history states when no circuit is active', async () => {
   vi.mocked(getPricingCircuitOverview).mockResolvedValue({
     success: true,
-    data: { channels: [], events: [], distributed: false },
+    data: { channels: [], events: [], distributed: false, enabled: true },
   })
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -178,4 +180,28 @@ test('shows healthy and empty-history states when no circuit is active', async (
     expect(screen.getByText('All channels are healthy')).toBeInTheDocument()
   )
   expect(screen.getByText('No circuit events')).toBeInTheDocument()
+})
+
+test('shows that circuit monitoring is disabled', async () => {
+  vi.mocked(getPricingCircuitOverview).mockResolvedValue({
+    success: true,
+    data: { channels: [], events: [], distributed: true, enabled: false },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <PricingCircuitPanel />
+    </QueryClientProvider>
+  )
+
+  await waitFor(() =>
+    expect(
+      screen.getByText(
+        'Circuit monitoring is disabled. All channel-model routes remain eligible.'
+      )
+    ).toBeInTheDocument()
+  )
 })

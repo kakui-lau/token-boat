@@ -93,6 +93,9 @@ function riskLabel(code: string, t: TFunction) {
   if (code === 'below_minimum_margin') {
     return t('Below minimum margin')
   }
+  if (code === 'channel_below_minimum_margin') {
+    return t('Below minimum margin')
+  }
   if (code === 'increase_cap_exceeded') {
     return t('Increase cap exceeded')
   }
@@ -217,7 +220,7 @@ export function VersionDiffCard(props: VersionDiffCardProps) {
             </div>
             {items.length > 0 ? (
               <div className='overflow-x-auto'>
-                <Table className='min-w-[96rem]'>
+                <Table className='min-w-[108rem]'>
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('Model Name')}</TableHead>
@@ -229,6 +232,7 @@ export function VersionDiffCard(props: VersionDiffCardProps) {
                       <TableHead>{t('New reference cost')}</TableHead>
                       <TableHead>{t('Margin before')}</TableHead>
                       <TableHead>{t('Margin after')}</TableHead>
+                      <TableHead>{t('Channel margins')}</TableHead>
                       <TableHead>{t('Purchase versions')}</TableHead>
                       <TableHead>{t('Risk')}</TableHead>
                     </TableRow>
@@ -268,6 +272,16 @@ export function VersionDiffCard(props: VersionDiffCardProps) {
                         </TableCell>
                         <TableCell>
                           {decimalPercent(item.margin_after)}
+                        </TableCell>
+                        <TableCell className='max-w-96 whitespace-normal'>
+                          {item.new_channel_margins.length > 0
+                            ? item.new_channel_margins
+                                .map(
+                                  (margin) =>
+                                    `${margin.channel_name}: ${decimalPercent(margin.margin_rate)}`
+                                )
+                                .join(' | ')
+                            : '—'}
                         </TableCell>
                         <TableCell className='max-w-72 whitespace-normal'>
                           {item.old_purchase_version_ids.join(', ') || '—'} →{' '}

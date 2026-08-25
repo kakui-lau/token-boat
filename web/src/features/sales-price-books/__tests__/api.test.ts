@@ -21,6 +21,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { api } from '@/lib/api'
 
 import {
+  acceptSalesPriceBookItemReview,
   assignUserPriceBook,
   compareSalesPriceBookVersions,
   createSalesPriceBookVersion,
@@ -144,7 +145,6 @@ test('lists pricing change batches and loads the selected batch details', async 
 test('creates an immutable price book draft with the exact cost breakdown', async () => {
   const input = {
     cost_basis_strategy: 'max_eligible_cost',
-    reprice_mode: 'review',
     payment_fee_rate: '0.04',
     distribution_fee_rate: '0.05',
     operations_labor_rate: '0.02',
@@ -152,9 +152,6 @@ test('creates an immutable price book draft with the exact cost breakdown', asyn
     effective_tax_rate: '0.16',
     target_net_margin: '0.03',
     minimum_margin_rate: '0.02',
-    rounding_mode: 'ceil',
-    rounding_scale: 5,
-    risk_action: 'exclude_channel',
     remark: '',
   }
 
@@ -199,5 +196,14 @@ test('binds a user directly to a price book and updates the TOC default separate
   expect(api.put).toHaveBeenCalledWith(
     '/api/pricing-admin/price-book-defaults',
     { default_key: 'toc_default', price_book_id: 19 }
+  )
+})
+
+test('accepts one reviewed price item with an auditable comment', async () => {
+  await acceptSalesPriceBookItemReview(44)
+
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-items/44/accept-review',
+    { comment: 'Accepted in pricing administration console' }
   )
 })

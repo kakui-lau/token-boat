@@ -3,10 +3,12 @@ package pricingadmin
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func setupSalesPriceBookTestDB(t *testing.T) {
@@ -70,7 +72,6 @@ func validSalesPriceBookVersion(bookId int) model.SalesPriceBookVersion {
 	return model.SalesPriceBookVersion{
 		PriceBookId:           bookId,
 		CostBasisStrategy:     "max_eligible_cost",
-		RepriceMode:           "review",
 		PaymentFeeRate:        "0.04",
 		DistributionFeeRate:   "0.05",
 		OperationsLaborRate:   "0.02",
@@ -78,9 +79,6 @@ func validSalesPriceBookVersion(bookId int) model.SalesPriceBookVersion {
 		EffectiveTaxRate:      "0.16",
 		TargetNetMargin:       "0.03",
 		MinimumMarginRate:     "0.02",
-		RoundingMode:          "ceil",
-		RoundingScale:         5,
-		RiskAction:            "exclude_channel",
 	}
 }
 
@@ -132,6 +130,51 @@ func TestSalesPriceBookRejectsVariableCostBreakdownMismatch(t *testing.T) {
 	err := CreateSalesPriceBookVersion(&version, 1)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must equal")
+}
+
+func TestSalesPriceBookRejectsItemCurrencyDifferentFromBook(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 502, ModelName: "currency-model"}).Error)
+	book := model.SalesPriceBook{Code: "currency-book", Name: "Currency Book", Audience: "toc", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: version.Id, ModelId: 502, Status: SalesPriceItemStatusEnabled,
+		BillingMode: "token", PriceStructure: "flat", PriceComponents: `{}`,
+		SalesBillingExpr: `v2:p / 1000000`, ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "EUR",
+	}
+
+	err := SaveSalesPriceBookItem(&item)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "currency must be USD")
+}
+
+func TestSalesPriceBookReviewCanBeAcceptedWithAuditComment(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 503, ModelName: "review-accept-model"}).Error)
+	book := model.SalesPriceBook{Code: "review-accept", Name: "Review Accept", Audience: "tob", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: version.Id, ModelId: 503, Status: SalesPriceItemStatusReviewRequired,
+		BillingMode: "token", PriceStructure: "flat", PriceComponents: `{}`,
+		SalesBillingExpr: `v2:p / 1000000`, ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "USD",
+	}
+	require.NoError(t, SaveSalesPriceBookItem(&item))
+
+	require.NoError(t, AcceptSalesPriceBookItemReview(item.Id, 9, "accepted enterprise margin exception"))
+	var stored model.SalesPriceBookItem
+	require.NoError(t, model.DB.First(&stored, item.Id).Error)
+	assert.Equal(t, SalesPriceItemStatusEnabled, stored.Status)
+	var audit model.PricingAuditRecord
+	require.NoError(t, model.DB.First(&audit, "object_type = ? AND object_id = ? AND action = ?",
+		"sales_price_book_item", item.Id, "accept_risk").Error)
+	assert.Equal(t, 9, audit.OperatorId)
+	assert.Equal(t, "accepted enterprise margin exception", audit.Comment)
 }
 
 func TestListSalesPriceBooksAppliesServerFiltersAndPagination(t *testing.T) {
@@ -234,6 +277,31 @@ func TestUserPriceBookAssignmentReplacesPreviousActiveBinding(t *testing.T) {
 	var storedSecond model.UserPriceBookAssignment
 	require.NoError(t, model.DB.First(&storedSecond, second.Id).Error)
 	assert.Equal(t, model.PriceBookAssignmentStatusActive, storedSecond.Status)
+}
+
+func TestScheduledAssignmentKeepsCurrentBindingUntilCutover(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.User{Id: 613, Username: "scheduled-user", Password: "12345678"}).Error)
+	now := common.GetTimestamp()
+	first := model.UserPriceBookAssignment{
+		UserId: 613, PriceBookId: 1, VersionPolicy: "follow_current",
+		Status: model.PriceBookAssignmentStatusActive, EffectiveFrom: now - 100,
+	}
+	require.NoError(t, model.DB.Create(&first).Error)
+	second := model.UserPriceBookAssignment{
+		UserId: 613, PriceBookId: 2, VersionPolicy: "follow_current", EffectiveFrom: now + 100,
+	}
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return model.ReplaceUserPriceBookAssignment(tx, &second)
+	}))
+
+	var storedFirst model.UserPriceBookAssignment
+	require.NoError(t, model.DB.First(&storedFirst, first.Id).Error)
+	assert.Equal(t, model.PriceBookAssignmentStatusActive, storedFirst.Status)
+	assert.Equal(t, now+100, storedFirst.EffectiveTo)
+	var storedSecond model.UserPriceBookAssignment
+	require.NoError(t, model.DB.First(&storedSecond, second.Id).Error)
+	assert.Equal(t, model.PriceBookAssignmentStatusScheduled, storedSecond.Status)
 }
 
 func TestCloneSalesPriceBookVersionCopiesItemsAndBasisSourcesIntoDraft(t *testing.T) {
@@ -592,4 +660,119 @@ func TestOfficialPricePublishCanGenerateIdempotentRatioPurchaseDrafts(t *testing
 	repeated, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 2)
 	require.NoError(t, err)
 	assert.Equal(t, results, repeated)
+}
+
+func TestRetryPurchaseDraftRefreshReprocessesReviewFailure(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 1251, ModelName: "retry-official-model", Status: 1}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 1252, Name: "retry-channel", Key: "test", Status: 1}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 1253, ChannelId: 1252, ModelId: 1251, UpstreamModelName: "retry-official-model", Status: 1,
+	}).Error)
+	firstOfficial, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 1251, Currency: "USD", Source: "provider-docs",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "4"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(firstOfficial.Id))
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 1253, OfficialPriceVersionId: &firstOfficial.Id,
+		PricingMode: "component_ratio", InputDiscount: "0.5", OutputDiscount: "0.5",
+		QuoteReference: "retry-contract",
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+	require.NoError(t, model.DB.Session(&gorm.Session{SkipHooks: true}).
+		Model(&model.ChannelModelPurchasePriceVersion{}).Where("id = ?", purchase.Id).
+		UpdateColumn("quote_spec", "not-json").Error)
+	secondOfficial, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 1251, Currency: "USD", Source: "provider-docs",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "3", OutputUnitPrice: "6"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(secondOfficial.Id))
+	failed, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 1)
+	require.NoError(t, err)
+	require.Len(t, failed, 1)
+	assert.Equal(t, PricingChangeBatchItemStatusReview, failed[0].Status)
+	require.NoError(t, model.DB.Session(&gorm.Session{SkipHooks: true}).
+		Model(&model.ChannelModelPurchasePriceVersion{}).Where("id = ?", purchase.Id).
+		UpdateColumn("quote_spec", `{"input_discount":"0.5","output_discount":"0.5"}`).Error)
+	staleDraft, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 1253, OfficialPriceVersionId: &secondOfficial.Id,
+		PricingMode: "component_ratio", InputDiscount: "0.5", OutputDiscount: "0.5",
+		QuoteReference: "retry-contract", Remark: "stale retry draft",
+	}, 1)
+	require.NoError(t, err)
+	staleDraftId := staleDraft.Id
+	require.NoError(t, model.DB.Create(&model.PricingChangeBatchItem{
+		BatchId: failed[0].BatchId, TargetType: "purchase_price_version",
+		TargetId: &staleDraftId, ModelId: 1251, Action: "create_draft",
+		NewVersionId: &staleDraftId, Status: PricingChangeBatchItemStatusGenerated,
+	}).Error)
+
+	retried, err := RetryPurchaseDraftsForOfficialPrice(secondOfficial.Id, 1)
+	require.NoError(t, err)
+	require.Len(t, retried, 1)
+	assert.Equal(t, PricingChangeBatchItemStatusGenerated, retried[0].Status)
+	assert.NotZero(t, retried[0].PurchasePriceVersionId)
+	var refreshed model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.First(&refreshed, retried[0].PurchasePriceVersionId).Error)
+	assert.NotEqual(t, "stale retry draft", refreshed.Remark)
+}
+
+func TestPublishedContentHashIncludesCommercialItemMetadata(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 1301, ModelName: "hash-model"}).Error)
+	book := model.SalesPriceBook{Code: "hash-book", Name: "Hash Book", Audience: "toc", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	base := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&base, 1))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: base.Id, ModelId: 1301, Status: SalesPriceItemStatusEnabled,
+		BillingMode: "token", PriceStructure: "flat", PriceComponents: `{}`,
+		SalesBillingExpr: `v2:p / 1000000`, ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "USD",
+	}
+	require.NoError(t, SaveSalesPriceBookItem(&item))
+	require.NoError(t, PublishSalesPriceBookVersion(base.Id, 1))
+	require.NoError(t, model.DB.First(&base, base.Id).Error)
+	target, err := CloneSalesPriceBookVersion(book.Id, base.Id, 1)
+	require.NoError(t, err)
+	var targetItem model.SalesPriceBookItem
+	require.NoError(t, model.DB.First(&targetItem,
+		"price_book_version_id = ? AND model_id = ?", target.Id, 1301).Error)
+	targetItem.MinimumMarginOverride = "0.01"
+	require.NoError(t, SaveSalesPriceBookItem(&targetItem))
+	require.NoError(t, PublishSalesPriceBookVersion(target.Id, 1))
+	require.NoError(t, model.DB.First(target, target.Id).Error)
+
+	assert.NotEqual(t, base.ContentHash, target.ContentHash)
+}
+
+func TestPurchasePublishAddsNewModelToTOCDefaultDraft(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	createSalesPriceBookPurchaseSource(t, 1401, 1411, 1421, "existing-toc-model", "1", "2")
+	createSalesPriceBookPurchaseSource(t, 1402, 1412, 1422, "new-toc-model", "2", "4")
+	book := model.SalesPriceBook{Code: "toc-auto-add", Name: "TOC Auto Add", Audience: "toc", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	base := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&base, 1))
+	_, err := GenerateSalesPriceBookItems(base.Id, SalesPriceBookGenerationInput{
+		ChannelModelIds: []int{1411}, IdempotencyKey: "toc-auto-add-base",
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishSalesPriceBookVersion(base.Id, 1))
+	require.NoError(t, SetDefaultSalesPriceBook("toc_default", book.Id, 1))
+	var purchase model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.First(&purchase,
+		"channel_model_id = ? AND status = ?", 1412, model.PricingVersionStatusActive).Error)
+
+	results, err := AutoRepriceSalesPriceBooksForPurchaseVersion(purchase.Id, 1)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	var generated model.SalesPriceBookItem
+	require.NoError(t, model.DB.First(&generated,
+		"price_book_version_id = ? AND model_id = ?", results[0].PriceBookVersionId, 1422).Error)
+	assert.Equal(t, SalesPriceItemStatusEnabled, generated.Status)
 }

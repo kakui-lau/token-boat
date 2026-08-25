@@ -107,6 +107,14 @@ export async function getSalesPriceBookItems(versionId: number) {
   return requireSuccess(response.data)
 }
 
+export async function acceptSalesPriceBookItemReview(itemId: number) {
+  const response = await api.post<ApiResponse<null>>(
+    `/api/pricing-admin/price-book-items/${itemId}/accept-review`,
+    { comment: 'Accepted in pricing administration console' }
+  )
+  return requireSuccess(response.data)
+}
+
 export async function compareSalesPriceBookVersions(
   baseVersionId: number,
   targetVersionId: number

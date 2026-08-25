@@ -330,6 +330,9 @@ func migrateDB() error {
 	if err := retirePricingChangeBatchApprovalColumns(); err != nil {
 		return err
 	}
+	if err := retireSalesPriceBookPlaceholderColumns(); err != nil {
+		return err
+	}
 	if err := retirePricingApprovalIndex(); err != nil {
 		return err
 	}
@@ -454,6 +457,9 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := retirePricingChangeBatchApprovalColumns(); err != nil {
+		return err
+	}
+	if err := retireSalesPriceBookPlaceholderColumns(); err != nil {
 		return err
 	}
 	if err := retirePricingApprovalIndex(); err != nil {
@@ -583,6 +589,58 @@ func retirePricingChangeBatchApprovalColumns() error {
 		// the legacy-only migration struct cannot describe the retained columns.
 		if err := DB.Exec("ALTER TABLE pricing_change_batches DROP COLUMN " + column.name).Error; err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+type legacySalesPriceBookVersionPlaceholderMigration struct {
+	Id               int
+	RepriceMode      string `gorm:"column:reprice_mode"`
+	RoundingMode     string `gorm:"column:rounding_mode"`
+	RoundingScale    int    `gorm:"column:rounding_scale"`
+	RiskAction       string `gorm:"column:risk_action"`
+	PriceLockedUntil int64  `gorm:"column:price_locked_until"`
+}
+
+func (legacySalesPriceBookVersionPlaceholderMigration) TableName() string {
+	return "sales_price_book_versions"
+}
+
+type legacyUserPriceBookAssignmentPlaceholderMigration struct {
+	Id               int
+	PriceLockedUntil int64 `gorm:"column:price_locked_until"`
+}
+
+func (legacyUserPriceBookAssignmentPlaceholderMigration) TableName() string {
+	return "user_price_book_assignments"
+}
+
+func retireSalesPriceBookPlaceholderColumns() error {
+	tables := []struct {
+		model any
+		name  string
+		cols  []string
+	}{
+		{model: &legacySalesPriceBookVersionPlaceholderMigration{}, name: "sales_price_book_versions", cols: []string{
+			"reprice_mode", "rounding_mode", "rounding_scale", "risk_action", "price_locked_until",
+		}},
+		{model: &legacyUserPriceBookAssignmentPlaceholderMigration{}, name: "user_price_book_assignments", cols: []string{
+			"price_locked_until",
+		}},
+	}
+	for _, table := range tables {
+		if !DB.Migrator().HasTable(table.model) {
+			continue
+		}
+		for _, column := range table.cols {
+			if !DB.Migrator().HasColumn(table.model, column) {
+				continue
+			}
+			common.SysLog("dropping retired placeholder pricing column " + table.name + "." + column)
+			if err := DB.Exec("ALTER TABLE " + table.name + " DROP COLUMN " + column).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil

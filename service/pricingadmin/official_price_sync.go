@@ -33,6 +33,7 @@ type OfficialPriceSynchronizationItem struct {
 	ExpressionSource        string `json:"expression_source"`
 	ExpressionSchemaVersion string `json:"expression_schema_version"`
 	Currency                string `json:"currency"`
+	Region                  string `json:"region"`
 	SourceVersion           string `json:"source_version"`
 	SourceUpdatedAt         int64  `json:"source_updated_at"`
 	Remark                  string `json:"remark"`
@@ -184,6 +185,7 @@ func synchronizeOfficialPriceItem(
 		ExpressionSource:        item.ExpressionSource,
 		ExpressionSchemaVersion: item.ExpressionSchemaVersion,
 		Currency:                item.Currency,
+		Region:                  normalizeOfficialPriceRegion(item.Region),
 		Source:                  input.Source,
 		SourceVersion:           strings.TrimSpace(item.SourceVersion),
 		SourceUpdatedAt:         item.SourceUpdatedAt,

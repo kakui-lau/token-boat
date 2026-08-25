@@ -103,6 +103,10 @@ func GenerateSalesPriceBookItems(
 		if version.Status != model.SalesPriceBookVersionStatusDraft {
 			return errors.New("only sales price book drafts can generate model prices")
 		}
+		var book model.SalesPriceBook
+		if err := tx.First(&book, version.PriceBookId).Error; err != nil {
+			return err
+		}
 		var sources []salesPriceBookPurchaseSource
 		now := common.GetTimestamp()
 		if err := tx.Table("channel_models").
@@ -159,6 +163,20 @@ func GenerateSalesPriceBookItems(
 		}
 		if len(sources) != len(selectedIds) {
 			return errors.New("one or more selected channel models have no active purchase price")
+		}
+		for _, source := range sources {
+			if source.Purchase.Currency != book.Currency {
+				return fmt.Errorf(
+					"channel model %d purchase currency %s does not match price book currency %s",
+					source.ChannelModelId, source.Purchase.Currency, book.Currency,
+				)
+			}
+			if strings.TrimSpace(source.Purchase.Conditions) != "" {
+				return fmt.Errorf(
+					"channel model %d has conditional purchase pricing; automatic sales generation is not supported",
+					source.ChannelModelId,
+				)
+			}
 		}
 
 		scope, err := common.Marshal(map[string]any{
@@ -286,6 +304,14 @@ func GenerateSalesPriceBookItems(
 			if oldHash != "" {
 				oldItem := SalesPriceBookItemListItem{SalesPriceBookItem: current}
 				diff.OldItem = &oldItem
+				diff.OldChannelMargins, err = salesPriceBookChannelMarginsTx(tx, current, version)
+				if err != nil {
+					return err
+				}
+			}
+			diff.NewChannelMargins, err = salesPriceBookChannelMarginsTx(tx, generated, version)
+			if err != nil {
+				return err
 			}
 			risks := salesPriceBookDiffRisks(diff, version)
 			batchItemStatus := PricingChangeBatchItemStatusGenerated
@@ -314,6 +340,8 @@ func GenerateSalesPriceBookItems(
 				"old_purchase_version_ids": oldPurchaseVersions,
 				"new_purchase_version_ids": newPurchaseVersions,
 				"price_change_rate":        priceChangeRate,
+				"old_channel_margins":      diff.OldChannelMargins,
+				"new_channel_margins":      diff.NewChannelMargins,
 				"risk_codes":               risks,
 			})
 			if err != nil {

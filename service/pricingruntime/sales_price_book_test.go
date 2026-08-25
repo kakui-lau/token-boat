@@ -99,6 +99,31 @@ func TestSalesPriceBookQuotesUsePurchaseOnlyCatalog(t *testing.T) {
 	assert.Equal(t, "2.5", quotes[0].CustomerCharge)
 }
 
+func TestQuoteCandidatesExcludePurchaseCurrencyMismatch(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 852)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 852).Update("currency", "EUR").Error)
+	require.NoError(t, RefreshCatalog())
+	resolved := ResolvedSalesPrice{
+		Book: model.SalesPriceBook{Currency: "USD"},
+		Version: model.SalesPriceBookVersion{
+			TotalVariableCostRate: "0", EffectiveTaxRate: "0", MinimumMarginRate: "0.1",
+		},
+		Item: model.SalesPriceBookItem{
+			Id: 100, BillingMode: "token", Currency: "USD",
+			SalesBillingExpr: `v2:tier("base", p * 2.5 / 1000000)`,
+		},
+	}
+
+	_, err := QuoteCandidates(
+		"default", "runtime-model", pricingengine.Usage{PromptTokens: 1_000_000},
+		billingexpr.RequestInput{}, resolved,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no complete purchase price")
+}
+
 func TestPlanSalesPriceBookRouteUsesPurchaseOnlyCatalog(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 861)
@@ -193,11 +218,10 @@ func createResolvedPriceFixture(
 	require.NoError(t, model.DB.Create(&book).Error)
 	version := model.SalesPriceBookVersion{
 		PriceBookId: book.Id, Version: 1, Status: model.SalesPriceBookVersionStatusActive,
-		CostBasisStrategy: "max_eligible_cost", RepriceMode: "review",
-		PaymentFeeRate: "0.04", DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
+		CostBasisStrategy: "max_eligible_cost",
+		PaymentFeeRate:    "0.04", DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
 		TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.16",
 		TargetNetMargin: "0.03", MinimumMarginRate: "0.02",
-		RoundingMode: "ceil", RoundingScale: 5, RiskAction: "exclude_channel",
 		ContentHash: "hash", EffectiveFrom: at - 10, CreatedBy: 1,
 	}
 	require.NoError(t, model.DB.Create(&version).Error)
@@ -316,4 +340,62 @@ func TestResolveSalesPricePrefersUserAssignmentOverTOCDefault(t *testing.T) {
 	assert.Equal(t, assignment.Id, resolved.AssignmentId)
 	assert.Equal(t, tobVersion.Id, resolved.PriceBookVersionId)
 	assert.Equal(t, tobItem.Id, resolved.PriceBookItemId)
+}
+
+func TestResolveSalesPriceUsesScheduledAssignmentAtItsEffectiveTime(t *testing.T) {
+	setupSalesPriceResolverTestDB(t)
+	const at = int64(7000)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 703, ModelName: "scheduled-price-model", Status: 1}).Error)
+	defaultBook, _, _ := createResolvedPriceFixture(t, "scheduled-default", 703, at)
+	tobBook, tobVersion, _ := createResolvedPriceFixture(t, "scheduled-tob", 703, at)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: defaultBook.Id, UpdatedBy: 1, UpdatedAt: at,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.UserPriceBookAssignment{
+		UserId: 78, PriceBookId: tobBook.Id, VersionPolicy: "follow_current",
+		Status: model.PriceBookAssignmentStatusScheduled, EffectiveFrom: at, CreatedBy: 1,
+	}).Error)
+
+	resolved, err := ResolveSalesPrice(78, "scheduled-price-model", at)
+	require.NoError(t, err)
+	assert.Equal(t, "user_assignment", resolved.Source)
+	assert.Equal(t, tobVersion.Id, resolved.PriceBookVersionId)
+}
+
+func TestResolveSalesPriceKeepsPinnedPublishedVersionAfterNewPublish(t *testing.T) {
+	setupSalesPriceResolverTestDB(t)
+	const at = int64(8000)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 704, ModelName: "pinned-price-model", Status: 1}).Error)
+	book, pinnedVersion, pinnedItem := createResolvedPriceFixture(t, "pinned-tob", 704, at)
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookVersion{}).Where("id = ?", pinnedVersion.Id).
+		Updates(map[string]any{
+			"status":       model.SalesPriceBookVersionStatusSuperseded,
+			"effective_to": at - 1,
+			"published_at": at - 100,
+		}).Error)
+	current := pinnedVersion
+	current.Id = 0
+	current.Version = 2
+	current.Status = model.SalesPriceBookVersionStatusActive
+	current.EffectiveFrom = at - 1
+	current.EffectiveTo = 0
+	current.PublishedAt = at - 1
+	require.NoError(t, model.DB.Create(&current).Error)
+	currentItem := pinnedItem
+	currentItem.Id = 0
+	currentItem.PriceBookVersionId = current.Id
+	require.NoError(t, model.DB.Create(&currentItem).Error)
+	require.NoError(t, model.DB.Model(&model.SalesPriceBook{}).Where("id = ?", book.Id).
+		Update("current_version_id", current.Id).Error)
+	pinnedVersionId := pinnedVersion.Id
+	require.NoError(t, model.DB.Create(&model.UserPriceBookAssignment{
+		UserId: 79, PriceBookId: book.Id, VersionPolicy: "pin_version",
+		PinnedVersionId: &pinnedVersionId, Status: model.PriceBookAssignmentStatusActive,
+		EffectiveFrom: at - 50, CreatedBy: 1,
+	}).Error)
+
+	resolved, err := ResolveSalesPrice(79, "pinned-price-model", at)
+	require.NoError(t, err)
+	assert.Equal(t, "pinned_version", resolved.Source)
+	assert.Equal(t, pinnedVersion.Id, resolved.PriceBookVersionId)
 }

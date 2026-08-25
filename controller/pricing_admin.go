@@ -1247,8 +1247,6 @@ func formatPurchasePricingModeForCSV(pricingMode string) string {
 		return "官方价分项折扣"
 	case "fixed_unit_price":
 		return "固定采购价"
-	case "hybrid":
-		return "混合定价"
 	case "custom_expr":
 		return "自定义表达式"
 	default:
@@ -1898,15 +1896,9 @@ func AdminPublishOfficialPriceVersion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := pricingadmin.PublishOfficialPriceVersion(id); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	results, err := pricingadmin.AutoCreatePurchaseDraftsForOfficialPrice(id, c.GetInt("id"))
+	results, err := pricingadmin.PublishOfficialPriceVersionWithAutomation(id, c.GetInt("id"))
 	if err != nil {
-		common.ApiError(c, fmt.Errorf(
-			"official price was published, but automatic purchase draft generation failed: %w", err,
-		))
+		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, results)
@@ -1917,7 +1909,7 @@ func AdminRefreshPurchaseDraftsForOfficialPrice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	results, err := pricingadmin.AutoCreatePurchaseDraftsForOfficialPrice(id, c.GetInt("id"))
+	results, err := pricingadmin.RetryPurchaseDraftsForOfficialPrice(id, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -2035,15 +2027,9 @@ func AdminPublishPurchasePriceVersion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := pricingadmin.PublishPurchasePriceVersion(id); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	results, err := pricingadmin.AutoRepriceSalesPriceBooksForPurchaseVersion(id, c.GetInt("id"))
+	results, err := pricingadmin.PublishPurchasePriceVersionWithAutomation(id, c.GetInt("id"))
 	if err != nil {
-		common.ApiError(c, fmt.Errorf(
-			"purchase price was published, but automatic sales repricing failed: %w", err,
-		))
+		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, results)
@@ -2054,7 +2040,7 @@ func AdminRepriceSalesPriceBooksForPurchaseVersion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	results, err := pricingadmin.AutoRepriceSalesPriceBooksForPurchaseVersion(id, c.GetInt("id"))
+	results, err := pricingadmin.RetrySalesPriceBooksForPurchaseVersion(id, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return

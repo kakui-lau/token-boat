@@ -133,6 +133,7 @@ func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.Offici
 		replacement.CreatedBy = current.CreatedBy
 		replacement.CreatedAt = current.CreatedAt
 		replacement.Source = current.Source
+		replacement.Region = current.Region
 		replacement.ContentHash = officialPriceContentHash(replacement)
 		if err := tx.Model(&replacement).Select(
 			"billing_mode",
@@ -144,6 +145,7 @@ func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.Offici
 			"expression_schema_version",
 			"currency",
 			"source",
+			"region",
 			"content_hash",
 			"remark",
 			"updated_at",
@@ -170,6 +172,7 @@ func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPr
 		ExpressionSchemaVersion: "v2",
 		Currency:                input.Currency,
 		Source:                  strings.TrimSpace(input.Source),
+		Region:                  "global",
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
 	if version.Source == "" {
@@ -208,9 +211,9 @@ func CreatePurchaseDraft(input PurchaseDraftInput, userId int) (model.ChannelMod
 	return version, nil
 }
 
-// ensurePurchaseEvidenceReferences 在创建/更新采购价草稿时，若前端未填写报价/合同引用，
-// 优先继承当前 active 版本的证据；无历史版本则按与 cmd/model-commercialization 一致的
-// 格式自动生成报价引用。避免"生产在用"渠道模型发布时因证据为空被 readiness 拦截。
+// ensurePurchaseEvidenceReferences inherits real evidence from the active
+// contract when an administrator leaves the draft fields empty. It never
+// fabricates a quote reference; production publication rejects missing proof.
 func ensurePurchaseEvidenceReferences(input *PurchaseDraftInput) error {
 	if strings.TrimSpace(input.QuoteReference) != "" ||
 		strings.TrimSpace(input.ContractReference) != "" {
@@ -229,17 +232,6 @@ func ensurePurchaseEvidenceReferences(input *PurchaseDraftInput) error {
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) && !ignoreMissingTable(err) {
 		return err
-	}
-	if strings.TrimSpace(input.QuoteReference) == "" {
-		discount := strings.TrimSpace(input.PurchaseDiscount)
-		if discount == "" {
-			discount = "official"
-		}
-		input.QuoteReference = fmt.Sprintf(
-			"channel %d official price %s",
-			input.ChannelModelId,
-			discount,
-		)
 	}
 	return nil
 }

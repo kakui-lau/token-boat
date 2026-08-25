@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -44,7 +44,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { assignUserPriceBook } from '../api'
+import { assignUserPriceBook, getSalesPriceBookVersions } from '../api'
 import type { SalesPriceBook } from '../types'
 
 type AssignUserDialogProps = {
@@ -66,9 +66,15 @@ export function AssignUserDialog(props: AssignUserDialogProps) {
   const [contractReference, setContractReference] = useState('')
   const [remark, setRemark] = useState('')
   const selectedBookId = Number(priceBookId)
-  const availableVersions = props.books
-    .filter((book) => book.id === selectedBookId)
-    .flatMap((book) => (book.current_version ? [book.current_version] : []))
+  const versionsQuery = useQuery({
+    queryKey: ['sales-price-books', 'versions', selectedBookId, 'assignment'],
+    queryFn: () => getSalesPriceBookVersions(selectedBookId),
+    enabled:
+      props.open && versionPolicy === 'pin_version' && selectedBookId > 0,
+  })
+  const availableVersions = (versionsQuery.data?.data ?? []).filter(
+    (version) => version.status === 'active' || version.status === 'superseded'
+  )
   const mutation = useMutation({
     mutationFn: () =>
       assignUserPriceBook({
@@ -183,7 +189,7 @@ export function AssignUserDialog(props: AssignUserDialogProps) {
                   onValueChange={(value) => value && setPinnedVersionId(value)}
                 >
                   <SelectTrigger className='w-full'>
-                    <SelectValue placeholder={t('Select active version')} />
+                    <SelectValue placeholder={t('Select published version')} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>

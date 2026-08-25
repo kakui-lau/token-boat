@@ -144,6 +144,39 @@ func TestPricingChangeBatchMigrationRemovesApprovalWorkflowColumns(t *testing.T)
 	require.NoError(t, retirePricingChangeBatchApprovalColumns())
 }
 
+func TestSalesPriceBookMigrationRemovesPlaceholderPolicyColumns(t *testing.T) {
+	originalDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() { DB = originalDB })
+	require.NoError(t, DB.Exec(`
+		CREATE TABLE sales_price_book_versions (
+			id integer primary key,
+			reprice_mode text,
+			rounding_mode text,
+			rounding_scale integer,
+			risk_action text,
+			price_locked_until integer
+		)
+	`).Error)
+	require.NoError(t, DB.Exec(`
+		CREATE TABLE user_price_book_assignments (
+			id integer primary key,
+			price_locked_until integer
+		)
+	`).Error)
+
+	require.NoError(t, retireSalesPriceBookPlaceholderColumns())
+	for _, column := range []string{
+		"reprice_mode", "rounding_mode", "rounding_scale", "risk_action", "price_locked_until",
+	} {
+		assert.False(t, DB.Migrator().HasColumn(&legacySalesPriceBookVersionPlaceholderMigration{}, column))
+	}
+	assert.False(t, DB.Migrator().HasColumn(&legacyUserPriceBookAssignmentPlaceholderMigration{}, "price_locked_until"))
+	require.NoError(t, retireSalesPriceBookPlaceholderColumns())
+}
+
 func TestBackfillProviderCostTrackingClassifiesExistingSnapshots(t *testing.T) {
 	resetChannelModelPricingTestTables(t)
 	require.NoError(t, DB.Create([]Channel{

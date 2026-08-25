@@ -31,7 +31,6 @@ export type SalesPriceBookVersion = {
   version: number
   status: SalesPriceBookVersionStatus
   cost_basis_strategy: string
-  reprice_mode: string
   payment_fee_rate: string
   distribution_fee_rate: string
   operations_labor_rate: string
@@ -39,9 +38,6 @@ export type SalesPriceBookVersion = {
   effective_tax_rate: string
   target_net_margin: string
   minimum_margin_rate: string
-  rounding_mode: string
-  rounding_scale: number
-  risk_action: string
   content_hash: string
   created_at: number
   published_at: number
@@ -177,6 +173,15 @@ export type SalesPriceBookPolicyChange = {
   new_value: string
 }
 
+export type SalesPriceBookChannelMargin = {
+  channel_model_id: number
+  channel_name: string
+  purchase_price_version_id: number
+  reference_cost: string
+  margin_rate: string
+  meets_minimum_margin: boolean
+}
+
 export type SalesPriceBookItemDiff = {
   model_id: number
   model_name: string
@@ -193,6 +198,8 @@ export type SalesPriceBookItemDiff = {
   old_purchase_version_ids: number[]
   new_purchase_version_ids: number[]
   risk_codes: string[]
+  old_channel_margins: SalesPriceBookChannelMargin[]
+  new_channel_margins: SalesPriceBookChannelMargin[]
 }
 
 export type SalesPriceBookVersionDiff = {
@@ -221,7 +228,6 @@ export type CreateSalesPriceBookInput = Pick<
 export type CreateSalesPriceBookVersionInput = Pick<
   SalesPriceBookVersion,
   | 'cost_basis_strategy'
-  | 'reprice_mode'
   | 'payment_fee_rate'
   | 'distribution_fee_rate'
   | 'operations_labor_rate'
@@ -229,8 +235,5 @@ export type CreateSalesPriceBookVersionInput = Pick<
   | 'effective_tax_rate'
   | 'target_net_margin'
   | 'minimum_margin_rate'
-  | 'rounding_mode'
-  | 'rounding_scale'
-  | 'risk_action'
   | 'remark'
 >

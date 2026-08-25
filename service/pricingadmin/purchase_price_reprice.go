@@ -20,6 +20,55 @@ type PurchasePriceAutoDraftResult struct {
 	ErrorMessage           string `json:"error_message"`
 }
 
+func RetryPurchaseDraftsForOfficialPrice(
+	officialPriceVersionId int,
+	userId int,
+) ([]PurchasePriceAutoDraftResult, error) {
+	idempotencyKey := fmt.Sprintf("auto-official-%d-purchase-drafts", officialPriceVersionId)
+	if err := resetPurchaseReviewRequiredChangeBatch(idempotencyKey); err != nil {
+		return nil, err
+	}
+	return AutoCreatePurchaseDraftsForOfficialPrice(officialPriceVersionId, userId)
+}
+
+func resetPurchaseReviewRequiredChangeBatch(idempotencyKey string) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		var batch model.PricingChangeBatch
+		err := tx.First(&batch, "idempotency_key = ?", idempotencyKey).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if batch.Status != PricingChangeBatchStatusReviewRequired {
+			return nil
+		}
+		var draftIds []int
+		if err := tx.Model(&model.PricingChangeBatchItem{}).
+			Where("batch_id = ? AND target_type = ? AND action = ? AND new_version_id IS NOT NULL",
+				batch.Id, "purchase_price_version", "create_draft").
+			Pluck("new_version_id", &draftIds).Error; err != nil {
+			return err
+		}
+		if len(draftIds) > 0 {
+			if err := tx.Where("id IN ? AND status = ?", draftIds, model.PricingVersionStatusDraft).
+				Delete(&model.ChannelModelPurchasePriceVersion{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("batch_id = ?", batch.Id).
+			Delete(&model.PricingChangeBatchItem{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("object_type = ? AND object_id = ?",
+			"pricing_change_batch", batch.Id).Delete(&model.PricingAuditRecord{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.PricingChangeBatch{}, batch.Id).Error
+	})
+}
+
 func AutoCreatePurchaseDraftsForOfficialPrice(
 	officialPriceVersionId int,
 	userId int,
@@ -76,6 +125,14 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 		return nil, err
 	}
 	results := make([]PurchasePriceAutoDraftResult, 0, len(active))
+	createdDraftIds := make([]int, 0, len(active))
+	completed := false
+	defer func() {
+		if completed {
+			return
+		}
+		_ = cleanupFailedPurchaseDraftBatch(batch.Id, createdDraftIds)
+	}()
 	for _, current := range active {
 		batch.TotalCount++
 		input, err := purchaseDraftInputForOfficialRefresh(current, officialPriceVersionId)
@@ -127,6 +184,7 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 			batch.Status = PricingChangeBatchStatusReviewRequired
 			continue
 		}
+		createdDraftIds = append(createdDraftIds, draft.Id)
 		oldCost, oldCostErr := referenceBillingAmount(current.PurchaseBillingExpr, current.BillingMode)
 		newCost, newCostErr := referenceBillingAmount(draft.PurchaseBillingExpr, draft.BillingMode)
 		if oldCostErr != nil || newCostErr != nil {
@@ -172,7 +230,28 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 	}).Error; err != nil {
 		return nil, err
 	}
+	completed = true
 	return results, nil
+}
+
+func cleanupFailedPurchaseDraftBatch(batchId int, draftIds []int) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		if len(draftIds) > 0 {
+			if err := tx.Where("id IN ? AND status = ?", draftIds, model.PricingVersionStatusDraft).
+				Delete(&model.ChannelModelPurchasePriceVersion{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("batch_id = ?", batchId).
+			Delete(&model.PricingChangeBatchItem{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("object_type = ? AND object_id = ?",
+			"pricing_change_batch", batchId).Delete(&model.PricingAuditRecord{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.PricingChangeBatch{}, batchId).Error
+	})
 }
 
 func purchaseDraftInputForOfficialRefresh(

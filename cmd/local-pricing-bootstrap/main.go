@@ -261,8 +261,7 @@ func validateProductionPriceEvidence() error {
 			return err
 		}
 		requiresOfficial := bundle.Purchase.PricingMode == "official_ratio" ||
-			bundle.Purchase.PricingMode == "component_ratio" ||
-			bundle.Purchase.PricingMode == "hybrid"
+			bundle.Purchase.PricingMode == "component_ratio"
 		if requiresOfficial && bundle.Official == nil {
 			return fmt.Errorf(
 				"channel model %d has no frozen official price evidence",
@@ -439,7 +438,7 @@ func migratePricingTables(db *gorm.DB) error {
 	}
 	official := &model.OfficialModelPriceVersion{}
 	for _, field := range []string{
-		"ContentHash", "SyncBatchId", "SourceUpdatedAt", "ChangeType",
+		"ContentHash", "SyncBatchId", "SourceUpdatedAt", "ChangeType", "Region",
 	} {
 		if !db.Migrator().HasColumn(official, field) {
 			if err := db.Migrator().AddColumn(official, field); err != nil {
@@ -533,7 +532,7 @@ func ensureV2OfficialPrice(modelId int) (model.OfficialModelPriceVersion, error)
 	if err := pricingadmin.CreateOfficialPriceVersion(&version, localBootstrapUserId); err != nil {
 		return version, err
 	}
-	if err := pricingadmin.PublishOfficialPriceVersion(version.Id); err != nil {
+	if _, err := pricingadmin.PublishOfficialPriceVersionWithAutomation(version.Id, localBootstrapUserId); err != nil {
 		return version, err
 	}
 	return version, model.DB.First(&version, version.Id).Error
@@ -611,7 +610,8 @@ func ensureChannelPriceChain(
 			return err
 		}
 	}
-	return pricingadmin.PublishPurchasePriceVersion(purchase.Id)
+	_, err = pricingadmin.PublishPurchasePriceVersionWithAutomation(purchase.Id, localBootstrapUserId)
+	return err
 }
 
 func exitWithError(err error) {

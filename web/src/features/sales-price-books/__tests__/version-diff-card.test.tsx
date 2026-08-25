@@ -44,7 +44,6 @@ function version(id: number, value: number): SalesPriceBookVersion {
     version: value,
     status: value === 1 ? 'active' : 'draft',
     cost_basis_strategy: 'max_eligible_cost',
-    reprice_mode: 'review',
     payment_fee_rate: '0.04',
     distribution_fee_rate: '0.05',
     operations_labor_rate: '0.02',
@@ -52,9 +51,6 @@ function version(id: number, value: number): SalesPriceBookVersion {
     effective_tax_rate: '0.16',
     target_net_margin: '0.03',
     minimum_margin_rate: '0.02',
-    rounding_mode: 'ceil',
-    rounding_scale: 5,
-    risk_action: 'exclude_channel',
     content_hash: '',
     created_at: 1,
     published_at: 0,
@@ -90,6 +86,17 @@ test('shows version reference prices and filters by change type', async () => {
           old_purchase_version_ids: [41],
           new_purchase_version_ids: [42],
           risk_codes: [],
+          old_channel_margins: [],
+          new_channel_margins: [
+            {
+              channel_model_id: 51,
+              channel_name: 'Primary channel',
+              purchase_price_version_id: 42,
+              reference_cost: '1.2',
+              margin_rate: '0.04',
+              meets_minimum_margin: true,
+            },
+          ],
         },
       ],
     },
@@ -109,6 +116,7 @@ test('shows version reference prices and filters by change type', async () => {
 
   expect(await screen.findByText('openai/test-model')).toBeInTheDocument()
   expect(screen.getByText('20%')).toBeInTheDocument()
+  expect(screen.getByText('Primary channel: 4%')).toBeInTheDocument()
   expect(compareSalesPriceBookVersions).toHaveBeenCalledWith(11, 12)
 
   fireEvent.change(screen.getByRole('combobox', { name: 'Change type' }), {

@@ -676,7 +676,7 @@ func priceChannel(params channelPricingParams) error {
 		if err != nil {
 			return fmt.Errorf("create %s purchase price: %w", target.ModelName, err)
 		}
-		if err := pricingadmin.PublishPurchasePriceVersion(purchase.Id); err != nil {
+		if _, err := pricingadmin.PublishPurchasePriceVersionWithAutomation(purchase.Id, 1); err != nil {
 			return fmt.Errorf("publish %s purchase price: %w", target.ModelName, err)
 		}
 		fmt.Printf(
@@ -1059,7 +1059,7 @@ func ensureOfficialPrice(cfg config, modelID int) (model.OfficialModelPriceVersi
 	if err != nil {
 		return draft, err
 	}
-	if err := pricingadmin.PublishOfficialPriceVersion(draft.Id); err != nil {
+	if _, err := pricingadmin.PublishOfficialPriceVersionWithAutomation(draft.Id, 1); err != nil {
 		return draft, err
 	}
 	return draft, model.DB.First(&draft, draft.Id).Error
@@ -1079,7 +1079,8 @@ func ensurePriceChain(cfg config, channelModelID int, officialID int) error {
 	if err != nil {
 		return err
 	}
-	return pricingadmin.PublishPurchasePriceVersion(purchase.Id)
+	_, err = pricingadmin.PublishPurchasePriceVersionWithAutomation(purchase.Id, 1)
+	return err
 }
 
 func verify(cfg config, expected plan, probe bool) error {

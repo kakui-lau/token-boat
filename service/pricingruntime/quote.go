@@ -97,12 +97,11 @@ func QuoteCandidates(
 	quotes := make([]Quote, 0, len(bundles))
 	for _, bundle := range bundles {
 		if bundle.Purchase.BillingMode != resolved.Item.BillingMode {
-			return nil, fmt.Errorf(
-				"channel model %d purchase billing mode %q does not match sales price book mode %q",
-				bundle.ChannelModel.Id,
-				bundle.Purchase.BillingMode,
-				resolved.Item.BillingMode,
-			)
+			continue
+		}
+		if bundle.Purchase.Currency != resolved.Item.Currency ||
+			(resolved.Book.Currency != "" && resolved.Item.Currency != resolved.Book.Currency) {
+			continue
 		}
 		purchase, err := pricingengine.EvaluateWithRequest(
 			bundle.Purchase.PurchaseBillingExpr,
@@ -138,6 +137,9 @@ func QuoteCandidates(
 			MinimumMarginRate:      minimumMargin.String(),
 			EstimatedNetMarginRate: netMargin.String(),
 		})
+	}
+	if len(quotes) == 0 {
+		return nil, ErrNoEligiblePriceCandidate
 	}
 	return quotes, nil
 }

@@ -125,7 +125,7 @@ func validatePricingActivation(db *gorm.DB, channelModelId int) (ActivePriceBund
 		return ActivePriceBundle{}, errors.New("structured pricing requires USD purchase pricing")
 	}
 	switch bundle.Purchase.PricingMode {
-	case "official_ratio", "component_ratio", "fixed_unit_price", "hybrid", "custom_expr":
+	case "official_ratio", "component_ratio", "fixed_unit_price", "custom_expr":
 	default:
 		return ActivePriceBundle{}, fmt.Errorf(
 			"structured pricing does not support pricing mode %q",
@@ -133,8 +133,7 @@ func validatePricingActivation(db *gorm.DB, channelModelId int) (ActivePriceBund
 		)
 	}
 	requiresOfficialPrice := bundle.Purchase.PricingMode == "official_ratio" ||
-		bundle.Purchase.PricingMode == "component_ratio" ||
-		bundle.Purchase.PricingMode == "hybrid"
+		bundle.Purchase.PricingMode == "component_ratio"
 	if requiresOfficialPrice && bundle.Official == nil {
 		return ActivePriceBundle{}, errors.New(
 			"ratio pricing requires a published official price",

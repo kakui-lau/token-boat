@@ -19,21 +19,32 @@ type SalesPriceBookPolicyChange struct {
 }
 
 type SalesPriceBookItemDiff struct {
-	ModelId             int                         `json:"model_id"`
-	ModelName           string                      `json:"model_name"`
-	ChangeType          string                      `json:"change_type"`
-	OldItem             *SalesPriceBookItemListItem `json:"old_item,omitempty"`
-	NewItem             *SalesPriceBookItemListItem `json:"new_item,omitempty"`
-	OldReferenceCost    string                      `json:"old_reference_cost"`
-	NewReferenceCost    string                      `json:"new_reference_cost"`
-	OldReferencePrice   string                      `json:"old_reference_price"`
-	NewReferencePrice   string                      `json:"new_reference_price"`
-	PriceChangeRate     string                      `json:"price_change_rate"`
-	MarginBefore        string                      `json:"margin_before"`
-	MarginAfter         string                      `json:"margin_after"`
-	OldPurchaseVersions []int                       `json:"old_purchase_version_ids"`
-	NewPurchaseVersions []int                       `json:"new_purchase_version_ids"`
-	RiskCodes           []string                    `json:"risk_codes"`
+	ModelId             int                           `json:"model_id"`
+	ModelName           string                        `json:"model_name"`
+	ChangeType          string                        `json:"change_type"`
+	OldItem             *SalesPriceBookItemListItem   `json:"old_item,omitempty"`
+	NewItem             *SalesPriceBookItemListItem   `json:"new_item,omitempty"`
+	OldReferenceCost    string                        `json:"old_reference_cost"`
+	NewReferenceCost    string                        `json:"new_reference_cost"`
+	OldReferencePrice   string                        `json:"old_reference_price"`
+	NewReferencePrice   string                        `json:"new_reference_price"`
+	PriceChangeRate     string                        `json:"price_change_rate"`
+	MarginBefore        string                        `json:"margin_before"`
+	MarginAfter         string                        `json:"margin_after"`
+	OldPurchaseVersions []int                         `json:"old_purchase_version_ids"`
+	NewPurchaseVersions []int                         `json:"new_purchase_version_ids"`
+	RiskCodes           []string                      `json:"risk_codes"`
+	OldChannelMargins   []SalesPriceBookChannelMargin `json:"old_channel_margins"`
+	NewChannelMargins   []SalesPriceBookChannelMargin `json:"new_channel_margins"`
+}
+
+type SalesPriceBookChannelMargin struct {
+	ChannelModelId         int    `json:"channel_model_id"`
+	ChannelName            string `json:"channel_name"`
+	PurchasePriceVersionId int    `json:"purchase_price_version_id"`
+	ReferenceCost          string `json:"reference_cost"`
+	MarginRate             string `json:"margin_rate"`
+	MeetsMinimumMargin     bool   `json:"meets_minimum_margin"`
 }
 
 type SalesPriceBookVersionDiff struct {
@@ -50,6 +61,8 @@ type SalesPriceBookVersionDiff struct {
 
 type salesPriceBookDiffBasisSource struct {
 	PriceBookItemId        int
+	ChannelModelId         int
+	ChannelName            string
 	PurchasePriceVersionId int
 	SourceRole             string
 	PurchaseBillingExpr    string
@@ -125,6 +138,12 @@ func CompareSalesPriceBookVersions(
 			if err != nil {
 				return result, fmt.Errorf("compare model %s base price: %w", diff.ModelName, err)
 			}
+			diff.OldChannelMargins, err = salesPriceBookChannelMargins(
+				baseItem, result.BaseVersion, sourcesByItem[baseItem.Id],
+			)
+			if err != nil {
+				return result, fmt.Errorf("compare model %s base channel margins: %w", diff.ModelName, err)
+			}
 		}
 		if hasTarget {
 			targetCopy := targetItem
@@ -135,6 +154,12 @@ func CompareSalesPriceBookVersions(
 			)
 			if err != nil {
 				return result, fmt.Errorf("compare model %s target price: %w", diff.ModelName, err)
+			}
+			diff.NewChannelMargins, err = salesPriceBookChannelMargins(
+				targetItem, result.TargetVersion, sourcesByItem[targetItem.Id],
+			)
+			if err != nil {
+				return result, fmt.Errorf("compare model %s target channel margins: %w", diff.ModelName, err)
 			}
 		}
 		switch {
@@ -205,12 +230,17 @@ func listSalesPriceBookDiffSources(
 	var sources []salesPriceBookDiffBasisSource
 	if err := model.DB.Table("sales_price_book_item_basis_sources").
 		Select(`sales_price_book_item_basis_sources.price_book_item_id,
+			sales_price_book_item_basis_sources.channel_model_id,
+			channels.name AS channel_name,
 			sales_price_book_item_basis_sources.purchase_price_version_id,
 			sales_price_book_item_basis_sources.source_role,
 			channel_model_purchase_price_versions.purchase_billing_expr,
 			channel_model_purchase_price_versions.billing_mode`).
 		Joins(`JOIN channel_model_purchase_price_versions
 			ON channel_model_purchase_price_versions.id = sales_price_book_item_basis_sources.purchase_price_version_id`).
+		Joins(`JOIN channel_models
+			ON channel_models.id = sales_price_book_item_basis_sources.channel_model_id`).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
 		Where("sales_price_book_item_basis_sources.price_book_item_id IN ?", itemIds).
 		Order("sales_price_book_item_basis_sources.price_book_item_id ASC, sales_price_book_item_basis_sources.purchase_price_version_id ASC").
 		Scan(&sources).Error; err != nil {
@@ -220,6 +250,47 @@ func listSalesPriceBookDiffSources(
 		result[source.PriceBookItemId] = append(result[source.PriceBookItemId], source)
 	}
 	return result, nil
+}
+
+func salesPriceBookChannelMargins(
+	item SalesPriceBookItemListItem,
+	version model.SalesPriceBookVersion,
+	sources []salesPriceBookDiffBasisSource,
+) ([]SalesPriceBookChannelMargin, error) {
+	sales, err := referenceBillingAmount(item.SalesBillingExpr, item.BillingMode)
+	if err != nil {
+		return nil, err
+	}
+	minimumValue := version.MinimumMarginRate
+	if strings.TrimSpace(item.MinimumMarginOverride) != "" {
+		minimumValue = item.MinimumMarginOverride
+	}
+	minimum, err := decimal.NewFromString(minimumValue)
+	if err != nil {
+		return nil, err
+	}
+	margins := make([]SalesPriceBookChannelMargin, 0, len(sources))
+	for _, source := range sources {
+		entry := SalesPriceBookChannelMargin{
+			ChannelModelId: source.ChannelModelId, ChannelName: source.ChannelName,
+			PurchasePriceVersionId: source.PurchasePriceVersionId,
+		}
+		if source.BillingMode == item.BillingMode {
+			cost, err := referenceBillingAmount(source.PurchaseBillingExpr, source.BillingMode)
+			if err != nil {
+				return nil, err
+			}
+			margin, err := salesPriceBookReferenceMargin(sales, cost, version)
+			if err != nil {
+				return nil, err
+			}
+			entry.ReferenceCost = cost.String()
+			entry.MarginRate = margin.String()
+			entry.MeetsMinimumMargin = margin.GreaterThanOrEqual(minimum)
+		}
+		margins = append(margins, entry)
+	}
+	return margins, nil
 }
 
 func salesPriceBookItemReference(
@@ -246,7 +317,16 @@ func salesPriceBookItemReference(
 	}
 	sort.Ints(purchaseVersions)
 	referenceCost := decimal.Zero
-	if len(costs) > 0 {
+	if item.PricingMethod == "cost_plus" &&
+		(version.CostBasisStrategy == "max_eligible_cost" ||
+			version.CostBasisStrategy == "min_eligible_cost") &&
+		strings.TrimSpace(item.SellingFactor) != "" {
+		factor, err := decimal.NewFromString(item.SellingFactor)
+		if err != nil || !factor.IsPositive() {
+			return "", "", "", nil, errors.New("cost-plus sales item has an invalid selling factor")
+		}
+		referenceCost = sales.Div(factor)
+	} else if len(costs) > 0 {
 		referenceCost = costs[0]
 		for _, cost := range costs[1:] {
 			if version.CostBasisStrategy == "min_eligible_cost" && cost.LessThan(referenceCost) ||
@@ -270,18 +350,52 @@ func salesPriceBookItemReferenceTx(
 	var sources []salesPriceBookDiffBasisSource
 	if err := tx.Table("sales_price_book_item_basis_sources").
 		Select(`sales_price_book_item_basis_sources.price_book_item_id,
+			sales_price_book_item_basis_sources.channel_model_id,
+			channels.name AS channel_name,
 			sales_price_book_item_basis_sources.purchase_price_version_id,
 			sales_price_book_item_basis_sources.source_role,
 			channel_model_purchase_price_versions.purchase_billing_expr,
 			channel_model_purchase_price_versions.billing_mode`).
 		Joins(`JOIN channel_model_purchase_price_versions
 			ON channel_model_purchase_price_versions.id = sales_price_book_item_basis_sources.purchase_price_version_id`).
+		Joins(`JOIN channel_models
+			ON channel_models.id = sales_price_book_item_basis_sources.channel_model_id`).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
 		Where("sales_price_book_item_basis_sources.price_book_item_id = ?", item.Id).
 		Order("sales_price_book_item_basis_sources.purchase_price_version_id ASC").
 		Scan(&sources).Error; err != nil {
 		return "", "", "", nil, err
 	}
 	return salesPriceBookItemReference(
+		SalesPriceBookItemListItem{SalesPriceBookItem: item}, version, sources,
+	)
+}
+
+func salesPriceBookChannelMarginsTx(
+	tx *gorm.DB,
+	item model.SalesPriceBookItem,
+	version model.SalesPriceBookVersion,
+) ([]SalesPriceBookChannelMargin, error) {
+	var sources []salesPriceBookDiffBasisSource
+	if err := tx.Table("sales_price_book_item_basis_sources").
+		Select(`sales_price_book_item_basis_sources.price_book_item_id,
+			sales_price_book_item_basis_sources.channel_model_id,
+			channels.name AS channel_name,
+			sales_price_book_item_basis_sources.purchase_price_version_id,
+			sales_price_book_item_basis_sources.source_role,
+			channel_model_purchase_price_versions.purchase_billing_expr,
+			channel_model_purchase_price_versions.billing_mode`).
+		Joins(`JOIN channel_model_purchase_price_versions
+			ON channel_model_purchase_price_versions.id = sales_price_book_item_basis_sources.purchase_price_version_id`).
+		Joins(`JOIN channel_models
+			ON channel_models.id = sales_price_book_item_basis_sources.channel_model_id`).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Where("sales_price_book_item_basis_sources.price_book_item_id = ?", item.Id).
+		Order("sales_price_book_item_basis_sources.purchase_price_version_id ASC").
+		Scan(&sources).Error; err != nil {
+		return nil, err
+	}
+	return salesPriceBookChannelMargins(
 		SalesPriceBookItemListItem{SalesPriceBookItem: item}, version, sources,
 	)
 }
@@ -375,6 +489,12 @@ func salesPriceBookDiffRisks(
 	}
 	if len(diff.NewPurchaseVersions) == 0 {
 		risks = append(risks, "missing_purchase_price")
+	}
+	for _, channelMargin := range diff.NewChannelMargins {
+		if !channelMargin.MeetsMinimumMargin {
+			risks = append(risks, "channel_below_minimum_margin")
+			break
+		}
 	}
 	margin, marginErr := decimal.NewFromString(diff.MarginAfter)
 	minimum, minimumErr := decimal.NewFromString(target.MinimumMarginRate)

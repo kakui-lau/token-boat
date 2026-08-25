@@ -114,6 +114,7 @@ function emptyOfficialConfiguration(
     expression_source: 'custom',
     expression_schema_version: 'v2',
     currency: 'USD',
+    region: 'global',
     version: 0,
     status: 'draft',
     source: 'manual',
@@ -206,6 +207,7 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         expression_source: version.expression_source || 'custom',
         expression_schema_version: version.expression_schema_version || 'v2',
         currency: version.currency,
+        region: version.region || 'global',
         source: editingDraftId === null ? 'manual' : version.source,
         source_version:
           editingDraftId === null ? undefined : version.source_version,

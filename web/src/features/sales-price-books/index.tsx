@@ -67,6 +67,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  acceptSalesPriceBookItemReview,
   cancelUserPriceBookAssignment,
   cloneSalesPriceBookVersion,
   disableSalesPriceBook,
@@ -249,6 +250,16 @@ export function SalesPriceBooks() {
         queryKey: ['sales-price-books', 'versions'],
       })
       toast.success(t('Price book version published'))
+    },
+    onError: handleServerError,
+  })
+  const acceptReviewMutation = useMutation({
+    mutationFn: acceptSalesPriceBookItemReview,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
+      })
+      toast.success(t('Pricing risk accepted'))
     },
     onError: handleServerError,
   })
@@ -700,6 +711,7 @@ export function SalesPriceBooks() {
                             <TableHead>{t('Pricing method')}</TableHead>
                             <TableHead>{t('Selling factor')}</TableHead>
                             <TableHead>{t('Sales expression')}</TableHead>
+                            <TableHead>{t('Actions')}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -716,6 +728,21 @@ export function SalesPriceBooks() {
                               </TableCell>
                               <TableCell className='max-w-[36rem] truncate font-mono text-xs'>
                                 {item.sales_billing_expr}
+                              </TableCell>
+                              <TableCell>
+                                {item.status === 'review_required' &&
+                                selectedVersion.status === 'draft' ? (
+                                  <Button
+                                    size='sm'
+                                    variant='outline'
+                                    disabled={acceptReviewMutation.isPending}
+                                    onClick={() =>
+                                      acceptReviewMutation.mutate(item.id)
+                                    }
+                                  >
+                                    {t('Accept risk')}
+                                  </Button>
+                                ) : null}
                               </TableCell>
                             </TableRow>
                           ))}

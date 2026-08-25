@@ -100,6 +100,43 @@ func TestPurchasePriceRejectsOfficialPriceFromDifferentModel(t *testing.T) {
 	require.ErrorContains(t, err, "different logical models")
 }
 
+func TestPurchasePriceRejectsOfficialPriceFromDifferentRegion(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 25, ModelName: "regional-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 26, ChannelId: 27, ModelId: 25, UpstreamModelName: "regional-model",
+		Status: 1, Region: "cn",
+	}).Error)
+	official, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 25, Currency: "USD", Prices: FlatTokenPriceInput{InputUnitPrice: "1"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.OfficialModelPriceVersion{}).
+		Where("id = ?", official.Id).Update("region", "us").Error)
+	require.NoError(t, PublishOfficialPriceVersion(official.Id))
+	officialID := official.Id
+	_, err = CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 26, OfficialPriceVersionId: &officialID,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.8",
+	}, 1)
+	require.ErrorContains(t, err, "region")
+}
+
+func TestPurchasePriceRejectsUnenforcedContractConditions(t *testing.T) {
+	setupPricingAdminTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 28, ModelName: "conditional-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 29, ChannelId: 30, ModelId: 28, UpstreamModelName: "conditional-model", Status: 1,
+	}).Error)
+	version := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 29, BillingMode: "request", PricingMode: "custom_expr",
+		PriceStructure: "expression", PurchaseBillingExpr: "v2:req * 1",
+		Currency: "USD", Conditions: "minimum monthly spend 1000",
+	}
+	err := CreatePurchasePriceVersion(&version, 1)
+	require.ErrorContains(t, err, "conditional purchase pricing is not supported")
+}
+
 func TestPublishPurchasePriceCreatesSingleActiveVersion(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 31, ModelName: "purchase-model"}).Error)

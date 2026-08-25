@@ -67,7 +67,6 @@ type SalesPriceBookVersion struct {
 	Version               int64  `json:"version" gorm:"bigint;not null;uniqueIndex:uk_sales_price_book_version,priority:2"`
 	Status                string `json:"status" gorm:"type:varchar(24);not null;index"`
 	CostBasisStrategy     string `json:"cost_basis_strategy" gorm:"type:varchar(32);not null"`
-	RepriceMode           string `json:"reprice_mode" gorm:"type:varchar(16);not null"`
 	PaymentFeeRate        string `json:"payment_fee_rate" gorm:"type:decimal(18,12);not null"`
 	DistributionFeeRate   string `json:"distribution_fee_rate" gorm:"type:decimal(18,12);not null"`
 	OperationsLaborRate   string `json:"operations_labor_rate" gorm:"type:decimal(18,12);not null"`
@@ -75,11 +74,7 @@ type SalesPriceBookVersion struct {
 	EffectiveTaxRate      string `json:"effective_tax_rate" gorm:"type:decimal(18,12);not null"`
 	TargetNetMargin       string `json:"target_net_margin" gorm:"type:decimal(18,12);not null"`
 	MinimumMarginRate     string `json:"minimum_margin_rate" gorm:"type:decimal(18,12);not null"`
-	RoundingMode          string `json:"rounding_mode" gorm:"type:varchar(16);not null"`
-	RoundingScale         int    `json:"rounding_scale" gorm:"not null"`
-	RiskAction            string `json:"risk_action" gorm:"type:varchar(24);not null"`
 	IncreaseCapRate       string `json:"increase_cap_rate" gorm:"type:decimal(18,12)"`
-	PriceLockedUntil      int64  `json:"price_locked_until" gorm:"bigint;index"`
 	EffectiveFrom         int64  `json:"effective_from" gorm:"bigint;not null;index"`
 	EffectiveTo           int64  `json:"effective_to" gorm:"bigint;index"`
 	ContentHash           string `json:"content_hash" gorm:"type:varchar(64);not null;index"`
@@ -181,7 +176,6 @@ type UserPriceBookAssignment struct {
 	Status            string `json:"status" gorm:"type:varchar(16);not null;index:idx_user_price_book_effective,priority:2"`
 	EffectiveFrom     int64  `json:"effective_from" gorm:"bigint;not null;index:idx_user_price_book_effective,priority:3"`
 	EffectiveTo       int64  `json:"effective_to" gorm:"bigint;index"`
-	PriceLockedUntil  int64  `json:"price_locked_until" gorm:"bigint;index"`
 	QuoteReference    string `json:"quote_reference" gorm:"type:varchar(64)"`
 	ContractReference string `json:"contract_reference" gorm:"type:varchar(64)"`
 	CreatedBy         int    `json:"created_by" gorm:"not null"`
@@ -284,6 +278,12 @@ func GetSalesPriceBookVersionForUpdate(tx *gorm.DB, id int) (SalesPriceBookVersi
 	return version, err
 }
 
+func GetSalesPriceBookItemForUpdate(tx *gorm.DB, id int) (SalesPriceBookItem, error) {
+	var item SalesPriceBookItem
+	err := lockForUpdate(tx).First(&item, id).Error
+	return item, err
+}
+
 func GetUserPriceBookAssignmentForUpdate(tx *gorm.DB, id int) (UserPriceBookAssignment, error) {
 	var assignment UserPriceBookAssignment
 	err := lockForUpdate(tx).First(&assignment, id).Error
@@ -365,17 +365,37 @@ func ReplaceUserPriceBookAssignment(
 	} else {
 		assignment.Status = PriceBookAssignmentStatusScheduled
 	}
-	if err := tx.Model(&UserPriceBookAssignment{}).
-		Where("user_id = ? AND status IN ?", assignment.UserId, []string{
-			PriceBookAssignmentStatusActive,
-			PriceBookAssignmentStatusScheduled,
-		}).
-		Updates(map[string]any{
-			"status":       PriceBookAssignmentStatusExpired,
-			"effective_to": assignment.EffectiveFrom,
-			"updated_at":   now,
-		}).Error; err != nil {
-		return err
+	if assignment.Status == PriceBookAssignmentStatusActive {
+		if err := tx.Model(&UserPriceBookAssignment{}).
+			Where("user_id = ? AND status IN ?", assignment.UserId, []string{
+				PriceBookAssignmentStatusActive,
+				PriceBookAssignmentStatusScheduled,
+			}).
+			Updates(map[string]any{
+				"status":       PriceBookAssignmentStatusExpired,
+				"effective_to": assignment.EffectiveFrom,
+				"updated_at":   now,
+			}).Error; err != nil {
+			return err
+		}
+	} else {
+		if err := tx.Model(&UserPriceBookAssignment{}).
+			Where("user_id = ? AND status = ?", assignment.UserId, PriceBookAssignmentStatusScheduled).
+			Updates(map[string]any{
+				"status":       PriceBookAssignmentStatusCancelled,
+				"effective_to": now,
+				"updated_at":   now,
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&UserPriceBookAssignment{}).
+			Where("user_id = ? AND status = ?", assignment.UserId, PriceBookAssignmentStatusActive).
+			Updates(map[string]any{
+				"effective_to": assignment.EffectiveFrom,
+				"updated_at":   now,
+			}).Error; err != nil {
+			return err
+		}
 	}
 	return tx.Create(assignment).Error
 }

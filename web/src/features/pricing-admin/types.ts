@@ -269,6 +269,7 @@ export type OfficialPriceVersion = {
   expression_source?: string
   expression_schema_version?: string
   currency: string
+  region?: string
   version: number
   status: PriceVersionStatus
   source: string

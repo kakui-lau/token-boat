@@ -77,7 +77,6 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
     mutationFn: () =>
       createSalesPriceBookVersion(props.priceBookId, {
         cost_basis_strategy: costBasis,
-        reprice_mode: 'review',
         payment_fee_rate: percentageToStoredRate(paymentFee),
         distribution_fee_rate: percentageToStoredRate(distributionFee),
         operations_labor_rate: percentageToStoredRate(operationsRate),
@@ -85,9 +84,6 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
         effective_tax_rate: percentageToStoredRate(taxRate),
         target_net_margin: percentageToStoredRate(targetMargin),
         minimum_margin_rate: percentageToStoredRate(minimumMargin),
-        rounding_mode: 'ceil',
-        rounding_scale: 5,
-        risk_action: 'exclude_channel',
         remark: '',
       }),
     onSuccess: async () => {

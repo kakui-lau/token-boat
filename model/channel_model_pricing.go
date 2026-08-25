@@ -69,6 +69,7 @@ type OfficialModelPriceVersion struct {
 	ExpressionSchemaVersion string `json:"expression_schema_version" gorm:"type:varchar(16);not null"`
 	Currency                string `json:"currency" gorm:"type:varchar(8);not null"`
 	Source                  string `json:"source" gorm:"type:varchar(32);not null"`
+	Region                  string `json:"region" gorm:"type:varchar(32)"`
 	SourceVersion           string `json:"source_version" gorm:"type:varchar(64)"`
 	ContentHash             string `json:"content_hash" gorm:"type:varchar(64);index"`
 	SyncBatchId             *int   `json:"sync_batch_id" gorm:"index"`

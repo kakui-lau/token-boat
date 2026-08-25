@@ -39,12 +39,13 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 
 	priceBookId := 0
 	versionId := 0
+	pinnedVersion := false
 	if userId > 0 {
 		var assignment model.UserPriceBookAssignment
 		err := model.DB.Where(
-			"user_id = ? AND status = ? AND effective_from <= ? AND (effective_to = 0 OR effective_to > ?)",
+			"user_id = ? AND status IN ? AND effective_from <= ? AND (effective_to = 0 OR effective_to > ?)",
 			userId,
-			model.PriceBookAssignmentStatusActive,
+			[]string{model.PriceBookAssignmentStatusActive, model.PriceBookAssignmentStatusScheduled},
 			at,
 			at,
 		).Order("effective_from DESC, id DESC").First(&assignment).Error
@@ -54,6 +55,7 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 			priceBookId = assignment.PriceBookId
 			if assignment.VersionPolicy == "pin_version" && assignment.PinnedVersionId != nil {
 				versionId = *assignment.PinnedVersionId
+				pinnedVersion = true
 				result.Source = "pinned_version"
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -81,8 +83,16 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 	if err := model.DB.First(&result.Version, versionId).Error; err != nil {
 		return ResolvedSalesPrice{}, err
 	}
-	if result.Version.PriceBookId != result.Book.Id ||
-		result.Version.Status != model.SalesPriceBookVersionStatusActive ||
+	if result.Version.PriceBookId != result.Book.Id {
+		return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
+	}
+	if pinnedVersion {
+		if result.Version.Status != model.SalesPriceBookVersionStatusActive &&
+			result.Version.Status != model.SalesPriceBookVersionStatusSuperseded ||
+			result.Version.PublishedAt == 0 {
+			return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
+		}
+	} else if result.Version.Status != model.SalesPriceBookVersionStatusActive ||
 		result.Version.EffectiveFrom > at ||
 		(result.Version.EffectiveTo > 0 && result.Version.EffectiveTo <= at) {
 		return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable

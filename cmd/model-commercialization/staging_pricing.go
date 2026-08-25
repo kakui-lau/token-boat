@@ -257,7 +257,7 @@ func publishOfficialExpression(path string) error {
 	if err := pricingadmin.CreateOfficialPriceVersion(&version, 1); err != nil {
 		return err
 	}
-	if err := pricingadmin.PublishOfficialPriceVersion(version.Id); err != nil {
+	if _, err := pricingadmin.PublishOfficialPriceVersionWithAutomation(version.Id, 1); err != nil {
 		return err
 	}
 	fmt.Printf("published official model=%q id=%d version=%d source_version=%q\n", cfg.ModelName, version.Id, version.Version, version.SourceVersion)
@@ -330,7 +330,7 @@ func repriceActiveChannelModel(
 	if err != nil {
 		return err
 	}
-	if err := pricingadmin.PublishPurchasePriceVersion(purchase.Id); err != nil {
+	if _, err := pricingadmin.PublishPurchasePriceVersionWithAutomation(purchase.Id, 1); err != nil {
 		return err
 	}
 	pricingruntime.InvalidateCatalog()
@@ -512,7 +512,7 @@ func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, pu
 	if err != nil {
 		return err
 	}
-	if err := pricingadmin.PublishPurchasePriceVersion(purchase.Id); err != nil {
+	if _, err := pricingadmin.PublishPurchasePriceVersionWithAutomation(purchase.Id, 1); err != nil {
 		return err
 	}
 	pricingruntime.InvalidateCatalog()

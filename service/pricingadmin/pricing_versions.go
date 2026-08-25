@@ -25,7 +25,7 @@ var (
 	}
 	validPricingModes = map[string]struct{}{
 		"official_ratio": {}, "component_ratio": {}, "fixed_unit_price": {},
-		"hybrid": {}, "custom_expr": {},
+		"custom_expr": {},
 	}
 )
 
@@ -43,6 +43,7 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	input.Status = model.PricingVersionStatusDraft
 	input.EffectiveFrom = 0
 	input.EffectiveTo = 0
+	input.Region = normalizeOfficialPriceRegion(input.Region)
 	normalizeExpressionMetadata(
 		&input.ExpressionSource,
 		&input.ExpressionSchemaVersion,
@@ -101,6 +102,7 @@ func UpdateOfficialPriceVersionDraft(
 	if input == nil {
 		return updated, errors.New("official price is required")
 	}
+	requestedRegion := strings.TrimSpace(input.Region)
 	normalizeExpressionMetadata(
 		&input.ExpressionSource,
 		&input.ExpressionSchemaVersion,
@@ -130,7 +132,6 @@ func UpdateOfficialPriceVersionDraft(
 		return updated, err
 	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
-	input.ContentHash = officialPriceContentHash(*input)
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		current, err := model.GetOfficialPriceVersionForUpdate(tx, id)
 		if err != nil {
@@ -142,6 +143,15 @@ func UpdateOfficialPriceVersionDraft(
 		if current.ModelId != input.ModelId {
 			return errors.New("official price draft model cannot be changed")
 		}
+		input.Source = current.Source
+		input.SourceVersion = current.SourceVersion
+		input.SourceUpdatedAt = current.SourceUpdatedAt
+		if requestedRegion == "" {
+			input.Region = normalizeOfficialPriceRegion(current.Region)
+		} else {
+			input.Region = normalizeOfficialPriceRegion(requestedRegion)
+		}
+		input.ContentHash = officialPriceContentHash(*input)
 		updates := map[string]any{
 			"billing_mode":              input.BillingMode,
 			"price_structure":           input.PriceStructure,
@@ -151,6 +161,7 @@ func UpdateOfficialPriceVersionDraft(
 			"expression_source":         input.ExpressionSource,
 			"expression_schema_version": input.ExpressionSchemaVersion,
 			"currency":                  input.Currency,
+			"region":                    input.Region,
 			"content_hash":              input.ContentHash,
 			"remark":                    strings.TrimSpace(input.Remark),
 			"updated_at":                common.GetTimestamp(),
@@ -195,6 +206,9 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 	if _, ok := validPricingModes[input.PricingMode]; !ok {
 		return fmt.Errorf("unsupported pricing mode %q", input.PricingMode)
 	}
+	if strings.TrimSpace(input.Conditions) != "" {
+		return errors.New("conditional purchase pricing is not supported; create a separate channel model for each contract condition")
+	}
 	if (input.PricingMode == "official_ratio" || input.PricingMode == "component_ratio") &&
 		input.OfficialPriceVersionId == nil {
 		return errors.New("official price version is required for ratio pricing")
@@ -226,9 +240,11 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 			if official.ModelId != channelModel.ModelId {
 				return errors.New("official price and channel model belong to different logical models")
 			}
+			if !officialPriceRegionMatchesChannel(official.Region, channelModel.Region) {
+				return errors.New("official price region does not match channel model region")
+			}
 			if input.PricingMode == "official_ratio" ||
-				input.PricingMode == "component_ratio" ||
-				input.PricingMode == "hybrid" {
+				input.PricingMode == "component_ratio" {
 				if err := validatePurchaseOfficialBillingContract(*input, official); err != nil {
 					return err
 				}
@@ -254,6 +270,25 @@ func PublishOfficialPriceVersion(id int) error {
 		pricingruntime.InvalidateCatalog()
 	}
 	return err
+}
+
+func PublishOfficialPriceVersionWithAutomation(
+	id int,
+	userId int,
+) ([]PurchasePriceAutoDraftResult, error) {
+	if err := PublishOfficialPriceVersion(id); err != nil {
+		return nil, err
+	}
+	if !model.DB.Migrator().HasTable(&model.PricingChangeBatch{}) {
+		return []PurchasePriceAutoDraftResult{}, nil
+	}
+	results, err := AutoCreatePurchaseDraftsForOfficialPrice(id, userId)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"official price was published, but automatic purchase draft generation failed: %w", err,
+		)
+	}
+	return results, nil
 }
 
 type PublishLatestOfficialPriceDraftsResult struct {
@@ -358,6 +393,10 @@ func officialPriceContentHash(version model.OfficialModelPriceVersion) string {
 		components,
 		strings.TrimSpace(version.BillingExpr),
 		strings.ToUpper(strings.TrimSpace(version.Currency)),
+		normalizeOfficialPriceRegion(version.Region),
+		strings.TrimSpace(version.Source),
+		strings.TrimSpace(version.SourceVersion),
+		fmt.Sprintf("%d", version.SourceUpdatedAt),
 	}, "\x00")
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(payload)))
 }
@@ -405,8 +444,7 @@ func validatePurchasePricePublication(
 		return errors.New("purchase price expression hash does not match")
 	}
 	requiresOfficialPrice := version.PricingMode == "official_ratio" ||
-		version.PricingMode == "component_ratio" ||
-		version.PricingMode == "hybrid"
+		version.PricingMode == "component_ratio"
 	if requiresOfficialPrice && version.OfficialPriceVersionId == nil {
 		return errors.New("official price version is required for ratio pricing")
 	}
@@ -423,7 +461,24 @@ func validatePurchasePricePublication(
 	if official.ModelId != channelModel.ModelId {
 		return errors.New("official price and channel model belong to different logical models")
 	}
+	if !officialPriceRegionMatchesChannel(official.Region, channelModel.Region) {
+		return errors.New("official price region does not match channel model region")
+	}
 	return validatePurchaseOfficialBillingContract(version, official)
+}
+
+func normalizeOfficialPriceRegion(region string) string {
+	region = strings.ToLower(strings.TrimSpace(region))
+	if region == "" {
+		return "global"
+	}
+	return region
+}
+
+func officialPriceRegionMatchesChannel(officialRegion string, channelRegion string) bool {
+	officialRegion = normalizeOfficialPriceRegion(officialRegion)
+	channelRegion = strings.ToLower(strings.TrimSpace(channelRegion))
+	return officialRegion == "global" || channelRegion == "" || officialRegion == channelRegion
 }
 
 func validatePurchaseOfficialBillingContract(
@@ -513,8 +568,7 @@ func validateProductionEvidenceOnPublish(
 	}
 
 	requiresOfficial := version.PricingMode == "official_ratio" ||
-		version.PricingMode == "component_ratio" ||
-		version.PricingMode == "hybrid"
+		version.PricingMode == "component_ratio"
 	if requiresOfficial && version.OfficialPriceVersionId != nil {
 		var official model.OfficialModelPriceVersion
 		if err := tx.First(&official, *version.OfficialPriceVersionId).Error; err != nil {
@@ -575,6 +629,25 @@ func PublishPurchasePriceVersion(id int) error {
 		pricingruntime.InvalidateCatalog()
 	}
 	return err
+}
+
+func PublishPurchasePriceVersionWithAutomation(
+	id int,
+	userId int,
+) ([]SalesPriceBookAutoRepriceResult, error) {
+	if err := PublishPurchasePriceVersion(id); err != nil {
+		return nil, err
+	}
+	if !model.DB.Migrator().HasTable(&model.SalesPriceBook{}) {
+		return []SalesPriceBookAutoRepriceResult{}, nil
+	}
+	results, err := AutoRepriceSalesPriceBooksForPurchaseVersion(id, userId)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"purchase price was published, but automatic sales repricing failed: %w", err,
+		)
+	}
+	return results, nil
 }
 
 func normalizeExpressionMetadata(source *string, schemaVersion *string, currency *string, expression *string) {

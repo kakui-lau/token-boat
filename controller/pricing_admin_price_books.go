@@ -275,6 +275,27 @@ func AdminPublishSalesPriceBookVersion(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func AdminAcceptSalesPriceBookItemReview(c *gin.Context) {
+	itemId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input struct {
+		Comment string `json:"comment" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.AcceptSalesPriceBookItemReview(
+		itemId, c.GetInt("id"), input.Comment,
+	); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminListUserPriceBookAssignments(c *gin.Context) {
 	page, pageSize, err := salesPriceBookPageQuery(c)
 	if err != nil {

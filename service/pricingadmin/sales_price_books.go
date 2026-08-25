@@ -35,14 +35,7 @@ var (
 		model.PriceBookAssignmentStatusExpired: {}, model.PriceBookAssignmentStatusCancelled: {},
 	}
 	validCostBasisStrategies = map[string]struct{}{
-		"max_eligible_cost": {}, "designated_channel": {},
-		"min_eligible_cost": {}, "official_price": {}, "manual": {},
-	}
-	validRepriceModes = map[string]struct{}{
-		"manual": {}, "review": {}, "automatic": {},
-	}
-	validPriceBookRiskActions = map[string]struct{}{
-		"exclude_channel": {}, "block_model": {},
+		"max_eligible_cost": {}, "designated_channel": {}, "min_eligible_cost": {},
 	}
 	validSalesPricingMethods = map[string]struct{}{
 		"cost_plus": {}, "official_discount": {}, "fixed": {},
@@ -269,12 +262,6 @@ func validateSalesPriceBookPolicy(input *model.SalesPriceBookVersion) error {
 	if _, ok := validCostBasisStrategies[input.CostBasisStrategy]; !ok {
 		return fmt.Errorf("unsupported cost basis strategy %q", input.CostBasisStrategy)
 	}
-	if _, ok := validRepriceModes[input.RepriceMode]; !ok {
-		return fmt.Errorf("unsupported reprice mode %q", input.RepriceMode)
-	}
-	if _, ok := validPriceBookRiskActions[input.RiskAction]; !ok {
-		return fmt.Errorf("unsupported price book risk action %q", input.RiskAction)
-	}
 	payment, err := validateRate("payment_fee_rate", input.PaymentFeeRate)
 	if err != nil {
 		return err
@@ -308,12 +295,6 @@ func validateSalesPriceBookPolicy(input *model.SalesPriceBookVersion) error {
 	target, _ := decimal.NewFromString(input.TargetNetMargin)
 	if minimum.GreaterThan(target) {
 		return errors.New("minimum margin rate cannot exceed target net margin")
-	}
-	if input.RoundingMode != "ceil" {
-		return errors.New("sales price book rounding mode must be ceil")
-	}
-	if input.RoundingScale < 0 || input.RoundingScale > 12 {
-		return errors.New("sales price book rounding scale must be between 0 and 12")
 	}
 	return nil
 }
@@ -360,6 +341,16 @@ func SaveSalesPriceBookItem(input *model.SalesPriceBookItem) error {
 		if version.Status != model.SalesPriceBookVersionStatusDraft {
 			return errors.New("only sales price book drafts can be edited")
 		}
+		var book model.SalesPriceBook
+		if err := tx.First(&book, version.PriceBookId).Error; err != nil {
+			return err
+		}
+		if input.Currency != book.Currency {
+			return fmt.Errorf(
+				"sales price item currency %s does not match price book currency %s",
+				input.Currency, book.Currency,
+			)
+		}
 		if input.Id == 0 {
 			return tx.Create(input).Error
 		}
@@ -391,6 +382,10 @@ func PublishSalesPriceBookVersion(id int, userId int) error {
 		if err := validateSalesPriceBookPolicy(&version); err != nil {
 			return err
 		}
+		book, err := model.GetSalesPriceBookForUpdate(tx, version.PriceBookId)
+		if err != nil {
+			return err
+		}
 		var items []model.SalesPriceBookItem
 		if err := tx.Where("price_book_version_id = ?", id).
 			Order("model_id ASC").Find(&items).Error; err != nil {
@@ -399,12 +394,20 @@ func PublishSalesPriceBookVersion(id int, userId int) error {
 		if len(items) == 0 {
 			return errors.New("sales price book version has no model prices")
 		}
+		enabledItems := 0
 		for _, item := range items {
 			if item.Status == SalesPriceItemStatusReviewRequired {
 				return fmt.Errorf("model %d requires pricing review", item.ModelId)
 			}
 			if item.Status != SalesPriceItemStatusEnabled {
 				continue
+			}
+			enabledItems++
+			if item.Currency != book.Currency {
+				return fmt.Errorf(
+					"model %d currency %s does not match price book currency %s",
+					item.ModelId, item.Currency, book.Currency,
+				)
 			}
 			if item.SalesExprHash != billingexpr.ExprHashString(item.SalesBillingExpr) {
 				return fmt.Errorf("model %d sales expression hash mismatch", item.ModelId)
@@ -413,7 +416,20 @@ func PublishSalesPriceBookVersion(id int, userId int) error {
 				return fmt.Errorf("model %d sales expression: %w", item.ModelId, err)
 			}
 		}
-		version.ContentHash = salesPriceBookContentHash(version, items)
+		if enabledItems == 0 {
+			return errors.New("sales price book version has no enabled model prices")
+		}
+		itemIds := make([]int, 0, len(items))
+		for _, item := range items {
+			itemIds = append(itemIds, item.Id)
+		}
+		var sources []model.SalesPriceBookItemBasisSource
+		if err := tx.Where("price_book_item_id IN ?", itemIds).
+			Order("price_book_item_id ASC, channel_model_id ASC, purchase_price_version_id ASC, tier_key ASC, component_key ASC").
+			Find(&sources).Error; err != nil {
+			return err
+		}
+		version.ContentHash = salesPriceBookContentHash(version, items, sources)
 		if err := tx.Model(&model.SalesPriceBookVersion{}).
 			Where("id = ? AND status = ?", id, model.SalesPriceBookVersionStatusDraft).
 			UpdateColumns(map[string]any{
@@ -430,6 +446,40 @@ func PublishSalesPriceBookVersion(id int, userId int) error {
 			ObjectId:   version.Id,
 			Action:     "publish",
 			OperatorId: userId,
+		}).Error
+	})
+}
+
+func AcceptSalesPriceBookItemReview(id int, userId int, comment string) error {
+	if id <= 0 {
+		return errors.New("sales price book item is required")
+	}
+	comment = strings.TrimSpace(comment)
+	if comment == "" {
+		return errors.New("review comment is required")
+	}
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		item, err := model.GetSalesPriceBookItemForUpdate(tx, id)
+		if err != nil {
+			return err
+		}
+		version, err := model.GetSalesPriceBookVersionForUpdate(tx, item.PriceBookVersionId)
+		if err != nil {
+			return err
+		}
+		if version.Status != model.SalesPriceBookVersionStatusDraft {
+			return errors.New("only draft price book items can be reviewed")
+		}
+		if item.Status != SalesPriceItemStatusReviewRequired {
+			return errors.New("sales price book item does not require review")
+		}
+		if err := tx.Model(&model.SalesPriceBookItem{}).Where("id = ?", id).
+			Update("status", SalesPriceItemStatusEnabled).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.PricingAuditRecord{
+			ObjectType: "sales_price_book_item", ObjectId: id,
+			Action: "accept_risk", OperatorId: userId, Comment: comment,
 		}).Error
 	})
 }
@@ -578,8 +628,11 @@ func AssignUserToSalesPriceBook(input *model.UserPriceBookAssignment, userId int
 			if err := tx.First(&pinned, *input.PinnedVersionId).Error; err != nil {
 				return err
 			}
-			if pinned.PriceBookId != input.PriceBookId || pinned.Status != model.SalesPriceBookVersionStatusActive {
-				return errors.New("pinned sales price book version is not active for this book")
+			if pinned.PriceBookId != input.PriceBookId ||
+				(pinned.Status != model.SalesPriceBookVersionStatusActive &&
+					pinned.Status != model.SalesPriceBookVersionStatusSuperseded) ||
+				pinned.PublishedAt == 0 {
+				return errors.New("pinned sales price book version is not published for this book")
 			}
 		} else {
 			input.PinnedVersionId = nil
@@ -628,12 +681,13 @@ func CancelUserPriceBookAssignment(id int, userId int) error {
 }
 
 func emptySalesPriceBookContentHash(version model.SalesPriceBookVersion) string {
-	return salesPriceBookContentHash(version, nil)
+	return salesPriceBookContentHash(version, nil, nil)
 }
 
 func salesPriceBookContentHash(
 	version model.SalesPriceBookVersion,
 	items []model.SalesPriceBookItem,
+	sources []model.SalesPriceBookItemBasisSource,
 ) string {
 	sort.Slice(items, func(left int, right int) bool {
 		return items[left].ModelId < items[right].ModelId
@@ -641,7 +695,6 @@ func salesPriceBookContentHash(
 	parts := []string{
 		fmt.Sprintf("%d", version.PriceBookId),
 		version.CostBasisStrategy,
-		version.RepriceMode,
 		version.PaymentFeeRate,
 		version.DistributionFeeRate,
 		version.OperationsLaborRate,
@@ -649,12 +702,48 @@ func salesPriceBookContentHash(
 		version.EffectiveTaxRate,
 		version.TargetNetMargin,
 		version.MinimumMarginRate,
-		version.RiskAction,
+		version.IncreaseCapRate,
+	}
+	sourcesByItem := make(map[int][]model.SalesPriceBookItemBasisSource)
+	for _, source := range sources {
+		sourcesByItem[source.PriceBookItemId] = append(sourcesByItem[source.PriceBookItemId], source)
 	}
 	for _, item := range items {
-		parts = append(parts, fmt.Sprintf("%d:%s:%s", item.ModelId, item.Status, item.SalesExprHash))
+		parts = append(parts, strings.Join([]string{
+			fmt.Sprintf("%d", item.ModelId), item.Status, item.BillingMode,
+			item.PriceStructure, item.PriceComponents, item.SalesBillingExpr,
+			item.SalesExprHash, item.ExpressionSource, item.ExpressionSchemaVersion,
+			item.PricingMethod, optionalIntHash(item.OfficialPriceVersionId),
+			optionalIntHash(item.PrimaryPurchaseVersionId), item.SellingFactor,
+			item.OfficialDiscount, item.MinimumMarginOverride, item.Currency,
+		}, "\x00"))
+		itemSources := sourcesByItem[item.Id]
+		sort.Slice(itemSources, func(left int, right int) bool {
+			leftKey := fmt.Sprintf("%010d:%010d:%s:%s:%s", itemSources[left].ChannelModelId,
+				itemSources[left].PurchasePriceVersionId, itemSources[left].TierKey,
+				itemSources[left].ComponentKey, itemSources[left].SourceRole)
+			rightKey := fmt.Sprintf("%010d:%010d:%s:%s:%s", itemSources[right].ChannelModelId,
+				itemSources[right].PurchasePriceVersionId, itemSources[right].TierKey,
+				itemSources[right].ComponentKey, itemSources[right].SourceRole)
+			return leftKey < rightKey
+		})
+		for _, source := range itemSources {
+			parts = append(parts, strings.Join([]string{
+				fmt.Sprintf("%d", item.ModelId), fmt.Sprintf("%d", source.ChannelModelId),
+				fmt.Sprintf("%d", source.PurchasePriceVersionId), source.TierKey,
+				source.ComponentKey, source.SourceRole, source.SourceValue,
+				source.SelectionReason,
+			}, "\x00"))
+		}
 	}
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(parts, "\n"))))
+}
+
+func optionalIntHash(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *value)
 }
 
 func ListSalesPriceBookVersions(priceBookId int) ([]model.SalesPriceBookVersion, error) {

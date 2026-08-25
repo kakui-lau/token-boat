@@ -25,11 +25,15 @@ type FlatTokenPriceInput struct {
 }
 
 type OfficialFlatDraftInput struct {
-	ModelId  int                 `json:"model_id"`
-	Currency string              `json:"currency"`
-	Prices   FlatTokenPriceInput `json:"prices"`
-	Source   string              `json:"source"`
-	Remark   string              `json:"remark"`
+	ModelId         int                 `json:"model_id"`
+	Currency        string              `json:"currency"`
+	Prices          FlatTokenPriceInput `json:"prices"`
+	Source          string              `json:"source"`
+	SourceUrl       string              `json:"source_url"`
+	SourceVersion   string              `json:"source_version"`
+	SourceUpdatedAt int64               `json:"source_updated_at"`
+	Region          string              `json:"region"`
+	Remark          string              `json:"remark"`
 }
 
 type PurchaseDraftInput struct {
@@ -48,7 +52,10 @@ type PurchaseDraftInput struct {
 	AudioOutputDiscount    string              `json:"audio_output_discount"`
 	Prices                 FlatTokenPriceInput `json:"prices"`
 	QuoteReference         string              `json:"quote_reference"`
+	QuoteValidUntil        int64               `json:"quote_valid_until"`
 	ContractReference      string              `json:"contract_reference"`
+	ContractEffectiveFrom  int64               `json:"contract_effective_from"`
+	ContractEffectiveTo    int64               `json:"contract_effective_to"`
 	Remark                 string              `json:"remark"`
 	ExpectedUpdatedAt      int64               `json:"expected_updated_at"`
 }
@@ -132,8 +139,21 @@ func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.Offici
 		replacement.Status = current.Status
 		replacement.CreatedBy = current.CreatedBy
 		replacement.CreatedAt = current.CreatedAt
-		replacement.Source = current.Source
-		replacement.Region = current.Region
+		if replacement.Source == "" {
+			replacement.Source = current.Source
+		}
+		if replacement.SourceUrl == "" {
+			replacement.SourceUrl = current.SourceUrl
+		}
+		if replacement.SourceVersion == "" {
+			replacement.SourceVersion = current.SourceVersion
+		}
+		if replacement.SourceUpdatedAt == 0 {
+			replacement.SourceUpdatedAt = current.SourceUpdatedAt
+		}
+		if replacement.Region == "" {
+			replacement.Region = current.Region
+		}
 		replacement.ContentHash = officialPriceContentHash(replacement)
 		if err := tx.Model(&replacement).Select(
 			"billing_mode",
@@ -145,6 +165,9 @@ func UpdateOfficialFlatDraft(id int, input OfficialFlatDraftInput) (model.Offici
 			"expression_schema_version",
 			"currency",
 			"source",
+			"source_url",
+			"source_version",
+			"source_updated_at",
 			"region",
 			"content_hash",
 			"remark",
@@ -172,7 +195,10 @@ func buildOfficialFlatDraft(input OfficialFlatDraftInput) (model.OfficialModelPr
 		ExpressionSchemaVersion: "v2",
 		Currency:                input.Currency,
 		Source:                  strings.TrimSpace(input.Source),
-		Region:                  "global",
+		SourceUrl:               strings.TrimSpace(input.SourceUrl),
+		SourceVersion:           strings.TrimSpace(input.SourceVersion),
+		SourceUpdatedAt:         input.SourceUpdatedAt,
+		Region:                  normalizeOfficialPriceRegion(input.Region),
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
 	if version.Source == "" {
@@ -227,7 +253,10 @@ func ensurePurchaseEvidenceReferences(input *PurchaseDraftInput) error {
 	if err == nil {
 		if strings.TrimSpace(active.QuoteReference) != "" || strings.TrimSpace(active.ContractReference) != "" {
 			input.QuoteReference = active.QuoteReference
+			input.QuoteValidUntil = active.QuoteValidUntil
 			input.ContractReference = active.ContractReference
+			input.ContractEffectiveFrom = active.ContractEffectiveFrom
+			input.ContractEffectiveTo = active.ContractEffectiveTo
 			return nil
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) && !ignoreMissingTable(err) {
@@ -315,7 +344,10 @@ func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPu
 			"expression_schema_version": replacement.ExpressionSchemaVersion,
 			"currency":                  replacement.Currency,
 			"quote_reference":           replacement.QuoteReference,
+			"quote_valid_until":         replacement.QuoteValidUntil,
 			"contract_reference":        replacement.ContractReference,
+			"contract_effective_from":   replacement.ContractEffectiveFrom,
+			"contract_effective_to":     replacement.ContractEffectiveTo,
 			"remark":                    replacement.Remark,
 			"updated_at":                updatedAt,
 		}
@@ -538,7 +570,10 @@ func buildExpressionPurchaseDraft(
 		ExpressionSchemaVersion: "v2",
 		Currency:                official.Currency,
 		QuoteReference:          strings.TrimSpace(input.QuoteReference),
+		QuoteValidUntil:         input.QuoteValidUntil,
 		ContractReference:       strings.TrimSpace(input.ContractReference),
+		ContractEffectiveFrom:   input.ContractEffectiveFrom,
+		ContractEffectiveTo:     input.ContractEffectiveTo,
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
 	return version, nil
@@ -600,7 +635,10 @@ func buildFlatPurchaseDraft(
 		ExpressionSchemaVersion: "v2",
 		Currency:                official.Currency,
 		QuoteReference:          strings.TrimSpace(input.QuoteReference),
+		QuoteValidUntil:         input.QuoteValidUntil,
 		ContractReference:       strings.TrimSpace(input.ContractReference),
+		ContractEffectiveFrom:   input.ContractEffectiveFrom,
+		ContractEffectiveTo:     input.ContractEffectiveTo,
 		Remark:                  strings.TrimSpace(input.Remark),
 	}
 	return version, nil

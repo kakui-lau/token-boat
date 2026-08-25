@@ -59,6 +59,16 @@ export function PricingRuntimeStatus() {
               total: runtime.total_channel_models,
             })}
           </Badge>
+          <Badge
+            variant={runtime.toc_default_ready ? 'outline' : 'destructive'}
+          >
+            {runtime.toc_default_ready
+              ? t('TOC default price book is ready')
+              : t(
+                  runtime.toc_default_error ||
+                    'TOC default price book is unavailable'
+                )}
+          </Badge>
           <Badge variant='outline'>
             {t('{{count}} model/group scopes are ready', {
               count: runtime.complete_group_model_scopes,

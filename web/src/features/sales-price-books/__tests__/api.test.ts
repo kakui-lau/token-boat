@@ -31,6 +31,7 @@ import {
   getPricingChangeBatch,
   getPricingChangeBatches,
   getUserPriceBookAssignments,
+  saveSalesPriceBookItem,
   setDefaultSalesPriceBook,
 } from '../api'
 
@@ -184,6 +185,7 @@ test('binds a user directly to a price book and updates the TOC default separate
     version_policy: 'pin_version' as const,
     pinned_version_id: 31,
     contract_reference: 'CONTRACT-2026-001',
+    effective_from: 1_788_000_000,
   }
 
   await assignUserPriceBook(assignment)
@@ -196,6 +198,36 @@ test('binds a user directly to a price book and updates the TOC default separate
   expect(api.put).toHaveBeenCalledWith(
     '/api/pricing-admin/price-book-defaults',
     { default_key: 'toc_default', price_book_id: 19 }
+  )
+})
+
+test('saves a manual correction only inside the selected draft version', async () => {
+  const item = {
+    id: 44,
+    price_book_version_id: 31,
+    model_id: 7,
+    model_name: 'openai/example',
+    status: 'enabled' as const,
+    billing_mode: 'token',
+    price_structure: 'flat',
+    price_components: '{"input_unit_price":"2"}',
+    sales_billing_expr: 'v2:tier("base", p * 2 / 1000000)',
+    sales_expr_hash: 'old-hash',
+    expression_source: 'manual',
+    expression_schema_version: 'v2',
+    pricing_method: 'manual',
+    selling_factor: '',
+    official_discount: '',
+    minimum_margin_override: '',
+    currency: 'USD',
+    remark: 'Contract correction',
+  }
+
+  await saveSalesPriceBookItem(item)
+
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/31/items',
+    item
   )
 })
 

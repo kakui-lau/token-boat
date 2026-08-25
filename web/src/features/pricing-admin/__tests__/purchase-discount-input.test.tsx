@@ -129,7 +129,10 @@ describe('purchase discount input', () => {
           audio_output_unit_price: '',
         },
         quote_reference: '',
+        quote_valid_until: 0,
         contract_reference: '',
+        contract_effective_from: 0,
+        contract_effective_to: 0,
         remark: '',
         expected_updated_at: undefined,
       })

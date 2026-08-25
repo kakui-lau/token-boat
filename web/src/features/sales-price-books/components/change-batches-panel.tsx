@@ -16,14 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import { useDeferredValue, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -46,8 +54,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { handleServerError } from '@/lib/handle-server-error'
 
-import { getPricingChangeBatch, getPricingChangeBatches } from '../api'
+import {
+  getPricingChangeBatch,
+  getPricingChangeBatches,
+  publishGeneratedPricingChangeBatch,
+  reconcilePricingAutomation,
+} from '../api'
 import type { PricingChangeBatch } from '../types'
 import { ListPagination } from './list-pagination'
 
@@ -74,6 +88,7 @@ function percent(value: string) {
 
 export function ChangeBatchesPanel() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
   const [status, setStatus] = useState<PricingChangeBatch['status'] | ''>('')
   const [triggerType, setTriggerType] = useState('')
@@ -110,6 +125,37 @@ export function ChangeBatchesPanel() {
     enabled: Boolean(selectedBatch),
   })
   const details = detailQuery.data?.data.items ?? []
+  const reconcileMutation = useMutation({
+    mutationFn: reconcilePricingAutomation,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'change-batches'],
+      })
+      toast.success(
+        t('{{count}} pricing automation gaps repaired', {
+          count:
+            response.data.official_gaps_repaired +
+            response.data.purchase_gaps_repaired,
+        })
+      )
+    },
+    onError: handleServerError,
+  })
+  const publishMutation = useMutation({
+    mutationFn: publishGeneratedPricingChangeBatch,
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books'],
+      })
+      toast.success(
+        t('{{purchase}} purchase and {{sales}} sales versions published', {
+          purchase: response.data.purchase_versions_published,
+          sales: response.data.sales_versions_published,
+        })
+      )
+    },
+    onError: handleServerError,
+  })
 
   return (
     <div className='flex flex-col gap-4'>
@@ -119,6 +165,16 @@ export function ChangeBatchesPanel() {
           <CardDescription>
             {t('Track automatic and manual price recalculation history.')}
           </CardDescription>
+          <CardAction>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={reconcileMutation.isPending}
+              onClick={() => reconcileMutation.mutate()}
+            >
+              {t('Repair automation gaps')}
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent className='flex flex-col gap-4'>
           <div className='grid gap-3 md:grid-cols-[minmax(260px,1fr)_200px_220px]'>
@@ -264,6 +320,17 @@ export function ChangeBatchesPanel() {
           <CardHeader>
             <CardTitle>{t('Batch details')}</CardTitle>
             <CardDescription>{selectedBatch.batch_no}</CardDescription>
+            <CardAction>
+              <Button
+                size='sm'
+                disabled={
+                  publishMutation.isPending || selectedBatch.review_count > 0
+                }
+                onClick={() => publishMutation.mutate(selectedBatch.id)}
+              >
+                {t('Publish generated versions')}
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent>
             {detailQuery.isLoading ? (

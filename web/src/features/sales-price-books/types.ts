@@ -55,6 +55,7 @@ export type SalesPriceBook = {
   current_version?: SalesPriceBookVersion
   model_count: number
   assigned_users: number
+  missing_model_count: number
   remark: string
 }
 
@@ -69,9 +70,16 @@ export type SalesPriceBookItem = {
   price_components: string
   sales_billing_expr: string
   sales_expr_hash: string
+  expression_source: string
+  expression_schema_version: string
   pricing_method: string
+  official_price_version_id?: number
+  primary_purchase_version_id?: number
   selling_factor: string
+  official_discount: string
+  minimum_margin_override: string
   currency: string
+  generated_by_batch_id?: number
   remark: string
 }
 
@@ -131,6 +139,19 @@ export type PricingChangeBatch = {
   requested_by_username: string
   created_at: number
   error_message: string
+}
+
+export type PricingChangeBatchPublishResult = {
+  purchase_versions_published: number
+  sales_versions_published: number
+  review_required: number
+}
+
+export type PricingAutomationReconciliationSummary = {
+  official_versions_checked: number
+  official_gaps_repaired: number
+  purchase_versions_checked: number
+  purchase_gaps_repaired: number
 }
 
 export type PricingChangeBatchItem = {

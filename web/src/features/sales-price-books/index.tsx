@@ -29,6 +29,16 @@ import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -68,26 +78,37 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   acceptSalesPriceBookItemReview,
+  archiveSalesPriceBook,
   cancelUserPriceBookAssignment,
   cloneSalesPriceBookVersion,
   disableSalesPriceBook,
+  deleteSalesPriceBookVersionDraft,
+  enableSalesPriceBook,
   exportSalesPriceBookItems,
   getSalesPriceBookItems,
   getSalesPriceBooks,
   getSalesPriceBookVersions,
   getUserPriceBookAssignments,
   publishSalesPriceBookVersion,
+  rejectSalesPriceBookItemReview,
+  saveSalesPriceBookItem,
+  setSalesPriceBookItemStatus,
   setDefaultSalesPriceBook,
+  updateSalesPriceBook,
 } from './api'
 import { AssignUserDialog } from './components/assign-user-dialog'
 import { ChangeBatchesPanel } from './components/change-batches-panel'
 import { CreateBookDialog } from './components/create-book-dialog'
 import { CreateVersionDialog } from './components/create-version-dialog'
+import { EditBookDialog } from './components/edit-book-dialog'
+import { EditPriceItemDialog } from './components/edit-price-item-dialog'
 import { GenerateItemsDialog } from './components/generate-items-dialog'
 import { ListPagination } from './components/list-pagination'
+import { ReviewItemDialog } from './components/review-item-dialog'
 import { VersionDiffCard } from './components/version-diff-card'
 import type {
   SalesPriceBookAudience,
+  SalesPriceBookItem,
   SalesPriceBookStatus,
   SalesPriceBookVersionStatus,
   UserPriceBookAssignment,
@@ -160,6 +181,16 @@ export function SalesPriceBooks() {
   const [createVersionOpen, setCreateVersionOpen] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
+  const [editBookId, setEditBookId] = useState<number>()
+  const [editPriceItem, setEditPriceItem] = useState<SalesPriceBookItem>()
+  const [reviewItem, setReviewItem] = useState<{
+    id: number
+    action: 'accept' | 'reject'
+  }>()
+  const [destructiveAction, setDestructiveAction] = useState<{
+    type: 'disable' | 'archive' | 'delete-draft'
+    id: number
+  }>()
   const deferredKeyword = useDeferredValue(keyword)
   const deferredAssignmentKeyword = useDeferredValue(assignmentKeyword)
 
@@ -254,12 +285,51 @@ export function SalesPriceBooks() {
     onError: handleServerError,
   })
   const acceptReviewMutation = useMutation({
-    mutationFn: acceptSalesPriceBookItemReview,
+    mutationFn: ({ itemId, comment }: { itemId: number; comment: string }) =>
+      acceptSalesPriceBookItemReview(itemId, comment),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'items', selectedVersion?.id],
       })
       toast.success(t('Pricing risk accepted'))
+      setReviewItem(undefined)
+    },
+    onError: handleServerError,
+  })
+  const rejectReviewMutation = useMutation({
+    mutationFn: ({ itemId, comment }: { itemId: number; comment: string }) =>
+      rejectSalesPriceBookItemReview(itemId, comment),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'change-batches'],
+      })
+      toast.success(t('Pricing risk rejected'))
+      setReviewItem(undefined)
+    },
+    onError: handleServerError,
+  })
+  const itemStatusMutation = useMutation({
+    mutationFn: ({ itemId, enabled }: { itemId: number; enabled: boolean }) =>
+      setSalesPriceBookItemStatus(itemId, enabled),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
+      })
+      toast.success(t('Model price status updated'))
+    },
+    onError: handleServerError,
+  })
+  const saveItemMutation = useMutation({
+    mutationFn: saveSalesPriceBookItem,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
+      })
+      setEditPriceItem(undefined)
+      toast.success(t('Model sales price updated'))
     },
     onError: handleServerError,
   })
@@ -290,6 +360,53 @@ export function SalesPriceBooks() {
     onSuccess: async () => {
       await refreshBooks()
       toast.success(t('Sales price book disabled'))
+      setDestructiveAction(undefined)
+    },
+    onError: handleServerError,
+  })
+  const updateBookMutation = useMutation({
+    mutationFn: ({
+      id,
+      name,
+      remark,
+    }: {
+      id: number
+      name: string
+      remark: string
+    }) => updateSalesPriceBook(id, { name, remark }),
+    onSuccess: async () => {
+      await refreshBooks()
+      setEditBookId(undefined)
+      toast.success(t('Sales price book updated'))
+    },
+    onError: handleServerError,
+  })
+  const enableMutation = useMutation({
+    mutationFn: enableSalesPriceBook,
+    onSuccess: async () => {
+      await refreshBooks()
+      toast.success(t('Sales price book enabled'))
+    },
+    onError: handleServerError,
+  })
+  const archiveMutation = useMutation({
+    mutationFn: archiveSalesPriceBook,
+    onSuccess: async () => {
+      await refreshBooks()
+      toast.success(t('Sales price book archived'))
+      setDestructiveAction(undefined)
+    },
+    onError: handleServerError,
+  })
+  const deleteDraftMutation = useMutation({
+    mutationFn: deleteSalesPriceBookVersionDraft,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'versions', selectedBook?.id],
+      })
+      setSelectedVersionId(undefined)
+      toast.success(t('Draft version deleted'))
+      setDestructiveAction(undefined)
     },
     onError: handleServerError,
   })
@@ -484,10 +601,29 @@ export function SalesPriceBooks() {
                                 ? `v${book.current_version.version}`
                                 : '—'}
                             </TableCell>
-                            <TableCell>{book.model_count}</TableCell>
+                            <TableCell>
+                              <div className='flex items-center gap-2'>
+                                <span>{book.model_count}</span>
+                                {book.audience === 'tob' &&
+                                book.missing_model_count > 0 ? (
+                                  <Badge variant='destructive'>
+                                    {t('{{count}} missing', {
+                                      count: book.missing_model_count,
+                                    })}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            </TableCell>
                             <TableCell>{book.assigned_users}</TableCell>
                             <TableCell>
                               <div className='flex gap-2'>
+                                <Button
+                                  size='sm'
+                                  variant='outline'
+                                  onClick={() => setEditBookId(book.id)}
+                                >
+                                  {t('Edit')}
+                                </Button>
                                 {book.audience === 'toc' &&
                                 book.status === 'enabled' ? (
                                   <Button
@@ -508,11 +644,40 @@ export function SalesPriceBooks() {
                                     variant='outline'
                                     disabled={disableMutation.isPending}
                                     onClick={() =>
-                                      disableMutation.mutate(book.id)
+                                      setDestructiveAction({
+                                        type: 'disable',
+                                        id: book.id,
+                                      })
                                     }
                                   >
                                     {t('Disable')}
                                   </Button>
+                                ) : null}
+                                {book.status === 'disabled' ? (
+                                  <>
+                                    <Button
+                                      size='sm'
+                                      variant='outline'
+                                      disabled={enableMutation.isPending}
+                                      onClick={() =>
+                                        enableMutation.mutate(book.id)
+                                      }
+                                    >
+                                      {t('Enable')}
+                                    </Button>
+                                    <Button
+                                      size='sm'
+                                      variant='outline'
+                                      onClick={() =>
+                                        setDestructiveAction({
+                                          type: 'archive',
+                                          id: book.id,
+                                        })
+                                      }
+                                    >
+                                      {t('Archive')}
+                                    </Button>
+                                  </>
                                 ) : null}
                               </div>
                             </TableCell>
@@ -641,6 +806,18 @@ export function SalesPriceBooks() {
                                       >
                                         {t('Publish')}
                                       </Button>
+                                      <Button
+                                        size='sm'
+                                        variant='destructive'
+                                        onClick={() =>
+                                          setDestructiveAction({
+                                            type: 'delete-draft',
+                                            id: version.id,
+                                          })
+                                        }
+                                      >
+                                        {t('Delete draft')}
+                                      </Button>
                                     </>
                                   ) : (
                                     <Button
@@ -730,18 +907,60 @@ export function SalesPriceBooks() {
                                 {item.sales_billing_expr}
                               </TableCell>
                               <TableCell>
-                                {item.status === 'review_required' &&
-                                selectedVersion.status === 'draft' ? (
-                                  <Button
-                                    size='sm'
-                                    variant='outline'
-                                    disabled={acceptReviewMutation.isPending}
-                                    onClick={() =>
-                                      acceptReviewMutation.mutate(item.id)
-                                    }
-                                  >
-                                    {t('Accept risk')}
-                                  </Button>
+                                {selectedVersion.status === 'draft' ? (
+                                  <div className='flex flex-wrap gap-2'>
+                                    <Button
+                                      size='sm'
+                                      variant='outline'
+                                      onClick={() => setEditPriceItem(item)}
+                                    >
+                                      {t('Edit')}
+                                    </Button>
+                                    {item.status === 'review_required' ? (
+                                      <>
+                                        <Button
+                                          size='sm'
+                                          variant='outline'
+                                          onClick={() =>
+                                            setReviewItem({
+                                              id: item.id,
+                                              action: 'accept',
+                                            })
+                                          }
+                                        >
+                                          {t('Accept risk')}
+                                        </Button>
+                                        <Button
+                                          size='sm'
+                                          variant='destructive'
+                                          onClick={() =>
+                                            setReviewItem({
+                                              id: item.id,
+                                              action: 'reject',
+                                            })
+                                          }
+                                        >
+                                          {t('Reject')}
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        size='sm'
+                                        variant='outline'
+                                        disabled={itemStatusMutation.isPending}
+                                        onClick={() =>
+                                          itemStatusMutation.mutate({
+                                            itemId: item.id,
+                                            enabled: item.status !== 'enabled',
+                                          })
+                                        }
+                                      >
+                                        {item.status === 'enabled'
+                                          ? t('Disable')
+                                          : t('Enable')}
+                                      </Button>
+                                    )}
+                                  </div>
                                 ) : null}
                               </TableCell>
                             </TableRow>
@@ -934,6 +1153,82 @@ export function SalesPriceBooks() {
           books={assignmentBooks}
           onOpenChange={setAssignOpen}
         />
+        <EditBookDialog
+          book={books.find((book) => book.id === editBookId)}
+          pending={updateBookMutation.isPending}
+          onOpenChange={(open) => {
+            if (!open) setEditBookId(undefined)
+          }}
+          onSubmit={(name, remark) => {
+            if (editBookId) {
+              updateBookMutation.mutate({ id: editBookId, name, remark })
+            }
+          }}
+        />
+        <ReviewItemDialog
+          itemId={reviewItem?.id}
+          action={reviewItem?.action ?? 'accept'}
+          pending={
+            acceptReviewMutation.isPending || rejectReviewMutation.isPending
+          }
+          onOpenChange={(open) => {
+            if (!open) setReviewItem(undefined)
+          }}
+          onSubmit={(itemId, comment) => {
+            if (reviewItem?.action === 'reject') {
+              rejectReviewMutation.mutate({ itemId, comment })
+              return
+            }
+            acceptReviewMutation.mutate({ itemId, comment })
+          }}
+        />
+        <EditPriceItemDialog
+          item={editPriceItem}
+          pending={saveItemMutation.isPending}
+          onOpenChange={(open) => {
+            if (!open) setEditPriceItem(undefined)
+          }}
+          onSubmit={(item) => saveItemMutation.mutate(item)}
+        />
+        <AlertDialog
+          open={Boolean(destructiveAction)}
+          onOpenChange={(open) => {
+            if (!open) setDestructiveAction(undefined)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Confirm pricing change')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {destructiveAction?.type === 'delete-draft'
+                  ? t(
+                      'This draft and its model prices will be permanently deleted.'
+                    )
+                  : t(
+                      'The server will block this action if the price book is still assigned or is the TOC default.'
+                    )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (!destructiveAction) return
+                  if (destructiveAction.type === 'disable') {
+                    disableMutation.mutate(destructiveAction.id)
+                  } else if (destructiveAction.type === 'archive') {
+                    archiveMutation.mutate(destructiveAction.id)
+                  } else {
+                    deleteDraftMutation.mutate(destructiveAction.id)
+                  }
+                }}
+              >
+                {t('Confirm')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

@@ -22,6 +22,7 @@ import type {
   ChannelCircuitOverview,
   ChannelCircuitEventListResponse,
   ChannelModel,
+  AutomatedPriceDraftResult,
   ChannelModelListResponse,
   FlatTokenPrices,
   ImportResponse,
@@ -34,6 +35,7 @@ import type {
   PriceVersionResponse,
   PublishLatestOfficialPriceDraftsResponse,
   PurchasePriceVersion,
+  PurchasePriceSuspendImpact,
   RequestPricingSnapshotListResponse,
 } from './types'
 
@@ -324,6 +326,10 @@ export async function createOfficialFlatDraft(input: {
   model_id: number
   currency: string
   prices: FlatTokenPrices
+  source_url: string
+  source_version: string
+  source_updated_at: number
+  region: string
   remark: string
 }): Promise<PriceVersionResponse<OfficialPriceVersion>> {
   const response = await api.post(
@@ -339,6 +345,10 @@ export async function updateOfficialFlatDraft(
     model_id: number
     currency: string
     prices: FlatTokenPrices
+    source_url: string
+    source_version: string
+    source_updated_at: number
+    region: string
     remark: string
   }
 ): Promise<PriceVersionResponse<OfficialPriceVersion>> {
@@ -374,7 +384,10 @@ export type PurchaseDraftPayload = {
   audio_output_discount: string
   prices: FlatTokenPrices
   quote_reference: string
+  quote_valid_until: number
   contract_reference: string
+  contract_effective_from: number
+  contract_effective_to: number
   remark: string
   expected_updated_at?: number
 }
@@ -400,7 +413,7 @@ export async function updatePurchaseDraft(
 export async function publishPriceVersion(
   kind: 'official' | 'purchase',
   id: number
-): Promise<PriceVersionResponse<null>> {
+): Promise<PriceVersionResponse<AutomatedPriceDraftResult[]>> {
   const response = await api.post(
     `/api/pricing-admin/${kind}-prices/${id}/publish`
   )
@@ -409,10 +422,21 @@ export async function publishPriceVersion(
 
 export async function suspendPriceVersion(
   kind: 'official' | 'purchase',
-  id: number
+  id: number,
+  force = false
 ): Promise<PriceVersionResponse<null>> {
   const response = await api.post(
-    `/api/pricing-admin/${kind}-prices/${id}/suspend`
+    `/api/pricing-admin/${kind}-prices/${id}/suspend`,
+    { force }
+  )
+  return requirePricingSuccess(response.data)
+}
+
+export async function getPurchasePriceSuspendImpact(
+  id: number
+): Promise<PriceVersionResponse<PurchasePriceSuspendImpact>> {
+  const response = await api.get(
+    `/api/pricing-admin/purchase-prices/${id}/suspend-impact`
   )
   return requirePricingSuccess(response.data)
 }

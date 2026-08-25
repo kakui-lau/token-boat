@@ -40,6 +40,8 @@ type RuntimeReadiness struct {
 	LiveTrafficEnabled       bool              `json:"live_traffic_enabled"`
 	DistributedCircuitState  bool              `json:"distributed_circuit_state"`
 	RouteScoreWeights        RouteScoreWeights `json:"route_score_weights"`
+	TocDefaultReady          bool              `json:"toc_default_ready"`
+	TocDefaultError          string            `json:"toc_default_error,omitempty"`
 }
 
 var (
@@ -404,7 +406,29 @@ func GetRuntimeReadiness() (RuntimeReadiness, error) {
 		}
 		readiness.CompleteGroupModelScopes++
 	}
-	readiness.LiveTrafficEnabled = readiness.CompleteGroupModelScopes > 0
+	var defaultBook model.SalesPriceBookDefault
+	if err := model.DB.First(&defaultBook, "default_key = ?", "toc_default").Error; err != nil {
+		readiness.TocDefaultError = "TOC default sales price book is not configured"
+	} else {
+		var book model.SalesPriceBook
+		if err := model.DB.First(&book, defaultBook.PriceBookId).Error; err != nil ||
+			book.Audience != "toc" || book.Status != model.SalesPriceBookStatusEnabled ||
+			book.CurrentVersionId == nil {
+			readiness.TocDefaultError = "TOC default sales price book is invalid or disabled"
+		} else {
+			var enabledItems int64
+			if err := model.DB.Model(&model.SalesPriceBookItem{}).
+				Where("price_book_version_id = ? AND status = ?", *book.CurrentVersionId, "enabled").
+				Count(&enabledItems).Error; err != nil {
+				return RuntimeReadiness{}, err
+			}
+			readiness.TocDefaultReady = enabledItems > 0
+			if !readiness.TocDefaultReady {
+				readiness.TocDefaultError = "TOC default sales price book has no enabled model prices"
+			}
+		}
+	}
+	readiness.LiveTrafficEnabled = readiness.CompleteGroupModelScopes > 0 && readiness.TocDefaultReady
 	return readiness, nil
 }
 

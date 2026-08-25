@@ -69,6 +69,7 @@ type OfficialModelPriceVersion struct {
 	ExpressionSchemaVersion string `json:"expression_schema_version" gorm:"type:varchar(16);not null"`
 	Currency                string `json:"currency" gorm:"type:varchar(8);not null"`
 	Source                  string `json:"source" gorm:"type:varchar(32);not null"`
+	SourceUrl               string `json:"source_url" gorm:"type:varchar(512)"`
 	Region                  string `json:"region" gorm:"type:varchar(32)"`
 	SourceVersion           string `json:"source_version" gorm:"type:varchar(64)"`
 	ContentHash             string `json:"content_hash" gorm:"type:varchar(64);index"`
@@ -129,7 +130,10 @@ type ChannelModelPurchasePriceVersion struct {
 	ExpressionSchemaVersion string `json:"expression_schema_version" gorm:"type:varchar(16);not null"`
 	Currency                string `json:"currency" gorm:"type:varchar(8);not null"`
 	QuoteReference          string `json:"quote_reference" gorm:"type:varchar(64)"`
+	QuoteValidUntil         int64  `json:"quote_valid_until" gorm:"bigint;index"`
 	ContractReference       string `json:"contract_reference" gorm:"type:varchar(64)"`
+	ContractEffectiveFrom   int64  `json:"contract_effective_from" gorm:"bigint;index"`
+	ContractEffectiveTo     int64  `json:"contract_effective_to" gorm:"bigint;index"`
 	Conditions              string `json:"conditions" gorm:"type:text"`
 	Version                 int64  `json:"version" gorm:"bigint;not null;uniqueIndex:uk_purchase_price_version,priority:2"`
 	Status                  string `json:"status" gorm:"type:varchar(16);not null;index"`

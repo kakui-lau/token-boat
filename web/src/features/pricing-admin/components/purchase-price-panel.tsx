@@ -61,6 +61,17 @@ type PurchasePricePanelProps = {
   canPublish?: boolean
 }
 
+function timestampToLocalInput(value: number | undefined) {
+  if (!value) return ''
+  const date = new Date(value * 1000)
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
+function localInputToTimestamp(value: string) {
+  return value ? Math.floor(new Date(value).getTime() / 1000) : 0
+}
+
 const emptyPrices = {
   input_unit_price: '',
   output_unit_price: '',
@@ -97,7 +108,10 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       audio_output_discount: '',
       ...emptyPrices,
       quote_reference: '',
+      quote_valid_until: '',
       contract_reference: '',
+      contract_effective_from: '',
+      contract_effective_to: '',
       remark: '',
     },
   })
@@ -158,7 +172,14 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
           audio_output_unit_price: value.audio_output_unit_price,
         },
         quote_reference: value.quote_reference,
+        quote_valid_until: localInputToTimestamp(value.quote_valid_until),
         contract_reference: value.contract_reference,
+        contract_effective_from: localInputToTimestamp(
+          value.contract_effective_from
+        ),
+        contract_effective_to: localInputToTimestamp(
+          value.contract_effective_to
+        ),
         remark: value.remark,
         expected_updated_at: editVersionUpdatedAt,
       }
@@ -248,7 +269,14 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       audio_input_unit_price: componentPrices.audio_input_unit_price || '',
       audio_output_unit_price: componentPrices.audio_output_unit_price || '',
       quote_reference: version.quote_reference || '',
+      quote_valid_until: timestampToLocalInput(version.quote_valid_until),
       contract_reference: version.contract_reference || '',
+      contract_effective_from: timestampToLocalInput(
+        version.contract_effective_from
+      ),
+      contract_effective_to: timestampToLocalInput(
+        version.contract_effective_to
+      ),
       remark: version.remark || '',
     })
     setEditVersionId(id)
@@ -291,7 +319,14 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
       audio_input_unit_price: componentPrices.audio_input_unit_price || '',
       audio_output_unit_price: componentPrices.audio_output_unit_price || '',
       quote_reference: version.quote_reference || '',
+      quote_valid_until: timestampToLocalInput(version.quote_valid_until),
       contract_reference: version.contract_reference || '',
+      contract_effective_from: timestampToLocalInput(
+        version.contract_effective_from
+      ),
+      contract_effective_to: timestampToLocalInput(
+        version.contract_effective_to
+      ),
       remark: '',
     })
     toast.success(t('Historical version copied into the new draft'))
@@ -532,6 +567,36 @@ export function PurchasePricePanel(props: PurchasePricePanelProps) {
               <Input
                 id='purchase-contract-reference'
                 {...form.register('contract_reference')}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='purchase-quote-valid-until'>
+                {t('Quote valid until')}
+              </FieldLabel>
+              <Input
+                id='purchase-quote-valid-until'
+                type='datetime-local'
+                {...form.register('quote_valid_until')}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='purchase-contract-effective-from'>
+                {t('Contract effective from')}
+              </FieldLabel>
+              <Input
+                id='purchase-contract-effective-from'
+                type='datetime-local'
+                {...form.register('contract_effective_from')}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='purchase-contract-effective-to'>
+                {t('Contract effective to')}
+              </FieldLabel>
+              <Input
+                id='purchase-contract-effective-to'
+                type='datetime-local'
+                {...form.register('contract_effective_to')}
               />
             </Field>
           </FieldGroup>

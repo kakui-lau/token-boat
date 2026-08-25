@@ -52,6 +52,8 @@ export type PricingRuntimeStatus = {
   complete_group_model_scopes: number
   live_traffic_enabled: boolean
   distributed_circuit_state: boolean
+  toc_default_ready?: boolean
+  toc_default_error?: string
   route_score_weights: {
     cost: number
     success: number
@@ -273,7 +275,9 @@ export type OfficialPriceVersion = {
   version: number
   status: PriceVersionStatus
   source: string
+  source_url?: string
   source_version?: string
+  source_updated_at?: number
   remark: string
   created_at?: number
   updated_at?: number
@@ -327,7 +331,10 @@ export type PurchasePriceVersion = {
   expression_schema_version: string
   price_unit: string
   quote_reference: string
+  quote_valid_until?: number
   contract_reference: string
+  contract_effective_from?: number
+  contract_effective_to?: number
   conditions: string
   remark: string
   effective_from: number
@@ -336,10 +343,28 @@ export type PurchasePriceVersion = {
   updated_at?: number
 }
 
+export type PurchasePriceSuspendImpact = {
+  model_id: number
+  remaining_candidate_count: number
+  affected_price_book_count: number
+  affected_assignment_count: number
+  affects_toc_default: boolean
+}
+
 export type PriceVersionResponse<T> = {
   success: boolean
   message?: string
   data: T
+}
+
+export type AutomatedPriceDraftResult = {
+  batch_id: number
+  status: string
+  channel_model_id?: number
+  purchase_price_version_id?: number
+  price_book_id?: number
+  price_book_version_id?: number
+  error_message?: string
 }
 
 export type FlatTokenPrices = {

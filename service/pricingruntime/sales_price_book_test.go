@@ -325,6 +325,8 @@ func TestResolveSalesPricePrefersUserAssignmentOverTOCDefault(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.Model{Id: 702, ModelName: "assigned-price-model", Status: 1}).Error)
 	defaultBook, _, _ := createResolvedPriceFixture(t, "toc-default", 702, at)
 	tobBook, tobVersion, tobItem := createResolvedPriceFixture(t, "tob-large", 702, at)
+	require.NoError(t, model.DB.Model(&model.SalesPriceBook{}).Where("id = ?", tobBook.Id).
+		Update("audience", "tob").Error)
 	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
 		DefaultKey: "toc_default", PriceBookId: defaultBook.Id, UpdatedBy: 1, UpdatedAt: at,
 	}).Error)
@@ -348,6 +350,8 @@ func TestResolveSalesPriceUsesScheduledAssignmentAtItsEffectiveTime(t *testing.T
 	require.NoError(t, model.DB.Create(&model.Model{Id: 703, ModelName: "scheduled-price-model", Status: 1}).Error)
 	defaultBook, _, _ := createResolvedPriceFixture(t, "scheduled-default", 703, at)
 	tobBook, tobVersion, _ := createResolvedPriceFixture(t, "scheduled-tob", 703, at)
+	require.NoError(t, model.DB.Model(&model.SalesPriceBook{}).Where("id = ?", tobBook.Id).
+		Update("audience", "tob").Error)
 	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
 		DefaultKey: "toc_default", PriceBookId: defaultBook.Id, UpdatedBy: 1, UpdatedAt: at,
 	}).Error)
@@ -367,6 +371,8 @@ func TestResolveSalesPriceKeepsPinnedPublishedVersionAfterNewPublish(t *testing.
 	const at = int64(8000)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 704, ModelName: "pinned-price-model", Status: 1}).Error)
 	book, pinnedVersion, pinnedItem := createResolvedPriceFixture(t, "pinned-tob", 704, at)
+	require.NoError(t, model.DB.Model(&model.SalesPriceBook{}).Where("id = ?", book.Id).
+		Update("audience", "tob").Error)
 	require.NoError(t, model.DB.Model(&model.SalesPriceBookVersion{}).Where("id = ?", pinnedVersion.Id).
 		Updates(map[string]any{
 			"status":       model.SalesPriceBookVersionStatusSuperseded,

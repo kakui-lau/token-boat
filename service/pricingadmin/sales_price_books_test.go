@@ -387,6 +387,36 @@ func TestCancelUserPriceBookAssignmentPreservesHistory(t *testing.T) {
 	assert.Contains(t, err.Error(), "only active or scheduled")
 }
 
+func TestCancelScheduledAssignmentRestoresCurrentAssignment(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.User{
+		Id: 704, Username: "scheduled-cancel-user", Password: "12345678",
+	}).Error)
+	book := model.SalesPriceBook{
+		Code: "scheduled-cancel-book", Name: "Scheduled Cancel Book",
+		Audience: "tob", Currency: "USD", Status: model.SalesPriceBookStatusEnabled,
+	}
+	require.NoError(t, model.DB.Create(&book).Error)
+	currentVersionId := 1
+	require.NoError(t, model.DB.Model(&model.SalesPriceBook{}).Where("id = ?", book.Id).
+		Update("current_version_id", currentVersionId).Error)
+	current := model.UserPriceBookAssignment{
+		UserId: 704, PriceBookId: book.Id, VersionPolicy: "follow_current",
+	}
+	require.NoError(t, AssignUserToSalesPriceBook(&current, 1))
+	future := model.UserPriceBookAssignment{
+		UserId: 704, PriceBookId: book.Id, VersionPolicy: "follow_current",
+		EffectiveFrom: common.GetTimestamp() + 3600,
+	}
+	require.NoError(t, AssignUserToSalesPriceBook(&future, 1))
+	require.NoError(t, model.DB.First(&current, current.Id).Error)
+	assert.Equal(t, future.EffectiveFrom, current.EffectiveTo)
+
+	require.NoError(t, CancelUserPriceBookAssignment(future.Id, 1))
+	require.NoError(t, model.DB.First(&current, current.Id).Error)
+	assert.Zero(t, current.EffectiveTo)
+}
+
 func TestDisableSalesPriceBookKeepsPublishedHistoryAndWritesAudit(t *testing.T) {
 	setupSalesPriceBookTestDB(t)
 	book := model.SalesPriceBook{Code: "disable-book", Name: "Disable Book", Audience: "toc", Currency: "USD"}
@@ -660,6 +690,74 @@ func TestOfficialPricePublishCanGenerateIdempotentRatioPurchaseDrafts(t *testing
 	repeated, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 2)
 	require.NoError(t, err)
 	assert.Equal(t, results, repeated)
+}
+
+func TestOfficialPriceAutomationRepairsAnIncompleteBatch(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 1221, ModelName: "official-reconcile-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 1222, Name: "official-reconcile-channel", Key: "test-key", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 1223, ChannelId: 1222, ModelId: 1221,
+		UpstreamModelName: "official-reconcile-model", Status: 1,
+	}).Error)
+	firstOfficial, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 1221, Currency: "USD", Source: "provider-docs",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "2", OutputUnitPrice: "4"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(firstOfficial.Id))
+	purchase, err := CreatePurchaseDraft(PurchaseDraftInput{
+		ChannelModelId: 1223, OfficialPriceVersionId: &firstOfficial.Id,
+		PricingMode: "official_ratio", PurchaseDiscount: "0.5",
+		QuoteReference: "reconcile-discount",
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+	secondOfficial, err := CreateOfficialFlatDraft(OfficialFlatDraftInput{
+		ModelId: 1221, Currency: "USD", Source: "provider-docs",
+		Prices: FlatTokenPriceInput{InputUnitPrice: "3", OutputUnitPrice: "6"},
+	}, 1)
+	require.NoError(t, err)
+	require.NoError(t, PublishOfficialPriceVersion(secondOfficial.Id))
+	generated, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 1)
+	require.NoError(t, err)
+	require.Len(t, generated, 1)
+	staleBatchId := generated[0].BatchId
+	require.NoError(t, model.DB.Where("batch_id = ?", staleBatchId).
+		Delete(&model.PricingChangeBatchItem{}).Error)
+
+	repaired, err := AutoCreatePurchaseDraftsForOfficialPrice(secondOfficial.Id, 1)
+	require.NoError(t, err)
+	require.Len(t, repaired, 1)
+	var itemCount int64
+	require.NoError(t, model.DB.Model(&model.PricingChangeBatchItem{}).
+		Where("batch_id = ?", repaired[0].BatchId).Count(&itemCount).Error)
+	assert.Equal(t, int64(1), itemCount)
+}
+
+func TestPurchasePriceAutomationCreatesAnIdempotentEmptyMarker(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	createSalesPriceBookPurchaseSource(t, 1231, 1232, 1233, "unassigned-model", "1", "2")
+	var purchase model.ChannelModelPurchasePriceVersion
+	require.NoError(t, model.DB.First(&purchase,
+		"channel_model_id = ? AND status = ?", 1232, model.PricingVersionStatusActive).Error)
+
+	results, err := AutoRepriceSalesPriceBooksForPurchaseVersion(purchase.Id, 1)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+	results, err = AutoRepriceSalesPriceBooksForPurchaseVersion(purchase.Id, 1)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+	var batchCount int64
+	require.NoError(t, model.DB.Model(&model.PricingChangeBatch{}).
+		Where("trigger_type = ? AND trigger_id = ?",
+			SalesPriceBookTriggerPurchasePricePublished, purchase.Id).
+		Count(&batchCount).Error)
+	assert.Equal(t, int64(1), batchCount)
 }
 
 func TestRetryPurchaseDraftRefreshReprocessesReviewFailure(t *testing.T) {

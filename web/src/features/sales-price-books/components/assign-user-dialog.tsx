@@ -65,6 +65,7 @@ export function AssignUserDialog(props: AssignUserDialogProps) {
   const [quoteReference, setQuoteReference] = useState('')
   const [contractReference, setContractReference] = useState('')
   const [remark, setRemark] = useState('')
+  const [effectiveFrom, setEffectiveFrom] = useState('')
   const selectedBookId = Number(priceBookId)
   const versionsQuery = useQuery({
     queryKey: ['sales-price-books', 'versions', selectedBookId, 'assignment'],
@@ -86,6 +87,9 @@ export function AssignUserDialog(props: AssignUserDialogProps) {
         quote_reference: quoteReference.trim() || undefined,
         contract_reference: contractReference.trim() || undefined,
         remark: remark.trim() || undefined,
+        effective_from: effectiveFrom
+          ? Math.floor(new Date(effectiveFrom).getTime() / 1000)
+          : undefined,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -225,6 +229,17 @@ export function AssignUserDialog(props: AssignUserDialogProps) {
                 />
               </Field>
             </div>
+            <Field>
+              <FieldLabel htmlFor='assignment-effective-from'>
+                {t('Effective from')}
+              </FieldLabel>
+              <Input
+                id='assignment-effective-from'
+                type='datetime-local'
+                value={effectiveFrom}
+                onChange={(event) => setEffectiveFrom(event.target.value)}
+              />
+            </Field>
             <Field>
               <FieldLabel htmlFor='assignment-remark'>{t('Remark')}</FieldLabel>
               <Textarea

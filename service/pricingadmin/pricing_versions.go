@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -72,6 +73,11 @@ func CreateOfficialPriceVersion(input *model.OfficialModelPriceVersion, userId i
 	); err != nil {
 		return err
 	}
+	if err := validateStructuredPricingContract(
+		input.BillingMode, input.PriceStructure, input.PriceComponents, input.BillingExpr,
+	); err != nil {
+		return err
+	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
 	input.ContentHash = officialPriceContentHash(*input)
 	return model.DB.Transaction(func(tx *gorm.DB) error {
@@ -131,6 +137,11 @@ func UpdateOfficialPriceVersionDraft(
 	); err != nil {
 		return updated, err
 	}
+	if err := validateStructuredPricingContract(
+		input.BillingMode, input.PriceStructure, input.PriceComponents, input.BillingExpr,
+	); err != nil {
+		return updated, err
+	}
 	input.ExprHash = billingexpr.ExprHashString(input.BillingExpr)
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		current, err := model.GetOfficialPriceVersionForUpdate(tx, id)
@@ -143,9 +154,18 @@ func UpdateOfficialPriceVersionDraft(
 		if current.ModelId != input.ModelId {
 			return errors.New("official price draft model cannot be changed")
 		}
-		input.Source = current.Source
-		input.SourceVersion = current.SourceVersion
-		input.SourceUpdatedAt = current.SourceUpdatedAt
+		if strings.TrimSpace(input.Source) == "" {
+			input.Source = current.Source
+		}
+		if strings.TrimSpace(input.SourceUrl) == "" {
+			input.SourceUrl = current.SourceUrl
+		}
+		if strings.TrimSpace(input.SourceVersion) == "" {
+			input.SourceVersion = current.SourceVersion
+		}
+		if input.SourceUpdatedAt == 0 {
+			input.SourceUpdatedAt = current.SourceUpdatedAt
+		}
 		if requestedRegion == "" {
 			input.Region = normalizeOfficialPriceRegion(current.Region)
 		} else {
@@ -161,6 +181,10 @@ func UpdateOfficialPriceVersionDraft(
 			"expression_source":         input.ExpressionSource,
 			"expression_schema_version": input.ExpressionSchemaVersion,
 			"currency":                  input.Currency,
+			"source":                    strings.TrimSpace(input.Source),
+			"source_url":                strings.TrimSpace(input.SourceUrl),
+			"source_version":            strings.TrimSpace(input.SourceVersion),
+			"source_updated_at":         input.SourceUpdatedAt,
 			"region":                    input.Region,
 			"content_hash":              input.ContentHash,
 			"remark":                    strings.TrimSpace(input.Remark),
@@ -200,6 +224,16 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 		input.PriceStructure,
 		input.Currency,
 		input.PurchaseBillingExpr,
+	); err != nil {
+		return err
+	}
+	if err := validatePriceComponents(
+		input.BillingMode, input.PriceStructure, input.PriceComponents,
+	); err != nil {
+		return err
+	}
+	if err := validateStructuredPricingContract(
+		input.BillingMode, input.PriceStructure, input.PriceComponents, input.PurchaseBillingExpr,
 	); err != nil {
 		return err
 	}
@@ -371,6 +405,11 @@ func publishOfficialPriceVersion(tx *gorm.DB, id int) error {
 	); err != nil {
 		return err
 	}
+	if err := validateStructuredPricingContract(
+		version.BillingMode, version.PriceStructure, version.PriceComponents, version.BillingExpr,
+	); err != nil {
+		return err
+	}
 	if version.ExprHash != billingexpr.ExprHashString(version.BillingExpr) {
 		return errors.New("official price expression hash does not match")
 	}
@@ -395,6 +434,7 @@ func officialPriceContentHash(version model.OfficialModelPriceVersion) string {
 		strings.ToUpper(strings.TrimSpace(version.Currency)),
 		normalizeOfficialPriceRegion(version.Region),
 		strings.TrimSpace(version.Source),
+		strings.TrimSpace(version.SourceUrl),
 		strings.TrimSpace(version.SourceVersion),
 		fmt.Sprintf("%d", version.SourceUpdatedAt),
 	}, "\x00")
@@ -417,6 +457,71 @@ func validatePriceComponents(
 	return validateBusinessPriceRules(billingMode, priceStructure, parsed)
 }
 
+// validateStructuredPricingContract prevents the public price summary and the
+// runtime billing expression from describing different flat token prices.
+// Expression-only contracts intentionally have no structured representation
+// and are validated by the expression compiler instead.
+func validateStructuredPricingContract(
+	billingMode string,
+	priceStructure string,
+	components string,
+	expression string,
+) error {
+	if billingMode != "token" || priceStructure != "flat" || strings.TrimSpace(components) == "" {
+		return nil
+	}
+	prices, err := unmarshalFlatPriceComponents(components)
+	if err != nil {
+		return err
+	}
+	tests := []struct {
+		name     string
+		expected string
+		params   billingexpr.TokenParams
+	}{
+		{name: "input_unit_price", expected: prices.InputUnitPrice, params: billingexpr.TokenParams{P: 1_000_000, Len: 1_000_000}},
+		{name: "output_unit_price", expected: prices.OutputUnitPrice, params: billingexpr.TokenParams{C: 1_000_000}},
+		{name: "cache_read_unit_price", expected: prices.CacheReadUnitPrice, params: billingexpr.TokenParams{CR: 1_000_000, Len: 1_000_000}},
+		{name: "cache_write_unit_price", expected: prices.CacheWriteUnitPrice, params: billingexpr.TokenParams{CC: 1_000_000, Len: 1_000_000}},
+		{name: "cache_write_1h_unit_price", expected: prices.CacheWrite1HUnitPrice, params: billingexpr.TokenParams{CC1h: 1_000_000, Len: 1_000_000}},
+		{name: "image_input_unit_price", expected: prices.ImageInputUnitPrice, params: billingexpr.TokenParams{Img: 1_000_000, Len: 1_000_000}},
+		{name: "image_output_unit_price", expected: prices.ImageOutputUnitPrice, params: billingexpr.TokenParams{ImgO: 1_000_000}},
+		{name: "audio_input_unit_price", expected: prices.AudioInputUnitPrice, params: billingexpr.TokenParams{AI: 1_000_000, Len: 1_000_000}},
+		{name: "audio_output_unit_price", expected: prices.AudioOutputUnitPrice, params: billingexpr.TokenParams{AO: 1_000_000}},
+	}
+	hasStructuredPrice := false
+	for _, test := range tests {
+		if strings.TrimSpace(test.expected) != "" {
+			hasStructuredPrice = true
+			break
+		}
+	}
+	if !hasStructuredPrice {
+		return nil
+	}
+	for _, test := range tests {
+		actual, _, runErr := billingexpr.RunExpr(expression, test.params)
+		if runErr != nil {
+			return fmt.Errorf("evaluate %s: %w", test.name, runErr)
+		}
+		expected := decimal.Zero
+		if strings.TrimSpace(test.expected) != "" {
+			expected, err = decimal.NewFromString(test.expected)
+			if err != nil {
+				return fmt.Errorf("%s is invalid: %w", test.name, err)
+			}
+		}
+		actualDecimal := decimal.NewFromFloat(actual)
+		if actualDecimal.Sub(expected).Abs().GreaterThan(decimal.NewFromFloat(0.000000001)) {
+			return fmt.Errorf(
+				"%s does not match the billing expression: components=%s expression=%s",
+				test.name, expected.String(), actualDecimal.String(),
+			)
+		}
+	}
+	return nil
+}
+
 func validatePurchasePricePublication(
 	tx *gorm.DB,
 	version model.ChannelModelPurchasePriceVersion,
@@ -437,6 +542,11 @@ func validatePurchasePricePublication(
 		version.PriceStructure,
 		version.Currency,
 		version.PurchaseBillingExpr,
+	); err != nil {
+		return err
+	}
+	if err := validateStructuredPricingContract(
+		version.BillingMode, version.PriceStructure, version.PriceComponents, version.PurchaseBillingExpr,
 	); err != nil {
 		return err
 	}
@@ -588,6 +698,13 @@ func validateProductionEvidenceOnPublish(
 				version.ChannelModelId,
 			)
 		}
+		parsedSource, err := url.ParseRequestURI(strings.TrimSpace(official.SourceUrl))
+		if err != nil || (parsedSource.Scheme != "http" && parsedSource.Scheme != "https") || parsedSource.Host == "" {
+			return fmt.Errorf(
+				"channel model %d official price lacks a valid source URL",
+				version.ChannelModelId,
+			)
+		}
 	}
 
 	quoteReference := strings.ToLower(strings.TrimSpace(version.QuoteReference))
@@ -595,6 +712,21 @@ func validateProductionEvidenceOnPublish(
 	if quoteReference == "" && contractReference == "" {
 		return fmt.Errorf(
 			"channel model %d purchase price lacks quote or contract evidence",
+			version.ChannelModelId,
+		)
+	}
+	now := common.GetTimestamp()
+	if quoteReference != "" && version.QuoteValidUntil <= now {
+		return fmt.Errorf(
+			"channel model %d purchase quote is expired or lacks a validity date",
+			version.ChannelModelId,
+		)
+	}
+	if contractReference != "" && (version.ContractEffectiveFrom <= 0 ||
+		version.ContractEffectiveFrom > now ||
+		(version.ContractEffectiveTo > 0 && version.ContractEffectiveTo <= now)) {
+		return fmt.Errorf(
+			"channel model %d purchase contract is not currently effective",
 			version.ChannelModelId,
 		)
 	}

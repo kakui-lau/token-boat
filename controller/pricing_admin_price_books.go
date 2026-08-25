@@ -49,6 +49,26 @@ func AdminCreateSalesPriceBook(c *gin.Context) {
 	common.ApiSuccess(c, &input)
 }
 
+func AdminUpdateSalesPriceBook(c *gin.Context) {
+	priceBookId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input struct {
+		Name   string `json:"name" binding:"required"`
+		Remark string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.UpdateSalesPriceBook(priceBookId, input.Name, input.Remark, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminListSalesPriceBookVersions(c *gin.Context) {
 	priceBookId, ok := positivePathId(c)
 	if !ok {
@@ -110,6 +130,42 @@ func AdminDisableSalesPriceBook(c *gin.Context) {
 		return
 	}
 	if err := pricingadmin.DisableSalesPriceBook(priceBookId, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminEnableSalesPriceBook(c *gin.Context) {
+	priceBookId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.EnableSalesPriceBook(priceBookId, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminArchiveSalesPriceBook(c *gin.Context) {
+	priceBookId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.ArchiveSalesPriceBook(priceBookId, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminDeleteSalesPriceBookVersionDraft(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.DeleteSalesPriceBookVersionDraft(versionId); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -294,6 +350,66 @@ func AdminAcceptSalesPriceBookItemReview(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminRejectSalesPriceBookItemReview(c *gin.Context) {
+	itemId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input struct {
+		Comment string `json:"comment" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.RejectSalesPriceBookItemReview(itemId, c.GetInt("id"), input.Comment); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminSetSalesPriceBookItemStatus(c *gin.Context) {
+	itemId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.SetSalesPriceBookItemEnabled(itemId, input.Enabled, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminPublishGeneratedPricingChangeBatch(c *gin.Context) {
+	batchId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	result, err := pricingadmin.PublishGeneratedPricingChangeBatch(batchId, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminReconcilePricingAutomation(c *gin.Context) {
+	result, err := pricingadmin.ReconcilePricingAutomation(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
 }
 
 func AdminListUserPriceBookAssignments(c *gin.Context) {

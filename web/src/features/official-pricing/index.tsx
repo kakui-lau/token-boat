@@ -115,7 +115,7 @@ export function OfficialPricing(props: OfficialPricingProps) {
   })
   const publishMutation = useMutation({
     mutationFn: (id: number) => publishPriceVersion('official', id),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: officialQueryKey })
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'model-price-overview'],
@@ -123,7 +123,14 @@ export function OfficialPricing(props: OfficialPricingProps) {
       await queryClient.invalidateQueries({
         queryKey: ['pricing-admin', 'official-price-overview'],
       })
-      toast.success(t('Price version published'))
+      toast.success(
+        t(
+          'Official price published; {{count}} purchase price drafts generated',
+          {
+            count: response.data.length,
+          }
+        )
+      )
     },
   })
   const deleteMutation = useMutation({

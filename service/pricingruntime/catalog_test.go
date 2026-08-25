@@ -121,11 +121,16 @@ func TestLoadActivePriceBundleRejectsAmbiguousPurchaseVersions(t *testing.T) {
 func TestRuntimeReadinessCountsPricedChannelModels(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 6)
+	book, _, _ := createResolvedPriceFixture(t, "readiness-toc", 6, 100)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: 100,
+	}).Error)
 	require.NoError(t, RefreshCatalog())
 	readiness, err := GetRuntimeReadiness()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), readiness.TotalChannelModels)
 	assert.Equal(t, int64(1), readiness.PricedChannelModels)
 	assert.Equal(t, 1, readiness.CompleteGroupModelScopes)
+	assert.True(t, readiness.TocDefaultReady)
 	assert.True(t, readiness.LiveTrafficEnabled)
 }

@@ -51,6 +51,10 @@ export const officialPriceSchema = z
     image_output_unit_price: optionalNonNegativeDecimal,
     audio_input_unit_price: optionalNonNegativeDecimal,
     audio_output_unit_price: optionalNonNegativeDecimal,
+    source_url: z.string().trim(),
+    source_version: z.string().trim(),
+    source_updated_at: z.string().trim(),
+    region: z.string().trim(),
     remark: z.string().trim(),
   })
   .refine(
@@ -98,7 +102,10 @@ export const purchasePriceSchema = z
     audio_input_unit_price: optionalNonNegativeDecimal,
     audio_output_unit_price: optionalNonNegativeDecimal,
     quote_reference: z.string().trim(),
+    quote_valid_until: z.string().trim(),
     contract_reference: z.string().trim(),
+    contract_effective_from: z.string().trim(),
+    contract_effective_to: z.string().trim(),
     remark: z.string().trim(),
   })
   .superRefine((value, context) => {

@@ -74,6 +74,12 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 	if err := model.DB.First(&result.Book, priceBookId).Error; err != nil {
 		return ResolvedSalesPrice{}, err
 	}
+	if result.AssignmentId > 0 && result.Book.Audience != "tob" {
+		return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
+	}
+	if result.AssignmentId == 0 && result.Book.Audience != "toc" {
+		return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
+	}
 	if result.Book.Status != model.SalesPriceBookStatusEnabled || result.Book.CurrentVersionId == nil {
 		return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
 	}

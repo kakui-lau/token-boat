@@ -61,6 +61,12 @@ func ApplySalesPriceBookPricing(
 	userId int,
 	usableGroups map[string]string,
 ) []model.Pricing {
+	blockedRoutes := make(map[[2]int]struct{})
+	for _, status := range GetChannelCircuitOverview().Channels {
+		if status.State == "open" || status.State == "half_open" {
+			blockedRoutes[[2]int{status.ChannelId, status.ModelId}] = struct{}{}
+		}
+	}
 	officialByModel := map[string]model.OfficialModelPriceVersion{}
 	if snapshot, ok := getCatalogSnapshot(); ok {
 		officialByModel = snapshot.OfficialByModelName
@@ -90,6 +96,9 @@ func ApplySalesPriceBookPricing(
 		for _, group := range groupNames {
 			groupEligible := false
 			for _, bundle := range GetCandidateBundles(group, pricing[index].ModelName) {
+				if _, blocked := blockedRoutes[[2]int{bundle.ChannelModel.ChannelId, bundle.ChannelModel.ModelId}]; blocked {
+					continue
+				}
 				if !salesPriceBookCandidateHasSafeStructuredMargins(resolved, bundle) {
 					continue
 				}
@@ -170,7 +179,7 @@ func salesPriceBookCandidateHasSafeStructuredMargins(
 	if purchase == nil || sales == nil {
 		// Expression-only contracts cannot be evaluated without concrete usage.
 		// Request-time quoting remains authoritative and fails closed on margin.
-		return true
+		return false
 	}
 	if purchase.Currency != sales.Currency {
 		return false

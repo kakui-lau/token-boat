@@ -85,6 +85,17 @@ const priceStructureDescriptions: Record<string, string> = {
     'Use when request options such as resolution, quality, operation, or audio change the price.',
 }
 
+function timestampToLocalInput(value: number | undefined) {
+  if (!value) return ''
+  const date = new Date(value * 1000)
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
+function localInputToTimestamp(value: string) {
+  return value ? Math.floor(new Date(value).getTime() / 1000) : 0
+}
+
 function emptyOfficialConfiguration(
   modelId: number,
   billingMode: string,
@@ -118,6 +129,9 @@ function emptyOfficialConfiguration(
     version: 0,
     status: 'draft',
     source: 'manual',
+    source_url: '',
+    source_version: '',
+    source_updated_at: 0,
     remark: '',
     effective_from: 0,
     effective_to: 0,
@@ -155,6 +169,10 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
     image_output_unit_price: '',
     audio_input_unit_price: '',
     audio_output_unit_price: '',
+    source_url: '',
+    source_version: '',
+    source_updated_at: '',
+    region: 'global',
     remark: '',
   }
   const form = useForm<OfficialPriceForm>({
@@ -176,6 +194,10 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
           audio_input_unit_price: value.audio_input_unit_price,
           audio_output_unit_price: value.audio_output_unit_price,
         },
+        source_url: value.source_url,
+        source_version: value.source_version,
+        source_updated_at: localInputToTimestamp(value.source_updated_at),
+        region: value.region,
         remark: value.remark,
       }
       if (editingDraftId !== null) {
@@ -209,8 +231,9 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
         currency: version.currency,
         region: version.region || 'global',
         source: editingDraftId === null ? 'manual' : version.source,
-        source_version:
-          editingDraftId === null ? undefined : version.source_version,
+        source_url: version.source_url,
+        source_version: version.source_version,
+        source_updated_at: version.source_updated_at,
         remark: version.remark,
       }
       if (editingDraftId !== null) {
@@ -276,6 +299,12 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
       image_output_unit_price: prices.image_output_unit_price ?? '',
       audio_input_unit_price: prices.audio_input_unit_price ?? '',
       audio_output_unit_price: prices.audio_output_unit_price ?? '',
+      source_url: edit ? version.source_url || '' : '',
+      source_version: edit ? version.source_version || '' : '',
+      source_updated_at: edit
+        ? timestampToLocalInput(version.source_updated_at)
+        : '',
+      region: version.region || 'global',
       remark: edit ? version.remark : '',
     })
     setEditingDraftId(edit ? version.id : null)
@@ -474,6 +503,72 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
                 disabled
               />
             </Field>
+            <Field>
+              <FieldLabel htmlFor='official-config-region'>
+                {t('Region')}
+              </FieldLabel>
+              <Input
+                id='official-config-region'
+                value={configurationDraft.region || 'global'}
+                onChange={(event) =>
+                  setConfigurationDraft({
+                    ...configurationDraft,
+                    region: event.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='official-config-source-url'>
+                {t('Source URL')}
+              </FieldLabel>
+              <Input
+                id='official-config-source-url'
+                type='url'
+                value={configurationDraft.source_url || ''}
+                onChange={(event) =>
+                  setConfigurationDraft({
+                    ...configurationDraft,
+                    source_url: event.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='official-config-source-version'>
+                {t('Source version')}
+              </FieldLabel>
+              <Input
+                id='official-config-source-version'
+                value={configurationDraft.source_version || ''}
+                onChange={(event) =>
+                  setConfigurationDraft({
+                    ...configurationDraft,
+                    source_version: event.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='official-config-source-updated-at'>
+                {t('Source updated at')}
+              </FieldLabel>
+              <Input
+                id='official-config-source-updated-at'
+                type='datetime-local'
+                value={timestampToLocalInput(
+                  configurationDraft.source_updated_at
+                )}
+                onChange={(event) =>
+                  setConfigurationDraft({
+                    ...configurationDraft,
+                    source_updated_at: localInputToTimestamp(
+                      event.target.value
+                    ),
+                  })
+                }
+              />
+            </Field>
           </FieldGroup>
           <OfficialPriceConfigurationEditor
             version={configurationDraft}
@@ -592,6 +687,41 @@ export function OfficialPricePanel(props: OfficialPricePanelProps) {
               registration={form.register('audio_output_unit_price')}
               error={form.formState.errors.audio_output_unit_price}
             />
+          </FieldGroup>
+          <FieldGroup className='grid gap-4 sm:grid-cols-2'>
+            <Field>
+              <FieldLabel htmlFor='official-source-url'>
+                {t('Source URL')}
+              </FieldLabel>
+              <Input
+                id='official-source-url'
+                type='url'
+                {...form.register('source_url')}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='official-source-version'>
+                {t('Source version')}
+              </FieldLabel>
+              <Input
+                id='official-source-version'
+                {...form.register('source_version')}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='official-source-updated-at'>
+                {t('Source updated at')}
+              </FieldLabel>
+              <Input
+                id='official-source-updated-at'
+                type='datetime-local'
+                {...form.register('source_updated_at')}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor='official-region'>{t('Region')}</FieldLabel>
+              <Input id='official-region' {...form.register('region')} />
+            </Field>
           </FieldGroup>
           <Field>
             <FieldLabel htmlFor='official-remark'>{t('Remark')}</FieldLabel>

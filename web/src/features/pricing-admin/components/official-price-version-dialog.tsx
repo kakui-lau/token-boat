@@ -347,6 +347,22 @@ export function OfficialPriceVersionDialog(
                   {version.source}
                   {version.source_version ? ` · ${version.source_version}` : ''}
                 </p>
+                {version.source_url ? (
+                  <a
+                    href={version.source_url}
+                    target='_blank'
+                    rel='noreferrer'
+                    className='text-primary mt-1 block break-all underline'
+                  >
+                    {version.source_url}
+                  </a>
+                ) : null}
+                <p className='text-muted-foreground mt-1 text-xs'>
+                  {version.region || 'global'}
+                  {version.source_updated_at
+                    ? ` · ${dayjs.unix(version.source_updated_at).format('YYYY-MM-DD HH:mm')}`
+                    : ''}
+                </p>
               </div>
               <div className='rounded-lg border p-3'>
                 <p className='text-muted-foreground text-xs'>

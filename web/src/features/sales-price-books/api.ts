@@ -24,6 +24,8 @@ import type {
   CreateSalesPriceBookVersionInput,
   PricingChangeBatch,
   PricingChangeBatchItem,
+  PricingChangeBatchPublishResult,
+  PricingAutomationReconciliationSummary,
   PricingChangeBatchListFilters,
   PaginatedSalesPriceBookList,
   SalesPriceBook,
@@ -64,6 +66,31 @@ export async function disableSalesPriceBook(id: number) {
   return requireSuccess(response.data)
 }
 
+export async function updateSalesPriceBook(
+  id: number,
+  input: { name: string; remark: string }
+) {
+  const response = await api.put<ApiResponse<null>>(
+    `/api/pricing-admin/price-books/${id}`,
+    input
+  )
+  return requireSuccess(response.data)
+}
+
+export async function enableSalesPriceBook(id: number) {
+  const response = await api.post<ApiResponse<null>>(
+    `/api/pricing-admin/price-books/${id}/enable`
+  )
+  return requireSuccess(response.data)
+}
+
+export async function archiveSalesPriceBook(id: number) {
+  const response = await api.post<ApiResponse<null>>(
+    `/api/pricing-admin/price-books/${id}/archive`
+  )
+  return requireSuccess(response.data)
+}
+
 export async function getSalesPriceBookVersions(priceBookId: number) {
   const response = await api.get<ApiResponse<SalesPriceBookVersion[]>>(
     `/api/pricing-admin/price-books/${priceBookId}/versions`
@@ -100,6 +127,13 @@ export async function publishSalesPriceBookVersion(versionId: number) {
   return requireSuccess(response.data)
 }
 
+export async function deleteSalesPriceBookVersionDraft(versionId: number) {
+  const response = await api.delete<ApiResponse<null>>(
+    `/api/pricing-admin/price-book-versions/${versionId}`
+  )
+  return requireSuccess(response.data)
+}
+
 export async function getSalesPriceBookItems(versionId: number) {
   const response = await api.get<ApiResponse<SalesPriceBookItem[]>>(
     `/api/pricing-admin/price-book-versions/${versionId}/items`
@@ -107,10 +141,43 @@ export async function getSalesPriceBookItems(versionId: number) {
   return requireSuccess(response.data)
 }
 
-export async function acceptSalesPriceBookItemReview(itemId: number) {
+export async function saveSalesPriceBookItem(item: SalesPriceBookItem) {
+  const response = await api.post<ApiResponse<SalesPriceBookItem>>(
+    `/api/pricing-admin/price-book-versions/${item.price_book_version_id}/items`,
+    item
+  )
+  return requireSuccess(response.data)
+}
+
+export async function acceptSalesPriceBookItemReview(
+  itemId: number,
+  comment = 'Accepted in pricing administration console'
+) {
   const response = await api.post<ApiResponse<null>>(
     `/api/pricing-admin/price-book-items/${itemId}/accept-review`,
-    { comment: 'Accepted in pricing administration console' }
+    { comment }
+  )
+  return requireSuccess(response.data)
+}
+
+export async function rejectSalesPriceBookItemReview(
+  itemId: number,
+  comment: string
+) {
+  const response = await api.post<ApiResponse<null>>(
+    `/api/pricing-admin/price-book-items/${itemId}/reject-review`,
+    { comment }
+  )
+  return requireSuccess(response.data)
+}
+
+export async function setSalesPriceBookItemStatus(
+  itemId: number,
+  enabled: boolean
+) {
+  const response = await api.post<ApiResponse<null>>(
+    `/api/pricing-admin/price-book-items/${itemId}/status`,
+    { enabled }
   )
   return requireSuccess(response.data)
 }
@@ -155,6 +222,20 @@ export async function getPricingChangeBatch(id: number) {
   return requireSuccess(response.data)
 }
 
+export async function publishGeneratedPricingChangeBatch(id: number) {
+  const response = await api.post<ApiResponse<PricingChangeBatchPublishResult>>(
+    `/api/pricing-admin/pricing-change-batches/${id}/publish-generated`
+  )
+  return requireSuccess(response.data)
+}
+
+export async function reconcilePricingAutomation() {
+  const response = await api.post<
+    ApiResponse<PricingAutomationReconciliationSummary>
+  >('/api/pricing-admin/pricing-automation/reconcile')
+  return requireSuccess(response.data)
+}
+
 export async function getUserPriceBookAssignments(
   params: UserPriceBookAssignmentListFilters
 ) {
@@ -180,6 +261,7 @@ export async function assignUserPriceBook(input: {
   quote_reference?: string
   contract_reference?: string
   remark?: string
+  effective_from?: number
 }) {
   const response = await api.post<ApiResponse<UserPriceBookAssignment>>(
     '/api/pricing-admin/user-price-book-assignments',

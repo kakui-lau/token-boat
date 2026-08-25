@@ -2053,11 +2053,33 @@ func AdminSuspendPurchasePriceVersion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := pricingadmin.SuspendPurchasePriceVersion(id); err != nil {
+	var input struct {
+		Force bool `json:"force"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&input); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	if err := pricingadmin.SuspendPurchasePriceVersion(id, input.Force); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminGetPurchasePriceSuspendImpact(c *gin.Context) {
+	id, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	impact, err := pricingadmin.GetPurchasePriceSuspendImpact(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, impact)
 }
 
 func AdminDeletePurchasePriceDraft(c *gin.Context) {

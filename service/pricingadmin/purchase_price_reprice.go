@@ -83,15 +83,6 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 	if official.Status != model.PricingVersionStatusActive {
 		return nil, errors.New("only an active official price can refresh purchase drafts")
 	}
-	idempotencyKey := fmt.Sprintf("auto-official-%d-purchase-drafts", officialPriceVersionId)
-	var existing model.PricingChangeBatch
-	err := model.DB.First(&existing, "idempotency_key = ?", idempotencyKey).Error
-	if err == nil {
-		return purchaseDraftResultsForBatch(existing.Id)
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
 	var active []model.ChannelModelPurchasePriceVersion
 	if err := model.DB.Table("channel_model_purchase_price_versions AS purchase").
 		Select("purchase.*").
@@ -104,8 +95,24 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 		Scan(&active).Error; err != nil {
 		return nil, err
 	}
-	if len(active) == 0 {
-		return []PurchasePriceAutoDraftResult{}, nil
+	idempotencyKey := fmt.Sprintf("auto-official-%d-purchase-drafts", officialPriceVersionId)
+	var existing model.PricingChangeBatch
+	err := model.DB.First(&existing, "idempotency_key = ?", idempotencyKey).Error
+	if err == nil {
+		var itemCount int64
+		if err := model.DB.Model(&model.PricingChangeBatchItem{}).
+			Where("batch_id = ?", existing.Id).Count(&itemCount).Error; err != nil {
+			return nil, err
+		}
+		if existing.TotalCount == len(active) && itemCount == int64(len(active)) {
+			return purchaseDraftResultsForBatch(existing.Id)
+		}
+		if err := resetIncompletePurchaseDraftBatch(existing.Id); err != nil {
+			return nil, err
+		}
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
 	scope, err := common.Marshal(map[string]any{
 		"official_price_version_id": officialPriceVersionId,
@@ -234,6 +241,20 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 	return results, nil
 }
 
+func resetIncompletePurchaseDraftBatch(batchId int) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("batch_id = ?", batchId).
+			Delete(&model.PricingChangeBatchItem{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("object_type = ? AND object_id = ?",
+			"pricing_change_batch", batchId).Delete(&model.PricingAuditRecord{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.PricingChangeBatch{}, batchId).Error
+	})
+}
+
 func cleanupFailedPurchaseDraftBatch(batchId int, draftIds []int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		if len(draftIds) > 0 {
@@ -261,8 +282,11 @@ func purchaseDraftInputForOfficialRefresh(
 	input := PurchaseDraftInput{
 		ChannelModelId: current.ChannelModelId, OfficialPriceVersionId: &officialPriceVersionId,
 		PricingMode: current.PricingMode, PurchaseDiscount: current.PurchaseDiscount,
-		QuoteReference: current.QuoteReference, ContractReference: current.ContractReference,
-		Remark: strings.TrimSpace(current.Remark + " refreshed from official price"),
+		QuoteReference: current.QuoteReference, QuoteValidUntil: current.QuoteValidUntil,
+		ContractReference:     current.ContractReference,
+		ContractEffectiveFrom: current.ContractEffectiveFrom,
+		ContractEffectiveTo:   current.ContractEffectiveTo,
+		Remark:                strings.TrimSpace(current.Remark + " refreshed from official price"),
 	}
 	if current.PricingMode != "component_ratio" {
 		return input, nil

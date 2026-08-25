@@ -23,6 +23,7 @@ import {
 import {
   deletePriceDraft,
   getOfficialPriceVersions,
+  getPurchasePriceSuspendImpact,
   getPurchasePriceVersions,
   publishPriceVersion,
   suspendPriceVersion,
@@ -64,13 +65,24 @@ export function PriceEditorSheet(props: PriceEditorSheetProps) {
   }
   const publishMutation = useMutation({
     mutationFn: (id: number) => publishPriceVersion('purchase', id),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       await refreshPurchaseData()
-      toast.success(t('Price version published'))
+      toast.success(
+        t('Price version published; {{count}} sales price drafts generated', {
+          count: response.data.length,
+        })
+      )
     },
   })
   const suspendMutation = useMutation({
-    mutationFn: (id: number) => suspendPriceVersion('purchase', id),
+    mutationFn: async (id: number) => {
+      const impact = await getPurchasePriceSuspendImpact(id)
+      return suspendPriceVersion(
+        'purchase',
+        id,
+        impact.data.remaining_candidate_count === 0
+      )
+    },
     onSuccess: async () => {
       await refreshPurchaseData()
       toast.success(t('Price version suspended'))

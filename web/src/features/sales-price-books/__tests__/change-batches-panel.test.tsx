@@ -8,11 +8,17 @@ import { ChangeBatchesPanel } from '../components/change-batches-panel'
 
 const getPricingChangeBatches = vi.fn()
 const getPricingChangeBatch = vi.fn()
+const publishGeneratedPricingChangeBatch = vi.fn()
+const reconcilePricingAutomation = vi.fn()
 
 vi.mock('../api', () => ({
   getPricingChangeBatches: (...args: unknown[]) =>
     getPricingChangeBatches(...args),
   getPricingChangeBatch: (...args: unknown[]) => getPricingChangeBatch(...args),
+  publishGeneratedPricingChangeBatch: (...args: unknown[]) =>
+    publishGeneratedPricingChangeBatch(...args),
+  reconcilePricingAutomation: (...args: unknown[]) =>
+    reconcilePricingAutomation(...args),
 }))
 
 vi.mock('react-i18next', () => ({

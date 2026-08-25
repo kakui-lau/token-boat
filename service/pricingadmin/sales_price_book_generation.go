@@ -20,6 +20,8 @@ const (
 	PricingChangeBatchItemStatusGenerated  = "generated"
 	PricingChangeBatchItemStatusReview     = "review_required"
 	PricingChangeBatchItemStatusUnchanged  = "unchanged"
+	PricingChangeBatchItemStatusAccepted   = "accepted"
+	PricingChangeBatchItemStatusRejected   = "rejected"
 )
 
 type SalesPriceBookGenerationInput struct {
@@ -242,6 +244,22 @@ func GenerateSalesPriceBookItems(
 			oldPurchaseVersions := []int{}
 			action := "create"
 			if err == nil {
+				if input.TriggerType == SalesPriceBookTriggerPurchasePricePublished &&
+					current.PricingMethod != "cost_plus" {
+					itemId := current.Id
+					if err := tx.Create(&model.PricingChangeBatchItem{
+						BatchId: result.Batch.Id, TargetType: "sales_price_book_item",
+						TargetId: &itemId, ModelId: modelId, PriceBookId: &version.PriceBookId,
+						Action: "preserve_manual", OldExprHash: current.SalesExprHash,
+						NewExprHash: current.SalesExprHash,
+						Status:      PricingChangeBatchItemStatusUnchanged,
+						RiskCode:    "manual_price_preserved",
+					}).Error; err != nil {
+						return err
+					}
+					result.Batch.UnchangedCount++
+					continue
+				}
 				oldHash = current.SalesExprHash
 				oldReferencePrice, oldReferenceCost, marginBefore,
 					oldPurchaseVersions, err = salesPriceBookItemReferenceTx(tx, current, version)

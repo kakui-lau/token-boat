@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
@@ -175,14 +176,21 @@ func (pricingReconciliationHandler) Run(
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
 	}
+	automation, err := pricingadmin.ReconcilePricingAutomation(0)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
 	finishSystemTaskHandler(
 		task,
 		runnerID,
 		model.SystemTaskStatusSucceeded,
 		map[string]int64{
-			"marked_pending":      updated,
-			"no_charge_finalized": classified.NoChargeFinalized,
-			"legacy_archived":     classified.LegacyArchived,
+			"marked_pending":                    updated,
+			"no_charge_finalized":               classified.NoChargeFinalized,
+			"legacy_archived":                   classified.LegacyArchived,
+			"official_automation_gaps_repaired": int64(automation.OfficialGapsRepaired),
+			"purchase_automation_gaps_repaired": int64(automation.PurchaseGapsRepaired),
 		},
 		nil,
 	)

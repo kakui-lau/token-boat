@@ -34,6 +34,7 @@ type OfficialPriceSynchronizationItem struct {
 	ExpressionSchemaVersion string `json:"expression_schema_version"`
 	Currency                string `json:"currency"`
 	Region                  string `json:"region"`
+	SourceUrl               string `json:"source_url"`
 	SourceVersion           string `json:"source_version"`
 	SourceUpdatedAt         int64  `json:"source_updated_at"`
 	Remark                  string `json:"remark"`
@@ -187,6 +188,7 @@ func synchronizeOfficialPriceItem(
 		Currency:                item.Currency,
 		Region:                  normalizeOfficialPriceRegion(item.Region),
 		Source:                  input.Source,
+		SourceUrl:               strings.TrimSpace(item.SourceUrl),
 		SourceVersion:           strings.TrimSpace(item.SourceVersion),
 		SourceUpdatedAt:         item.SourceUpdatedAt,
 		CreatedBy:               userId,
@@ -218,6 +220,11 @@ func synchronizeOfficialPriceItem(
 		version.BillingMode,
 		version.PriceStructure,
 		version.PriceComponents,
+	); err != nil {
+		return err
+	}
+	if err := validateStructuredPricingContract(
+		version.BillingMode, version.PriceStructure, version.PriceComponents, version.BillingExpr,
 	); err != nil {
 		return err
 	}

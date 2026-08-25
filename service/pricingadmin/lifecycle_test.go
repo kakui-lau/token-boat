@@ -49,7 +49,8 @@ func TestPurchasePriceLifecycleIsIndependentFromSalesPriceBooks(t *testing.T) {
 	}, 1)
 	require.NoError(t, err)
 	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
-	require.NoError(t, SuspendPurchasePriceVersion(purchase.Id))
+	require.ErrorContains(t, SuspendPurchasePriceVersion(purchase.Id), "last active priced channel")
+	require.NoError(t, SuspendPurchasePriceVersion(purchase.Id, true))
 	var stored model.ChannelModelPurchasePriceVersion
 	require.NoError(t, model.DB.First(&stored, purchase.Id).Error)
 	assert.Equal(t, model.PricingVersionStatusSuspended, stored.Status)

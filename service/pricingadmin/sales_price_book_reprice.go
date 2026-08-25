@@ -132,6 +132,27 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 		}
 	}
 	if len(affected) == 0 {
+		triggerId := purchaseVersionId
+		idempotencyKey := fmt.Sprintf("auto-purchase-%d-no-price-books", purchaseVersionId)
+		var existing model.PricingChangeBatch
+		err := model.DB.First(&existing, "idempotency_key = ?", idempotencyKey).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			scope, marshalErr := common.Marshal(map[string]any{
+				"purchase_price_version_id": purchaseVersionId,
+				"model_id":                  channelModel.ModelId,
+			})
+			if marshalErr != nil {
+				return nil, marshalErr
+			}
+			err = model.DB.Create(&model.PricingChangeBatch{
+				BatchNo: fmt.Sprintf("PP-%d-SALES", purchaseVersionId), IdempotencyKey: idempotencyKey,
+				TriggerType: SalesPriceBookTriggerPurchasePricePublished, TriggerId: &triggerId,
+				Status: PricingChangeBatchStatusCompleted, ScopeSpec: string(scope), RequestedBy: userId,
+			}).Error
+		}
+		if err != nil {
+			return nil, err
+		}
 		return []SalesPriceBookAutoRepriceResult{}, nil
 	}
 	channelModelIds, err := activePricedChannelModelIds(channelModel.ModelId)
@@ -161,6 +182,9 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 			continue
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		if err := cancelSupersededAutomaticSalesDrafts(book.PriceBookId); err != nil {
 			return nil, err
 		}
 		draft, err := CloneSalesPriceBookVersion(
@@ -194,6 +218,25 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 		})
 	}
 	return results, nil
+}
+
+func cancelSupersededAutomaticSalesDrafts(priceBookId int) error {
+	var batchIds []int
+	if err := model.DB.Model(&model.PricingChangeBatch{}).
+		Where("trigger_type = ?", SalesPriceBookTriggerPurchasePricePublished).
+		Pluck("id", &batchIds).Error; err != nil {
+		return err
+	}
+	if len(batchIds) == 0 {
+		return nil
+	}
+	return model.DB.Model(&model.SalesPriceBookVersion{}).
+		Where("price_book_id = ? AND status = ? AND change_batch_id IN ?",
+			priceBookId, model.SalesPriceBookVersionStatusDraft, batchIds).
+		Updates(map[string]any{
+			"status":     model.SalesPriceBookVersionStatusCancelled,
+			"updated_at": common.GetTimestamp(),
+		}).Error
 }
 
 func deleteSalesPriceBookDraft(versionId int) error {

@@ -138,6 +138,9 @@ type SalesPriceBookItem struct {
 }
 
 func (i *SalesPriceBookItem) BeforeCreate(tx *gorm.DB) error {
+	normalizeOptionalPricingDecimal(&i.SellingFactor)
+	normalizeOptionalPricingDecimal(&i.OfficialDiscount)
+	normalizeOptionalPricingDecimal(&i.MinimumMarginOverride)
 	i.CreatedAt = common.GetTimestamp()
 	return nil
 }
@@ -247,8 +250,20 @@ type PricingChangeBatchItem struct {
 }
 
 func (i *PricingChangeBatchItem) BeforeCreate(tx *gorm.DB) error {
+	normalizeOptionalPricingDecimal(&i.OldReferenceCost)
+	normalizeOptionalPricingDecimal(&i.NewReferenceCost)
+	normalizeOptionalPricingDecimal(&i.OldReferencePrice)
+	normalizeOptionalPricingDecimal(&i.NewReferencePrice)
+	normalizeOptionalPricingDecimal(&i.MarginBefore)
+	normalizeOptionalPricingDecimal(&i.MarginAfter)
 	i.CreatedAt = common.GetTimestamp()
 	return nil
+}
+
+func normalizeOptionalPricingDecimal(value *string) {
+	if strings.TrimSpace(*value) == "" {
+		*value = "0"
+	}
 }
 
 type PricingAuditRecord struct {

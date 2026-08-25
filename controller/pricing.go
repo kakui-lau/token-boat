@@ -56,6 +56,16 @@ func markPricingAvailability(pricing []model.Pricing) []model.Pricing {
 	return pricing
 }
 
+func filterAvailablePublicPricing(pricing []model.Pricing) []model.Pricing {
+	available := make([]model.Pricing, 0, len(pricing))
+	for _, item := range pricing {
+		if item.Available && item.AvailabilityStatus == model.PricingAvailabilityAvailable {
+			available = append(available, item)
+		}
+	}
+	return available
+}
+
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPublicPricing()
 	userId, exists := c.Get("id")
@@ -84,6 +94,7 @@ func GetPricing(c *gin.Context) {
 		usableGroup,
 	)
 	pricing = markPricingAvailability(pricing)
+	pricing = filterAvailablePublicPricing(pricing)
 
 	c.JSON(200, gin.H{
 		"success":            true,

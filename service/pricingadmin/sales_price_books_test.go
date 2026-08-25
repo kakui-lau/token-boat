@@ -132,6 +132,22 @@ func TestSalesPriceBookRejectsVariableCostBreakdownMismatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "must equal")
 }
 
+func TestSalesPriceBookVersionDefaultsOptionalIncreaseCapToZero(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	book := model.SalesPriceBook{
+		Code: "default-increase-cap", Name: "Default Increase Cap", Audience: "toc", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	version.IncreaseCapRate = ""
+
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+
+	var stored model.SalesPriceBookVersion
+	require.NoError(t, model.DB.First(&stored, version.Id).Error)
+	assert.Equal(t, "0", stored.IncreaseCapRate)
+}
+
 func TestSalesPriceBookRejectsItemCurrencyDifferentFromBook(t *testing.T) {
 	setupSalesPriceBookTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 502, ModelName: "currency-model"}).Error)
@@ -574,6 +590,107 @@ func TestDesignatedChannelReferenceMarginUsesOnlySelectedPurchaseCost(t *testing
 	require.NoError(t, err)
 	assert.Equal(t, "3", referenceCost)
 	assert.Len(t, purchaseVersions, 2)
+}
+
+func TestMaximumCostGenerationSupportsSingleExpressionPriceSource(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 1071, ModelName: "single-video-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 1072, Name: "single-video-channel", Key: "test", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 1073, ChannelId: 1072, ModelId: 1071, UpstreamModelName: "single-video-model", Status: 1,
+	}).Error)
+	expression := `v2:tier("720p", video_s * 0.12)`
+	require.NoError(t, model.DB.Create(&model.ChannelModelPurchasePriceVersion{
+		Id: 1074, ChannelModelId: 1073, BillingMode: "video_duration",
+		PricingMode: "custom_expr", PriceStructure: "expression",
+		PriceComponents:     `{"rules":[{"name":"720p","component":"video_output","unit":"second","unit_size":"1","unit_price":"0.12"}]}`,
+		PurchaseBillingExpr: expression, PurchaseExprHash: billingexpr.ExprHashString(expression),
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", Currency: "USD",
+		Version: 1, Status: model.PricingVersionStatusActive, EffectiveFrom: 1,
+	}).Error)
+	book := model.SalesPriceBook{
+		Code: "single-expression", Name: "Single Expression", Audience: "toc", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+
+	generated, err := GenerateSalesPriceBookItems(version.Id, SalesPriceBookGenerationInput{
+		ChannelModelIds: []int{1073}, IdempotencyKey: "single-expression-generation",
+	}, 1)
+
+	require.NoError(t, err)
+	require.Len(t, generated.GeneratedItems, 1)
+	assert.Equal(t, SalesPriceItemStatusEnabled, generated.GeneratedItems[0].Status)
+	assert.Equal(t, "video_duration", generated.GeneratedItems[0].BillingMode)
+}
+
+func TestMaximumCostGenerationSelectsHighestComparableOfficialRatio(t *testing.T) {
+	officialVersionId := 2001
+	sources := []salesPriceBookPurchaseSource{
+		{Purchase: model.ChannelModelPurchasePriceVersion{
+			Id: 2002, BillingMode: "token", PriceStructure: "expression",
+			PricingMode: "official_ratio", OfficialPriceVersionId: &officialVersionId,
+			PurchaseDiscount: "0.50", Currency: "USD",
+		}},
+		{Purchase: model.ChannelModelPurchasePriceVersion{
+			Id: 2003, BillingMode: "token", PriceStructure: "expression",
+			PricingMode: "official_ratio", OfficialPriceVersionId: &officialVersionId,
+			PurchaseDiscount: "0.64", Currency: "USD",
+		}},
+	}
+
+	selected, err := mergeComparablePurchaseSources(sources, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2003, selected.Id)
+}
+
+func TestDesignatedChannelAutoRepricePreservesSelectedChannel(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	createSalesPriceBookPurchaseSource(t, 1081, 1082, 1083, "designated-reprice", "2", "4")
+	book := model.SalesPriceBook{
+		Code: "designated-reprice", Name: "Designated Reprice", Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	base := validSalesPriceBookVersion(book.Id)
+	base.CostBasisStrategy = "designated_channel"
+	require.NoError(t, CreateSalesPriceBookVersion(&base, 1))
+	generated, err := GenerateSalesPriceBookItems(base.Id, SalesPriceBookGenerationInput{
+		ChannelModelIds: []int{1082}, IdempotencyKey: "designated-reprice-base",
+		DesignatedChannelModel: map[int]int{1083: 1082},
+	}, 1)
+	require.NoError(t, err)
+	require.Len(t, generated.GeneratedItems, 1)
+	require.NoError(t, PublishSalesPriceBookVersion(base.Id, 1))
+	prices, expression, components, err := normalizeFlatTokenPrices(FlatTokenPriceInput{
+		InputUnitPrice: "2.5", OutputUnitPrice: "5",
+	})
+	require.NoError(t, err)
+	purchase := model.ChannelModelPurchasePriceVersion{
+		ChannelModelId: 1082, BillingMode: "token", PricingMode: "fixed_unit_price",
+		PriceStructure: "flat", PriceComponents: components,
+		InputUnitPrice: prices.InputUnitPrice, OutputUnitPrice: prices.OutputUnitPrice,
+		PurchaseBillingExpr: expression, ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}
+	require.NoError(t, CreatePurchasePriceVersion(&purchase, 2))
+	require.NoError(t, PublishPurchasePriceVersion(purchase.Id))
+
+	results, err := AutoRepriceSalesPriceBooksForPurchaseVersion(purchase.Id, 2)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, PricingChangeBatchStatusCompleted, results[0].Status)
+	var item model.SalesPriceBookItem
+	require.NoError(t, model.DB.First(&item,
+		"price_book_version_id = ? AND model_id = ?", results[0].PriceBookVersionId, 1083).Error)
+	require.NotNil(t, item.PrimaryPurchaseVersionId)
+	assert.Equal(t, purchase.Id, *item.PrimaryPurchaseVersionId)
 }
 
 func TestPurchasePricePublishCanGenerateIdempotentSalesPriceBookDrafts(t *testing.T) {

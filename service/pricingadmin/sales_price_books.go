@@ -307,6 +307,10 @@ func validateSalesPriceBookPolicy(input *model.SalesPriceBookVersion) error {
 	if _, ok := validCostBasisStrategies[input.CostBasisStrategy]; !ok {
 		return fmt.Errorf("unsupported cost basis strategy %q", input.CostBasisStrategy)
 	}
+	input.IncreaseCapRate = strings.TrimSpace(input.IncreaseCapRate)
+	if input.IncreaseCapRate == "" {
+		input.IncreaseCapRate = "0"
+	}
 	payment, err := validateRate("payment_fee_rate", input.PaymentFeeRate)
 	if err != nil {
 		return err
@@ -340,6 +344,9 @@ func validateSalesPriceBookPolicy(input *model.SalesPriceBookVersion) error {
 	target, _ := decimal.NewFromString(input.TargetNetMargin)
 	if minimum.GreaterThan(target) {
 		return errors.New("minimum margin rate cannot exceed target net margin")
+	}
+	if _, err := validateRate("increase_cap_rate", input.IncreaseCapRate); err != nil {
+		return err
 	}
 	return nil
 }
@@ -381,6 +388,15 @@ func SaveSalesPriceBookItem(input *model.SalesPriceBookItem) error {
 		input.BillingMode, input.PriceStructure, input.PriceComponents, input.SalesBillingExpr,
 	); err != nil {
 		return err
+	}
+	if strings.TrimSpace(input.SellingFactor) == "" {
+		input.SellingFactor = "0"
+	}
+	if strings.TrimSpace(input.OfficialDiscount) == "" {
+		input.OfficialDiscount = "0"
+	}
+	if strings.TrimSpace(input.MinimumMarginOverride) == "" {
+		input.MinimumMarginOverride = "0"
 	}
 	input.SalesExprHash = billingexpr.ExprHashString(input.SalesBillingExpr)
 	return model.DB.Transaction(func(tx *gorm.DB) error {

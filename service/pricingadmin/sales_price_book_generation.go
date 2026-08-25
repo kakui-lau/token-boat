@@ -468,11 +468,14 @@ func buildSalesPriceBookItem(
 		}
 		sourceRoleByChannel[designatedChannelModelId] = "selected"
 	case "max_eligible_cost", "min_eligible_cost":
-		merged, err := mergeFlatPurchaseSources(sources, version.CostBasisStrategy == "max_eligible_cost")
-		if err != nil {
-			return model.SalesPriceBookItem{}, nil, err
+		if len(sources) > 1 {
+			chooseMaximum := version.CostBasisStrategy == "max_eligible_cost"
+			merged, err := mergeComparablePurchaseSources(sources, chooseMaximum)
+			if err != nil {
+				return model.SalesPriceBookItem{}, nil, err
+			}
+			selected = merged
 		}
-		selected = merged
 		for _, source := range sources {
 			sourceRoleByChannel[source.ChannelModelId] = "cost_basis"
 		}
@@ -531,6 +534,53 @@ func buildSalesPriceBookItem(
 		})
 	}
 	return item, basisSources, nil
+}
+
+func mergeComparablePurchaseSources(
+	sources []salesPriceBookPurchaseSource,
+	chooseMaximum bool,
+) (model.ChannelModelPurchasePriceVersion, error) {
+	base := sources[0].Purchase
+	if base.BillingMode == "token" && base.PriceStructure == "flat" {
+		return mergeFlatPurchaseSources(sources, chooseMaximum)
+	}
+	if base.PricingMode != "official_ratio" || base.OfficialPriceVersionId == nil {
+		return model.ChannelModelPurchasePriceVersion{}, errors.New(
+			"maximum or minimum cost generation requires comparable purchase prices",
+		)
+	}
+	selected := base
+	selectedDiscount, err := decimal.NewFromString(strings.TrimSpace(base.PurchaseDiscount))
+	if err != nil {
+		return model.ChannelModelPurchasePriceVersion{}, errors.New(
+			"maximum or minimum cost generation requires a comparable purchase discount",
+		)
+	}
+	for _, source := range sources[1:] {
+		purchase := source.Purchase
+		if purchase.BillingMode != base.BillingMode ||
+			purchase.PriceStructure != base.PriceStructure ||
+			purchase.Currency != base.Currency ||
+			purchase.PricingMode != base.PricingMode ||
+			purchase.OfficialPriceVersionId == nil ||
+			*purchase.OfficialPriceVersionId != *base.OfficialPriceVersionId {
+			return model.ChannelModelPurchasePriceVersion{}, errors.New(
+				"maximum or minimum cost generation requires comparable purchase prices",
+			)
+		}
+		candidateDiscount, err := decimal.NewFromString(strings.TrimSpace(purchase.PurchaseDiscount))
+		if err != nil {
+			return model.ChannelModelPurchasePriceVersion{}, errors.New(
+				"maximum or minimum cost generation requires a comparable purchase discount",
+			)
+		}
+		if chooseMaximum && candidateDiscount.GreaterThan(selectedDiscount) ||
+			!chooseMaximum && candidateDiscount.LessThan(selectedDiscount) {
+			selected = purchase
+			selectedDiscount = candidateDiscount
+		}
+	}
+	return selected, nil
 }
 
 func mergeFlatPurchaseSources(

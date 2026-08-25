@@ -193,12 +193,37 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 		if err != nil {
 			return nil, err
 		}
+		designatedChannelModels := map[int]int(nil)
+		if draft.CostBasisStrategy == "designated_channel" {
+			var currentItem model.SalesPriceBookItem
+			err := model.DB.First(
+				&currentItem,
+				"price_book_version_id = ? AND model_id = ?",
+				draft.Id,
+				channelModel.ModelId,
+			).Error
+			if err == nil && currentItem.PrimaryPurchaseVersionId != nil {
+				var designatedPurchase model.ChannelModelPurchasePriceVersion
+				if err := model.DB.First(
+					&designatedPurchase,
+					*currentItem.PrimaryPurchaseVersionId,
+				).Error; err != nil {
+					return nil, err
+				}
+				designatedChannelModels = map[int]int{
+					channelModel.ModelId: designatedPurchase.ChannelModelId,
+				}
+			} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, err
+			}
+		}
 		triggerId := purchaseVersionId
 		generated, err := GenerateSalesPriceBookItems(draft.Id, SalesPriceBookGenerationInput{
-			ChannelModelIds: channelModelIds,
-			IdempotencyKey:  idempotencyKey,
-			TriggerType:     SalesPriceBookTriggerPurchasePricePublished,
-			TriggerId:       &triggerId,
+			ChannelModelIds:        channelModelIds,
+			IdempotencyKey:         idempotencyKey,
+			DesignatedChannelModel: designatedChannelModels,
+			TriggerType:            SalesPriceBookTriggerPurchasePricePublished,
+			TriggerId:              &triggerId,
 		}, userId)
 		if err != nil {
 			if cleanupErr := deleteSalesPriceBookDraft(draft.Id); cleanupErr != nil {

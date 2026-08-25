@@ -385,10 +385,12 @@ func GetRuntimeReadiness() (RuntimeReadiness, error) {
 			1,
 		).
 		Distinct("channel_models.id")
+	var activeChannelModelIds []int
 	if err := activeChannelModels.
-		Count(&readiness.TotalChannelModels).Error; err != nil {
+		Pluck("channel_models.id", &activeChannelModelIds).Error; err != nil {
 		return RuntimeReadiness{}, err
 	}
+	readiness.TotalChannelModels = int64(len(activeChannelModelIds))
 	snapshot := currentCatalog.Load()
 	if snapshot == nil || time.Since(snapshot.CreatedAt) >= time.Minute {
 		if err := RefreshCatalog(); err != nil {
@@ -399,7 +401,11 @@ func GetRuntimeReadiness() (RuntimeReadiness, error) {
 	if snapshot == nil {
 		return readiness, nil
 	}
-	readiness.PricedChannelModels = int64(len(snapshot.BundleByChannelModel))
+	for _, channelModelId := range activeChannelModelIds {
+		if _, ok := snapshot.BundleByChannelModel[channelModelId]; ok {
+			readiness.PricedChannelModels++
+		}
+	}
 	for _, complete := range snapshot.CompleteByGroupModel {
 		if !complete {
 			continue

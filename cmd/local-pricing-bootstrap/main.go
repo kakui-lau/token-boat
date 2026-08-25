@@ -141,6 +141,12 @@ func bootstrapAndReport(backupPath string) error {
 		}
 		return err
 	}
+	if err := ensureLocalTocDefaultPriceBook(); err != nil {
+		if backupPath != "" {
+			return fmt.Errorf("%w; restore from %s if needed", err, backupPath)
+		}
+		return err
+	}
 	readiness, err := pricingruntime.GetRuntimeReadiness()
 	if err != nil {
 		return err
@@ -151,6 +157,110 @@ func bootstrapAndReport(backupPath string) error {
 		readiness.TotalChannelModels,
 		readiness.CompleteGroupModelScopes,
 	)
+	return nil
+}
+
+func ensureLocalTocDefaultPriceBook() error {
+	var currentDefault model.SalesPriceBookDefault
+	err := model.DB.First(&currentDefault, "default_key = ?", "toc_default").Error
+	if err == nil {
+		readiness, readinessErr := pricingruntime.GetRuntimeReadiness()
+		if readinessErr != nil {
+			return readinessErr
+		}
+		if !readiness.TocDefaultReady {
+			return fmt.Errorf("existing TOC default sales price book is not ready: %s", readiness.TocDefaultError)
+		}
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	var channelModelIds []int
+	if err := model.DB.Model(&model.ChannelModel{}).
+		Joins("JOIN channels ON channels.id = channel_models.channel_id").
+		Joins("JOIN models ON models.id = channel_models.model_id").
+		Joins(
+			"JOIN abilities ON abilities.channel_id = channel_models.channel_id AND abilities.model = models.model_name",
+		).
+		Where(
+			"channel_models.status <> ? AND channels.status = ? AND abilities.enabled = ? AND models.status = ? AND models.deleted_at IS NULL AND models.routing_target_model_id IS NULL",
+			0,
+			common.ChannelStatusEnabled,
+			true,
+			1,
+		).
+		Distinct("channel_models.id").
+		Order("channel_models.id ASC").
+		Pluck("channel_models.id", &channelModelIds).Error; err != nil {
+		return err
+	}
+	if len(channelModelIds) == 0 {
+		return errors.New("cannot create a local TOC default without enabled channel models")
+	}
+
+	var book model.SalesPriceBook
+	err = model.DB.First(&book, "code = ?", "local-toc-default").Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		book = model.SalesPriceBook{
+			Code: "local-toc-default", Name: "Local TOC Default", Audience: "toc", Currency: "USD",
+			Remark: "local acceptance price book generated from restored purchase prices",
+		}
+		if err := pricingadmin.CreateSalesPriceBook(&book, localBootstrapUserId); err != nil {
+			return fmt.Errorf("create local TOC price book: %w", err)
+		}
+	} else if err != nil {
+		return err
+	} else if book.Status == model.SalesPriceBookStatusEnabled && book.CurrentVersionId != nil {
+		return pricingadmin.SetDefaultSalesPriceBook("toc_default", book.Id, localBootstrapUserId)
+	} else if book.Status != model.SalesPriceBookStatusDraft || book.CurrentVersionId != nil ||
+		book.Audience != "toc" || book.Currency != "USD" {
+		return errors.New("existing local TOC price book cannot be resumed")
+	}
+	var version model.SalesPriceBookVersion
+	err = model.DB.First(
+		&version,
+		"price_book_id = ? AND status = ?",
+		book.Id,
+		model.SalesPriceBookVersionStatusDraft,
+	).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		version = model.SalesPriceBookVersion{
+			PriceBookId: book.Id, CostBasisStrategy: "max_eligible_cost",
+			PaymentFeeRate: "0.04", DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
+			TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.16", TargetNetMargin: "0.03",
+			MinimumMarginRate: "0.02", Remark: "local acceptance default policy",
+		}
+		if err := pricingadmin.CreateSalesPriceBookVersion(&version, localBootstrapUserId); err != nil {
+			return fmt.Errorf("create local TOC price book version: %w", err)
+		}
+	} else if err != nil {
+		return err
+	}
+	generation, err := pricingadmin.GenerateSalesPriceBookItems(
+		version.Id,
+		pricingadmin.SalesPriceBookGenerationInput{
+			ChannelModelIds: channelModelIds,
+			IdempotencyKey:  "local-toc-default-v1",
+		},
+		localBootstrapUserId,
+	)
+	if err != nil {
+		return fmt.Errorf("generate local TOC price book: %w", err)
+	}
+	if generation.Batch.ReviewCount > 0 {
+		return fmt.Errorf(
+			"local TOC price book has %d item(s) requiring pricing review",
+			generation.Batch.ReviewCount,
+		)
+	}
+	if err := pricingadmin.PublishSalesPriceBookVersion(version.Id, localBootstrapUserId); err != nil {
+		return fmt.Errorf("publish local TOC price book: %w", err)
+	}
+	if err := pricingadmin.SetDefaultSalesPriceBook("toc_default", book.Id, localBootstrapUserId); err != nil {
+		return fmt.Errorf("set local TOC default price book: %w", err)
+	}
 	return nil
 }
 
@@ -215,6 +325,12 @@ func verifyAndReport(production bool) error {
 			readiness.TotalChannelModels-readiness.PricedChannelModels,
 			readiness.TotalChannelModels,
 		)
+	}
+	if !readiness.TocDefaultReady {
+		return fmt.Errorf("TOC default sales price book is not ready: %s", readiness.TocDefaultError)
+	}
+	if !readiness.LiveTrafficEnabled {
+		return errors.New("structured pricing is not ready for live traffic")
 	}
 	if production {
 		if !readiness.DistributedCircuitState {

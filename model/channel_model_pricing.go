@@ -555,6 +555,45 @@ func InitializeModelOfficialPrices() error {
 	})
 }
 
+func BackfillOfficialPriceSourceURLs() error {
+	var versions []OfficialModelPriceVersion
+	if err := DB.Where("source_url IS NULL OR source_url = ?", "").
+		Order("id ASC").Find(&versions).Error; err != nil {
+		return err
+	}
+	for _, version := range versions {
+		sourceURL := ""
+		var components struct {
+			ProviderReference struct {
+				SourceURL string `json:"source_url"`
+			} `json:"provider_reference"`
+		}
+		if common.UnmarshalJsonStr(version.PriceComponents, &components) == nil {
+			sourceURL = strings.TrimSpace(components.ProviderReference.SourceURL)
+		}
+		if sourceURL == "" {
+			lowerRemark := strings.ToLower(version.Remark)
+			markerIndex := strings.Index(lowerRemark, "source:")
+			if markerIndex >= 0 {
+				remainder := strings.TrimSpace(version.Remark[markerIndex+len("source:"):])
+				if fields := strings.Fields(remainder); len(fields) > 0 {
+					sourceURL = strings.TrimRight(fields[0], ";,.)")
+				}
+			}
+		}
+		if !strings.HasPrefix(sourceURL, "https://") && !strings.HasPrefix(sourceURL, "http://") {
+			continue
+		}
+		if err := DB.Session(&gorm.Session{SkipHooks: true}).
+			Model(&OfficialModelPriceVersion{}).
+			Where("id = ? AND (source_url IS NULL OR source_url = ?)", version.Id, "").
+			UpdateColumn("source_url", sourceURL).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ActivatePurchasePriceVersion(tx *gorm.DB, version ChannelModelPurchasePriceVersion, now int64) error {
 	if err := tx.Model(&ChannelModelPurchasePriceVersion{}).
 		Where("channel_model_id = ? AND status = ? AND id <> ?", version.ChannelModelId, PricingVersionStatusActive, version.Id).

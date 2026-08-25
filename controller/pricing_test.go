@@ -54,3 +54,25 @@ func TestMarkPricingAvailabilityRequiresRouteAndSalesPrice(t *testing.T) {
 	assert.False(t, marked[3].Available)
 	assert.Equal(t, model.PricingAvailabilityRouteUnavailable, marked[3].AvailabilityStatus)
 }
+
+func TestFilterAvailablePublicPricingHidesUnroutableAndUnpricedModels(t *testing.T) {
+	pricing := []model.Pricing{
+		{
+			ModelName: "available", Available: true,
+			AvailabilityStatus: model.PricingAvailabilityAvailable,
+		},
+		{
+			ModelName: "missing-route", Available: false,
+			AvailabilityStatus: model.PricingAvailabilityRouteUnavailable,
+		},
+		{
+			ModelName: "missing-price", Available: false,
+			AvailabilityStatus: model.PricingAvailabilityPriceUnavailable,
+		},
+	}
+
+	filtered := filterAvailablePublicPricing(pricing)
+
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "available", filtered[0].ModelName)
+}

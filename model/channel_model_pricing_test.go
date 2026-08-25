@@ -427,3 +427,31 @@ func TestPublishedOfficialPriceVersionCannotBeMutated(t *testing.T) {
 	require.NoError(t, DB.First(&stored, version.Id).Error)
 	assert.Empty(t, stored.Remark)
 }
+
+func TestBackfillOfficialPriceSourceURLsUsesStoredEvidence(t *testing.T) {
+	resetChannelModelPricingTestTables(t)
+	versions := []OfficialModelPriceVersion{
+		{
+			Id: 301, ModelId: 101, BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{"provider_reference":{"source_url":"https://docs.example.com/components"}}`,
+			BillingExpr:     "v2:p / 1000000", ExprHash: "hash", ExpressionSchemaVersion: "v2",
+			Currency: "USD", Source: "vendor-official", Version: 1, Status: PricingVersionStatusActive,
+		},
+		{
+			Id: 302, ModelId: 102, BillingMode: "token", PriceStructure: "flat",
+			PriceComponents: `{}`, BillingExpr: "v2:p / 1000000", ExprHash: "hash",
+			ExpressionSchemaVersion: "v2", Currency: "USD", Source: "vendor-official",
+			Version: 1, Status: PricingVersionStatusActive,
+			Remark: "Regenerated price. Official source: https://docs.example.com/remark; reviewed.",
+		},
+	}
+	require.NoError(t, DB.Create(&versions).Error)
+
+	require.NoError(t, BackfillOfficialPriceSourceURLs())
+
+	var stored []OfficialModelPriceVersion
+	require.NoError(t, DB.Where("id IN ?", []int{301, 302}).Order("id ASC").Find(&stored).Error)
+	require.Len(t, stored, 2)
+	assert.Equal(t, "https://docs.example.com/components", stored[0].SourceUrl)
+	assert.Equal(t, "https://docs.example.com/remark", stored[1].SourceUrl)
+}

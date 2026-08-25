@@ -339,6 +339,9 @@ func migrateDB() error {
 	if err := retireLegacyModelPricingOptions(); err != nil {
 		return err
 	}
+	if err := BackfillOfficialPriceSourceURLs(); err != nil {
+		return err
+	}
 	if err := InitializeModelOfficialPrices(); err != nil {
 		return err
 	}
@@ -466,6 +469,9 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := retireLegacyModelPricingOptions(); err != nil {
+		return err
+	}
+	if err := BackfillOfficialPriceSourceURLs(); err != nil {
 		return err
 	}
 	if err := InitializeModelOfficialPrices(); err != nil {

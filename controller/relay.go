@@ -211,7 +211,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
-	if usesV2Pricing {
+	// PrepareRelayPricing has already frozen and bound an explicitly selected
+	// channel. Only automatic requests may choose from the ranked V2 route list;
+	// otherwise this second selection pass could silently replace the channel
+	// chosen in the playground.
+	if usesV2Pricing && !hasSpecificChannel {
 		selected := false
 		for _, channelId := range relayInfo.DynamicPricingSnapshot.RouteChannelIds {
 			channel, getErr := model.CacheGetChannel(channelId)

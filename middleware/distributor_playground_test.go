@@ -9,9 +9,13 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	projecti18n "github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestApplyPlaygroundChannelSelection(t *testing.T) {
@@ -92,4 +96,56 @@ func TestApplyPlaygroundGroupSelectionAppliesBeforeSpecificChannelPricing(t *tes
 	)
 	require.True(t, ok)
 	assert.Equal(t, "17", channelID)
+}
+
+func TestDistributorReturnsSelectedChannelSetupErrorToPlayground(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	require.NoError(t, projecti18n.Init())
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Model{}, &model.Channel{}))
+	require.NoError(t, db.Create(&model.Model{
+		ModelName:  "gpt-4o",
+		Status:     1,
+		NameRule:   model.NameRuleExact,
+		Visibility: model.ModelVisibilityPublic,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     14,
+		Type:   constant.ChannelTypeOpenAI,
+		Key:    "disabled-key",
+		Status: common.ChannelStatusEnabled,
+		Name:   "Selected channel",
+		Models: "gpt-4o",
+		Group:  "default",
+		ChannelInfo: model.ChannelInfo{
+			IsMultiKey:         true,
+			MultiKeyStatusList: map[int]int{0: common.ChannelStatusManuallyDisabled},
+		},
+	}).Error)
+	model.InvalidateModelRoutingCache()
+	t.Cleanup(func() {
+		model.InvalidateModelRoutingCache()
+		model.DB = originalDB
+	})
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/pg/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","channel_id":14,"messages":[]}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	context.Set("role", common.RoleAdminUser)
+	common.SetContextKey(context, constant.ContextKeyUsingGroup, "default")
+
+	Distribute()(context)
+
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "指定渠道 #14 初始化失败")
+	assert.Contains(t, recorder.Body.String(), string(types.ErrorCodeChannelNoAvailableKey))
+	assert.True(t, context.IsAborted())
 }

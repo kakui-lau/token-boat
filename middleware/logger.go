@@ -2,12 +2,17 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
+	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 )
 
 const RouteTagKey = "route_tag"
+
+const successfulHealthAccessLogInterval = time.Minute
 
 func RouteTag(tag string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -17,7 +22,23 @@ func RouteTag(tag string) gin.HandlerFunc {
 }
 
 func SetUpLogger(server *gin.Engine) {
-	server.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+	server.Use(gin.LoggerWithFormatter(newAccessLogFormatter()))
+}
+
+func newAccessLogFormatter() gin.LogFormatter {
+	var healthLogMu sync.Mutex
+	var lastSuccessfulHealthLog time.Time
+	return func(param gin.LogFormatterParams) string {
+		if param.Path == "/health" && param.StatusCode < http.StatusBadRequest {
+			healthLogMu.Lock()
+			if !lastSuccessfulHealthLog.IsZero() &&
+				param.TimeStamp.Sub(lastSuccessfulHealthLog) < successfulHealthAccessLogInterval {
+				healthLogMu.Unlock()
+				return ""
+			}
+			lastSuccessfulHealthLog = param.TimeStamp
+			healthLogMu.Unlock()
+		}
 		var requestID string
 		if param.Keys != nil {
 			requestID, _ = param.Keys[common.RequestIdKey].(string)
@@ -36,5 +57,5 @@ func SetUpLogger(server *gin.Engine) {
 			param.Method,
 			param.Path,
 		)
-	}))
+	}
 }

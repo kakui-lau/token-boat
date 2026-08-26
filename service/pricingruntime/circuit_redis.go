@@ -177,6 +177,20 @@ func removeChannelCircuitRedis(channelId int) error {
 	return err
 }
 
+func clearChannelCircuitStatesRedis() error {
+	members, err := common.RDB.SMembers(context.Background(), circuitRedisChannelsKey).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	pipe := common.RDB.TxPipeline()
+	for _, member := range members {
+		pipe.Del(context.Background(), circuitRedisChannelKeyFromMember(member))
+	}
+	pipe.Del(context.Background(), circuitRedisChannelsKey)
+	_, err = pipe.Exec(context.Background())
+	return err
+}
+
 func circuitRedisChannelKeyFromMember(member string) string {
 	channelId, modelId := parseCircuitRedisChannelModelMember(member)
 	return circuitRedisChannelKey(channelId, modelId)

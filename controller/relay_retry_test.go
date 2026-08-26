@@ -26,6 +26,18 @@ func TestShouldRetryTaskRelayNeverRetriesLocalServerErrors(t *testing.T) {
 	assert.False(t, shouldRetryTaskRelay(context, 1, taskErr, 3))
 }
 
+func TestShouldRetryTaskRelaySpecifiedChannelNeverFallsThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(context, constant.ContextKeyTokenSpecificChannelId, "14")
+	taskErr := &dto.TaskError{
+		StatusCode: http.StatusBadGateway,
+		Error:      errors.New("specified upstream failed"),
+	}
+
+	assert.False(t, shouldRetryTaskRelay(context, 14, taskErr, 3))
+}
+
 func TestShouldRetrySpecifiedChannelNeverFallsThroughOnChannelError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())

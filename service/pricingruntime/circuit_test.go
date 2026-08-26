@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
@@ -85,6 +86,42 @@ func TestChannelCircuitIgnoresClientErrors(t *testing.T) {
 
 	recordChannelFailureAt(13, 1, 400, now)
 	assert.True(t, tryAcquireChannelAt(13, 1, now))
+}
+
+func TestDisabledCircuitMonitoringKeepsChannelsEligibleAndStopsRecording(t *testing.T) {
+	resetChannelCircuits()
+	setting := operation_setting.GetMonitorSetting()
+	originalEnabled := setting.CircuitBreakerEnabled
+	setting.CircuitBreakerEnabled = true
+	circuitMonitoringWasEnabled.Store(true)
+	t.Cleanup(func() {
+		setting.CircuitBreakerEnabled = originalEnabled
+		circuitMonitoringWasEnabled.Store(true)
+		resetChannelCircuits()
+	})
+
+	RecordChannelFailure(14, 1, 500)
+	RecordChannelFailure(14, 1, 502)
+	RecordChannelFailure(14, 1, 503)
+	assert.False(t, TryAcquireChannel(14, 1))
+
+	setting.CircuitBreakerEnabled = false
+	assert.True(t, TryAcquireChannel(14, 1))
+	disabledOverview := GetChannelCircuitOverview()
+	assert.False(t, disabledOverview.Enabled)
+	assert.Empty(t, disabledOverview.Channels)
+	assert.Equal(t, ChannelRouteMetrics{
+		SuccessRate:      0.99,
+		AverageLatencyMs: 1000,
+	}, GetChannelRouteMetrics(14, 1))
+
+	RecordChannelFailure(14, 1, 503)
+	RecordChannelSuccessWithLatency(14, 1, 250*time.Millisecond)
+	setting.CircuitBreakerEnabled = true
+	assert.True(t, TryAcquireChannel(14, 1))
+	enabledOverview := GetChannelCircuitOverview()
+	assert.True(t, enabledOverview.Enabled)
+	assert.Empty(t, enabledOverview.Channels)
 }
 
 func TestChannelCircuitOverviewExposesStateAndTransitionHistory(t *testing.T) {

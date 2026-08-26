@@ -550,12 +550,42 @@ func saveTaskUpstreamRequest(c *gin.Context, request model.TaskUpstreamRequest, 
 
 func logFailedUpstreamRequest(c *gin.Context, req *http.Request, body []byte, failure string, info *common.RelayInfo) {
 	request := taskUpstreamRequest(req, body, failure)
+	clientMethod := ""
+	clientURL := ""
+	clientBody := "{}"
+	if c != nil && c.Request != nil {
+		clientMethod = c.Request.Method
+		if c.Request.URL != nil {
+			clientURL = common.SanitizeURLForLog(c.Request.URL.RequestURI())
+		}
+		if storage, err := common2.GetBodyStorage(c); err == nil {
+			if clientRequestBody, readErr := storage.Bytes(); readErr == nil {
+				clientBody = common2.SanitizeRequestBodyForLog(
+					clientRequestBody,
+					c.Request.Header.Get("Content-Type"),
+				)
+			}
+		}
+	}
+	upstreamContentType := ""
+	if req != nil {
+		upstreamContentType = req.Header.Get("Content-Type")
+	}
+	upstreamBody := common2.SanitizeRequestBodyForLog(body, upstreamContentType)
+	channelID := 0
+	if info != nil && info.ChannelMeta != nil {
+		channelID = info.ChannelId
+	}
 	logger.LogError(c, fmt.Sprintf(
-		"upstream request failed: method=%s url=%q failure=%q body=%s",
+		"relay request parameters on upstream failure: channel_id=%d failure=%q client_method=%s client_url=%q client_body=%s upstream_method=%s upstream_url=%q upstream_body=%s",
+		channelID,
+		common2.LocalLogPreview(common2.MaskSensitiveInfo(failure)),
+		clientMethod,
+		clientURL,
+		clientBody,
 		request.Method,
 		request.URL,
-		failure,
-		string(body),
+		upstreamBody,
 	))
 	saveTaskUpstreamRequest(c, request, info)
 }
@@ -570,6 +600,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
+		logFailedUpstreamRequest(c, req, requestBody, err.Error(), info)
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
 	if common2.DebugEnabled && req != nil && req.URL != nil {

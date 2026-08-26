@@ -195,7 +195,21 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		if channel != nil {
+			if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil {
+				message := setupErr.Error()
+				if ok {
+					message = fmt.Sprintf("指定渠道 #%d 初始化失败: %s", channel.Id, message)
+				}
+				abortWithOpenAiMessage(
+					c,
+					setupErr.StatusCode,
+					message,
+					setupErr.GetErrorCode(),
+				)
+				return
+			}
+		}
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(

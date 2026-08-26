@@ -82,6 +82,7 @@ const routingReliabilitySchema = z
         .int()
         .min(1, 'Interval must be at least 1 minute'),
       channel_test_mode: z.enum(channelTestModes),
+      circuit_breaker_enabled: z.boolean(),
     }),
   })
   .superRefine((values, ctx) => {
@@ -127,6 +128,7 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_mode': ChannelTestMode
+    'monitor_setting.circuit_breaker_enabled': boolean
   }
 }
 
@@ -145,6 +147,7 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': ChannelTestMode
+  'monitor_setting.circuit_breaker_enabled': boolean
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -171,6 +174,8 @@ const buildFormDefaults = (
     channel_test_mode: normalizeChannelTestMode(
       defaults['monitor_setting.channel_test_mode']
     ),
+    circuit_breaker_enabled:
+      defaults['monitor_setting.circuit_breaker_enabled'],
   },
 })
 
@@ -197,6 +202,8 @@ const normalizeDefaults = (
   'monitor_setting.channel_test_mode': normalizeChannelTestMode(
     defaults['monitor_setting.channel_test_mode']
   ),
+  'monitor_setting.circuit_breaker_enabled':
+    defaults['monitor_setting.circuit_breaker_enabled'],
 })
 
 const normalizeFormValues = (
@@ -220,6 +227,8 @@ const normalizeFormValues = (
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
   'monitor_setting.channel_test_mode': values.monitor_setting.channel_test_mode,
+  'monitor_setting.circuit_breaker_enabled':
+    values.monitor_setting.circuit_breaker_enabled,
 })
 
 export function RoutingReliabilitySection({
@@ -344,6 +353,38 @@ export function RoutingReliabilitySection({
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <div className='flex flex-col gap-1'>
+              <h4 className='text-sm font-medium'>{t('Circuit breaker')}</h4>
+            </div>
+            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='monitor_setting.circuit_breaker_enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Enable circuit monitoring')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Track upstream failures and temporarily exclude unhealthy channel-model routes. When disabled, all routes remain eligible and circuit metrics are not recorded.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
                 )}
               />
             </div>

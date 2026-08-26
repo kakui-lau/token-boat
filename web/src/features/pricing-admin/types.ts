@@ -98,6 +98,7 @@ export type ChannelCircuitOverview = {
   channels: ChannelCircuitStatus[]
   events: ChannelCircuitEvent[]
   distributed: boolean
+  enabled: boolean
 }
 
 export type ChannelCircuitEventListResponse = {

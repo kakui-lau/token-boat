@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 import type { PublicPriceItem, PublicPriceSummary, TokenUnit } from '../types'
@@ -93,18 +94,8 @@ function formatAmount(
   priceRate = 1,
   usdExchangeRate = 1
 ): string {
-  const rawAmount = Number(item.amount)
-  const rawUnitSize = Number(item.unit_size)
-  if (!Number.isFinite(rawAmount)) return '-'
-
-  let amount = rawAmount
-  if (
-    item.unit === 'token' &&
-    Number.isFinite(rawUnitSize) &&
-    rawUnitSize > 0
-  ) {
-    amount *= (tokenUnit === 'K' ? 1_000 : 1_000_000) / rawUnitSize
-  }
+  let amount = normalizedAmount(item, tokenUnit)
+  if (amount === null) return '-'
   if (
     showRechargePrice &&
     Number.isFinite(priceRate) &&
@@ -117,6 +108,62 @@ function formatAmount(
   return `$${new Intl.NumberFormat(undefined, {
     maximumFractionDigits,
   }).format(amount)}`
+}
+
+function normalizedAmount(
+  item: PublicPriceItem,
+  tokenUnit: TokenUnit
+): number | null {
+  const rawAmount = Number(item.amount)
+  const rawUnitSize = Number(item.unit_size)
+  if (!Number.isFinite(rawAmount)) return null
+
+  if (
+    item.unit === 'token' &&
+    Number.isFinite(rawUnitSize) &&
+    rawUnitSize > 0
+  ) {
+    return rawAmount * ((tokenUnit === 'K' ? 1_000 : 1_000_000) / rawUnitSize)
+  }
+  return rawAmount
+}
+
+function priceDifference(
+  item: PublicPriceItem,
+  comparisonItem: PublicPriceItem | undefined,
+  tokenUnit: TokenUnit
+): number | null {
+  if (!comparisonItem) return null
+  const amount = normalizedAmount(item, tokenUnit)
+  const comparisonAmount = normalizedAmount(comparisonItem, tokenUnit)
+  if (amount === null || comparisonAmount === null || comparisonAmount <= 0) {
+    return null
+  }
+  return amount / comparisonAmount - 1
+}
+
+function formatDifferencePercent(difference: number): string {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 1,
+  }).format(Math.abs(difference) * 100)
+}
+
+function PriceDifferenceBadge(props: { difference: number }) {
+  const { t } = useTranslation()
+  const percent = formatDifferencePercent(props.difference)
+  if (Math.abs(props.difference) < 0.0005) {
+    return <Badge variant='secondary'>{t('Same as official price')}</Badge>
+  }
+  if (props.difference < 0) {
+    return (
+      <Badge>{t('Save {{percent}}% vs official price', { percent })}</Badge>
+    )
+  }
+  return (
+    <Badge variant='outline'>
+      {t('{{percent}}% above official price', { percent })}
+    </Badge>
+  )
 }
 
 function PriceUnit(props: { item: PublicPriceItem; tokenUnit: TokenUnit }) {
@@ -292,6 +339,7 @@ export function PublicPriceComparison(props: {
 
 export function PublicPriceSummaryDetails(props: {
   summary?: PublicPriceSummary
+  comparisonSummary?: PublicPriceSummary
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
   priceRate?: number
@@ -307,49 +355,120 @@ export function PublicPriceSummaryDetails(props: {
     )
   }
 
+  const comparisonItems = props.comparisonSummary?.items ?? []
+  const comparisons = props.summary.items.map((item, index) => {
+    const condition = itemCondition(item, t)
+    const comparisonItem =
+      comparisonItems.find(
+        (candidate) =>
+          candidate.component === item.component &&
+          itemCondition(candidate, t) === condition &&
+          (candidate.upper_bound || '') === (item.upper_bound || '')
+      ) || comparisonItems[index]
+    return {
+      item,
+      condition,
+      comparisonItem,
+      difference: priceDifference(item, comparisonItem, props.tokenUnit),
+    }
+  })
+  const differences = comparisons
+    .map((comparison) => comparison.difference)
+    .filter((difference): difference is number => difference !== null)
+  let commonDifference: number | null = null
+  if (
+    differences.length === comparisons.length &&
+    differences.every(
+      (difference) => Math.abs(difference - differences[0]) < 0.002
+    )
+  ) {
+    commonDifference = differences[0]
+  }
+
   return (
-    <div className='space-y-2'>
-      {props.summary.items.map((item) => {
-        const condition = itemCondition(item, t)
-        const groupContext = appliedGroupContext(item)
-        return (
-          <div
-            key={item.key}
-            className='bg-muted/15 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5'
-          >
-            <div className='min-w-0'>
-              <div className='text-sm font-medium'>
-                {t(COMPONENT_LABELS[item.component] || item.component)}
-              </div>
-              {condition && (
-                <div className='text-muted-foreground mt-0.5 text-xs'>
-                  {condition}
-                  {item.upper_bound && ` · ≤ ${item.upper_bound}`}
-                </div>
+    <div
+      className={cn(
+        'flex flex-col gap-3',
+        props.comparisonSummary &&
+          'border-primary/30 bg-primary/5 rounded-xl border p-3'
+      )}
+    >
+      {props.comparisonSummary ? (
+        <div className='flex flex-wrap items-center justify-between gap-2 border-b pb-3'>
+          <p className='text-muted-foreground text-xs'>
+            {t('Compared item by item using the same billing unit.')}
+          </p>
+          {commonDifference !== null ? (
+            <PriceDifferenceBadge difference={commonDifference} />
+          ) : null}
+        </div>
+      ) : null}
+      <div
+        aria-label={t('Price components')}
+        className='grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3'
+      >
+        {comparisons.map((comparison) => {
+          const item = comparison.item
+          const groupContext = appliedGroupContext(item)
+          return (
+            <div
+              key={item.key}
+              className={cn(
+                'flex min-h-24 items-center justify-between gap-3 rounded-lg border px-3 py-2.5',
+                props.comparisonSummary ? 'bg-background/80' : 'bg-muted/15'
               )}
-              {groupContext && (
-                <div className='text-primary mt-1 text-[11px] font-medium'>
-                  {t('Effective group')}: {groupContext}
+            >
+              <div className='min-w-0'>
+                <div className='text-sm font-medium'>
+                  {t(COMPONENT_LABELS[item.component] || item.component)}
                 </div>
-              )}
-            </div>
-            <div className='shrink-0 text-right'>
-              <div className='font-mono text-sm font-semibold tabular-nums'>
-                {formatAmount(
-                  item,
-                  props.tokenUnit,
-                  props.showRechargePrice,
-                  props.priceRate,
-                  props.usdExchangeRate
-                )}
+                {comparison.condition ? (
+                  <div className='text-muted-foreground mt-0.5 text-xs'>
+                    {comparison.condition}
+                    {item.upper_bound ? ` · ≤ ${item.upper_bound}` : null}
+                  </div>
+                ) : null}
+                {groupContext ? (
+                  <div className='text-primary mt-1 text-[11px] font-medium'>
+                    {t('Effective group')}: {groupContext}
+                  </div>
+                ) : null}
               </div>
-              <div className='text-muted-foreground text-[10px]'>
-                / <PriceUnit item={item} tokenUnit={props.tokenUnit} />
+              <div className='flex shrink-0 flex-col items-end gap-1 text-right'>
+                <div
+                  className={cn(
+                    'font-mono text-sm font-semibold tabular-nums',
+                    props.comparisonSummary &&
+                      'text-primary text-base font-bold'
+                  )}
+                >
+                  {formatAmount(
+                    item,
+                    props.tokenUnit,
+                    props.showRechargePrice,
+                    props.priceRate,
+                    props.usdExchangeRate
+                  )}
+                </div>
+                <div className='text-muted-foreground text-[10px]'>
+                  / <PriceUnit item={item} tokenUnit={props.tokenUnit} />
+                </div>
+                {comparison.comparisonItem ? (
+                  <div className='text-muted-foreground text-[11px]'>
+                    {t('Official reference')}:{' '}
+                    <span className='font-mono tabular-nums'>
+                      {formatAmount(comparison.comparisonItem, props.tokenUnit)}
+                    </span>
+                  </div>
+                ) : null}
+                {comparison.difference !== null && commonDifference === null ? (
+                  <PriceDifferenceBadge difference={comparison.difference} />
+                ) : null}
               </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

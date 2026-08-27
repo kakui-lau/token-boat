@@ -28,6 +28,7 @@ type ListPaginationProps = {
   pageSize: number
   total: number
   isFetching: boolean
+  showRecordCount?: boolean
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
 }
@@ -38,11 +39,13 @@ export function ListPagination(props: ListPaginationProps) {
 
   return (
     <div className='flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between'>
-      <p className='text-muted-foreground text-sm'>
-        {t('{{total}} records match the current filters.', {
-          total: props.total,
-        })}
-      </p>
+      {props.showRecordCount !== false ? (
+        <p className='text-muted-foreground text-sm'>
+          {t('{{total}} records match the current filters.', {
+            total: props.total,
+          })}
+        </p>
+      ) : null}
       <div className='flex flex-wrap items-center gap-2'>
         <span className='text-muted-foreground text-sm'>
           {t('Rows per page')}

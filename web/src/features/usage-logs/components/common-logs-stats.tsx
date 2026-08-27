@@ -20,12 +20,12 @@ import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   formatCompactNumber,
   formatLogQuota,
@@ -117,10 +117,7 @@ function StatItem(props: {
         labelContent
       )}
       <span
-        className={cn(
-          'font-mono font-semibold tabular-nums',
-          valueAccentClass
-        )}
+        className={cn('font-mono font-semibold tabular-nums', valueAccentClass)}
       >
         {props.hidden ? '••••' : props.value}
       </span>

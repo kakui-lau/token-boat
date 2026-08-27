@@ -59,6 +59,8 @@ type SalesPriceBookVersionDiff struct {
 	ReviewCount    int                          `json:"review_count"`
 }
 
+const salesMarginComparisonScale int32 = 12
+
 type salesPriceBookDiffBasisSource struct {
 	PriceBookItemId        int
 	ChannelModelId         int
@@ -73,7 +75,10 @@ func CompareSalesPriceBookVersions(
 	baseVersionId int,
 	targetVersionId int,
 ) (SalesPriceBookVersionDiff, error) {
-	var result SalesPriceBookVersionDiff
+	result := SalesPriceBookVersionDiff{
+		PolicyChanges: make([]SalesPriceBookPolicyChange, 0),
+		Items:         make([]SalesPriceBookItemDiff, 0),
+	}
 	if baseVersionId <= 0 || targetVersionId <= 0 || baseVersionId == targetVersionId {
 		return result, errors.New("two different sales price book versions are required")
 	}
@@ -126,7 +131,11 @@ func CompareSalesPriceBookVersions(
 		targetItem, hasTarget := targetItems[modelId]
 		diff := SalesPriceBookItemDiff{
 			ModelId: modelId, ModelName: modelNames[modelId],
-			RiskCodes: []string{}, OldPurchaseVersions: []int{}, NewPurchaseVersions: []int{},
+			RiskCodes:           []string{},
+			OldPurchaseVersions: []int{},
+			NewPurchaseVersions: []int{},
+			OldChannelMargins:   []SalesPriceBookChannelMargin{},
+			NewChannelMargins:   []SalesPriceBookChannelMargin{},
 		}
 		if hasBase {
 			baseCopy := baseItem
@@ -286,7 +295,7 @@ func salesPriceBookChannelMargins(
 			}
 			entry.ReferenceCost = cost.String()
 			entry.MarginRate = margin.String()
-			entry.MeetsMinimumMargin = margin.GreaterThanOrEqual(minimum)
+			entry.MeetsMinimumMargin = salesMarginMeetsMinimum(margin, minimum)
 		}
 		margins = append(margins, entry)
 	}
@@ -446,6 +455,11 @@ func salesPriceBookReferenceMargin(
 	return one.Sub(vcr).Mul(one.Sub(tax)).Sub(cost.Div(sales).Mul(one.Sub(tax))), nil
 }
 
+func salesMarginMeetsMinimum(margin decimal.Decimal, minimum decimal.Decimal) bool {
+	return margin.Round(salesMarginComparisonScale).
+		GreaterThanOrEqual(minimum.Round(salesMarginComparisonScale))
+}
+
 func decimalChangeRate(oldValue string, newValue string) string {
 	oldDecimal, oldErr := decimal.NewFromString(oldValue)
 	newDecimal, newErr := decimal.NewFromString(newValue)
@@ -498,7 +512,7 @@ func salesPriceBookDiffRisks(
 	}
 	margin, marginErr := decimal.NewFromString(diff.MarginAfter)
 	minimum, minimumErr := decimal.NewFromString(target.MinimumMarginRate)
-	if marginErr == nil && minimumErr == nil && margin.LessThan(minimum) {
+	if marginErr == nil && minimumErr == nil && !salesMarginMeetsMinimum(margin, minimum) {
 		risks = append(risks, "below_minimum_margin")
 	}
 	change, changeErr := decimal.NewFromString(diff.PriceChangeRate)

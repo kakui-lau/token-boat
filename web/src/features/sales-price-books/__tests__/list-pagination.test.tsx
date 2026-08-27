@@ -59,6 +59,9 @@ test('defaults to the supplied 200-row page and exposes deterministic navigation
     '200'
   )
   expect(screen.getByText('Page 2 of 3')).toBeInTheDocument()
+  expect(
+    screen.getByText('450 records match the current filters.')
+  ).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
   fireEvent.click(screen.getByRole('button', { name: 'Next' }))
   fireEvent.change(screen.getByRole('combobox', { name: 'Rows per page' }), {

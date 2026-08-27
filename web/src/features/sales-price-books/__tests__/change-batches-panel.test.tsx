@@ -22,7 +22,15 @@ vi.mock('../api', () => ({
 }))
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, string | number>) => {
+      let result = key
+      for (const [name, value] of Object.entries(values ?? {})) {
+        result = result.replaceAll(`{{${name}}}`, String(value))
+      }
+      return result
+    },
+  }),
 }))
 
 afterEach(() => {
@@ -97,4 +105,8 @@ test('loads 200 change batches per page and shows model-level details', async ()
   })
   expect(screen.getByText('pricing-admin')).toBeInTheDocument()
   expect(screen.getByText('below_minimum_margin')).toBeInTheDocument()
+  expect(screen.getByText('Total rows: 1')).toBeInTheDocument()
+  expect(
+    screen.getByText('1 records match the current filters.')
+  ).toBeInTheDocument()
 })

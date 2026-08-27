@@ -24,7 +24,12 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircle, Database } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -61,6 +66,7 @@ type SupportedChannelModelTableProps = {
   filters: ChannelModelFilterValues
   channels: Array<{ id: number; name: string }>
   selectedIds: Set<number>
+  generatedModelIds: ReadonlySet<number>
   total: number
   page: number
   pageSize: number
@@ -70,34 +76,59 @@ type SupportedChannelModelTableProps = {
   onRetry: () => void
   onFiltersChange: (filters: ChannelModelFilterValues) => void
   onSelectionChange: (selectedIds: Set<number>) => void
+  onSelectAllMatching?: () => void
+  onSelectAllMatchingUngenerated?: () => void
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
+}
+
+function canGenerateSalesPriceFromChannelModel(item: ChannelModel) {
+  return item.status === 1 && item.active_purchase_price_version_id > 0
 }
 
 export function ChannelModelSelectionTable(
   props: SupportedChannelModelTableProps
 ) {
   const { t } = useTranslation()
+  const selectableItems = props.items.filter(
+    canGenerateSalesPriceFromChannelModel
+  )
+  const ungeneratedSelectableItems = selectableItems.filter(
+    (item) => !props.generatedModelIds.has(item.model_id)
+  )
+  const generatedOnPage = props.items.filter((item) =>
+    props.generatedModelIds.has(item.model_id)
+  ).length
+  const notGeneratedOnPage = props.items.length - generatedOnPage
   let selectedOnPage = 0
-  for (const item of props.items) {
+  for (const item of selectableItems) {
     if (props.selectedIds.has(item.id)) selectedOnPage += 1
   }
   const allRowsOnPageSelected =
-    props.items.length > 0 && selectedOnPage === props.items.length
+    selectableItems.length > 0 && selectedOnPage === selectableItems.length
   const someRowsOnPageSelected =
-    selectedOnPage > 0 && selectedOnPage < props.items.length
+    selectedOnPage > 0 && selectedOnPage < selectableItems.length
+  const hiddenSelectedCount = Math.max(
+    0,
+    props.selectedIds.size - selectedOnPage
+  )
 
   return (
-    <Card className='shrink-0'>
-      <CardHeader>
+    <Card className='h-full min-h-[40rem] lg:min-h-0'>
+      <CardHeader className='shrink-0'>
         <CardTitle>{t('Supported channel models')}</CardTitle>
         <CardDescription>
           {t(
             'Channel models with active official and purchase prices are included.'
           )}
+          <span className='mt-1 block'>
+            {t(
+              'Models already present in this draft are marked as generated. Selecting them again recalculates and replaces their prices.'
+            )}
+          </span>
         </CardDescription>
       </CardHeader>
-      <CardContent className='flex flex-col gap-4'>
+      <CardContent className='flex min-h-0 flex-1 flex-col gap-4'>
         <ChannelModelFilters
           idPrefix='sales-price-book-generator'
           value={props.filters}
@@ -105,20 +136,68 @@ export function ChannelModelSelectionTable(
           onChange={props.onFiltersChange}
         />
         <div className='flex flex-wrap items-center justify-between gap-2'>
-          <p className='text-muted-foreground text-sm'>
-            {t('{{count}} selected', { count: props.selectedIds.size })}
-          </p>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Badge variant='outline'>
+              {t('Selected on current page: {{count}}', {
+                count: selectedOnPage,
+              })}
+            </Badge>
+            <Badge
+              variant={hiddenSelectedCount > 0 ? 'destructive' : 'outline'}
+            >
+              {t('Selected outside current page: {{count}}', {
+                count: hiddenSelectedCount,
+              })}
+            </Badge>
+            <Badge variant='secondary'>
+              {t('Generated on this page')}: {generatedOnPage}
+            </Badge>
+            <Badge variant='outline'>
+              {t('Not generated on this page')}: {notGeneratedOnPage}
+            </Badge>
+          </div>
           <div className='flex flex-wrap items-center gap-2'>
             <Button
               size='sm'
               variant='outline'
-              disabled={props.items.length === 0}
+              disabled={props.total === 0 || props.isFetching}
+              onClick={props.onSelectAllMatchingUngenerated}
+            >
+              {t('Select all ungenerated matching filters')}
+            </Button>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={props.total === 0 || props.isFetching}
+              onClick={props.onSelectAllMatching}
+            >
+              {t('Select all {{count}} matching', { count: props.total })}
+            </Button>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={ungeneratedSelectableItems.length === 0}
               onClick={() => {
-                const next = new Set(props.selectedIds)
-                for (const item of props.items) {
-                  next.add(item.id)
-                }
-                props.onSelectionChange(next)
+                props.onSelectionChange(
+                  new Set(ungeneratedSelectableItems.map((item) => item.id))
+                )
+              }}
+            >
+              <HugeiconsIcon
+                icon={CheckListIcon}
+                strokeWidth={2}
+                data-icon='inline-start'
+              />
+              {t('Select ungenerated on current page')}
+            </Button>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={selectableItems.length === 0}
+              onClick={() => {
+                props.onSelectionChange(
+                  new Set(selectableItems.map((item) => item.id))
+                )
               }}
             >
               <HugeiconsIcon
@@ -131,10 +210,29 @@ export function ChannelModelSelectionTable(
             <Button
               size='sm'
               variant='outline'
-              disabled={props.items.length === 0}
+              disabled={selectableItems.length === 0}
               onClick={() => {
                 const next = new Set(props.selectedIds)
-                for (const item of props.items) {
+                for (const item of selectableItems) {
+                  next.add(item.id)
+                }
+                props.onSelectionChange(next)
+              }}
+            >
+              <HugeiconsIcon
+                icon={CheckListIcon}
+                strokeWidth={2}
+                data-icon='inline-start'
+              />
+              {t('Add current page to selection')}
+            </Button>
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={selectableItems.length === 0}
+              onClick={() => {
+                const next = new Set(props.selectedIds)
+                for (const item of selectableItems) {
                   if (next.has(item.id)) {
                     next.delete(item.id)
                   } else {
@@ -161,6 +259,22 @@ export function ChannelModelSelectionTable(
             </Button>
           </div>
         </div>
+        {hiddenSelectedCount > 0 ? (
+          <Alert variant='destructive'>
+            <AlertCircle />
+            <AlertTitle>
+              {t('Selected outside current page: {{count}}', {
+                count: hiddenSelectedCount,
+              })}
+            </AlertTitle>
+            <AlertDescription>
+              {t(
+                'Hidden selected channel models: {{count}}. They will also be generated.',
+                { count: hiddenSelectedCount }
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {props.isLoading ? <Skeleton className='h-48 w-full' /> : null}
         {props.isError ? (
           <Alert variant='destructive'>
@@ -193,7 +307,7 @@ export function ChannelModelSelectionTable(
         {!props.isLoading && !props.isError && props.items.length > 0 ? (
           <div
             data-testid='supported-channel-model-scroll'
-            className='rounded-lg border'
+            className='min-h-48 flex-1 overflow-auto rounded-lg border'
           >
             <Table className='min-w-max'>
               <TableHeader className='bg-card sticky top-0 z-10'>
@@ -202,10 +316,11 @@ export function ChannelModelSelectionTable(
                     <Checkbox
                       checked={allRowsOnPageSelected}
                       indeterminate={someRowsOnPageSelected}
+                      disabled={selectableItems.length === 0}
                       aria-label={t('Select current page')}
                       onCheckedChange={(checked) => {
                         const next = new Set(props.selectedIds)
-                        for (const item of props.items) {
+                        for (const item of selectableItems) {
                           if (checked) next.add(item.id)
                           else next.delete(item.id)
                         }
@@ -219,6 +334,7 @@ export function ChannelModelSelectionTable(
                   <TableHead>{t('Purchase pricing mode')}</TableHead>
                   <TableHead>{t('Purchase Discount')}</TableHead>
                   <TableHead>{t('Purchase Status')}</TableHead>
+                  <TableHead>{t('Generation status')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -232,6 +348,7 @@ export function ChannelModelSelectionTable(
                     <TableCell>
                       <Checkbox
                         checked={props.selectedIds.has(item.id)}
+                        disabled={!canGenerateSalesPriceFromChannelModel(item)}
                         aria-label={t('Select {{model}}', {
                           model: item.model_name,
                         })}
@@ -263,21 +380,36 @@ export function ChannelModelSelectionTable(
                           : t('Not Published')}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          props.generatedModelIds.has(item.model_id)
+                            ? 'secondary'
+                            : 'outline'
+                        }
+                      >
+                        {props.generatedModelIds.has(item.model_id)
+                          ? t('Generated')
+                          : t('Not generated')}
+                      </Badge>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
         ) : null}
-        {!props.isLoading && !props.isError && props.total > 0 ? (
-          <ChannelModelPagination
-            page={props.page}
-            pageSize={props.pageSize}
-            total={props.total}
-            isFetching={props.isFetching}
-            onPageChange={props.onPageChange}
-            onPageSizeChange={props.onPageSizeChange}
-          />
+        {!props.isLoading && !props.isError ? (
+          <div className='shrink-0'>
+            <ChannelModelPagination
+              page={props.page}
+              pageSize={props.pageSize}
+              total={props.total}
+              isFetching={props.isFetching}
+              onPageChange={props.onPageChange}
+              onPageSizeChange={props.onPageSizeChange}
+            />
+          </div>
         ) : null}
       </CardContent>
     </Card>

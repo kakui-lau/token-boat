@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relaykitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -18,12 +19,14 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestPrepareMidjourneyPricingCreatesFrozenRequestAudit(t *testing.T) {
+func TestMidjourneyPricingAuditIsCreatedOnlyAfterPreConsume(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
+	redisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
 	require.NoError(t, db.AutoMigrate(
 		&model.Model{},
 		&model.Channel{},
@@ -37,9 +40,11 @@ func TestPrepareMidjourneyPricingCreatesFrozenRequestAudit(t *testing.T) {
 		&model.SalesPriceBookDefault{},
 		&model.UserPriceBookAssignment{},
 		&model.RequestPricingSnapshot{},
+		&model.User{},
 	))
 	t.Cleanup(func() {
 		pricingruntime.InvalidateCatalog()
+		common.RedisEnabled = redisEnabled
 		model.DB = originalDB
 	})
 
@@ -89,6 +94,7 @@ func TestPrepareMidjourneyPricingCreatesFrozenRequestAudit(t *testing.T) {
 		DefaultKey: "toc_default", PriceBookId: 5,
 	}).Error)
 	require.NoError(t, pricingruntime.RefreshCatalog())
+	require.NoError(t, model.DB.Create(&model.User{Id: 7, Username: "mj-user", Quota: int(10 * common.QuotaPerUnit)}).Error)
 
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
@@ -105,6 +111,8 @@ func TestPrepareMidjourneyPricingCreatesFrozenRequestAudit(t *testing.T) {
 		UsingGroup:      "default",
 		OriginModelName: "mj_imagine",
 		ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 2},
+		IsPlayground:    true,
+		UserSetting:     relaykitdto.UserSetting{BillingPreference: "wallet_only"},
 	}
 
 	priceData, err := prepareMidjourneyPricing(context, info, "mj_imagine")
@@ -113,8 +121,20 @@ func TestPrepareMidjourneyPricingCreatesFrozenRequestAudit(t *testing.T) {
 	require.NotNil(t, info.DynamicPricingSnapshot)
 
 	var snapshot model.RequestPricingSnapshot
+	assert.ErrorIs(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error, gorm.ErrRecordNotFound)
+	require.NoError(t, preConsumeMidjourneyPricing(context, info, priceData))
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
 	assert.Equal(t, pricingruntime.PricingSnapshotStatusReserved, snapshot.Status)
+	assert.True(t, snapshot.PreConsumeCaptured)
+	assert.Equal(t, int64(priceData.Quota), snapshot.ActualPreConsumedQuota)
 	assert.Equal(t, "1", snapshot.PurchaseCost)
 	assert.Equal(t, "2", snapshot.SalesAmount)
+	var chargedUser model.User
+	require.NoError(t, model.DB.First(&chargedUser, 7).Error)
+	assert.Equal(t, int(10*common.QuotaPerUnit)-priceData.Quota, chargedUser.Quota)
+	require.NoError(t, refundMidjourneyPreConsume(context, info, "test upstream failure"))
+	require.NoError(t, model.DB.First(&chargedUser, 7).Error)
+	assert.Equal(t, int(10*common.QuotaPerUnit), chargedUser.Quota)
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.Equal(t, pricingruntime.PricingSnapshotStatusRefunded, snapshot.Status)
 }

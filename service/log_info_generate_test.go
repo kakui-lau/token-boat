@@ -41,6 +41,7 @@ func TestInjectGeneralBillingAuditRecordsPriceBookLineageAsAdminOnly(t *testing.
 			QuotaPerUnit: 1_000_000,
 			Selected: &types.DynamicPriceCandidate{
 				ChannelModelId: 4, PurchasePriceVersion: 5, SalesPriceBookVersionId: 6,
+				PriceBookAssignmentId: 7, SalesPricingSource: "user_assignment",
 				PricingRevision: "revision", EstimatedPurchaseUSD: "0.4",
 				EstimatedSalesUSD: "0.8", BillingMode: "video_duration",
 				ProviderCostMode: model.ProviderCostModeInvoice,
@@ -59,6 +60,8 @@ func TestInjectGeneralBillingAuditRecordsPriceBookLineageAsAdminOnly(t *testing.
 	assert.Equal(t, "video_duration", adminInfo["pricing_billing_mode"])
 	assert.Equal(t, 5, adminInfo["purchase_price_version_id"])
 	assert.Equal(t, 6, adminInfo["sales_price_book_version_id"])
+	assert.Equal(t, 7, adminInfo["price_book_assignment_id"])
+	assert.Equal(t, "user_assignment", adminInfo["sales_pricing_source"])
 	assert.Equal(t, "revision", adminInfo["pricing_revision"])
 	assert.Equal(t, model.ProviderCostModeInvoice, adminInfo["provider_cost_mode"])
 	assert.Equal(t, model.ProviderCostStatusPending, adminInfo["provider_cost_status"])

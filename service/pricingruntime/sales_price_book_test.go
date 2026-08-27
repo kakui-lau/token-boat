@@ -202,6 +202,61 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 	assert.Equal(t, book.Id, snapshot.SalesPriceBookId)
 	assert.Equal(t, version.Id, snapshot.SalesPriceBookVersionId)
 	assert.Equal(t, item.Id, snapshot.SalesPriceBookItemId)
+	assert.False(t, snapshot.PreConsumeCaptured)
+	assert.Equal(t, "pending", snapshot.BillingSource)
+
+	require.NoError(t, SyncRequestPricingPreConsume(info))
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.True(t, snapshot.PreConsumeCaptured)
+	assert.Zero(t, snapshot.ActualPreConsumedQuota)
+	assert.Equal(t, "none", snapshot.BillingSource)
+}
+
+func TestUncapturedPreConsumeIntentStaysPendingForFinancialReview(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 892)
+	require.NoError(t, model.DB.Model(&model.Model{}).Where("id = ?", 892).
+		Update("status", 1).Error)
+	book, _, item := createResolvedPriceFixture(t, "uncaptured-default", 892, 1)
+	salesExpression := `v2:tier("base", p * 2 / 1000000)`
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).Where("id = ?", item.Id).
+		Updates(map[string]any{
+			"sales_billing_expr": salesExpression,
+			"sales_expr_hash":    billingexpr.ExprHashString(salesExpression),
+		}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: 1,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "runtime-model", UserId: 1002, RequestId: "uncaptured-preconsume-intent",
+	}
+	_, err := PrepareRelayPricing(
+		info, "default", 892, 1_000_000, 0,
+		billingexpr.RequestInput{}, pricingengine.Usage{},
+	)
+	require.NoError(t, err)
+	require.NoError(t, CreateRequestPricingSnapshot(info))
+	require.NoError(t, model.DB.Model(&model.RequestPricingSnapshot{}).
+		Where("request_id = ?", info.RequestId).
+		Updates(map[string]any{"created_at": 1, "updated_at": 1}).Error)
+
+	updated, err := ReconcileStaleRequestPricingSnapshots(2)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), updated)
+
+	var snapshot model.RequestPricingSnapshot
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.Equal(t, PricingSnapshotStatusPending, snapshot.Status)
+	assert.Equal(t, "preconsume_capture_missing", snapshot.FailureCode)
+
+	classified, err := ClassifyStalePendingPricingSnapshots(2)
+	require.NoError(t, err)
+	assert.Zero(t, classified.NoChargeFinalized)
+	assert.Zero(t, classified.LegacyArchived)
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	assert.Equal(t, PricingSnapshotStatusPending, snapshot.Status)
 }
 
 func createResolvedPriceFixture(

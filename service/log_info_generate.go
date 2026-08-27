@@ -104,6 +104,8 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["sales_price_book_id"] = snapshot.Selected.SalesPriceBookId
 		adminInfo["sales_price_book_version_id"] = snapshot.Selected.SalesPriceBookVersionId
 		adminInfo["sales_price_book_item_id"] = snapshot.Selected.SalesPriceBookItemId
+		adminInfo["price_book_assignment_id"] = snapshot.Selected.PriceBookAssignmentId
+		adminInfo["sales_pricing_source"] = snapshot.Selected.SalesPricingSource
 		adminInfo["pricing_revision"] = snapshot.Selected.PricingRevision
 		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
 		adminInfo["estimated_sales_usd"] = snapshot.Selected.EstimatedSalesUSD

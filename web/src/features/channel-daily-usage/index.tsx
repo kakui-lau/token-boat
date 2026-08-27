@@ -535,7 +535,7 @@ export function ChannelDailyUsagePage() {
                 </div>
                 {granularity === 'day' && (
                   <div className='col-span-full mt-1 flex flex-wrap items-center gap-1.5'>
-                    <span className='text-muted-foreground pr-1 text-xs font-medium uppercase tracking-wide'>
+                    <span className='text-muted-foreground pr-1 text-xs font-medium tracking-wide uppercase'>
                       {t('Quick Range')}
                     </span>
                     {DAILY_USAGE_DATE_PRESETS.map((preset) => (

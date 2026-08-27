@@ -17,14 +17,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import z from 'zod'
 
-import { SalesPriceBooks } from '@/features/sales-price-books'
+import {
+  SalesPriceBooks,
+  type SalesPriceBooksTab,
+} from '@/features/sales-price-books'
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
+
+const salesPriceBooksSearchSchema = z.object({
+  tab: z
+    .enum(['books', 'assignments', 'change-batches'])
+    .optional()
+    .catch(undefined),
+})
 
 export const Route = createFileRoute('/_authenticated/sales-price-books/')({
   beforeLoad: () => {
@@ -39,5 +50,22 @@ export const Route = createFileRoute('/_authenticated/sales-price-books/')({
       throw redirect({ to: '/403' })
     }
   },
-  component: SalesPriceBooks,
+  validateSearch: salesPriceBooksSearchSchema,
+  component: SalesPriceBooksRoute,
 })
+
+function SalesPriceBooksRoute() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
+  return (
+    <SalesPriceBooks
+      activeTab={search.tab ?? 'books'}
+      onTabChange={(tab: SalesPriceBooksTab) => {
+        void navigate({
+          search: (current) => ({ ...current, tab }),
+          replace: true,
+        })
+      }}
+    />
+  )
+}

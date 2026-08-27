@@ -1,12 +1,14 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service/pricingruntime"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,6 +41,28 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 		return apiErr
 	}
 	relayInfo.Billing = session
+	if err := pricingruntime.SyncRequestPricingPreConsume(relayInfo); err != nil {
+		var refundErr error
+		session.RefundWithResult(c, func(err error) { refundErr = err })
+		if refundErr != nil {
+			pricingruntime.MarkRequestPricingPendingWithReason(
+				relayInfo.RequestId,
+				"preconsume_capture_and_refund_failed",
+				errors.Join(err, refundErr).Error(),
+			)
+		} else if markErr := pricingruntime.MarkRequestPricingRefunded(relayInfo.RequestId); markErr != nil {
+			pricingruntime.MarkRequestPricingPendingWithReason(
+				relayInfo.RequestId,
+				"preconsume_capture_refund_audit_failed",
+				errors.Join(err, markErr).Error(),
+			)
+		}
+		return types.NewError(
+			fmt.Errorf("capture pricing pre-consume: %w", err),
+			types.ErrorCodeModelPriceError,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
 	return nil
 }
 

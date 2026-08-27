@@ -59,6 +59,13 @@ export type SalesPriceBook = {
   remark: string
 }
 
+export type SalesPriceBookDefault = {
+  default_key: 'toc_default'
+  price_book_id: number
+  updated_by: number
+  updated_at: number
+}
+
 export type SalesPriceBookItem = {
   id: number
   price_book_version_id: number
@@ -76,10 +83,14 @@ export type SalesPriceBookItem = {
   official_price_version_id?: number
   primary_purchase_version_id?: number
   selling_factor: string
+  purchase_discount?: string
+  sales_discount?: string
   official_discount: string
   minimum_margin_override: string
   currency: string
   generated_by_batch_id?: number
+  review_risk_code?: string
+  review_reason?: string
   remark: string
 }
 
@@ -89,6 +100,7 @@ export type UserPriceBookAssignment = {
   price_book_id: number
   version_policy: 'follow_current' | 'pin_version'
   pinned_version_id?: number
+  pinned_version_number: number
   status: 'scheduled' | 'active' | 'expired' | 'cancelled'
   effective_from: number
   effective_to: number
@@ -178,6 +190,17 @@ export type PricingChangeBatchItem = {
   status: string
   diff_detail: string
   error_message: string
+}
+
+export type PricingAuditRecord = {
+  id: number
+  object_type: string
+  object_id: number
+  action: string
+  operator_id: number
+  operator_username: string
+  comment: string
+  created_at: number
 }
 
 export type PricingChangeBatchListFilters = {

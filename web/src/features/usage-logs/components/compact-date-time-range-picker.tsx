@@ -177,7 +177,7 @@ export function CompactDateTimeRangePicker({
 
           <div className='space-y-2'>
             <div className='grid gap-1.5'>
-              <div className='text-muted-foreground text-[11px] font-medium uppercase tracking-wide'>
+              <div className='text-muted-foreground text-[11px] font-medium tracking-wide uppercase'>
                 {t('Recent')}
               </div>
               <div className='flex flex-wrap gap-1.5'>
@@ -197,7 +197,7 @@ export function CompactDateTimeRangePicker({
             </div>
 
             <div className='grid gap-1.5'>
-              <div className='text-muted-foreground text-[11px] font-medium uppercase tracking-wide'>
+              <div className='text-muted-foreground text-[11px] font-medium tracking-wide uppercase'>
                 {t('Calendar')}
               </div>
               <div className='flex flex-wrap gap-1.5'>

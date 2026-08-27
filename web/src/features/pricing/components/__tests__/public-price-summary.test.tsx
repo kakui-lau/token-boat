@@ -25,10 +25,14 @@ import type { PublicPriceSummary } from '../../types'
 import {
   PublicPriceComparison,
   PublicPriceSummaryCompact,
+  PublicPriceSummaryDetails,
 } from '../public-price-summary'
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, string>) =>
+      values?.percent ? key.replace('{{percent}}', values.percent) : key,
+  }),
 }))
 afterEach(cleanup)
 
@@ -153,5 +157,83 @@ describe('public price summary', () => {
 
     expect(screen.getByText('Quote required')).toBeVisible()
     expect(screen.getByText('Not configured')).toBeVisible()
+  })
+
+  test('makes a uniform saving visible before the detailed prices', () => {
+    const official: PublicPriceSummary = {
+      currency: 'USD',
+      billing_mode: 'token',
+      price_structure: 'flat',
+      items: [
+        {
+          key: 'input',
+          component: 'token_input',
+          amount: '5',
+          unit: 'token',
+          unit_size: '1000000',
+        },
+        {
+          key: 'output',
+          component: 'token_output',
+          amount: '30',
+          unit: 'token',
+          unit_size: '1000000',
+        },
+      ],
+    }
+
+    render(
+      <PublicPriceSummaryDetails
+        summary={{
+          ...official,
+          items: [
+            { ...official.items[0], amount: '4.25' },
+            { ...official.items[1], amount: '25.5' },
+          ],
+        }}
+        comparisonSummary={official}
+        tokenUnit='M'
+      />
+    )
+
+    expect(screen.getByText('Save 15% vs official price')).toBeVisible()
+    expect(screen.getAllByText(/Official reference/)).toHaveLength(2)
+    expect(screen.getByText('$4.25')).toHaveClass('text-primary')
+    expect(screen.getByText('$25.5')).toHaveClass('text-primary')
+    expect(screen.getByLabelText('Price components')).toHaveClass(
+      'md:grid-cols-2',
+      'xl:grid-cols-3'
+    )
+  })
+
+  test('labels a price premium without presenting it as a saving', () => {
+    const official: PublicPriceSummary = {
+      currency: 'USD',
+      billing_mode: 'request',
+      price_structure: 'flat',
+      items: [
+        {
+          key: 'request',
+          component: 'request',
+          amount: '5',
+          unit: 'request',
+          unit_size: '1',
+        },
+      ],
+    }
+
+    render(
+      <PublicPriceSummaryDetails
+        summary={{
+          ...official,
+          items: [{ ...official.items[0], amount: '5.195' }],
+        }}
+        comparisonSummary={official}
+        tokenUnit='M'
+      />
+    )
+
+    expect(screen.getByText('3.9% above official price')).toBeVisible()
+    expect(screen.queryByText(/Save/)).not.toBeInTheDocument()
   })
 })

@@ -25,8 +25,10 @@ import {
   assignUserPriceBook,
   compareSalesPriceBookVersions,
   createSalesPriceBookVersion,
+  deleteSalesPriceBookItem,
   exportSalesPriceBookItems,
   generateSalesPriceBookItems,
+  getDefaultSalesPriceBook,
   getSalesPriceBooks,
   getPricingChangeBatch,
   getPricingChangeBatches,
@@ -37,6 +39,7 @@ import {
 
 vi.mock('@/lib/api', () => ({
   api: {
+    delete: vi.fn(),
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
@@ -53,6 +56,9 @@ beforeEach(() => {
   })
   vi.mocked(api.post).mockResolvedValue({ data: { success: true, data: {} } })
   vi.mocked(api.put).mockResolvedValue({ data: { success: true, data: null } })
+  vi.mocked(api.delete).mockResolvedValue({
+    data: { success: true, data: null },
+  })
 })
 
 test('lists price books and user assignments with server pagination filters', async () => {
@@ -186,6 +192,7 @@ test('binds a user directly to a price book and updates the TOC default separate
     pinned_version_id: 31,
     contract_reference: 'CONTRACT-2026-001',
     effective_from: 1_788_000_000,
+    effective_to: 1_819_536_000,
   }
 
   await assignUserPriceBook(assignment)
@@ -198,6 +205,15 @@ test('binds a user directly to a price book and updates the TOC default separate
   expect(api.put).toHaveBeenCalledWith(
     '/api/pricing-admin/price-book-defaults',
     { default_key: 'toc_default', price_book_id: 19 }
+  )
+})
+
+test('loads the current TOC default price book', async () => {
+  await getDefaultSalesPriceBook()
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-defaults',
+    { params: { default_key: 'toc_default' } }
   )
 })
 
@@ -237,5 +253,13 @@ test('accepts one reviewed price item with an auditable comment', async () => {
   expect(api.post).toHaveBeenCalledWith(
     '/api/pricing-admin/price-book-items/44/accept-review',
     { comment: 'Accepted in pricing administration console' }
+  )
+})
+
+test('deletes one model sales price from a draft version', async () => {
+  await deleteSalesPriceBookItem(44)
+
+  expect(api.delete).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-items/44'
   )
 })

@@ -103,6 +103,28 @@ export async function getChannelModels(params: {
   return response.data
 }
 
+export async function getChannelModelIds(params: {
+  keyword?: string
+  channel_id?: number
+  status?: number
+  routing_status?: 'available' | 'removed'
+  purchase_status?: 'published' | 'unpublished'
+}): Promise<{
+  success: boolean
+  message?: string
+  data: Array<{
+    id: number
+    model_id: number
+    model_name: string
+    channel_name: string
+  }>
+}> {
+  const response = await api.get('/api/pricing-admin/channel-models/ids', {
+    params,
+  })
+  return requirePricingSuccess(response.data)
+}
+
 export async function exportChannelModelPrices(params: {
   keyword?: string
   channel_id?: number

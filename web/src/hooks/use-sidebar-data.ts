@@ -185,15 +185,6 @@ export function useSidebarData(): SidebarData {
             },
           },
           {
-            title: t('Sales Discount Calculator'),
-            url: '/sales-discount-calculator',
-            icon: Calculator,
-            requiredPermission: {
-              resource: ADMIN_PERMISSION_RESOURCES.PRICING,
-              action: ADMIN_PERMISSION_ACTIONS.READ,
-            },
-          },
-          {
             title: t('Pricing Reconciliation'),
             url: '/pricing-reconciliation',
             icon: ClipboardCheck,

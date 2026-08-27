@@ -104,7 +104,7 @@ func TestSalesPriceBookPublishesOneLogicalModelPriceIndependentOfChannel(t *test
 		PricingMethod:           "cost_plus",
 		Currency:                "USD",
 	}
-	require.NoError(t, SaveSalesPriceBookItem(&item))
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
 	require.NoError(t, PublishSalesPriceBookVersion(version.Id, 8))
 
 	var storedBook model.SalesPriceBook
@@ -148,6 +148,138 @@ func TestSalesPriceBookVersionDefaultsOptionalIncreaseCapToZero(t *testing.T) {
 	assert.Equal(t, "0", stored.IncreaseCapRate)
 }
 
+func TestUpdatingDraftPolicyClearsOnlyStaleGeneratedPrices(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 590, ModelName: "policy-edit-model"}).Error)
+	book := model.SalesPriceBook{
+		Code: "policy-edit", Name: "Policy Edit", Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: version.Id, ModelId: 590, Status: SalesPriceItemStatusEnabled,
+		BillingMode: "token", PriceStructure: "flat", PriceComponents: `{}`,
+		SalesBillingExpr: `tier("base", (p * 2 + c * 4) / 1000000)`,
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
+		PricingMethod: "cost_plus", Currency: "USD",
+	}
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
+
+	unchanged := version
+	unchanged.PaymentFeeRate = "0.040000000000"
+	unchanged.DistributionFeeRate = "0.050000000000"
+	unchanged.OperationsLaborRate = "0.020000000000"
+	unchanged.TotalVariableCostRate = "0.110000000000"
+	require.NoError(t, UpdateSalesPriceBookVersionDraft(&unchanged, 2))
+	var count int64
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).
+		Where("price_book_version_id = ?", version.Id).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+
+	changed := unchanged
+	changed.PaymentFeeRate = "0.03"
+	changed.TotalVariableCostRate = "0.10"
+	require.NoError(t, UpdateSalesPriceBookVersionDraft(&changed, 2))
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).
+		Where("price_book_version_id = ?", version.Id).Count(&count).Error)
+	assert.Zero(t, count)
+	var stored model.SalesPriceBookVersion
+	require.NoError(t, model.DB.First(&stored, version.Id).Error)
+	assert.Equal(t, "0.03", stored.PaymentFeeRate)
+	assert.Equal(t, "0.1", stored.TotalVariableCostRate)
+}
+
+func TestDeleteSalesPriceBookItemDeletesDraftPriceAndBasisSources(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 502, ModelName: "delete-draft-price"}).Error)
+
+	book := model.SalesPriceBook{Code: "delete-draft", Name: "Delete Draft", Audience: "toc", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 7))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 7))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId:      version.Id,
+		ModelId:                 502,
+		Status:                  SalesPriceItemStatusEnabled,
+		BillingMode:             "token",
+		PriceStructure:          "flat",
+		PriceComponents:         `{}`,
+		SalesBillingExpr:        `tier("base", (p * 2 + c * 4) / 1000000)`,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: "v2",
+		PricingMethod:           "cost_plus",
+		Currency:                "USD",
+	}
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookItemBasisSource{
+		PriceBookItemId: item.Id, ChannelModelId: 11, PurchasePriceVersionId: 12,
+		TierKey: "base", ComponentKey: "input", SourceRole: "selected",
+	}).Error)
+
+	require.NoError(t, DeleteSalesPriceBookItem(item.Id, 9))
+
+	var itemCount int64
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).
+		Where("id = ?", item.Id).Count(&itemCount).Error)
+	assert.Zero(t, itemCount)
+	var sourceCount int64
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItemBasisSource{}).
+		Where("price_book_item_id = ?", item.Id).Count(&sourceCount).Error)
+	assert.Zero(t, sourceCount)
+	var audit model.PricingAuditRecord
+	require.NoError(t, model.DB.Where("object_type = ? AND object_id = ? AND action = ?",
+		"sales_price_book_item", item.Id, "delete_item").First(&audit).Error)
+	assert.Equal(t, 9, audit.OperatorId)
+}
+
+func TestDeleteSalesPriceBookItemRejectsActiveVersion(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 503, ModelName: "keep-active-price"}).Error)
+
+	book := model.SalesPriceBook{Code: "keep-active", Name: "Keep Active", Audience: "toc", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 7))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 7))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId:      version.Id,
+		ModelId:                 503,
+		Status:                  SalesPriceItemStatusEnabled,
+		BillingMode:             "token",
+		PriceStructure:          "flat",
+		PriceComponents:         `{}`,
+		SalesBillingExpr:        `tier("base", (p * 2 + c * 4) / 1000000)`,
+		ExpressionSource:        "generated",
+		ExpressionSchemaVersion: "v2",
+		PricingMethod:           "cost_plus",
+		Currency:                "USD",
+	}
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
+	require.NoError(t, PublishSalesPriceBookVersion(version.Id, 8))
+
+	err := DeleteSalesPriceBookItem(item.Id, 9)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only draft price book items can be deleted")
+	var itemCount int64
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).
+		Where("id = ?", item.Id).Count(&itemCount).Error)
+	assert.EqualValues(t, 1, itemCount)
+}
+
+func TestSalesPriceBookEmptyVersionAndItemListsSerializeAsArrays(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+
+	versions, err := ListSalesPriceBookVersions(404)
+	require.NoError(t, err)
+	assert.NotNil(t, versions)
+	assert.Empty(t, versions)
+
+	items, err := ListSalesPriceBookItems(404)
+	require.NoError(t, err)
+	assert.NotNil(t, items)
+	assert.Empty(t, items)
+}
+
 func TestSalesPriceBookRejectsItemCurrencyDifferentFromBook(t *testing.T) {
 	setupSalesPriceBookTestDB(t)
 	require.NoError(t, model.DB.Create(&model.Model{Id: 502, ModelName: "currency-model"}).Error)
@@ -162,7 +294,7 @@ func TestSalesPriceBookRejectsItemCurrencyDifferentFromBook(t *testing.T) {
 		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "EUR",
 	}
 
-	err := SaveSalesPriceBookItem(&item)
+	err := SaveSalesPriceBookItem(&item, 1)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "currency must be USD")
 }
@@ -180,7 +312,7 @@ func TestSalesPriceBookReviewCanBeAcceptedWithAuditComment(t *testing.T) {
 		SalesBillingExpr: `v2:p / 1000000`, ExpressionSource: "generated",
 		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "USD",
 	}
-	require.NoError(t, SaveSalesPriceBookItem(&item))
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
 
 	require.NoError(t, AcceptSalesPriceBookItemReview(item.Id, 9, "accepted enterprise margin exception"))
 	var stored model.SalesPriceBookItem
@@ -191,6 +323,109 @@ func TestSalesPriceBookReviewCanBeAcceptedWithAuditComment(t *testing.T) {
 		"sales_price_book_item", item.Id, "accept_risk").Error)
 	assert.Equal(t, 9, audit.OperatorId)
 	assert.Equal(t, "accepted enterprise margin exception", audit.Comment)
+}
+
+func TestListSalesPriceBookItemsIncludesPendingReviewReason(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 504, ModelName: "review-reason-model"}).Error)
+	book := model.SalesPriceBook{Code: "review-reason", Name: "Review Reason", Audience: "tob", Currency: "USD"}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+	batch := model.PricingChangeBatch{
+		BatchNo: "PB-review-reason", IdempotencyKey: "review-reason",
+		TriggerType: "manual_price_book_generation", Status: PricingChangeBatchStatusReviewRequired,
+		RequestedBy: 1, ReviewCount: 1,
+	}
+	require.NoError(t, model.DB.Create(&batch).Error)
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: version.Id, ModelId: 504, Status: SalesPriceItemStatusReviewRequired,
+		BillingMode: "token", PriceStructure: "flat", PriceComponents: `{}`,
+		SalesBillingExpr: `v2:p / 1000000`, ExpressionSource: "generated",
+		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "USD",
+		GeneratedByBatchId: &batch.Id,
+	}
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
+	itemId := item.Id
+	require.NoError(t, model.DB.Create(&model.PricingChangeBatchItem{
+		BatchId: batch.Id, TargetType: "sales_price_book_item", TargetId: &itemId,
+		ModelId: 504, PriceBookId: &book.Id, Action: "create",
+		RiskCode: "below_minimum_margin", Status: PricingChangeBatchItemStatusReview,
+		ErrorMessage: "generated margin is lower than the configured minimum",
+	}).Error)
+
+	items, err := ListSalesPriceBookItems(version.Id)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "below_minimum_margin", items[0].ReviewRiskCode)
+	assert.Equal(t, "generated margin is lower than the configured minimum", items[0].ReviewReason)
+
+	err = PublishSalesPriceBookVersion(version.Id, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "review-reason-model")
+	assert.Contains(t, err.Error(), "below_minimum_margin")
+	assert.Contains(t, err.Error(), "generated margin is lower than the configured minimum")
+}
+
+func TestListSalesPriceBookItemsIncludesPurchaseAndSalesDiscounts(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 505, ModelName: "discount-model"}).Error)
+	book := model.SalesPriceBook{
+		Code: "discounts", Name: "Discounts", Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: version.Id, ModelId: 505, Status: SalesPriceItemStatusEnabled,
+		BillingMode: "token", PriceStructure: "flat", PriceComponents: `{}`,
+		SalesBillingExpr: `v2:p * 0.88 / 1000000`,
+		SalesExprHash:    billingexpr.ExprHashString(`v2:p * 0.88 / 1000000`),
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
+		PricingMethod: "cost_plus", SellingFactor: "1.1", Currency: "USD",
+	}
+	require.NoError(t, model.DB.Create(&item).Error)
+
+	for index, discount := range []string{"0.7", "0.8"} {
+		channelId := 810 + index
+		channelModelId := 910 + index
+		require.NoError(t, model.DB.Create(&model.Channel{
+			Id: channelId, Name: "discount-channel", Key: "test-key", Status: 1,
+		}).Error)
+		require.NoError(t, model.DB.Create(&model.ChannelModel{
+			Id: channelModelId, ChannelId: channelId, ModelId: 505,
+			UpstreamModelName: "discount-model", Status: 1,
+		}).Error)
+		purchase := model.ChannelModelPurchasePriceVersion{
+			ChannelModelId: channelModelId, BillingMode: "token",
+			PricingMode: "official_ratio", PriceStructure: "flat",
+			PurchaseDiscount: discount, PurchaseBillingExpr: `v2:p / 1000000`,
+			PurchaseExprHash: billingexpr.ExprHashString(`v2:p / 1000000`),
+			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
+			Currency: "USD", Version: 1, Status: model.PricingVersionStatusActive,
+			EffectiveFrom: 1,
+		}
+		require.NoError(t, model.DB.Create(&purchase).Error)
+		require.NoError(t, model.DB.Create(&model.SalesPriceBookItemBasisSource{
+			PriceBookItemId: item.Id, ChannelModelId: channelModelId,
+			PurchasePriceVersionId: purchase.Id, TierKey: "base",
+			ComponentKey: "expression", SourceRole: "cost_basis",
+		}).Error)
+	}
+
+	items, err := ListSalesPriceBookItems(version.Id)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "0.8", items[0].PurchaseDiscount)
+	assert.Equal(t, "0.88", items[0].SalesDiscount)
+
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookVersion{}).
+		Where("id = ?", version.Id).Update("cost_basis_strategy", "min_eligible_cost").Error)
+	items, err = ListSalesPriceBookItems(version.Id)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "0.7", items[0].PurchaseDiscount)
+	assert.Equal(t, "0.77", items[0].SalesDiscount)
 }
 
 func TestListSalesPriceBooksAppliesServerFiltersAndPagination(t *testing.T) {
@@ -235,10 +470,13 @@ func TestListUserPriceBookAssignmentsSearchesUsernameAndReturnsBookIdentity(t *t
 		Code: "acme-contract", Name: "ACME Contract", Audience: "tob", Currency: "USD",
 	}
 	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 1))
 	require.NoError(t, model.DB.Create([]model.UserPriceBookAssignment{
 		{
-			UserId: 611, PriceBookId: book.Id, VersionPolicy: "follow_current",
-			Status: model.PriceBookAssignmentStatusActive, EffectiveFrom: 1,
+			UserId: 611, PriceBookId: book.Id, VersionPolicy: "pin_version",
+			PinnedVersionId: &version.Id,
+			Status:          model.PriceBookAssignmentStatusActive, EffectiveFrom: 1,
 		},
 		{
 			UserId: 612, PriceBookId: book.Id, VersionPolicy: "follow_current",
@@ -256,6 +494,7 @@ func TestListUserPriceBookAssignmentsSearchesUsernameAndReturnsBookIdentity(t *t
 	assert.Equal(t, "acme-owner", items[0].Username)
 	assert.Equal(t, "ACME Contract", items[0].PriceBookName)
 	assert.Equal(t, "acme-contract", items[0].PriceBookCode)
+	assert.Equal(t, int64(1), items[0].PinnedVersionNumber)
 }
 
 func TestUserPriceBookAssignmentReplacesPreviousActiveBinding(t *testing.T) {
@@ -276,7 +515,7 @@ func TestUserPriceBookAssignmentReplacesPreviousActiveBinding(t *testing.T) {
 			ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 			PricingMethod: "fixed", Currency: "USD",
 		}
-		require.NoError(t, SaveSalesPriceBookItem(&item))
+		require.NoError(t, SaveSalesPriceBookItem(&item, 1))
 		require.NoError(t, PublishSalesPriceBookVersion(version.Id, 1))
 	}
 
@@ -314,10 +553,169 @@ func TestScheduledAssignmentKeepsCurrentBindingUntilCutover(t *testing.T) {
 	var storedFirst model.UserPriceBookAssignment
 	require.NoError(t, model.DB.First(&storedFirst, first.Id).Error)
 	assert.Equal(t, model.PriceBookAssignmentStatusActive, storedFirst.Status)
-	assert.Equal(t, now+100, storedFirst.EffectiveTo)
+	assert.Zero(t, storedFirst.EffectiveTo)
 	var storedSecond model.UserPriceBookAssignment
 	require.NoError(t, model.DB.First(&storedSecond, second.Id).Error)
 	assert.Equal(t, model.PriceBookAssignmentStatusScheduled, storedSecond.Status)
+}
+
+func TestInvalidAssignmentWindowDoesNotReplaceCurrentBinding(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.User{
+		Id: 614, Username: "invalid-window-user", Password: "12345678",
+	}).Error)
+	now := common.GetTimestamp()
+	current := model.UserPriceBookAssignment{
+		UserId: 614, PriceBookId: 1, VersionPolicy: "follow_current",
+		Status: model.PriceBookAssignmentStatusActive, EffectiveFrom: now - 100,
+	}
+	require.NoError(t, model.DB.Create(&current).Error)
+	invalid := model.UserPriceBookAssignment{
+		UserId: 614, PriceBookId: 2, VersionPolicy: "follow_current",
+		EffectiveFrom: now + 100, EffectiveTo: now + 50,
+	}
+
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		return model.ReplaceUserPriceBookAssignment(tx, &invalid)
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "effective end must be after its start")
+
+	require.NoError(t, model.DB.First(&current, current.Id).Error)
+	assert.Equal(t, model.PriceBookAssignmentStatusActive, current.Status)
+	assert.Zero(t, current.EffectiveTo)
+	var assignmentCount int64
+	require.NoError(t, model.DB.Model(&model.UserPriceBookAssignment{}).
+		Where("user_id = ?", 614).Count(&assignmentCount).Error)
+	assert.Equal(t, int64(1), assignmentCount)
+}
+
+func TestRefreshAssignmentStatusesDoesNotActivateEndedSchedule(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	require.NoError(t, model.DB.Create(&model.User{
+		Id: 615, Username: "ended-schedule-user", Password: "12345678",
+	}).Error)
+	now := common.GetTimestamp()
+	current := model.UserPriceBookAssignment{
+		UserId: 615, PriceBookId: 1, VersionPolicy: "follow_current",
+		Status:        model.PriceBookAssignmentStatusActive,
+		EffectiveFrom: now - 300, EffectiveTo: now - 200,
+	}
+	endedSchedule := model.UserPriceBookAssignment{
+		UserId: 615, PriceBookId: 2, VersionPolicy: "follow_current",
+		Status:        model.PriceBookAssignmentStatusScheduled,
+		EffectiveFrom: now - 200, EffectiveTo: now - 100,
+	}
+	require.NoError(t, model.DB.Create(&current).Error)
+	require.NoError(t, model.DB.Create(&endedSchedule).Error)
+
+	require.NoError(t, RefreshUserPriceBookAssignmentStatuses())
+	require.NoError(t, model.DB.First(&current, current.Id).Error)
+	require.NoError(t, model.DB.First(&endedSchedule, endedSchedule.Id).Error)
+	assert.Equal(t, model.PriceBookAssignmentStatusExpired, current.Status)
+	assert.Equal(t, model.PriceBookAssignmentStatusExpired, endedSchedule.Status)
+}
+
+func TestListSalesPriceBooksCountsAssignedUsersNotAssignmentRows(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	book := model.SalesPriceBook{
+		Code: "distinct-assignment-book", Name: "Distinct Assignment Book",
+		Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 1))
+	require.NoError(t, model.DB.Create(&model.User{
+		Id: 616, Username: "distinct-assignment-user", Password: "12345678",
+	}).Error)
+	now := common.GetTimestamp()
+	require.NoError(t, model.DB.Create([]model.UserPriceBookAssignment{
+		{
+			UserId: 616, PriceBookId: book.Id, VersionPolicy: "follow_current",
+			Status: model.PriceBookAssignmentStatusActive, EffectiveFrom: now - 100,
+		},
+		{
+			UserId: 616, PriceBookId: book.Id, VersionPolicy: "follow_current",
+			Status: model.PriceBookAssignmentStatusScheduled, EffectiveFrom: now + 100,
+		},
+	}).Error)
+
+	books, total, err := ListSalesPriceBooks(SalesPriceBookListFilter{
+		Keyword: "distinct-assignment-book", Page: 1, PageSize: 200,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, books, 1)
+	assert.Equal(t, int64(1), books[0].AssignedUsers)
+}
+
+func TestPriceBookAuditIncludesAssignmentDefaultAndBatchActivity(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	book := model.SalesPriceBook{
+		Code: "complete-audit-book", Name: "Complete Audit Book",
+		Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 11))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 11))
+	assignment := model.UserPriceBookAssignment{
+		UserId: 901, PriceBookId: book.Id, VersionPolicy: "follow_current",
+		Status: model.PriceBookAssignmentStatusActive, EffectiveFrom: 1,
+	}
+	require.NoError(t, model.DB.Create(&assignment).Error)
+	batchId := 902
+	require.NoError(t, model.DB.Create(&model.PricingChangeBatchItem{
+		BatchId: batchId, TargetType: "sales_price_book_item",
+		ModelId: 903, PriceBookId: &book.Id, Action: "generate", Status: "generated",
+	}).Error)
+	require.NoError(t, model.DB.Create([]model.PricingAuditRecord{
+		{
+			ObjectType: "user_price_book_assignment", ObjectId: assignment.Id,
+			Action: "assign", OperatorId: 11,
+		},
+		{
+			ObjectType: "sales_price_book_default", ObjectId: book.Id,
+			Action: "set_default", OperatorId: 11,
+		},
+		{
+			ObjectType: "pricing_change_batch", ObjectId: batchId,
+			Action: "generate", OperatorId: 11,
+		},
+	}).Error)
+
+	records, total, err := ListSalesPriceBookAuditRecords(book.Id, 1, 200)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+	actions := make([]string, 0, len(records))
+	for _, record := range records {
+		actions = append(actions, record.Action)
+	}
+	assert.ElementsMatch(t, []string{
+		"create", "create_version", "assign", "set_default", "generate",
+	}, actions)
+}
+
+func TestDeletingDraftPreservesVisibleAuditHistory(t *testing.T) {
+	setupSalesPriceBookTestDB(t)
+	book := model.SalesPriceBook{
+		Code: "delete-draft-audit-book", Name: "Delete Draft Audit Book",
+		Audience: "tob", Currency: "USD",
+	}
+	require.NoError(t, CreateSalesPriceBook(&book, 12))
+	version := validSalesPriceBookVersion(book.Id)
+	require.NoError(t, CreateSalesPriceBookVersion(&version, 12))
+
+	require.NoError(t, DeleteSalesPriceBookVersionDraft(version.Id, 13))
+	records, total, err := ListSalesPriceBookAuditRecords(book.Id, 1, 200)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	actions := make([]string, 0, len(records))
+	for _, record := range records {
+		actions = append(actions, record.Action)
+	}
+	assert.ElementsMatch(t, []string{"create", "create_version", "delete_draft"}, actions)
+	var versionCount int64
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookVersion{}).
+		Where("id = ?", version.Id).Count(&versionCount).Error)
+	assert.Zero(t, versionCount)
 }
 
 func TestCloneSalesPriceBookVersionCopiesItemsAndBasisSourcesIntoDraft(t *testing.T) {
@@ -335,7 +733,7 @@ func TestCloneSalesPriceBookVersionCopiesItemsAndBasisSourcesIntoDraft(t *testin
 		ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 		PricingMethod: "cost_plus", Currency: "USD",
 	}
-	require.NoError(t, SaveSalesPriceBookItem(&item))
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
 	require.NoError(t, model.DB.Create(&model.SalesPriceBookItemBasisSource{
 		PriceBookItemId: item.Id, ChannelModelId: 801, PurchasePriceVersionId: 901,
 		TierKey: "base", ComponentKey: "input", SourceRole: "selected",
@@ -383,7 +781,7 @@ func TestCancelUserPriceBookAssignmentPreservesHistory(t *testing.T) {
 		ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
 		PricingMethod: "fixed", Currency: "USD",
 	}
-	require.NoError(t, SaveSalesPriceBookItem(&item))
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
 	require.NoError(t, PublishSalesPriceBookVersion(version.Id, 1))
 	assignment := model.UserPriceBookAssignment{
 		UserId: 702, PriceBookId: book.Id, VersionPolicy: "follow_current",
@@ -403,7 +801,7 @@ func TestCancelUserPriceBookAssignmentPreservesHistory(t *testing.T) {
 	assert.Contains(t, err.Error(), "only active or scheduled")
 }
 
-func TestCancelScheduledAssignmentRestoresCurrentAssignment(t *testing.T) {
+func TestCancelScheduledAssignmentPreservesCurrentAssignmentWindow(t *testing.T) {
 	setupSalesPriceBookTestDB(t)
 	require.NoError(t, model.DB.Create(&model.User{
 		Id: 704, Username: "scheduled-cancel-user", Password: "12345678",
@@ -416,21 +814,24 @@ func TestCancelScheduledAssignmentRestoresCurrentAssignment(t *testing.T) {
 	currentVersionId := 1
 	require.NoError(t, model.DB.Model(&model.SalesPriceBook{}).Where("id = ?", book.Id).
 		Update("current_version_id", currentVersionId).Error)
+	now := common.GetTimestamp()
+	currentEnd := now + 7200
 	current := model.UserPriceBookAssignment{
 		UserId: 704, PriceBookId: book.Id, VersionPolicy: "follow_current",
+		EffectiveTo: currentEnd,
 	}
 	require.NoError(t, AssignUserToSalesPriceBook(&current, 1))
 	future := model.UserPriceBookAssignment{
 		UserId: 704, PriceBookId: book.Id, VersionPolicy: "follow_current",
-		EffectiveFrom: common.GetTimestamp() + 3600,
+		EffectiveFrom: now + 3600,
 	}
 	require.NoError(t, AssignUserToSalesPriceBook(&future, 1))
 	require.NoError(t, model.DB.First(&current, current.Id).Error)
-	assert.Equal(t, future.EffectiveFrom, current.EffectiveTo)
+	assert.Equal(t, currentEnd, current.EffectiveTo)
 
 	require.NoError(t, CancelUserPriceBookAssignment(future.Id, 1))
 	require.NoError(t, model.DB.First(&current, current.Id).Error)
-	assert.Zero(t, current.EffectiveTo)
+	assert.Equal(t, currentEnd, current.EffectiveTo)
 }
 
 func TestDisableSalesPriceBookKeepsPublishedHistoryAndWritesAudit(t *testing.T) {
@@ -549,7 +950,7 @@ func TestCompareSalesPriceBookVersionsReturnsReferencePriceMarginAndSources(t *t
 	).Error)
 	targetItem.SalesBillingExpr = `v2:(p * 2.5 + c * 5) / 1000000`
 	targetItem.PriceComponents = `{"input_unit_price":"2.5","output_unit_price":"5"}`
-	require.NoError(t, SaveSalesPriceBookItem(&targetItem))
+	require.NoError(t, SaveSalesPriceBookItem(&targetItem, 1))
 
 	diff, err := CompareSalesPriceBookVersions(base.Id, target.Id)
 	require.NoError(t, err)
@@ -564,6 +965,17 @@ func TestCompareSalesPriceBookVersionsReturnsReferencePriceMarginAndSources(t *t
 	assert.NotEmpty(t, diff.Items[0].PriceChangeRate)
 	assert.Len(t, diff.Items[0].OldPurchaseVersions, 1)
 	assert.Equal(t, diff.Items[0].OldPurchaseVersions, diff.Items[0].NewPurchaseVersions)
+	assert.NotNil(t, diff.PolicyChanges)
+	assert.NotNil(t, diff.Items[0].OldChannelMargins)
+	assert.NotNil(t, diff.Items[0].NewChannelMargins)
+
+	require.NoError(t, model.DB.Delete(&targetItem).Error)
+	removedDiff, err := CompareSalesPriceBookVersions(base.Id, target.Id)
+	require.NoError(t, err)
+	require.Len(t, removedDiff.Items, 1)
+	assert.Equal(t, "removed", removedDiff.Items[0].ChangeType)
+	assert.NotNil(t, removedDiff.Items[0].NewPurchaseVersions)
+	assert.NotNil(t, removedDiff.Items[0].NewChannelMargins)
 }
 
 func TestDesignatedChannelReferenceMarginUsesOnlySelectedPurchaseCost(t *testing.T) {
@@ -949,7 +1361,7 @@ func TestPublishedContentHashIncludesCommercialItemMetadata(t *testing.T) {
 		SalesBillingExpr: `v2:p / 1000000`, ExpressionSource: "generated",
 		ExpressionSchemaVersion: "v2", PricingMethod: "fixed", Currency: "USD",
 	}
-	require.NoError(t, SaveSalesPriceBookItem(&item))
+	require.NoError(t, SaveSalesPriceBookItem(&item, 1))
 	require.NoError(t, PublishSalesPriceBookVersion(base.Id, 1))
 	require.NoError(t, model.DB.First(&base, base.Id).Error)
 	target, err := CloneSalesPriceBookVersion(book.Id, base.Id, 1)
@@ -958,7 +1370,7 @@ func TestPublishedContentHashIncludesCommercialItemMetadata(t *testing.T) {
 	require.NoError(t, model.DB.First(&targetItem,
 		"price_book_version_id = ? AND model_id = ?", target.Id, 1301).Error)
 	targetItem.MinimumMarginOverride = "0.01"
-	require.NoError(t, SaveSalesPriceBookItem(&targetItem))
+	require.NoError(t, SaveSalesPriceBookItem(&targetItem, 1))
 	require.NoError(t, PublishSalesPriceBookVersion(target.Id, 1))
 	require.NoError(t, model.DB.First(target, target.Id).Error)
 

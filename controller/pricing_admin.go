@@ -30,6 +30,13 @@ type channelModelAdminRow struct {
 	PurchaseDiscount             string `json:"purchase_discount"`
 }
 
+type channelModelSelectionOption struct {
+	Id          int    `json:"id"`
+	ModelId     int    `json:"model_id"`
+	ModelName   string `json:"model_name"`
+	ChannelName string `json:"channel_name"`
+}
+
 type channelPricingExportRow struct {
 	ChannelModelId          int
 	ModelId                 int
@@ -438,6 +445,29 @@ func AdminListChannelModels(c *gin.Context) {
 		"page":      pageInfo.GetPage(),
 		"page_size": pageInfo.GetPageSize(),
 	})
+}
+
+func AdminListChannelModelIds(c *gin.Context) {
+	query, err := channelModelAdminQuery(c)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	const selectionLimit = 10000
+	var ids []channelModelSelectionOption
+	if err := query.Select(
+		"channel_models.id, channel_models.model_id, " +
+			"models.model_name AS model_name, channels.name AS channel_name",
+	).
+		Order("channel_models.id ASC").Limit(selectionLimit + 1).Scan(&ids).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if len(ids) > selectionLimit {
+		common.ApiErrorMsg(c, "符合条件的渠道模型超过 10000 条，请缩小筛选范围")
+		return
+	}
+	common.ApiSuccess(c, ids)
 }
 
 func AdminExportChannelPricing(c *gin.Context) {

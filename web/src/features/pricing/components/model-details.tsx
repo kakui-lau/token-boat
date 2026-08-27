@@ -572,19 +572,16 @@ function PriceSection(props: {
   }
 
   return (
-    <div className='grid gap-4 @md/details:grid-cols-2'>
+    <div>
       <section>
-        <SectionTitle>{t('Official Price')}</SectionTitle>
+        <SectionTitle>{t('Your current price')}</SectionTitle>
         <PublicPriceSummaryDetails
-          summary={props.model.official_price}
+          summary={salesPrice || props.model.official_price}
+          comparisonSummary={
+            salesPrice ? props.model.official_price : undefined
+          }
           tokenUnit={props.tokenUnit}
-        />
-      </section>
-      <section>
-        <SectionTitle>{t('Current Sales Price')}</SectionTitle>
-        <PublicPriceSummaryDetails
-          summary={salesPrice}
-          tokenUnit={props.tokenUnit}
+          emptyLabel={t('Not configured')}
         />
       </section>
     </div>

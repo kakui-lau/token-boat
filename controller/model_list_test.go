@@ -52,6 +52,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.Token{},
 		&model.Channel{},
 		&model.Ability{},
 		&model.Model{},
@@ -64,6 +65,8 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 		&model.SalesPriceBookVersion{},
 		&model.SalesPriceBookItem{},
 		&model.SalesPriceBookDefault{},
+		&model.UserPriceBookAssignment{},
+		&model.RequestPricingSnapshot{},
 	))
 
 	t.Cleanup(func() {
@@ -379,6 +382,63 @@ func TestListModelsIncludesModelWithPurchaseAndSalesPricing(t *testing.T) {
 
 	ids := decodeListModelsResponse(t, recorder)
 	require.Contains(t, ids, "zz-priced-model")
+}
+
+func TestListModelsOnlyAdvertisesModelsInUsersAssignedTOBPriceBook(t *testing.T) {
+	withSelfUseModeDisabled(t)
+	db := setupModelListControllerTestDB(t)
+	const userId = 1104
+	require.NoError(t, db.Create(&model.User{
+		Id: userId, Username: "tob-model-list-user", Password: "password",
+		Group: "default", Status: common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1104, Name: "tob-priced-channel", Type: constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled, Group: "default",
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-tob-included", ChannelId: 1104, Enabled: true},
+		{Group: "default", Model: "zz-tob-not-quoted", ChannelId: 1104, Enabled: true},
+	}).Error)
+	seedPricedModelListCatalog(t, db, 1900, []pricedModelListFixture{
+		{modelId: 1901, channelId: 1104, channelModel: 1901, modelName: "zz-tob-included"},
+		{modelId: 1902, channelId: 1104, channelModel: 1902, modelName: "zz-tob-not-quoted"},
+	})
+
+	tobVersionId := 1951
+	require.NoError(t, db.Create(&model.SalesPriceBook{
+		Id: 1950, Code: "assigned-tob", Name: "Assigned TOB", Audience: "tob",
+		Currency: "USD", Status: model.SalesPriceBookStatusEnabled,
+		CurrentVersionId: &tobVersionId,
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookVersion{
+		Id: tobVersionId, PriceBookId: 1950, Version: 1,
+		Status: model.SalesPriceBookVersionStatusActive, EffectiveFrom: 1,
+		TotalVariableCostRate: "0", EffectiveTaxRate: "0", MinimumMarginRate: "0",
+	}).Error)
+	require.NoError(t, db.Create(&model.SalesPriceBookItem{
+		Id: 1952, PriceBookVersionId: tobVersionId, ModelId: 1901,
+		Status: "enabled", BillingMode: "token", PriceStructure: "flat",
+		PriceComponents:         `{"input_unit_price":"2"}`,
+		SalesBillingExpr:        `v2:tier("base", p * 2 / 1000000)`,
+		SalesExprHash:           billingexpr.ExprHashString(`v2:tier("base", p * 2 / 1000000)`),
+		ExpressionSchemaVersion: "v2", Currency: "USD",
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPriceBookAssignment{
+		Id: 1953, UserId: userId, PriceBookId: 1950,
+		VersionPolicy: "follow_current", Status: model.PriceBookAssignmentStatusActive,
+		EffectiveFrom: 1,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", userId)
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	assert.Equal(t, map[string]struct{}{"zz-tob-included": {}}, ids)
 }
 
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {

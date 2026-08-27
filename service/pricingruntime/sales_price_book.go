@@ -21,22 +21,11 @@ type ResolvedSalesPrice struct {
 	Item               model.SalesPriceBookItem
 }
 
-// ResolveSalesPrice resolves one customer-facing logical-model price without
-// looking at, selecting, or mutating an upstream route.
-func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPrice, error) {
+func resolveSalesPriceBook(userId int, at int64) (ResolvedSalesPrice, error) {
 	var result ResolvedSalesPrice
-	if modelName == "" {
-		return result, ErrSalesPriceBookUnavailable
-	}
 	if at == 0 {
 		at = common.GetTimestamp()
 	}
-	var logicalModel model.Model
-	if err := model.DB.Where("model_name = ? AND status = ?", modelName, 1).
-		First(&logicalModel).Error; err != nil {
-		return result, err
-	}
-
 	priceBookId := 0
 	versionId := 0
 	pinnedVersion := false
@@ -103,6 +92,27 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 		(result.Version.EffectiveTo > 0 && result.Version.EffectiveTo <= at) {
 		return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
 	}
+	result.PriceBookId = result.Book.Id
+	result.PriceBookVersionId = result.Version.Id
+	return result, nil
+}
+
+// ResolveSalesPrice resolves one customer-facing logical-model price without
+// looking at, selecting, or mutating an upstream route.
+func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPrice, error) {
+	var result ResolvedSalesPrice
+	if modelName == "" {
+		return result, ErrSalesPriceBookUnavailable
+	}
+	var logicalModel model.Model
+	if err := model.DB.Where("model_name = ? AND status = ?", modelName, 1).
+		First(&logicalModel).Error; err != nil {
+		return result, err
+	}
+	result, err := resolveSalesPriceBook(userId, at)
+	if err != nil {
+		return ResolvedSalesPrice{}, err
+	}
 	if err := model.DB.Where(
 		"price_book_version_id = ? AND model_id = ? AND status = ?",
 		result.Version.Id,
@@ -111,8 +121,38 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 	).First(&result.Item).Error; err != nil {
 		return ResolvedSalesPrice{}, err
 	}
-	result.PriceBookId = result.Book.Id
-	result.PriceBookVersionId = result.Version.Id
 	result.PriceBookItemId = result.Item.Id
 	return result, nil
+}
+
+// ResolveSalesPriceModelNames returns the requested logical models that are
+// enabled in the exact price-book version currently resolved for the user.
+// It resolves the assignment once so model discovery cannot mix TOB and TOC
+// prices or issue one database query per advertised model.
+func ResolveSalesPriceModelNames(userId int, modelNames []string, at int64) (map[string]struct{}, error) {
+	available := make(map[string]struct{})
+	if len(modelNames) == 0 {
+		return available, nil
+	}
+	resolved, err := resolveSalesPriceBook(userId, at)
+	if err != nil {
+		return nil, err
+	}
+	type pricedModel struct {
+		ModelName string `gorm:"column:model_name"`
+	}
+	rows := make([]pricedModel, 0, len(modelNames))
+	if err := model.DB.Table("sales_price_book_items AS item").
+		Select("models.model_name").
+		Joins("JOIN models ON models.id = item.model_id").
+		Where("item.price_book_version_id = ? AND item.status = ?", resolved.Version.Id, "enabled").
+		Where("models.status = ? AND models.deleted_at IS NULL", 1).
+		Where("models.model_name IN ?", modelNames).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		available[row.ModelName] = struct{}{}
+	}
+	return available, nil
 }

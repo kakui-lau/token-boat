@@ -262,24 +262,35 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
-	if priceData.FreeModel {
-		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
-	} else {
-		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
-		if newAPIError != nil {
-			return
-		}
-	}
 	if err := pricingruntime.CreateRequestPricingSnapshot(relayInfo); err != nil {
-		if relayInfo.Billing != nil {
-			relayInfo.Billing.Refund(c)
-		}
 		newAPIError = types.NewError(
 			fmt.Errorf("create pricing snapshot: %w", err),
 			types.ErrorCodeModelPriceError,
 			types.ErrOptionWithSkipRetry(),
 		)
 		return
+	}
+	if priceData.FreeModel {
+		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
+		if err := pricingruntime.SyncRequestPricingPreConsume(relayInfo); err != nil {
+			pricingruntime.MarkRequestPricingPendingWithReason(
+				relayInfo.RequestId, "free_preconsume_capture_failed", err.Error(),
+			)
+			newAPIError = types.NewError(
+				fmt.Errorf("capture free pricing reservation: %w", err),
+				types.ErrorCodeModelPriceError,
+				types.ErrOptionWithSkipRetry(),
+			)
+			return
+		}
+	} else {
+		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
+		if newAPIError != nil {
+			pricingruntime.MarkRequestPricingPendingWithReason(
+				relayInfo.RequestId, "preconsume_failed", newAPIError.Error(),
+			)
+			return
+		}
 	}
 
 	defer func() {

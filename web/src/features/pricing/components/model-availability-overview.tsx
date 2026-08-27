@@ -61,7 +61,10 @@ export function ModelAvailabilityOverview(
     const m = new Map<string, PerfModelSummary>()
     for (const model of threeDayQuery.data?.data.models ?? []) {
       const count = model.request_count ?? 0
-      if (visibleModels.has(model.model_name) && count >= MINIMUM_SAMPLE_COUNT) {
+      if (
+        visibleModels.has(model.model_name) &&
+        count >= MINIMUM_SAMPLE_COUNT
+      ) {
         m.set(model.model_name, model)
       }
     }
@@ -94,7 +97,9 @@ export function ModelAvailabilityOverview(
       })
       .sort((a, b) => {
         if (a.kind === 'measured' && b.kind === 'measured') {
-          return (b.measured.request_count ?? 0) - (a.measured.request_count ?? 0)
+          return (
+            (b.measured.request_count ?? 0) - (a.measured.request_count ?? 0)
+          )
         }
         if (a.kind === 'measured') return -1
         if (b.kind === 'measured') return 1
@@ -106,10 +111,7 @@ export function ModelAvailabilityOverview(
   const loading = dailyQuery.isLoading || threeDayQuery.isLoading
 
   return (
-    <section
-      aria-labelledby='model-availability-title'
-      className='mt-10'
-    >
+    <section aria-labelledby='model-availability-title' className='mt-10'>
       <div className='mb-4'>
         <h2
           id='model-availability-title'
@@ -147,11 +149,11 @@ export function ModelAvailabilityOverview(
                   >
                     {formatThroughput(model.avg_tps)}
                   </span>
-                  <span className='font-mono text-[11px] tabular-nums text-muted-foreground'>
+                  <span className='text-muted-foreground font-mono text-[11px] tabular-nums'>
                     {formatLatency(model.avg_latency_ms)}
                   </span>
                 </div>
-                <div className='h-1 w-full overflow-hidden rounded-full bg-muted/60'>
+                <div className='bg-muted/60 h-1 w-full overflow-hidden rounded-full'>
                   <div
                     className='h-full rounded-full bg-gradient-to-r from-sky-400 via-sky-500 to-indigo-500 transition-all duration-500'
                     style={{ width: `${(data?.tpsRatio ?? 0) * 100}%` }}
@@ -191,12 +193,12 @@ export function ModelAvailabilityOverview(
                       )}
                       aria-hidden='true'
                     />
-                    <span className='font-mono text-[11px] text-muted-foreground/70'>
+                    <span className='text-muted-foreground/70 font-mono text-[11px]'>
                       {t('No samples yet')}
                     </span>
                   </div>
                   <div className='flex shrink-0 items-center gap-2'>
-                    <span className='font-mono text-[11px] tabular-nums text-muted-foreground/50'>
+                    <span className='text-muted-foreground/50 font-mono text-[11px] tabular-nums'>
                       —
                     </span>
                   </div>
@@ -207,7 +209,9 @@ export function ModelAvailabilityOverview(
             const rate = Number.isFinite(model.success_rate)
               ? model.success_rate
               : 0
-            const level: SuccessRateLevel = getSuccessRateLevel(model.success_rate)
+            const level: SuccessRateLevel = getSuccessRateLevel(
+              model.success_rate
+            )
             const barColor = getSuccessRateBarClass(level)
             return (
               <div className='flex w-full items-center justify-between gap-2'>
@@ -220,7 +224,7 @@ export function ModelAvailabilityOverview(
                     aria-hidden='true'
                   />
                   <span className='sr-only'>{t('Success rate')}</span>
-                  <div className='h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted/60'>
+                  <div className='bg-muted/60 h-1 min-w-0 flex-1 overflow-hidden rounded-full'>
                     <div
                       className={cn(
                         'h-full rounded-full transition-all duration-500',
@@ -249,7 +253,7 @@ export function ModelAvailabilityOverview(
                   >
                     {formatUptimePct(model.success_rate)}
                   </span>
-                  <span className='font-mono text-[10px] tabular-nums text-muted-foreground/70'>
+                  <span className='text-muted-foreground/70 font-mono text-[10px] tabular-nums'>
                     {model.request_count?.toLocaleString() ?? '—'}
                   </span>
                 </div>
@@ -260,7 +264,7 @@ export function ModelAvailabilityOverview(
             const row = availableModels[index]
             if (!row || row.kind === 'pending') {
               return (
-                <span className='absolute left-0 top-0 h-full w-0.5 bg-muted/60' />
+                <span className='bg-muted/60 absolute top-0 left-0 h-full w-0.5' />
               )
             }
             return (
@@ -280,13 +284,10 @@ export function ModelAvailabilityOverview(
           }}
           footerHint={
             !loading
-              ? t(
-                  '{{shown}} of {{total}} configured models shown',
-                  {
-                    shown: availableModels.length,
-                    total: visibleModels.size,
-                  }
-                )
+              ? t('{{shown}} of {{total}} configured models shown', {
+                  shown: availableModels.length,
+                  total: visibleModels.size,
+                })
               : undefined
           }
         />
@@ -361,9 +362,7 @@ function getSuccessRateStripeClass(level: SuccessRateLevel): string {
   }
 }
 
-function rankStyles(
-  rank: number
-): { badge: string; text: string } {
+function rankStyles(rank: number): { badge: string; text: string } {
   if (rank === 1) {
     return {
       badge:
@@ -386,8 +385,7 @@ function rankStyles(
     }
   }
   return {
-    badge:
-      'bg-muted/70 text-muted-foreground border border-muted',
+    badge: 'bg-muted/70 text-muted-foreground border border-muted',
     text: 'text-muted-foreground/80',
   }
 }
@@ -472,7 +470,9 @@ function MetricList(props: {
                   <span
                     className={cn(
                       'min-w-0 truncate font-mono tracking-tight text-foreground',
-                      compact ? 'text-[12px] font-medium' : 'text-[13px] font-medium'
+                      compact
+                        ? 'text-[12px] font-medium'
+                        : 'text-[13px] font-medium'
                     )}
                     title={label}
                   >
@@ -495,11 +495,11 @@ function MetricList(props: {
         'bg-gradient-to-b from-background/90 via-background/70 to-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/50'
       )}
     >
-      <div className='pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-70' />
+      <div className='via-border pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent opacity-70' />
       <header className='relative border-b px-4 py-3'>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <h3 className='text-[14px] font-semibold tracking-tight text-foreground'>
+            <h3 className='text-foreground text-[14px] font-semibold tracking-tight'>
               {props.title}
             </h3>
             <p className='text-muted-foreground mt-0.5 text-[11px] leading-snug'>

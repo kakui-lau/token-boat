@@ -299,14 +299,11 @@ function BillingBreakdown(props: {
     }
 
     const userGR = other.user_group_ratio
-    const isUserGR =
-      userGR != null && Number.isFinite(userGR) && userGR !== -1
+    const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
     const effectiveGR = isUserGR ? userGR : other.group_ratio
     if (effectiveGR != null && Number.isFinite(effectiveGR)) {
       rows.push({
-        label: isUserGR
-          ? t('User Exclusive Ratio')
-          : t('Group Ratio'),
+        label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
         value: `${formatRatio(effectiveGR)}x`,
       })
     }
@@ -589,9 +586,7 @@ function TokenBreakdown(props: {
 
   return (
     <DetailSection label={t('Usage Data')}>
-      {isAdmin && (
-        <DetailRow label={t('Data Source')} value={usageSource} />
-      )}
+      {isAdmin && <DetailRow label={t('Data Source')} value={usageSource} />}
       {rows.map((row) => (
         <DetailRow key={row.label} label={row.label} value={row.value} mono />
       ))}

@@ -206,46 +206,13 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 }
 
 func ListModels(c *gin.Context, modelType int) {
-	userModelNames := make([]string, 0)
-	groups, err := getModelListGroups(c)
+	userModelNames, ownerGroups, err := availableModelNames(c)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "get user group failed",
+			"message": "get available models failed",
 		})
 		return
-	}
-	ownerGroups := groups.ownerGroups
-	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-	var tokenModelLimit map[string]bool
-	if modelLimitEnable {
-		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
-		if ok {
-			tokenModelLimit, _ = s.(map[string]bool)
-		}
-		if tokenModelLimit == nil {
-			tokenModelLimit = map[string]bool{}
-		}
-	}
-	models := service.GetGroupsEnabledModels(ownerGroups)
-	for _, modelName := range models {
-		if modelLimitEnable {
-			matchingName := ratio_setting.FormatMatchingModelName(modelName)
-			if !tokenModelLimit[modelName] && !tokenModelLimit[matchingName] {
-				continue
-			}
-		}
-		hasCompletePricing := false
-		for _, group := range ownerGroups {
-			if pricingruntime.HasCompletePricing(group, modelName) {
-				hasCompletePricing = true
-				break
-			}
-		}
-		if !hasCompletePricing {
-			continue
-		}
-		userModelNames = append(userModelNames, modelName)
 	}
 
 	ownerByModel := map[string]string{}
@@ -301,6 +268,59 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 }
 
+func availableModelNames(c *gin.Context) ([]string, []string, error) {
+	userModelNames := make([]string, 0)
+	groups, err := getModelListGroups(c)
+	if err != nil {
+		return nil, nil, err
+	}
+	ownerGroups := groups.ownerGroups
+	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	var tokenModelLimit map[string]bool
+	if modelLimitEnable {
+		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+		if ok {
+			tokenModelLimit, _ = s.(map[string]bool)
+		}
+		if tokenModelLimit == nil {
+			tokenModelLimit = map[string]bool{}
+		}
+	}
+	models := service.GetGroupsEnabledModels(ownerGroups)
+	for _, modelName := range models {
+		if modelLimitEnable {
+			matchingName := ratio_setting.FormatMatchingModelName(modelName)
+			if !tokenModelLimit[modelName] && !tokenModelLimit[matchingName] {
+				continue
+			}
+		}
+		hasCompletePricing := false
+		for _, group := range ownerGroups {
+			if pricingruntime.HasCompletePricing(group, modelName) {
+				hasCompletePricing = true
+				break
+			}
+		}
+		if !hasCompletePricing {
+			continue
+		}
+		userModelNames = append(userModelNames, modelName)
+	}
+	pricedModels, err := pricingruntime.ResolveSalesPriceModelNames(
+		c.GetInt("id"), userModelNames, 0,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	filtered := make([]string, 0, len(userModelNames))
+	for _, modelName := range userModelNames {
+		if _, ok := pricedModels[modelName]; ok {
+			filtered = append(filtered, modelName)
+		}
+	}
+	return filtered, ownerGroups, nil
+}
+
 func ChannelListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
@@ -324,7 +344,25 @@ func EnabledListModels(c *gin.Context) {
 
 func RetrieveModel(c *gin.Context, modelType int) {
 	modelId := c.Param("model")
-	if aiModel, ok := openAIModelsMap[modelId]; ok {
+	availableModels, _, err := availableModelNames(c)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"error": types.OpenAIError{
+				Message: "Unable to resolve the active sales price book",
+				Type:    "server_error",
+				Code:    "model_price_unavailable",
+			},
+		})
+		return
+	}
+	available := false
+	for _, modelName := range availableModels {
+		if modelName == modelId {
+			available = true
+			break
+		}
+	}
+	if aiModel, ok := openAIModelsMap[modelId]; ok && available {
 		switch modelType {
 		case constant.ChannelTypeAnthropic:
 			c.JSON(200, dto.AnthropicModel{

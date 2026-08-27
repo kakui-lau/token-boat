@@ -76,3 +76,30 @@ func TestFilterAvailablePublicPricingHidesUnroutableAndUnpricedModels(t *testing
 	require.Len(t, filtered, 1)
 	assert.Equal(t, "available", filtered[0].ModelName)
 }
+
+func TestPublicPricingVersionTracksActualUserVisiblePricing(t *testing.T) {
+	pricing := []model.Pricing{{
+		ModelName: "versioned-model", PricingSource: "sales_price_book",
+		PricingVersion: "price-book-v1",
+	}}
+	first := publicPricingVersion(
+		pricing,
+		map[string]float64{"vip": 0.8, "default": 1},
+		map[string]string{"vip": "VIP", "default": "Default"},
+	)
+	second := publicPricingVersion(
+		pricing,
+		map[string]float64{"default": 1, "vip": 0.8},
+		map[string]string{"default": "Default", "vip": "VIP"},
+	)
+
+	assert.NotEmpty(t, first)
+	assert.Equal(t, first, second)
+
+	pricing[0].PricingVersion = "price-book-v2"
+	assert.NotEqual(t, first, publicPricingVersion(
+		pricing,
+		map[string]float64{"default": 1, "vip": 0.8},
+		map[string]string{"default": "Default", "vip": "VIP"},
+	))
+}

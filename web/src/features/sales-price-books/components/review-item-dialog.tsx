@@ -35,6 +35,8 @@ import { Textarea } from '@/components/ui/textarea'
 type ReviewItemDialogProps = {
   itemId?: number
   action: 'accept' | 'reject'
+  reason: string
+  detail: string
   pending: boolean
   onOpenChange: (open: boolean) => void
   onSubmit: (itemId: number, comment: string) => void
@@ -73,6 +75,17 @@ export function ReviewItemDialog(props: ReviewItemDialogProps) {
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className='py-5'>
+            <div className='bg-destructive/5 border-destructive/20 rounded-lg border p-4'>
+              <p className='text-sm font-medium'>{t('Review reason')}</p>
+              <p className='text-destructive mt-1 text-sm'>
+                {props.reason || t('Requires review')}
+              </p>
+              {props.detail ? (
+                <p className='text-muted-foreground mt-2 text-xs'>
+                  {props.detail}
+                </p>
+              ) : null}
+            </div>
             <Field>
               <FieldLabel htmlFor='pricing-review-comment'>
                 {t('Review comment')}

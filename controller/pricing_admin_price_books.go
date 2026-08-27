@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/pricingadmin"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 func AdminListSalesPriceBooks(c *gin.Context) {
@@ -100,6 +101,24 @@ func AdminCreateSalesPriceBookVersion(c *gin.Context) {
 	common.ApiSuccess(c, &input)
 }
 
+func AdminUpdateSalesPriceBookVersionDraft(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var input model.SalesPriceBookVersion
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	input.Id = versionId
+	if err := pricingadmin.UpdateSalesPriceBookVersionDraft(&input, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, &input)
+}
+
 func AdminCloneSalesPriceBookVersion(c *gin.Context) {
 	priceBookId, ok := positivePathId(c)
 	if !ok {
@@ -165,7 +184,7 @@ func AdminDeleteSalesPriceBookVersionDraft(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := pricingadmin.DeleteSalesPriceBookVersionDraft(versionId); err != nil {
+	if err := pricingadmin.DeleteSalesPriceBookVersionDraft(versionId, c.GetInt("id")); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -228,25 +247,62 @@ func AdminExportSalesPriceBookItems(c *gin.Context) {
 	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
-		"模型名称", "状态", "计费模式", "价格结构", "定价方式", "销售系数",
-		"官方折扣", "币种", "销售表达式", "表达式哈希", "备注",
+		"模型名称", "状态", "计费模式", "客户售价规则", "采购折扣", "销售折扣", "定价详情",
 	})
 	for _, item := range items {
+		priceRule := "自定义计费表达式"
+		if item.PricingMethod == "cost_plus" {
+			priceRule = "采购成本 × " + formatSalesPriceBookDecimal(item.SellingFactor)
+		}
 		_ = writer.Write([]string{
 			spreadsheetSafeCSVCell(item.ModelName),
-			item.Status,
-			item.BillingMode,
-			item.PriceStructure,
-			item.PricingMethod,
-			item.SellingFactor,
-			item.OfficialDiscount,
-			item.Currency,
+			formatSalesPriceBookItemStatus(item.Status),
+			formatSalesPriceBookBillingMode(item.BillingMode),
+			priceRule,
+			formatSalesPriceBookDiscount(item.PurchaseDiscount),
+			formatSalesPriceBookDiscount(item.SalesDiscount),
 			spreadsheetSafeCSVCell(item.SalesBillingExpr),
-			item.SalesExprHash,
-			spreadsheetSafeCSVCell(item.Remark),
 		})
 	}
 	writer.Flush()
+}
+
+func formatSalesPriceBookDecimal(value string) string {
+	parsed, err := decimal.NewFromString(strings.TrimSpace(value))
+	if err != nil {
+		return "—"
+	}
+	return parsed.Round(4).String()
+}
+
+func formatSalesPriceBookDiscount(value string) string {
+	parsed, err := decimal.NewFromString(strings.TrimSpace(value))
+	if err != nil || parsed.IsNegative() {
+		return "—"
+	}
+	discount := parsed.Mul(decimal.NewFromInt(10)).Round(4).String()
+	percentage := parsed.Mul(decimal.NewFromInt(100)).Round(4).String()
+	return fmt.Sprintf("%s折（官方价 × %s%%）", discount, percentage)
+}
+
+func formatSalesPriceBookItemStatus(status string) string {
+	switch status {
+	case pricingadmin.SalesPriceItemStatusEnabled:
+		return "已启用"
+	case pricingadmin.SalesPriceItemStatusDisabled:
+		return "已禁用"
+	case pricingadmin.SalesPriceItemStatusReviewRequired:
+		return "需要审核"
+	default:
+		return status
+	}
+}
+
+func formatSalesPriceBookBillingMode(mode string) string {
+	if mode == "token" {
+		return "按 Token 用量"
+	}
+	return mode
 }
 
 func AdminSaveSalesPriceBookItem(c *gin.Context) {
@@ -260,7 +316,7 @@ func AdminSaveSalesPriceBookItem(c *gin.Context) {
 		return
 	}
 	input.PriceBookVersionId = versionId
-	if err := pricingadmin.SaveSalesPriceBookItem(&input); err != nil {
+	if err := pricingadmin.SaveSalesPriceBookItem(&input, c.GetInt("id")); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -388,6 +444,53 @@ func AdminSetSalesPriceBookItemStatus(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminDeleteSalesPriceBookItem(c *gin.Context) {
+	itemId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	if err := pricingadmin.DeleteSalesPriceBookItem(itemId, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminDeleteSalesPriceBookItems(c *gin.Context) {
+	var input struct {
+		ItemIds []int `json:"item_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := pricingadmin.DeleteSalesPriceBookItems(input.ItemIds, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminListSalesPriceBookAuditRecords(c *gin.Context) {
+	priceBookId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	page, pageSize, err := salesPriceBookPageQuery(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items, total, err := pricingadmin.ListSalesPriceBookAuditRecords(priceBookId, page, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": items, "total": total, "page": page, "page_size": pageSize,
+	})
 }
 
 func AdminPublishGeneratedPricingChangeBatch(c *gin.Context) {

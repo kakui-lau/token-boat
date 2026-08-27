@@ -500,7 +500,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <span className='text-muted-foreground max-w-[140px] truncate font-mono text-xs tabular-nums hover:text-foreground' />
+                    <span className='text-muted-foreground hover:text-foreground max-w-[140px] truncate font-mono text-xs tabular-nums' />
                   }
                 >
                   <StatusBadge
@@ -508,7 +508,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                     copyText={sensitiveVisible ? ip : undefined}
                     size='sm'
                     showDot={false}
-                    className='border-border/60 bg-muted/20 text-foreground h-6 min-w-0 max-w-[140px] overflow-hidden rounded-md border px-2 py-0.5 font-mono'
+                    className='border-border/60 bg-muted/20 text-foreground h-6 max-w-[140px] min-w-0 overflow-hidden rounded-md border px-2 py-0.5 font-mono'
                   />
                 </TooltipTrigger>
                 {sensitiveVisible && (

@@ -22,8 +22,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
-import { useDeferredValue, useState } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -51,6 +50,7 @@ import {
 } from '@/components/ui/card'
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
@@ -81,10 +81,13 @@ import {
   archiveSalesPriceBook,
   cancelUserPriceBookAssignment,
   cloneSalesPriceBookVersion,
+  compareSalesPriceBookVersions,
   disableSalesPriceBook,
+  deleteSalesPriceBookItems,
   deleteSalesPriceBookVersionDraft,
   enableSalesPriceBook,
   exportSalesPriceBookItems,
+  getDefaultSalesPriceBook,
   getSalesPriceBookItems,
   getSalesPriceBooks,
   getSalesPriceBookVersions,
@@ -104,56 +107,80 @@ import { EditBookDialog } from './components/edit-book-dialog'
 import { EditPriceItemDialog } from './components/edit-price-item-dialog'
 import { GenerateItemsDialog } from './components/generate-items-dialog'
 import { ListPagination } from './components/list-pagination'
+import { ModelPriceTable } from './components/model-price-table'
+import { PriceBookAuditPanel } from './components/price-book-audit-panel'
+import {
+  PriceBookSelectionAction,
+  SelectablePriceBookRow,
+} from './components/price-book-selection'
+import { PriceBookStatusBadges } from './components/price-book-status'
+import { PriceBookSummary } from './components/price-book-summary'
+import { PriceBookVersionTable } from './components/price-book-version-table'
+import {
+  PublishVersionDialog,
+  type PublishVersionCandidate,
+} from './components/publish-version-dialog'
 import { ReviewItemDialog } from './components/review-item-dialog'
 import { VersionDiffCard } from './components/version-diff-card'
+import { pricingRiskLabel } from './lib/pricing-risk'
+import { getSalesPriceBookPublicationIssue } from './lib/publication-check'
+import {
+  readSalesPriceBookSelection,
+  writeSalesPriceBookSelection,
+} from './lib/selection-storage'
+import { getSalesPriceBookComparisonBase } from './lib/version-comparison'
 import type {
+  SalesPriceBook,
   SalesPriceBookAudience,
   SalesPriceBookItem,
   SalesPriceBookStatus,
-  SalesPriceBookVersionStatus,
+  SalesPriceBookVersion,
   UserPriceBookAssignment,
 } from './types'
 
-function bookStatusLabel(
-  status: SalesPriceBookStatus,
+function PriceBookCoverageBadge(props: {
+  book: SalesPriceBook
+  t: (key: string, values?: Record<string, number>) => string
+}) {
+  if (props.book.audience !== 'tob' || props.book.missing_model_count <= 0) {
+    return null
+  }
+  if (!props.book.current_version_id) {
+    return (
+      <Badge variant='outline'>
+        {props.t('Setup pending · {{count}} sellable models', {
+          count: props.book.missing_model_count,
+        })}
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant='destructive'>
+      {props.t('{{count}} missing', {
+        count: props.book.missing_model_count,
+      })}
+    </Badge>
+  )
+}
+
+function assignmentStatusLabel(
+  status: UserPriceBookAssignment['status'],
   t: (key: string) => string
 ) {
-  switch (status) {
-    case 'draft':
-      return t('Draft')
-    case 'enabled':
-      return t('Enabled')
-    case 'disabled':
-      return t('Disabled')
-    case 'archived':
-      return t('Archived')
-  }
+  if (status === 'scheduled') return t('Scheduled')
+  if (status === 'active') return t('Active')
+  if (status === 'expired') return t('Expired')
+  return t('Cancelled')
 }
 
-function versionStatusLabel(
-  status: SalesPriceBookVersionStatus,
-  t: (key: string) => string
-) {
-  switch (status) {
-    case 'draft':
-      return t('Draft')
-    case 'active':
-      return t('Active')
-    case 'scheduled':
-      return t('Scheduled')
-    case 'superseded':
-      return t('Superseded')
-    case 'cancelled':
-      return t('Cancelled')
-  }
+export type SalesPriceBooksTab = 'books' | 'assignments' | 'change-batches'
+
+type SalesPriceBooksProps = {
+  activeTab?: SalesPriceBooksTab
+  onTabChange?: (tab: SalesPriceBooksTab) => void
 }
 
-function percent(value: string) {
-  const number = Number(value)
-  return Number.isFinite(number) ? `${number * 100}%` : '—'
-}
-
-export function SalesPriceBooks() {
+export function SalesPriceBooks(props: SalesPriceBooksProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.auth.user)
@@ -161,6 +188,16 @@ export function SalesPriceBooks() {
     currentUser,
     ADMIN_PERMISSION_RESOURCES.PRICING,
     ADMIN_PERMISSION_ACTIONS.EXPORT
+  )
+  const canWrite = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.WRITE
+  )
+  const canPublish = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.PRICING,
+    ADMIN_PERMISSION_ACTIONS.PUBLISH
   )
   const [keyword, setKeyword] = useState('')
   const [bookAudience, setBookAudience] = useState<SalesPriceBookAudience | ''>(
@@ -175,24 +212,49 @@ export function SalesPriceBooks() {
   >('')
   const [assignmentPage, setAssignmentPage] = useState(1)
   const [assignmentPageSize, setAssignmentPageSize] = useState(200)
-  const [selectedBookId, setSelectedBookId] = useState<number>()
-  const [selectedVersionId, setSelectedVersionId] = useState<number>()
+  const [selection, setSelection] = useState(() =>
+    readSalesPriceBookSelection(
+      typeof window === 'undefined' ? undefined : window.sessionStorage
+    )
+  )
+  const selectedBookId = selection.bookId
+  const selectedVersionId = selection.versionId
+  const setSelectedBookId = (bookId: number | undefined) => {
+    setSelection((current) => ({ ...current, bookId }))
+  }
+  const setSelectedVersionId = (versionId: number | undefined) => {
+    setSelection((current) => ({ ...current, versionId }))
+  }
   const [createBookOpen, setCreateBookOpen] = useState(false)
-  const [createVersionOpen, setCreateVersionOpen] = useState(false)
-  const [generateOpen, setGenerateOpen] = useState(false)
+  const [createVersionBookId, setCreateVersionBookId] = useState<number>()
+  const [editVersion, setEditVersion] = useState<SalesPriceBookVersion>()
+  const [generateTarget, setGenerateTarget] = useState<{
+    id: number
+    label: string
+  }>()
   const [assignOpen, setAssignOpen] = useState(false)
   const [editBookId, setEditBookId] = useState<number>()
   const [editPriceItem, setEditPriceItem] = useState<SalesPriceBookItem>()
   const [reviewItem, setReviewItem] = useState<{
     id: number
     action: 'accept' | 'reject'
+    reason: string
+    detail: string
   }>()
+  const [publishCandidate, setPublishCandidate] =
+    useState<PublishVersionCandidate>()
+  const [cancelAssignment, setCancelAssignment] =
+    useState<UserPriceBookAssignment>()
   const [destructiveAction, setDestructiveAction] = useState<{
     type: 'disable' | 'archive' | 'delete-draft'
     id: number
   }>()
   const deferredKeyword = useDeferredValue(keyword)
   const deferredAssignmentKeyword = useDeferredValue(assignmentKeyword)
+
+  useEffect(() => {
+    writeSalesPriceBookSelection(window.sessionStorage, selection)
+  }, [selection])
 
   const booksQuery = useQuery({
     queryKey: [
@@ -216,6 +278,12 @@ export function SalesPriceBooks() {
   })
   const books = booksQuery.data?.data.items ?? []
   const booksTotal = booksQuery.data?.data.total ?? 0
+  const defaultBookQuery = useQuery({
+    queryKey: ['sales-price-books', 'default', 'toc_default'],
+    queryFn: getDefaultSalesPriceBook,
+    retry: false,
+  })
+  const tocDefaultPriceBookId = defaultBookQuery.data?.data.price_book_id
   const selectedBook =
     books.find((book) => book.id === selectedBookId) ?? books[0]
   const selectedBookQueryId = selectedBook?.id ?? 0
@@ -226,10 +294,17 @@ export function SalesPriceBooks() {
   })
   const versions = versionsQuery.data?.data ?? []
   const selectedVersion =
-    versions.find((version) => version.id === selectedVersionId) ?? versions[0]
-  const comparisonBaseVersion = selectedVersion
-    ? versions.find((version) => version.version < selectedVersion.version)
-    : undefined
+    versions.find((version) => version.id === selectedVersionId) ??
+    versions.find(
+      (version) => version.id === selectedBook?.current_version_id
+    ) ??
+    versions.find((version) => version.status === 'active') ??
+    versions[0]
+  const comparisonBaseVersion = getSalesPriceBookComparisonBase(
+    versions,
+    selectedVersion,
+    selectedBook?.current_version_id
+  )
   const selectedVersionQueryId = selectedVersion?.id ?? 0
   const itemsQuery = useQuery({
     queryKey: ['sales-price-books', 'items', selectedVersionQueryId],
@@ -273,6 +348,16 @@ export function SalesPriceBooks() {
       queryKey: ['sales-price-books', 'list'],
     })
   }
+  const refreshSelectedVersionPrices = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'version-diff'],
+      }),
+    ])
+  }
   const publishMutation = useMutation({
     mutationFn: publishSalesPriceBookVersion,
     onSuccess: async () => {
@@ -280,17 +365,83 @@ export function SalesPriceBooks() {
       await queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'versions'],
       })
+      setPublishCandidate(undefined)
       toast.success(t('Price book version published'))
     },
     onError: handleServerError,
   })
+  const requestVersionPublish = async (versionId: number) => {
+    setSelectedVersionId(versionId)
+    try {
+      const response = await queryClient.fetchQuery({
+        queryKey: ['sales-price-books', 'items', versionId],
+        queryFn: () => getSalesPriceBookItems(versionId),
+      })
+      const issue = getSalesPriceBookPublicationIssue(response.data ?? [])
+      if (issue?.type === 'empty') {
+        toast.warning(t('No model prices in this version'), {
+          description: t(
+            'Generate prices from selected channel models before publishing.'
+          ),
+        })
+        return
+      }
+      if (issue?.type === 'review') {
+        toast.warning(
+          t('{{count}} model prices require review', {
+            count: issue.items.length,
+          }),
+          {
+            description: issue.items
+              .slice(0, 3)
+              .map(
+                (item) =>
+                  `${item.model_name}: ${pricingRiskLabel(item.review_risk_code ?? '', t)}`
+              )
+              .join('；'),
+          }
+        )
+        return
+      }
+      const version = versions.find((item) => item.id === versionId)
+      if (!selectedBook || !version) {
+        toast.error(t('The selected price book version is unavailable'))
+        return
+      }
+      let diff
+      const baseVersion = getSalesPriceBookComparisonBase(
+        versions,
+        version,
+        selectedBook.current_version_id
+      )
+      if (baseVersion && baseVersion.id !== version.id) {
+        const diffResponse = await queryClient.fetchQuery({
+          queryKey: [
+            'sales-price-books',
+            'version-diff',
+            baseVersion.id,
+            version.id,
+          ],
+          queryFn: () =>
+            compareSalesPriceBookVersions(baseVersion.id, version.id),
+        })
+        diff = diffResponse.data
+      }
+      setPublishCandidate({
+        book: selectedBook,
+        version,
+        items: response.data ?? [],
+        diff,
+      })
+    } catch (error) {
+      handleServerError(error)
+    }
+  }
   const acceptReviewMutation = useMutation({
     mutationFn: ({ itemId, comment }: { itemId: number; comment: string }) =>
       acceptSalesPriceBookItemReview(itemId, comment),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
-      })
+      await refreshSelectedVersionPrices()
       toast.success(t('Pricing risk accepted'))
       setReviewItem(undefined)
     },
@@ -300,9 +451,7 @@ export function SalesPriceBooks() {
     mutationFn: ({ itemId, comment }: { itemId: number; comment: string }) =>
       rejectSalesPriceBookItemReview(itemId, comment),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
-      })
+      await refreshSelectedVersionPrices()
       await queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'change-batches'],
       })
@@ -315,9 +464,7 @@ export function SalesPriceBooks() {
     mutationFn: ({ itemId, enabled }: { itemId: number; enabled: boolean }) =>
       setSalesPriceBookItemStatus(itemId, enabled),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
-      })
+      await refreshSelectedVersionPrices()
       toast.success(t('Model price status updated'))
     },
     onError: handleServerError,
@@ -325,11 +472,20 @@ export function SalesPriceBooks() {
   const saveItemMutation = useMutation({
     mutationFn: saveSalesPriceBookItem,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'items', selectedVersion?.id],
-      })
+      await refreshSelectedVersionPrices()
       setEditPriceItem(undefined)
       toast.success(t('Model sales price updated'))
+    },
+    onError: handleServerError,
+  })
+  const deleteItemMutation = useMutation({
+    mutationFn: deleteSalesPriceBookItems,
+    onSuccess: async () => {
+      await Promise.all([refreshSelectedVersionPrices(), refreshBooks()])
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'change-batches'],
+      })
+      toast.success(t('Model sales prices deleted'))
     },
     onError: handleServerError,
   })
@@ -346,13 +502,18 @@ export function SalesPriceBooks() {
         queryKey: ['sales-price-books', 'versions', selectedBook?.id],
       })
       setSelectedVersionId(response.data.id)
-      toast.success(t('Draft version copied'))
+      toast.success(t('Historical version restored as a new draft'))
     },
     onError: handleServerError,
   })
   const defaultMutation = useMutation({
     mutationFn: setDefaultSalesPriceBook,
-    onSuccess: () => toast.success(t('TOC default price book updated')),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'default', 'toc_default'],
+      })
+      toast.success(t('TOC default price book updated'))
+    },
     onError: handleServerError,
   })
   const disableMutation = useMutation({
@@ -418,6 +579,7 @@ export function SalesPriceBooks() {
       })
       await refreshBooks()
       toast.success(t('Price book assignment cancelled'))
+      setCancelAssignment(undefined)
     },
     onError: handleServerError,
   })
@@ -439,23 +601,31 @@ export function SalesPriceBooks() {
         {t('Sales Price Books')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <Button onClick={() => setCreateBookOpen(true)}>
-          {t('Create price book')}
-        </Button>
+        {canWrite ? (
+          <Button onClick={() => setCreateBookOpen(true)}>
+            {t('Create price book')}
+          </Button>
+        ) : null}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='flex min-w-0 flex-col gap-4'>
           <Alert>
             <AlertTitle>
-              {t('Purchase costs and customer prices are separated')}
+              {t('Purchase price → Price book → Customer billing')}
             </AlertTitle>
             <AlertDescription>
               {t(
-                'A customer receives one logical-model price from the assigned price book, while routing evaluates each upstream purchase cost independently.'
+                'Maintain upstream purchase costs first, generate a draft price-book version, then publish it. Customers only use the active version.'
               )}
             </AlertDescription>
           </Alert>
-          <Tabs defaultValue='books'>
+          <Tabs
+            defaultValue='books'
+            value={props.activeTab}
+            onValueChange={(value) =>
+              props.onTabChange?.(value as SalesPriceBooksTab)
+            }
+          >
             <TabsList>
               <TabsTrigger value='books'>{t('Price books')}</TabsTrigger>
               <TabsTrigger value='assignments'>
@@ -468,10 +638,10 @@ export function SalesPriceBooks() {
             <TabsContent value='books' className='mt-4 flex flex-col gap-4'>
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('Price books')}</CardTitle>
+                  <CardTitle>{t('1. Choose a price book')}</CardTitle>
                   <CardDescription>
                     {t(
-                      'Select a price book to manage versions and model prices.'
+                      'Choose a customer-facing price policy. TOC defaults apply automatically; TOB price books are assigned to users.'
                     )}
                   </CardDescription>
                 </CardHeader>
@@ -551,7 +721,9 @@ export function SalesPriceBooks() {
                     <Table className='min-w-[58rem]'>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>{t('Name')}</TableHead>
+                          <TableHead className='bg-card sticky left-0 z-10'>
+                            {t('Name')}
+                          </TableHead>
                           <TableHead>{t('Code')}</TableHead>
                           <TableHead>{t('Audience')}</TableHead>
                           <TableHead>{t('Status')}</TableHead>
@@ -562,127 +734,126 @@ export function SalesPriceBooks() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {books.map((book) => (
-                          <TableRow
-                            key={book.id}
-                            data-state={
-                              selectedBook?.id === book.id
-                                ? 'selected'
-                                : undefined
+                        {books.map((book) => {
+                          const isSelected = selectedBook?.id === book.id
+                          const isTocDefault = tocDefaultPriceBookId === book.id
+                          const selectBook = () => {
+                            if (isSelected) {
+                              return
                             }
-                          >
-                            <TableCell>
-                              <Button
-                                variant='link'
-                                className='h-auto p-0 font-medium'
-                                onClick={() => {
-                                  setSelectedBookId(book.id)
-                                  setSelectedVersionId(undefined)
-                                }}
-                              >
-                                {book.name}
-                              </Button>
-                            </TableCell>
-                            <TableCell>{book.code}</TableCell>
-                            <TableCell>{book.audience.toUpperCase()}</TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  book.status === 'enabled'
-                                    ? 'default'
-                                    : 'outline'
-                                }
-                              >
-                                {bookStatusLabel(book.status, t)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {book.current_version
-                                ? `v${book.current_version.version}`
-                                : '—'}
-                            </TableCell>
-                            <TableCell>
-                              <div className='flex items-center gap-2'>
-                                <span>{book.model_count}</span>
-                                {book.audience === 'tob' &&
-                                book.missing_model_count > 0 ? (
-                                  <Badge variant='destructive'>
-                                    {t('{{count}} missing', {
-                                      count: book.missing_model_count,
-                                    })}
-                                  </Badge>
-                                ) : null}
-                              </div>
-                            </TableCell>
-                            <TableCell>{book.assigned_users}</TableCell>
-                            <TableCell>
-                              <div className='flex gap-2'>
-                                <Button
-                                  size='sm'
-                                  variant='outline'
-                                  onClick={() => setEditBookId(book.id)}
-                                >
-                                  {t('Edit')}
-                                </Button>
-                                {book.audience === 'toc' &&
-                                book.status === 'enabled' ? (
-                                  <Button
-                                    size='sm'
-                                    variant='outline'
-                                    disabled={defaultMutation.isPending}
-                                    onClick={() =>
-                                      defaultMutation.mutate(book.id)
-                                    }
-                                  >
-                                    {t('Set TOC default')}
-                                  </Button>
-                                ) : null}
-                                {book.status !== 'disabled' &&
-                                book.status !== 'archived' ? (
-                                  <Button
-                                    size='sm'
-                                    variant='outline'
-                                    disabled={disableMutation.isPending}
-                                    onClick={() =>
-                                      setDestructiveAction({
-                                        type: 'disable',
-                                        id: book.id,
-                                      })
-                                    }
-                                  >
-                                    {t('Disable')}
-                                  </Button>
-                                ) : null}
-                                {book.status === 'disabled' ? (
-                                  <>
+                            setSelectedBookId(book.id)
+                            setSelectedVersionId(undefined)
+                          }
+
+                          return (
+                            <SelectablePriceBookRow
+                              key={book.id}
+                              selected={isSelected}
+                              onSelect={selectBook}
+                            >
+                              <TableCell className='bg-card sticky left-0 z-10'>
+                                <span className='font-medium'>{book.name}</span>
+                              </TableCell>
+                              <TableCell>{book.code}</TableCell>
+                              <TableCell>
+                                {book.audience.toUpperCase()}
+                              </TableCell>
+                              <TableCell>
+                                <PriceBookStatusBadges
+                                  status={book.status}
+                                  isTocDefault={isTocDefault}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {book.current_version
+                                  ? `v${book.current_version.version}`
+                                  : '—'}
+                              </TableCell>
+                              <TableCell>
+                                <div className='flex items-center gap-2'>
+                                  <span>{book.model_count}</span>
+                                  <PriceBookCoverageBadge book={book} t={t} />
+                                </div>
+                              </TableCell>
+                              <TableCell>{book.assigned_users}</TableCell>
+                              <TableCell>
+                                <div className='flex gap-2'>
+                                  <PriceBookSelectionAction
+                                    selected={isSelected}
+                                    onSelect={selectBook}
+                                  />
+                                  {canWrite ? (
                                     <Button
                                       size='sm'
                                       variant='outline'
-                                      disabled={enableMutation.isPending}
+                                      onClick={() => setEditBookId(book.id)}
+                                    >
+                                      {t('Edit')}
+                                    </Button>
+                                  ) : null}
+                                  {book.audience === 'toc' &&
+                                  book.status === 'enabled' &&
+                                  !isTocDefault &&
+                                  canPublish ? (
+                                    <Button
+                                      size='sm'
+                                      variant='outline'
+                                      disabled={defaultMutation.isPending}
                                       onClick={() =>
-                                        enableMutation.mutate(book.id)
+                                        defaultMutation.mutate(book.id)
                                       }
                                     >
-                                      {t('Enable')}
+                                      {t('Set TOC default')}
                                     </Button>
+                                  ) : null}
+                                  {book.status !== 'disabled' &&
+                                  book.status !== 'archived' &&
+                                  canPublish ? (
                                     <Button
                                       size='sm'
                                       variant='outline'
+                                      disabled={disableMutation.isPending}
                                       onClick={() =>
                                         setDestructiveAction({
-                                          type: 'archive',
+                                          type: 'disable',
                                           id: book.id,
                                         })
                                       }
                                     >
-                                      {t('Archive')}
+                                      {t('Disable')}
                                     </Button>
-                                  </>
-                                ) : null}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                                  ) : null}
+                                  {book.status === 'disabled' && canPublish ? (
+                                    <>
+                                      <Button
+                                        size='sm'
+                                        variant='outline'
+                                        disabled={enableMutation.isPending}
+                                        onClick={() =>
+                                          enableMutation.mutate(book.id)
+                                        }
+                                      >
+                                        {t('Enable')}
+                                      </Button>
+                                      <Button
+                                        size='sm'
+                                        variant='outline'
+                                        onClick={() =>
+                                          setDestructiveAction({
+                                            type: 'archive',
+                                            id: book.id,
+                                          })
+                                        }
+                                      >
+                                        {t('Archive')}
+                                      </Button>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </TableCell>
+                            </SelectablePriceBookRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   ) : null}
@@ -702,287 +873,149 @@ export function SalesPriceBooks() {
                 </CardContent>
               </Card>
 
+              {selectedBook ? <PriceBookSummary book={selectedBook} /> : null}
+
               {selectedBook ? (
                 <Card>
                   <CardHeader>
-                    <CardTitle>
-                      {t('Versions for {{name}}', { name: selectedBook.name })}
-                    </CardTitle>
+                    <CardTitle>{t('2. Manage pricing versions')}</CardTitle>
                     <CardDescription>
                       {t(
-                        'Published versions are immutable and remain available for audit.'
+                        'The active version is used for billing. Drafts can be edited safely until they are published.'
                       )}
                     </CardDescription>
-                    <CardAction>
-                      <Button
-                        size='sm'
-                        onClick={() => setCreateVersionOpen(true)}
-                      >
-                        {t('Create draft version')}
-                      </Button>
-                    </CardAction>
+                    {canWrite ? (
+                      <CardAction>
+                        <Button
+                          size='sm'
+                          onClick={() =>
+                            setCreateVersionBookId(selectedBook.id)
+                          }
+                        >
+                          {versions.length === 0
+                            ? t('Create first draft version')
+                            : t('Create draft version')}
+                        </Button>
+                      </CardAction>
+                    ) : null}
                   </CardHeader>
                   <CardContent className='flex flex-col gap-4'>
                     {versionsQuery.isLoading ? (
                       <Skeleton className='h-32 w-full' />
                     ) : null}
                     {versions.length > 0 ? (
-                      <Table className='min-w-[66rem]'>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{t('Version')}</TableHead>
-                            <TableHead>{t('Status')}</TableHead>
-                            <TableHead>{t('Cost basis')}</TableHead>
-                            <TableHead>{t('Variable cost rate')}</TableHead>
-                            <TableHead>{t('Tax rate')}</TableHead>
-                            <TableHead>{t('Target margin')}</TableHead>
-                            <TableHead>{t('Actions')}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {versions.map((version) => (
-                            <TableRow
-                              key={version.id}
-                              data-state={
-                                selectedVersion?.id === version.id
-                                  ? 'selected'
-                                  : undefined
+                      <PriceBookVersionTable
+                        versions={versions}
+                        currentVersionId={selectedBook.current_version_id}
+                        selectedVersionId={selectedVersion?.id}
+                        isPublishing={publishMutation.isPending}
+                        isCloning={cloneMutation.isPending}
+                        canWrite={canWrite}
+                        canPublish={canPublish}
+                        onSelect={setSelectedVersionId}
+                        onGenerate={(versionId) => {
+                          setSelectedVersionId(versionId)
+                          const version = versions.find(
+                            (item) => item.id === versionId
+                          )
+                          setGenerateTarget({
+                            id: versionId,
+                            label: `${selectedBook.name} / v${version?.version ?? ''}`,
+                          })
+                        }}
+                        onPublish={requestVersionPublish}
+                        onEditPolicy={(version) => {
+                          setEditVersion(version)
+                          setCreateVersionBookId(selectedBook.id)
+                        }}
+                        onDeleteDraft={(versionId) =>
+                          setDestructiveAction({
+                            type: 'delete-draft',
+                            id: versionId,
+                          })
+                        }
+                        onClone={(versionId) =>
+                          cloneMutation.mutate({
+                            bookId: selectedBook.id,
+                            versionId,
+                          })
+                        }
+                      />
+                    ) : null}
+                    {!versionsQuery.isLoading && versions.length === 0 ? (
+                      <Empty className='min-h-64 border'>
+                        <EmptyHeader>
+                          <EmptyTitle>
+                            {t('This price book is not configured yet')}
+                          </EmptyTitle>
+                          <EmptyDescription>
+                            {t(
+                              'Creating a price book only creates the customer group. Complete these steps before assigning users.'
+                            )}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                        <EmptyContent>
+                          <ol className='text-muted-foreground grid gap-2 text-left text-sm'>
+                            <li>
+                              {t('1. Create a draft with pricing parameters')}
+                            </li>
+                            <li>
+                              {t(
+                                '2. Generate model prices from channel purchase costs'
+                              )}
+                            </li>
+                            <li>
+                              {t('3. Review and publish the active version')}
+                            </li>
+                          </ol>
+                          {canWrite ? (
+                            <Button
+                              onClick={() =>
+                                setCreateVersionBookId(selectedBook.id)
                               }
                             >
-                              <TableCell>
-                                <Button
-                                  variant='link'
-                                  className='h-auto p-0'
-                                  onClick={() =>
-                                    setSelectedVersionId(version.id)
-                                  }
-                                >
-                                  v{version.version}
-                                </Button>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    version.status === 'active'
-                                      ? 'default'
-                                      : 'outline'
-                                  }
-                                >
-                                  {versionStatusLabel(version.status, t)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {version.cost_basis_strategy}
-                              </TableCell>
-                              <TableCell>
-                                {percent(version.total_variable_cost_rate)}
-                              </TableCell>
-                              <TableCell>
-                                {percent(version.effective_tax_rate)}
-                              </TableCell>
-                              <TableCell>
-                                {percent(version.target_net_margin)}
-                              </TableCell>
-                              <TableCell>
-                                <div className='flex gap-2'>
-                                  {version.status === 'draft' ? (
-                                    <>
-                                      <Button
-                                        size='sm'
-                                        variant='outline'
-                                        onClick={() => {
-                                          setSelectedVersionId(version.id)
-                                          setGenerateOpen(true)
-                                        }}
-                                      >
-                                        {t('Generate prices')}
-                                      </Button>
-                                      <Button
-                                        size='sm'
-                                        disabled={publishMutation.isPending}
-                                        onClick={() =>
-                                          publishMutation.mutate(version.id)
-                                        }
-                                      >
-                                        {t('Publish')}
-                                      </Button>
-                                      <Button
-                                        size='sm'
-                                        variant='destructive'
-                                        onClick={() =>
-                                          setDestructiveAction({
-                                            type: 'delete-draft',
-                                            id: version.id,
-                                          })
-                                        }
-                                      >
-                                        {t('Delete draft')}
-                                      </Button>
-                                    </>
-                                  ) : (
-                                    <Button
-                                      size='sm'
-                                      variant='outline'
-                                      disabled={cloneMutation.isPending}
-                                      onClick={() =>
-                                        cloneMutation.mutate({
-                                          bookId: selectedBook.id,
-                                          versionId: version.id,
-                                        })
-                                      }
-                                    >
-                                      {t('Copy as draft')}
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                              {t('Configure the first version')}
+                            </Button>
+                          ) : null}
+                        </EmptyContent>
+                      </Empty>
                     ) : null}
                   </CardContent>
                 </Card>
               ) : null}
 
               {selectedVersion ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      {t('Model prices in version {{version}}', {
-                        version: selectedVersion.version,
-                      })}
-                    </CardTitle>
-                    <CardDescription>
-                      {t(
-                        'One logical model has one customer price in each version.'
-                      )}
-                    </CardDescription>
-                    {canExport ? (
-                      <CardAction>
-                        <Button
-                          size='sm'
-                          variant='outline'
-                          disabled={exportItemsMutation.isPending}
-                          onClick={() =>
-                            exportItemsMutation.mutate(selectedVersion.id)
-                          }
-                        >
-                          <Download data-icon='inline-start' />
-                          {t('Export model pricing')}
-                        </Button>
-                      </CardAction>
-                    ) : null}
-                  </CardHeader>
-                  <CardContent>
-                    {itemsQuery.isLoading ? (
-                      <Skeleton className='h-32 w-full' />
-                    ) : null}
-                    {(itemsQuery.data?.data.length ?? 0) > 0 ? (
-                      <Table className='min-w-[72rem]'>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{t('Model Name')}</TableHead>
-                            <TableHead>{t('Status')}</TableHead>
-                            <TableHead>{t('Billing mode')}</TableHead>
-                            <TableHead>{t('Pricing method')}</TableHead>
-                            <TableHead>{t('Selling factor')}</TableHead>
-                            <TableHead>{t('Sales expression')}</TableHead>
-                            <TableHead>{t('Actions')}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {itemsQuery.data?.data.map((item) => (
-                            <TableRow key={item.id}>
-                              <TableCell className='font-medium'>
-                                {item.model_name}
-                              </TableCell>
-                              <TableCell>{item.status}</TableCell>
-                              <TableCell>{item.billing_mode}</TableCell>
-                              <TableCell>{item.pricing_method}</TableCell>
-                              <TableCell>
-                                {item.selling_factor || '—'}
-                              </TableCell>
-                              <TableCell className='max-w-[36rem] truncate font-mono text-xs'>
-                                {item.sales_billing_expr}
-                              </TableCell>
-                              <TableCell>
-                                {selectedVersion.status === 'draft' ? (
-                                  <div className='flex flex-wrap gap-2'>
-                                    <Button
-                                      size='sm'
-                                      variant='outline'
-                                      onClick={() => setEditPriceItem(item)}
-                                    >
-                                      {t('Edit')}
-                                    </Button>
-                                    {item.status === 'review_required' ? (
-                                      <>
-                                        <Button
-                                          size='sm'
-                                          variant='outline'
-                                          onClick={() =>
-                                            setReviewItem({
-                                              id: item.id,
-                                              action: 'accept',
-                                            })
-                                          }
-                                        >
-                                          {t('Accept risk')}
-                                        </Button>
-                                        <Button
-                                          size='sm'
-                                          variant='destructive'
-                                          onClick={() =>
-                                            setReviewItem({
-                                              id: item.id,
-                                              action: 'reject',
-                                            })
-                                          }
-                                        >
-                                          {t('Reject')}
-                                        </Button>
-                                      </>
-                                    ) : (
-                                      <Button
-                                        size='sm'
-                                        variant='outline'
-                                        disabled={itemStatusMutation.isPending}
-                                        onClick={() =>
-                                          itemStatusMutation.mutate({
-                                            itemId: item.id,
-                                            enabled: item.status !== 'enabled',
-                                          })
-                                        }
-                                      >
-                                        {item.status === 'enabled'
-                                          ? t('Disable')
-                                          : t('Enable')}
-                                      </Button>
-                                    )}
-                                  </div>
-                                ) : null}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    ) : (
-                      <Empty className='min-h-32'>
-                        <EmptyHeader>
-                          <EmptyTitle>
-                            {t('No model prices in this version')}
-                          </EmptyTitle>
-                          <EmptyDescription>
-                            {t(
-                              'Generate prices from selected channel models before publishing.'
-                            )}
-                          </EmptyDescription>
-                        </EmptyHeader>
-                      </Empty>
-                    )}
-                  </CardContent>
-                </Card>
+                <ModelPriceTable
+                  version={selectedVersion}
+                  items={itemsQuery.data?.data ?? []}
+                  isLoading={itemsQuery.isLoading}
+                  canExport={canExport}
+                  canWrite={canWrite}
+                  canPublish={canPublish}
+                  isExporting={exportItemsMutation.isPending}
+                  isDeleting={deleteItemMutation.isPending}
+                  isUpdatingStatus={itemStatusMutation.isPending}
+                  onExport={() =>
+                    exportItemsMutation.mutate(selectedVersion.id)
+                  }
+                  onEdit={setEditPriceItem}
+                  onDelete={(itemIds) =>
+                    deleteItemMutation.mutateAsync(
+                      Array.isArray(itemIds) ? itemIds : [itemIds]
+                    )
+                  }
+                  onReview={(item, action) =>
+                    setReviewItem({
+                      id: item.id,
+                      action,
+                      reason: pricingRiskLabel(item.review_risk_code ?? '', t),
+                      detail: item.review_reason ?? '',
+                    })
+                  }
+                  onSetEnabled={(itemId, enabled) =>
+                    itemStatusMutation.mutate({ itemId, enabled })
+                  }
+                />
               ) : null}
 
               {selectedVersion && comparisonBaseVersion ? (
@@ -990,6 +1023,10 @@ export function SalesPriceBooks() {
                   baseVersion={comparisonBaseVersion}
                   targetVersion={selectedVersion}
                 />
+              ) : null}
+
+              {selectedBook ? (
+                <PriceBookAuditPanel priceBookId={selectedBook.id} />
               ) : null}
             </TabsContent>
 
@@ -1000,11 +1037,13 @@ export function SalesPriceBooks() {
                   <CardDescription>
                     {t('Bind TOB users directly to a reusable price book.')}
                   </CardDescription>
-                  <CardAction>
-                    <Button onClick={() => setAssignOpen(true)}>
-                      {t('Assign user')}
-                    </Button>
-                  </CardAction>
+                  {canWrite ? (
+                    <CardAction>
+                      <Button onClick={() => setAssignOpen(true)}>
+                        {t('Assign user')}
+                      </Button>
+                    </CardAction>
+                  ) : null}
                 </CardHeader>
                 <CardContent className='flex flex-col gap-4'>
                   <div className='grid gap-3 md:grid-cols-[minmax(260px,1fr)_180px]'>
@@ -1050,14 +1089,18 @@ export function SalesPriceBooks() {
                     <Skeleton className='h-40 w-full' />
                   ) : null}
                   {assignments.length > 0 ? (
-                    <Table className='min-w-[70rem]'>
+                    <Table className='min-w-[86rem]'>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>{t('Username')}</TableHead>
+                          <TableHead className='bg-card sticky left-0 z-10'>
+                            {t('Username')}
+                          </TableHead>
                           <TableHead>{t('User ID')}</TableHead>
                           <TableHead>{t('Sales price book')}</TableHead>
                           <TableHead>{t('Version policy')}</TableHead>
                           <TableHead>{t('Status')}</TableHead>
+                          <TableHead>{t('Effective from')}</TableHead>
+                          <TableHead>{t('Effective to')}</TableHead>
                           <TableHead>{t('Quote reference')}</TableHead>
                           <TableHead>{t('Contract reference')}</TableHead>
                           <TableHead>{t('Actions')}</TableHead>
@@ -1066,7 +1109,7 @@ export function SalesPriceBooks() {
                       <TableBody>
                         {assignments.map((assignment) => (
                           <TableRow key={assignment.id}>
-                            <TableCell className='font-medium'>
+                            <TableCell className='bg-card sticky left-0 z-10 font-medium'>
                               {assignment.username}
                             </TableCell>
                             <TableCell>{assignment.user_id}</TableCell>
@@ -1077,9 +1120,23 @@ export function SalesPriceBooks() {
                             <TableCell>
                               {assignment.version_policy === 'follow_current'
                                 ? t('Follow current version')
-                                : t('Pin contract version')}
+                                : `${t('Pin contract version')} · v${assignment.pinned_version_number || assignment.pinned_version_id}`}
                             </TableCell>
-                            <TableCell>{assignment.status}</TableCell>
+                            <TableCell>
+                              {assignmentStatusLabel(assignment.status, t)}
+                            </TableCell>
+                            <TableCell>
+                              {new Date(
+                                assignment.effective_from * 1000
+                              ).toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              {assignment.effective_to > 0
+                                ? new Date(
+                                    assignment.effective_to * 1000
+                                  ).toLocaleString()
+                                : t('No expiration')}
+                            </TableCell>
                             <TableCell>
                               {assignment.quote_reference || '—'}
                             </TableCell>
@@ -1087,16 +1144,15 @@ export function SalesPriceBooks() {
                               {assignment.contract_reference || '—'}
                             </TableCell>
                             <TableCell>
-                              {assignment.status === 'active' ||
-                              assignment.status === 'scheduled' ? (
+                              {(assignment.status === 'active' ||
+                                assignment.status === 'scheduled') &&
+                              canWrite ? (
                                 <Button
                                   size='sm'
                                   variant='outline'
                                   disabled={cancelAssignmentMutation.isPending}
                                   onClick={() =>
-                                    cancelAssignmentMutation.mutate(
-                                      assignment.id
-                                    )
+                                    setCancelAssignment(assignment)
                                   }
                                 >
                                   {t('Cancel assignment')}
@@ -1125,7 +1181,7 @@ export function SalesPriceBooks() {
               </Card>
             </TabsContent>
             <TabsContent value='change-batches' className='mt-4'>
-              <ChangeBatchesPanel />
+              <ChangeBatchesPanel canWrite={canWrite} canPublish={canPublish} />
             </TabsContent>
           </Tabs>
         </div>
@@ -1133,19 +1189,40 @@ export function SalesPriceBooks() {
         <CreateBookDialog
           open={createBookOpen}
           onOpenChange={setCreateBookOpen}
+          onCreated={(book) => {
+            setSelectedBookId(book.id)
+            setSelectedVersionId(undefined)
+            setCreateVersionBookId(book.id)
+          }}
         />
-        {selectedBook ? (
+        {createVersionBookId ? (
           <CreateVersionDialog
-            open={createVersionOpen}
-            priceBookId={selectedBook.id}
-            onOpenChange={setCreateVersionOpen}
+            open
+            priceBookId={createVersionBookId}
+            version={editVersion}
+            onOpenChange={(open) => {
+              if (!open) {
+                setCreateVersionBookId(undefined)
+                setEditVersion(undefined)
+              }
+            }}
+            onSaved={(version) => {
+              setSelectedVersionId(version.id)
+              setGenerateTarget({
+                id: version.id,
+                label: `${selectedBook?.name ?? ''} / v${version.version}`,
+              })
+            }}
           />
         ) : null}
-        {selectedVersion ? (
+        {generateTarget ? (
           <GenerateItemsDialog
-            open={generateOpen}
-            versionId={selectedVersion.id}
-            onOpenChange={setGenerateOpen}
+            open
+            versionId={generateTarget.id}
+            versionLabel={generateTarget.label}
+            onOpenChange={(open) => {
+              if (!open) setGenerateTarget(undefined)
+            }}
           />
         ) : null}
         <AssignUserDialog
@@ -1168,6 +1245,8 @@ export function SalesPriceBooks() {
         <ReviewItemDialog
           itemId={reviewItem?.id}
           action={reviewItem?.action ?? 'accept'}
+          reason={reviewItem?.reason ?? ''}
+          detail={reviewItem?.detail ?? ''}
           pending={
             acceptReviewMutation.isPending || rejectReviewMutation.isPending
           }
@@ -1190,6 +1269,61 @@ export function SalesPriceBooks() {
           }}
           onSubmit={(item) => saveItemMutation.mutate(item)}
         />
+        <PublishVersionDialog
+          candidate={publishCandidate}
+          pending={publishMutation.isPending}
+          onOpenChange={(open) => {
+            if (!open && !publishMutation.isPending) {
+              setPublishCandidate(undefined)
+            }
+          }}
+          onConfirm={(versionId) => publishMutation.mutate(versionId)}
+        />
+        <AlertDialog
+          open={Boolean(cancelAssignment)}
+          onOpenChange={(open) => {
+            if (!open && !cancelAssignmentMutation.isPending) {
+              setCancelAssignment(undefined)
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t('Cancel user price book assignment')}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'User {{username}} will stop using {{book}} and return to the applicable default pricing policy.',
+                  {
+                    username: cancelAssignment?.username ?? '',
+                    book:
+                      cancelAssignment?.price_book_name ??
+                      cancelAssignment?.price_book_id ??
+                      '',
+                  }
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={cancelAssignmentMutation.isPending}>
+                {t('Keep assignment')}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                variant='destructive'
+                disabled={cancelAssignmentMutation.isPending}
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (cancelAssignment) {
+                    cancelAssignmentMutation.mutate(cancelAssignment.id)
+                  }
+                }}
+              >
+                {t('Cancel assignment')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog
           open={Boolean(destructiveAction)}
           onOpenChange={(open) => {

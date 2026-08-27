@@ -13,6 +13,17 @@ import {
   storedRateToPercentage,
 } from './rate-format'
 
+function formatDecimal(value: string, maximumFractionDigits = 4): string {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return value
+  }
+  return parsed
+    .toFixed(maximumFractionDigits)
+    .replace(/0+$/, '')
+    .replace(/\.$/, '')
+}
+
 export function formatPurchaseDiscount(
   storedMultiplier: string,
   t: TFunction
@@ -21,7 +32,7 @@ export function formatPurchaseDiscount(
     return '—'
   }
   return t('{{discount}}/10 ({{percentage}} of official price)', {
-    discount: storedMultiplierToDiscountTenths(storedMultiplier),
-    percentage: `${storedRateToPercentage(storedMultiplier)}%`,
+    discount: formatDecimal(storedMultiplierToDiscountTenths(storedMultiplier)),
+    percentage: `${formatDecimal(storedRateToPercentage(storedMultiplier))}%`,
   })
 }

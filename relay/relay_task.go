@@ -201,7 +201,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 4. 价格计算：任务请求必须由完整采购价和销售报价链接管。
 	// 无法在提交前安全确定计费用量时明确拒绝。
 	info.OriginModelName = modelName
-	if !pricingruntime.HasCompletePricing(info.UsingGroup, info.OriginModelName) {
+	if info.DynamicPricingSnapshot == nil &&
+		!pricingruntime.HasCompletePricing(info.UsingGroup, info.OriginModelName) {
 		return nil, service.TaskErrorWrapper(
 			fmt.Errorf("model %s has no complete purchase and sales price", info.OriginModelName),
 			"model_price_error",
@@ -225,84 +226,104 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		)
 	}
 
-	// 5. 让适配器补充时长、分辨率等请求数据，再冻结本次价格。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+	// 5. 首次尝试冻结销售价格和请求计价输入。重试只切换冻结快照内的
+	// 采购渠道，不再读取当前报价簿或重新估算时长、分辨率等价格参数。
+	// 这保证上游重试期间即使管理员发布了新价格，本请求仍按接收时的价格结算。
+	if info.DynamicPricingSnapshot != nil {
+		if pricingErr := pricingruntime.BindSelectedChannel(info, info.ChannelId); pricingErr != nil {
+			return nil, service.TaskErrorWrapper(pricingErr, "model_price_error", http.StatusServiceUnavailable)
+		}
+	} else {
+		if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+			for name, ratio := range estimatedRatios {
+				info.PriceData.AddOtherRatio(name, ratio)
+			}
+		}
+		estimatedRatios := info.PriceData.OtherRatios()
+		seconds := estimatedRatios["seconds"]
+		if seconds <= 0 {
+			taskRequest, requestErr := relaycommon.GetTaskRequest(c)
+			if requestErr != nil {
+				return nil, service.TaskErrorWrapperLocal(requestErr, "invalid_request", http.StatusBadRequest)
+			}
+			switch {
+			case taskRequest.Duration > 0:
+				seconds = float64(taskRequest.Duration)
+			case taskRequest.Seconds != "":
+				parsedSeconds, parseErr := strconv.Atoi(taskRequest.Seconds)
+				if parseErr != nil {
+					return nil, service.TaskErrorWrapperLocal(
+						fmt.Errorf("invalid video duration: %w", parseErr),
+						"invalid_request",
+						http.StatusBadRequest,
+					)
+				}
+				seconds = float64(parsedSeconds)
+			default:
+				if metadataDuration, ok := taskRequest.Metadata["duration"].(float64); ok {
+					seconds = metadataDuration
+				}
+			}
+		}
+		if seconds > relaycommon.MaxTaskDurationSeconds {
+			return nil, service.TaskErrorWrapperLocal(
+				fmt.Errorf("video duration exceeds %d seconds", relaycommon.MaxTaskDurationSeconds),
+				"invalid_request",
+				http.StatusBadRequest,
+			)
+		}
+		requestInput, requestErr := helper.ResolveIncomingBillingExprRequestInput(c, info)
+		if requestErr != nil {
+			return nil, service.TaskErrorWrapper(requestErr, "model_price_error", http.StatusBadRequest)
+		}
+		priceData, pricingErr := pricingruntime.PrepareRelayPricing(
+			info,
+			info.UsingGroup,
+			info.ChannelId,
+			info.TaskPreConsumeTokens,
+			0,
+			requestInput,
+			pricingengine.Usage{RequestCount: 1, VideoSeconds: seconds},
+		)
+		if pricingErr != nil {
+			return nil, service.TaskErrorWrapper(pricingErr, "model_price_error", http.StatusBadRequest)
+		}
+		info.PriceData = priceData
 		for name, ratio := range estimatedRatios {
 			info.PriceData.AddOtherRatio(name, ratio)
 		}
 	}
-	estimatedRatios := info.PriceData.OtherRatios()
-	seconds := estimatedRatios["seconds"]
-	if seconds <= 0 {
-		taskRequest, requestErr := relaycommon.GetTaskRequest(c)
-		if requestErr != nil {
-			return nil, service.TaskErrorWrapperLocal(requestErr, "invalid_request", http.StatusBadRequest)
-		}
-		switch {
-		case taskRequest.Duration > 0:
-			seconds = float64(taskRequest.Duration)
-		case taskRequest.Seconds != "":
-			parsedSeconds, parseErr := strconv.Atoi(taskRequest.Seconds)
-			if parseErr != nil {
-				return nil, service.TaskErrorWrapperLocal(
-					fmt.Errorf("invalid video duration: %w", parseErr),
-					"invalid_request",
-					http.StatusBadRequest,
-				)
-			}
-			seconds = float64(parsedSeconds)
-		default:
-			if metadataDuration, ok := taskRequest.Metadata["duration"].(float64); ok {
-				seconds = metadataDuration
-			}
-		}
-	}
-	if seconds > relaycommon.MaxTaskDurationSeconds {
-		return nil, service.TaskErrorWrapperLocal(
-			fmt.Errorf("video duration exceeds %d seconds", relaycommon.MaxTaskDurationSeconds),
-			"invalid_request",
-			http.StatusBadRequest,
-		)
-	}
-	requestInput, requestErr := helper.ResolveIncomingBillingExprRequestInput(c, info)
-	if requestErr != nil {
-		return nil, service.TaskErrorWrapper(requestErr, "model_price_error", http.StatusBadRequest)
-	}
-	priceData, pricingErr := pricingruntime.PrepareRelayPricing(
-		info,
-		info.UsingGroup,
-		info.ChannelId,
-		info.TaskPreConsumeTokens,
-		0,
-		requestInput,
-		pricingengine.Usage{RequestCount: 1, VideoSeconds: seconds},
-	)
-	if pricingErr != nil {
-		return nil, service.TaskErrorWrapper(pricingErr, "model_price_error", http.StatusBadRequest)
-	}
-	info.PriceData = priceData
-	for name, ratio := range estimatedRatios {
-		info.PriceData.AddOtherRatio(name, ratio)
-	}
 
 	// 6. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	firstPreConsume := info.Billing == nil
-	if firstPreConsume && !info.PriceData.FreeModel {
-		info.ForcePreConsume = true
-		if apiErr := service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info); apiErr != nil {
-			return nil, service.TaskErrorFromAPIError(apiErr)
-		}
-	}
 	if firstPreConsume &&
 		info.DynamicPricingSnapshot != nil &&
 		!info.DynamicPricingSnapshot.AuditCreated {
 		if snapshotErr := pricingruntime.CreateRequestPricingSnapshot(info); snapshotErr != nil {
-			if info.Billing != nil {
-				info.Billing.Refund(c)
-			}
 			return nil, service.TaskErrorWrapper(
 				snapshotErr,
 				"create_pricing_snapshot_failed",
+				http.StatusInternalServerError,
+			)
+		}
+	}
+	if firstPreConsume && !info.PriceData.FreeModel {
+		info.ForcePreConsume = true
+		if apiErr := service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info); apiErr != nil {
+			pricingruntime.MarkRequestPricingPendingWithReason(
+				info.RequestId, "preconsume_failed", apiErr.Error(),
+			)
+			return nil, service.TaskErrorFromAPIError(apiErr)
+		}
+	}
+	if firstPreConsume && info.PriceData.FreeModel {
+		if snapshotErr := pricingruntime.SyncRequestPricingPreConsume(info); snapshotErr != nil {
+			pricingruntime.MarkRequestPricingPendingWithReason(
+				info.RequestId, "free_preconsume_capture_failed", snapshotErr.Error(),
+			)
+			return nil, service.TaskErrorWrapper(
+				snapshotErr,
+				"capture_pricing_snapshot_failed",
 				http.StatusInternalServerError,
 			)
 		}

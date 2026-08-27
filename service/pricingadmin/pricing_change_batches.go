@@ -136,6 +136,7 @@ func ListPricingChangeBatches(
 	}
 	if filter.TriggerType != "" {
 		if filter.TriggerType != "manual_price_book_generation" &&
+			filter.TriggerType != "manual_price_book_edit" &&
 			filter.TriggerType != SalesPriceBookTriggerPurchasePricePublished &&
 			filter.TriggerType != PurchasePriceTriggerOfficialPricePublished {
 			return nil, 0, fmt.Errorf("unsupported pricing change trigger %q", filter.TriggerType)

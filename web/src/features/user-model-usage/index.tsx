@@ -30,8 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import dayjs from '@/lib/dayjs'
+import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 
 import { getUserModelUsage } from './api'
 import type { UserModelUsageFilters } from './types'
@@ -256,7 +256,7 @@ export function UserModelUsagePage() {
                 </div>
               </div>
               <div className='mt-3 flex flex-wrap items-center gap-1.5'>
-                <span className='text-muted-foreground pr-1 text-xs font-medium uppercase tracking-wide'>
+                <span className='text-muted-foreground pr-1 text-xs font-medium tracking-wide uppercase'>
                   {t('Quick Range')}
                 </span>
                 {DATE_RANGE_PRESETS.map((preset) => (

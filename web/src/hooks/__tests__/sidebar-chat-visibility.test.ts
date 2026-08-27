@@ -190,4 +190,18 @@ describe('sidebar chat preset visibility', () => {
       ])
     )
   })
+
+  test('shows the sales discount calculator only once', () => {
+    currentUserRole = ROLE.SUPER_ADMIN
+
+    const { result } = renderHook(() => useSidebarView())
+    const adminGroup = result.current.navGroups.find(
+      (group) => group.id === 'admin'
+    )
+    const calculatorItems = adminGroup?.items.filter(
+      (item) => item.url === '/sales-discount-calculator'
+    )
+
+    expect(calculatorItems).toHaveLength(1)
+  })
 })

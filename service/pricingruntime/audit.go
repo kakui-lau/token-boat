@@ -70,7 +70,7 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		BillingMode:             selected.BillingMode,
 		EstimatedUsage:          estimatedUsage,
 		ReservedQuota:           int64(info.DynamicPricingSnapshot.ReservationQuota),
-		PreConsumeCaptured:      true,
+		PreConsumeCaptured:      info.Billing != nil,
 		TokenId:                 info.TokenId,
 		SettledQuota:            0,
 		PurchaseCost:            selected.EstimatedPurchaseUSD,
@@ -95,6 +95,9 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		Currency:                selected.Currency,
 		Status:                  PricingSnapshotStatusReserved,
 	}
+	if snapshot.BillingSource == "" && !snapshot.PreConsumeCaptured {
+		snapshot.BillingSource = "pending"
+	}
 	if info.Billing != nil {
 		snapshot.ActualPreConsumedQuota = int64(info.Billing.GetPreConsumedQuota())
 		if !info.IsPlayground {
@@ -112,13 +115,20 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 // retry raises the amount held by the billing session. It never infers an
 // amount from the estimate: zero is a valid captured value for trusted users.
 func SyncRequestPricingPreConsume(info *relaycommon.RelayInfo) error {
-	if info == nil || info.DynamicPricingSnapshot == nil || info.Billing == nil || info.RequestId == "" {
+	if info == nil || info.DynamicPricingSnapshot == nil || info.RequestId == "" {
 		return nil
 	}
-	actual := int64(info.Billing.GetPreConsumedQuota())
+	actual := int64(0)
+	if info.Billing != nil {
+		actual = int64(info.Billing.GetPreConsumedQuota())
+	}
 	tokenActual := actual
 	if info.IsPlayground {
 		tokenActual = 0
+	}
+	billingSource := info.BillingSource
+	if billingSource == "" {
+		billingSource = "none"
 	}
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where("request_id = ? AND status IN ?", info.RequestId, []string{
@@ -130,6 +140,8 @@ func SyncRequestPricingPreConsume(info *relaycommon.RelayInfo) error {
 			"token_pre_consumed_quota":  tokenActual,
 			"pre_consume_captured":      true,
 			"token_id":                  info.TokenId,
+			"billing_source":            billingSource,
+			"subscription_id":           info.SubscriptionId,
 			"updated_at":                common.GetTimestamp(),
 		})
 	if result.Error != nil {
@@ -522,7 +534,7 @@ func ReconcileStaleRequestPricingSnapshots(staleBefore int64) (int64, error) {
 	if captured.Error != nil {
 		return 0, captured.Error
 	}
-	legacy := model.DB.Model(&model.RequestPricingSnapshot{}).
+	uncaptured := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where(
 			"status = ? AND created_at <= ? AND (pre_consume_captured = ? OR pre_consume_captured IS NULL)",
 			PricingSnapshotStatusReserved,
@@ -531,11 +543,11 @@ func ReconcileStaleRequestPricingSnapshots(staleBefore int64) (int64, error) {
 		).
 		Updates(map[string]any{
 			"status":         PricingSnapshotStatusPending,
-			"failure_code":   "legacy_preconsume_unknown",
-			"failure_reason": "legacy snapshot does not contain the actual pre-consumed amount",
+			"failure_code":   "preconsume_capture_missing",
+			"failure_reason": "reservation intent exists but the actual pre-consume result was not durably captured",
 			"updated_at":     common.GetTimestamp(),
 		})
-	return captured.RowsAffected + legacy.RowsAffected, legacy.Error
+	return captured.RowsAffected + uncaptured.RowsAffected, uncaptured.Error
 }
 
 type PricingReconciliationClassification struct {
@@ -572,9 +584,10 @@ func ClassifyStalePendingPricingSnapshots(staleBefore int64) (PricingReconciliat
 	result.NoChargeFinalized = noCharge.RowsAffected
 	legacy := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where(
-			"status = ? AND created_at <= ? AND (pre_consume_captured = ? OR pre_consume_captured IS NULL)",
+			"status = ? AND created_at <= ? AND failure_code = ? AND (pre_consume_captured = ? OR pre_consume_captured IS NULL)",
 			PricingSnapshotStatusPending,
 			staleBefore,
+			"legacy_preconsume_unknown",
 			false,
 		).
 		Updates(map[string]any{

@@ -89,3 +89,45 @@ test('derives the variable cost rate from payment, distribution, and operations 
     )
   })
 })
+
+test('shows readable cost basis labels and explains the selected strategy', async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <CreateVersionDialog open priceBookId={17} onOpenChange={vi.fn()} />
+    </QueryClientProvider>
+  )
+
+  const strategy = screen.getByRole('combobox', {
+    name: 'Cost basis strategy',
+  })
+  expect(strategy).toHaveTextContent(
+    'Maximum eligible purchase cost (recommended)'
+  )
+  expect(strategy).not.toHaveTextContent('max_eligible_cost')
+  expect(
+    screen.getByText(
+      'Uses the highest cost from the selected active purchase prices to protect margin when routing changes. Recommended for TOC and most TOB price books.'
+    )
+  ).toBeVisible()
+
+  fireEvent.click(strategy)
+  const minimumCost = screen.getByRole('option', {
+    name: 'Minimum eligible purchase cost',
+  })
+  fireEvent.pointerDown(minimumCost, { button: 0 })
+  fireEvent.pointerUp(minimumCost, { button: 0 })
+  fireEvent.click(minimumCost)
+
+  await waitFor(() => {
+    expect(strategy).toHaveTextContent('Minimum eligible purchase cost')
+    expect(
+      screen.getByText(
+        'Uses the lowest cost from the selected active purchase prices. Use only when routing is guaranteed to stay on a low-cost channel; otherwise margin may fall below the minimum.'
+      )
+    ).toBeVisible()
+  })
+})

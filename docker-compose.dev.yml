@@ -1,5 +1,8 @@
 # Frontend Development - Backend built from local source
 #
+# Prerequisite: PostgreSQL is available on the host at 127.0.0.1:5433/token-boat.
+# Containers access the same database through host.docker.internal.
+#
 # Usage:
 #   1. docker compose -f docker-compose.dev.yml up -d
 #   2. make dev-web
@@ -27,7 +30,8 @@ services:
     volumes:
       - dev_data:/data
     environment:
-      - SQL_DSN=postgresql://root:123456@postgres:5432/new-api
+      - DATABASE_URL=postgresql://postgres:123456@host.docker.internal:5433/token-boat
+      - SQL_DSN=postgresql://postgres:123456@host.docker.internal:5433/token-boat
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - BATCH_UPDATE_ENABLED=true
@@ -39,8 +43,8 @@ services:
     depends_on:
       redis:
         condition: service_started
-      postgres:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - dev-network
 
@@ -48,30 +52,13 @@ services:
     image: redis:7-alpine
     container_name: new-api-dev-redis
     restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - dev-network
-
-  postgres:
-    image: postgres:15-alpine
-    container_name: new-api-dev-pg
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: new-api
-    volumes:
-      - dev_pg_data:/var/lib/postgresql/data
-    networks:
-      - dev-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d new-api"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
 volumes:
   dev_data:
-  dev_pg_data:
 
 networks:
   dev-network:

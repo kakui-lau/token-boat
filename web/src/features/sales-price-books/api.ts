@@ -24,11 +24,13 @@ import type {
   CreateSalesPriceBookVersionInput,
   PricingChangeBatch,
   PricingChangeBatchItem,
+  PricingAuditRecord,
   PricingChangeBatchPublishResult,
   PricingAutomationReconciliationSummary,
   PricingChangeBatchListFilters,
   PaginatedSalesPriceBookList,
   SalesPriceBook,
+  SalesPriceBookDefault,
   SalesPriceBookItem,
   SalesPriceBookListFilters,
   SalesPriceBookVersion,
@@ -48,6 +50,14 @@ export async function getSalesPriceBooks(params: SalesPriceBookListFilters) {
   const response = await api.get<
     ApiResponse<PaginatedSalesPriceBookList<SalesPriceBook>>
   >('/api/pricing-admin/price-books', { params })
+  return requireSuccess(response.data)
+}
+
+export async function getDefaultSalesPriceBook() {
+  const response = await api.get<ApiResponse<SalesPriceBookDefault>>(
+    '/api/pricing-admin/price-book-defaults',
+    { params: { default_key: 'toc_default' } }
+  )
   return requireSuccess(response.data)
 }
 
@@ -109,6 +119,17 @@ export async function createSalesPriceBookVersion(
   return requireSuccess(response.data)
 }
 
+export async function updateSalesPriceBookVersion(
+  versionId: number,
+  input: CreateSalesPriceBookVersionInput
+) {
+  const response = await api.put<ApiResponse<SalesPriceBookVersion>>(
+    `/api/pricing-admin/price-book-versions/${versionId}`,
+    input
+  )
+  return requireSuccess(response.data)
+}
+
 export async function cloneSalesPriceBookVersion(
   priceBookId: number,
   sourceVersionId: number
@@ -146,6 +167,34 @@ export async function saveSalesPriceBookItem(item: SalesPriceBookItem) {
     `/api/pricing-admin/price-book-versions/${item.price_book_version_id}/items`,
     item
   )
+  return requireSuccess(response.data)
+}
+
+export async function deleteSalesPriceBookItem(itemId: number) {
+  const response = await api.delete<ApiResponse<null>>(
+    `/api/pricing-admin/price-book-items/${itemId}`
+  )
+  return requireSuccess(response.data)
+}
+
+export async function deleteSalesPriceBookItems(itemIds: number[]) {
+  const response = await api.post<ApiResponse<null>>(
+    '/api/pricing-admin/price-book-items/batch-delete',
+    { item_ids: itemIds }
+  )
+  return requireSuccess(response.data)
+}
+
+export async function getSalesPriceBookAuditRecords(
+  priceBookId: number,
+  page: number,
+  pageSize: number
+) {
+  const response = await api.get<
+    ApiResponse<PaginatedSalesPriceBookList<PricingAuditRecord>>
+  >(`/api/pricing-admin/price-books/${priceBookId}/audit-records`, {
+    params: { p: page, page_size: pageSize },
+  })
   return requireSuccess(response.data)
 }
 
@@ -262,6 +311,7 @@ export async function assignUserPriceBook(input: {
   contract_reference?: string
   remark?: string
   effective_from?: number
+  effective_to?: number
 }) {
   const response = await api.post<ApiResponse<UserPriceBookAssignment>>(
     '/api/pricing-admin/user-price-book-assignments',

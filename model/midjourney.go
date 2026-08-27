@@ -1,28 +1,47 @@
 package model
 
+import (
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/bytedance/gopkg/util/gopool"
+	"gorm.io/gorm"
+)
+
+const MidjourneyRefundStatusCompleted = "completed"
+
 type Midjourney struct {
-	Id          int    `json:"id"`
-	Code        int    `json:"code"`
-	UserId      int    `json:"user_id" gorm:"index"`
-	Action      string `json:"action" gorm:"type:varchar(40);index"`
-	MjId        string `json:"mj_id" gorm:"index"`
-	Prompt      string `json:"prompt"`
-	PromptEn    string `json:"prompt_en"`
-	Description string `json:"description"`
-	State       string `json:"state"`
-	SubmitTime  int64  `json:"submit_time" gorm:"index"`
-	StartTime   int64  `json:"start_time" gorm:"index"`
-	FinishTime  int64  `json:"finish_time" gorm:"index"`
-	ImageUrl    string `json:"image_url"`
-	VideoUrl    string `json:"video_url"`
-	VideoUrls   string `json:"video_urls"`
-	Status      string `json:"status" gorm:"type:varchar(20);index"`
-	Progress    string `json:"progress" gorm:"type:varchar(30);index"`
-	FailReason  string `json:"fail_reason"`
-	ChannelId   int    `json:"channel_id"`
-	Quota       int    `json:"quota"`
-	Buttons     string `json:"buttons"`
-	Properties  string `json:"properties"`
+	Id             int    `json:"id"`
+	Code           int    `json:"code"`
+	UserId         int    `json:"user_id" gorm:"index"`
+	Action         string `json:"action" gorm:"type:varchar(40);index"`
+	MjId           string `json:"mj_id" gorm:"index"`
+	Prompt         string `json:"prompt"`
+	PromptEn       string `json:"prompt_en"`
+	Description    string `json:"description"`
+	State          string `json:"state"`
+	SubmitTime     int64  `json:"submit_time" gorm:"index"`
+	StartTime      int64  `json:"start_time" gorm:"index"`
+	FinishTime     int64  `json:"finish_time" gorm:"index"`
+	ImageUrl       string `json:"image_url"`
+	VideoUrl       string `json:"video_url"`
+	VideoUrls      string `json:"video_urls"`
+	Status         string `json:"status" gorm:"type:varchar(20);index"`
+	Progress       string `json:"progress" gorm:"type:varchar(30);index"`
+	FailReason     string `json:"fail_reason"`
+	ChannelId      int    `json:"channel_id"`
+	Quota          int    `json:"quota"`
+	BillingSource  string `json:"-" gorm:"type:varchar(16);index"`
+	SubscriptionId int    `json:"-" gorm:"index"`
+	TokenId        int    `json:"-" gorm:"index"`
+	RequestId      string `json:"-" gorm:"type:varchar(64);index"`
+	RefundStatus   string `json:"-" gorm:"type:varchar(20);index"`
+	RefundQuota    int    `json:"-"`
+	RefundedAt     int64  `json:"-"`
+	Buttons        string `json:"buttons"`
+	Properties     string `json:"properties"`
 }
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -181,6 +200,127 @@ func (midjourney *Midjourney) UpdateWithStatus(fromStatus string) (bool, error) 
 		return false, result.Error
 	}
 	return result.RowsAffected > 0, nil
+}
+
+// ApplyMidjourneyRefund atomically reverses the durable accounting recorded
+// when a legacy Midjourney request was accepted. The quota marker is cleared
+// in the same transaction, making repeated polling/notify failures idempotent.
+func ApplyMidjourneyRefund(id int, expectedQuota int) (applied bool, task *Midjourney, tokenKey string, err error) {
+	if id <= 0 || expectedQuota <= 0 {
+		return false, nil, "", errors.New("invalid Midjourney refund request")
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		var current Midjourney
+		if err := lockForUpdate(tx).Where("id = ?", id).First(&current).Error; err != nil {
+			return err
+		}
+		task = &current
+		if current.RefundStatus == MidjourneyRefundStatusCompleted && current.Quota == 0 {
+			return nil
+		}
+		if current.Quota != expectedQuota {
+			return fmt.Errorf("Midjourney refund quota changed: expected=%d actual=%d", expectedQuota, current.Quota)
+		}
+
+		if current.BillingSource == "subscription" && current.SubscriptionId > 0 {
+			var subscription UserSubscription
+			if err := lockForUpdate(tx).Where("id = ?", current.SubscriptionId).First(&subscription).Error; err != nil {
+				return err
+			}
+			subscription.AmountUsed -= int64(expectedQuota)
+			if subscription.AmountUsed < 0 {
+				subscription.AmountUsed = 0
+			}
+			if err := tx.Model(&subscription).Update("amount_used", subscription.AmountUsed).Error; err != nil {
+				return err
+			}
+		} else {
+			result := tx.Model(&User{}).Where("id = ?", current.UserId).
+				Update("quota", gorm.Expr("quota + ?", expectedQuota))
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return fmt.Errorf("refund user not found: %d", current.UserId)
+			}
+		}
+
+		if current.TokenId > 0 {
+			var token Token
+			findErr := lockForUpdate(tx).Unscoped().Where("id = ?", current.TokenId).First(&token).Error
+			if findErr != nil && !errors.Is(findErr, gorm.ErrRecordNotFound) {
+				return findErr
+			}
+			if findErr == nil {
+				tokenKey = token.Key
+				if err := tx.Unscoped().Model(&Token{}).Where("id = ?", token.Id).
+					Updates(map[string]any{
+						"remain_quota":  gorm.Expr("remain_quota + ?", expectedQuota),
+						"used_quota":    gorm.Expr("CASE WHEN used_quota < ? THEN 0 ELSE used_quota - ? END", expectedQuota, expectedQuota),
+						"accessed_time": common.GetTimestamp(),
+					}).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		userResult := tx.Model(&User{}).Where("id = ?", current.UserId).
+			Update("used_quota", gorm.Expr("CASE WHEN used_quota < ? THEN 0 ELSE used_quota - ? END", expectedQuota, expectedQuota))
+		if userResult.Error != nil {
+			return userResult.Error
+		}
+		if userResult.RowsAffected != 1 {
+			return fmt.Errorf("refund usage user not found: %d", current.UserId)
+		}
+		if current.ChannelId > 0 {
+			if err := tx.Model(&Channel{}).Where("id = ?", current.ChannelId).
+				Update("used_quota", gorm.Expr("CASE WHEN used_quota < ? THEN 0 ELSE used_quota - ? END", expectedQuota, expectedQuota)).Error; err != nil {
+				return err
+			}
+		}
+
+		refundedAt := time.Now().Unix()
+		result := tx.Model(&Midjourney{}).Where("id = ? AND quota = ?", current.Id, expectedQuota).
+			Updates(map[string]any{
+				"quota":         0,
+				"refund_status": MidjourneyRefundStatusCompleted,
+				"refund_quota":  expectedQuota,
+				"refunded_at":   refundedAt,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("Midjourney refund completion lost")
+		}
+		current.Quota = 0
+		current.RefundStatus = MidjourneyRefundStatusCompleted
+		current.RefundQuota = expectedQuota
+		current.RefundedAt = refundedAt
+		task = &current
+		applied = true
+		return nil
+	})
+	if err != nil || !applied || task == nil {
+		return applied, task, tokenKey, err
+	}
+
+	if task.BillingSource != "subscription" {
+		gopool.Go(func() {
+			if cacheErr := cacheIncrUserQuota(task.UserId, int64(expectedQuota)); cacheErr != nil {
+				common.SysLog("failed to update refunded Midjourney user quota cache: " + cacheErr.Error())
+			}
+		})
+	}
+	if common.RedisEnabled && tokenKey != "" {
+		gopool.Go(func() {
+			if cacheErr := cacheIncrTokenQuota(tokenKey, int64(expectedQuota)); cacheErr != nil {
+				common.SysLog("failed to update refunded Midjourney token quota cache: " + cacheErr.Error())
+			}
+		})
+	}
+	return true, task, tokenKey, nil
 }
 
 func MjBulkUpdate(mjIds []string, params map[string]any) error {

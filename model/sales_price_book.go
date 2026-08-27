@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -367,13 +368,29 @@ func ReplaceUserPriceBookAssignment(
 	if assignment == nil {
 		return errors.New("price book assignment is required")
 	}
+	now := common.GetTimestamp()
+	if assignment.EffectiveFrom < 0 || assignment.EffectiveTo < 0 {
+		return errors.New("price book assignment effective times cannot be negative")
+	}
+	if assignment.EffectiveFrom == 0 {
+		assignment.EffectiveFrom = now
+	}
+	if assignment.EffectiveTo > 0 && assignment.EffectiveTo <= assignment.EffectiveFrom {
+		return errors.New("price book assignment effective end must be after its start")
+	}
+	assignment.QuoteReference = strings.TrimSpace(assignment.QuoteReference)
+	assignment.ContractReference = strings.TrimSpace(assignment.ContractReference)
+	assignment.Remark = strings.TrimSpace(assignment.Remark)
+	if utf8.RuneCountInString(assignment.QuoteReference) > 64 ||
+		utf8.RuneCountInString(assignment.ContractReference) > 64 {
+		return errors.New("price book assignment quote and contract references cannot exceed 64 characters")
+	}
+	if utf8.RuneCountInString(assignment.Remark) > 255 {
+		return errors.New("price book assignment remark cannot exceed 255 characters")
+	}
 	var user User
 	if err := lockForUpdate(tx).Select("id").First(&user, assignment.UserId).Error; err != nil {
 		return err
-	}
-	now := common.GetTimestamp()
-	if assignment.EffectiveFrom == 0 {
-		assignment.EffectiveFrom = now
 	}
 	if assignment.EffectiveFrom <= now {
 		assignment.Status = PriceBookAssignmentStatusActive
@@ -399,14 +416,6 @@ func ReplaceUserPriceBookAssignment(
 			Updates(map[string]any{
 				"status":       PriceBookAssignmentStatusCancelled,
 				"effective_to": now,
-				"updated_at":   now,
-			}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&UserPriceBookAssignment{}).
-			Where("user_id = ? AND status = ?", assignment.UserId, PriceBookAssignmentStatusActive).
-			Updates(map[string]any{
-				"effective_to": assignment.EffectiveFrom,
 				"updated_at":   now,
 			}).Error; err != nil {
 			return err

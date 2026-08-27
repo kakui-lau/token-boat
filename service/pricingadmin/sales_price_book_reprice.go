@@ -59,7 +59,7 @@ func resetReviewRequiredChangeBatch(idempotencyKey string, expectedBatchId int) 
 	var draft model.SalesPriceBookVersion
 	err = model.DB.First(&draft, "change_batch_id = ?", batch.Id).Error
 	if err == nil {
-		if err := deleteSalesPriceBookDraft(draft.Id); err != nil {
+		if err := deleteSalesPriceBookDraft(draft.Id, 0); err != nil {
 			return err
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -226,7 +226,7 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 			TriggerId:              &triggerId,
 		}, userId)
 		if err != nil {
-			if cleanupErr := deleteSalesPriceBookDraft(draft.Id); cleanupErr != nil {
+			if cleanupErr := deleteSalesPriceBookDraft(draft.Id, 0); cleanupErr != nil {
 				return nil, fmt.Errorf(
 					"generate sales price book %d draft %d: %w; cleanup failed: %v",
 					book.PriceBookId, draft.Id, err, cleanupErr,
@@ -264,7 +264,7 @@ func cancelSupersededAutomaticSalesDrafts(priceBookId int) error {
 		}).Error
 }
 
-func deleteSalesPriceBookDraft(versionId int) error {
+func deleteSalesPriceBookDraft(versionId int, userId int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		version, err := model.GetSalesPriceBookVersionForUpdate(tx, versionId)
 		if err != nil {
@@ -284,15 +284,45 @@ func deleteSalesPriceBookDraft(versionId int) error {
 				return err
 			}
 		}
+		auditQuery := tx.Where("object_type = ? AND object_id = ?",
+			"sales_price_book_version", versionId)
+		if len(itemIds) > 0 {
+			auditQuery = auditQuery.Or("object_type = ? AND object_id IN ?",
+				"sales_price_book_item", itemIds)
+		}
+		var draftAuditRecords []model.PricingAuditRecord
+		if err := auditQuery.Find(&draftAuditRecords).Error; err != nil {
+			return err
+		}
+		for _, record := range draftAuditRecords {
+			comment := fmt.Sprintf("draft v%d", version.Version)
+			if record.Comment != "" {
+				comment += "; " + record.Comment
+			}
+			if err := tx.Model(&model.PricingAuditRecord{}).Where("id = ?", record.Id).
+				Updates(map[string]any{
+					"object_type": "sales_price_book",
+					"object_id":   version.PriceBookId,
+					"comment":     comment,
+				}).Error; err != nil {
+				return err
+			}
+		}
 		if err := tx.Where("price_book_version_id = ?", versionId).
 			Delete(&model.SalesPriceBookItem{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("object_type = ? AND object_id = ?",
-			"sales_price_book_version", versionId).Delete(&model.PricingAuditRecord{}).Error; err != nil {
+		if err := tx.Delete(&model.SalesPriceBookVersion{}, versionId).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.SalesPriceBookVersion{}, versionId).Error
+		if userId <= 0 {
+			return nil
+		}
+		return tx.Create(&model.PricingAuditRecord{
+			ObjectType: "sales_price_book", ObjectId: version.PriceBookId,
+			Action: "delete_draft", OperatorId: userId,
+			Comment: fmt.Sprintf("v%d", version.Version),
+		}).Error
 	})
 }
 

@@ -23,10 +23,20 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
-import { useDeferredValue, useState } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,6 +56,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -62,8 +73,10 @@ import {
   publishGeneratedPricingChangeBatch,
   reconcilePricingAutomation,
 } from '../api'
+import { pricingRiskLabel } from '../lib/pricing-risk'
 import type { PricingChangeBatch } from '../types'
 import { ListPagination } from './list-pagination'
+import { TableRecordCount } from './table-record-count'
 
 function triggerLabel(trigger: string, t: TFunction) {
   if (trigger === 'official_price_publish') {
@@ -75,7 +88,35 @@ function triggerLabel(trigger: string, t: TFunction) {
   if (trigger === 'manual_price_book_generation') {
     return t('Manual price generation')
   }
+  if (trigger === 'manual_price_book_edit') {
+    return t('Manual price edit')
+  }
   return trigger
+}
+
+function batchStatusLabel(status: PricingChangeBatch['status'], t: TFunction) {
+  return status === 'completed' ? t('Completed') : t('Requires review')
+}
+
+function targetLabel(target: string, t: TFunction) {
+  return target === 'sales_price_book_item'
+    ? t('Model sales price')
+    : t('Purchase price version')
+}
+
+function actionLabel(action: string, t: TFunction) {
+  const labels: Record<string, string> = {
+    added: t('Added'),
+    changed: t('Changed'),
+    unchanged: t('Unchanged'),
+    removed: t('Removed'),
+  }
+  return labels[action] ?? action
+}
+
+type ChangeBatchesPanelProps = {
+  canWrite?: boolean
+  canPublish?: boolean
 }
 
 function percent(value: string) {
@@ -86,7 +127,7 @@ function percent(value: string) {
   return `${(parsed * 100).toFixed(2).replace(/\.?0+$/, '')}%`
 }
 
-export function ChangeBatchesPanel() {
+export function ChangeBatchesPanel(props: ChangeBatchesPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
@@ -95,6 +136,11 @@ export function ChangeBatchesPanel() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(200)
   const [selectedBatchId, setSelectedBatchId] = useState<number>()
+  const [publishCandidate, setPublishCandidate] = useState<PricingChangeBatch>()
+  const [detailPage, setDetailPage] = useState(1)
+  const [detailPageSize, setDetailPageSize] = useState(200)
+  const canWrite = props.canWrite ?? true
+  const canPublish = props.canPublish ?? true
   const deferredKeyword = useDeferredValue(keyword)
   const batchesQuery = useQuery({
     queryKey: [
@@ -125,6 +171,18 @@ export function ChangeBatchesPanel() {
     enabled: Boolean(selectedBatch),
   })
   const details = detailQuery.data?.data.items ?? []
+  const detailPageCount = Math.max(
+    1,
+    Math.ceil(details.length / detailPageSize)
+  )
+  const visibleDetailPage = Math.min(detailPage, detailPageCount)
+  const pagedDetails = details.slice(
+    (visibleDetailPage - 1) * detailPageSize,
+    visibleDetailPage * detailPageSize
+  )
+  useEffect(() => {
+    setDetailPage(1)
+  }, [selectedBatch?.id])
   const reconcileMutation = useMutation({
     mutationFn: reconcilePricingAutomation,
     onSuccess: async (response) => {
@@ -138,6 +196,7 @@ export function ChangeBatchesPanel() {
             response.data.purchase_gaps_repaired,
         })
       )
+      setPublishCandidate(undefined)
     },
     onError: handleServerError,
   })
@@ -165,16 +224,18 @@ export function ChangeBatchesPanel() {
           <CardDescription>
             {t('Track automatic and manual price recalculation history.')}
           </CardDescription>
-          <CardAction>
-            <Button
-              size='sm'
-              variant='outline'
-              disabled={reconcileMutation.isPending}
-              onClick={() => reconcileMutation.mutate()}
-            >
-              {t('Repair automation gaps')}
-            </Button>
-          </CardAction>
+          {canWrite ? (
+            <CardAction>
+              <Button
+                size='sm'
+                variant='outline'
+                disabled={reconcileMutation.isPending}
+                onClick={() => reconcileMutation.mutate()}
+              >
+                {t('Repair automation gaps')}
+              </Button>
+            </CardAction>
+          ) : null}
         </CardHeader>
         <CardContent className='flex flex-col gap-4'>
           <div className='grid gap-3 md:grid-cols-[minmax(260px,1fr)_200px_220px]'>
@@ -227,6 +288,9 @@ export function ChangeBatchesPanel() {
               <NativeSelectOption value='manual_price_book_generation'>
                 {t('Manual price generation')}
               </NativeSelectOption>
+              <NativeSelectOption value='manual_price_book_edit'>
+                {t('Manual price edit')}
+              </NativeSelectOption>
             </NativeSelect>
           </div>
           {batchesQuery.isLoading ? <Skeleton className='h-40 w-full' /> : null}
@@ -235,7 +299,9 @@ export function ChangeBatchesPanel() {
               <Table className='min-w-[76rem]'>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t('Batch number')}</TableHead>
+                    <TableHead className='bg-card sticky left-0 z-10'>
+                      {t('Batch number')}
+                    </TableHead>
                     <TableHead>{t('Trigger type')}</TableHead>
                     <TableHead>{t('Status')}</TableHead>
                     <TableHead>{t('Total')}</TableHead>
@@ -244,19 +310,18 @@ export function ChangeBatchesPanel() {
                     <TableHead>{t('Requires review')}</TableHead>
                     <TableHead>{t('Requested by')}</TableHead>
                     <TableHead>{t('Created at')}</TableHead>
+                    <TableHead>{t('Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {batches.map((batch) => (
                     <TableRow
                       key={batch.id}
-                      className='cursor-pointer'
                       data-state={
                         selectedBatch?.id === batch.id ? 'selected' : undefined
                       }
-                      onClick={() => setSelectedBatchId(batch.id)}
                     >
-                      <TableCell className='font-mono text-xs'>
+                      <TableCell className='bg-card sticky left-0 z-10 font-mono text-xs'>
                         {batch.batch_no}
                       </TableCell>
                       <TableCell>
@@ -268,7 +333,7 @@ export function ChangeBatchesPanel() {
                             batch.review_count > 0 ? 'warning' : 'outline'
                           }
                         >
-                          {batch.status}
+                          {batchStatusLabel(batch.status, t)}
                         </Badge>
                       </TableCell>
                       <TableCell>{batch.total_count}</TableCell>
@@ -282,6 +347,17 @@ export function ChangeBatchesPanel() {
                       </TableCell>
                       <TableCell>
                         {new Date(batch.created_at * 1000).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() => setSelectedBatchId(batch.id)}
+                        >
+                          {selectedBatch?.id === batch.id
+                            ? t('Viewing')
+                            : t('View details')}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -320,17 +396,19 @@ export function ChangeBatchesPanel() {
           <CardHeader>
             <CardTitle>{t('Batch details')}</CardTitle>
             <CardDescription>{selectedBatch.batch_no}</CardDescription>
-            <CardAction>
-              <Button
-                size='sm'
-                disabled={
-                  publishMutation.isPending || selectedBatch.review_count > 0
-                }
-                onClick={() => publishMutation.mutate(selectedBatch.id)}
-              >
-                {t('Publish generated versions')}
-              </Button>
-            </CardAction>
+            {canPublish ? (
+              <CardAction>
+                <Button
+                  size='sm'
+                  disabled={
+                    publishMutation.isPending || selectedBatch.review_count > 0
+                  }
+                  onClick={() => setPublishCandidate(selectedBatch)}
+                >
+                  {t('Publish generated versions')}
+                </Button>
+              </CardAction>
+            ) : null}
           </CardHeader>
           <CardContent>
             {detailQuery.isLoading ? (
@@ -341,7 +419,9 @@ export function ChangeBatchesPanel() {
                 <Table className='min-w-[96rem]'>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t('Model Name')}</TableHead>
+                      <TableHead className='bg-card sticky left-0 z-10'>
+                        {t('Model Name')}
+                      </TableHead>
                       <TableHead>{t('Target')}</TableHead>
                       <TableHead>{t('Channel')}</TableHead>
                       <TableHead>{t('Sales price book')}</TableHead>
@@ -356,19 +436,21 @@ export function ChangeBatchesPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {details.map((item) => (
+                    {pagedDetails.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className='font-medium'>
+                        <TableCell className='bg-card sticky left-0 z-10 font-medium'>
                           {item.model_name || item.model_id}
                         </TableCell>
-                        <TableCell>{item.target_type}</TableCell>
+                        <TableCell>
+                          {targetLabel(item.target_type, t)}
+                        </TableCell>
                         <TableCell>
                           {item.channel_name || item.channel_model_id || '—'}
                         </TableCell>
                         <TableCell>
                           {item.price_book_name || item.price_book_id || '—'}
                         </TableCell>
-                        <TableCell>{item.action}</TableCell>
+                        <TableCell>{actionLabel(item.action, t)}</TableCell>
                         <TableCell>{item.old_reference_price || '—'}</TableCell>
                         <TableCell>{item.new_reference_price || '—'}</TableCell>
                         <TableCell>{item.old_reference_cost || '—'}</TableCell>
@@ -376,7 +458,16 @@ export function ChangeBatchesPanel() {
                         <TableCell>{percent(item.margin_before)}</TableCell>
                         <TableCell>{percent(item.margin_after)}</TableCell>
                         <TableCell className='max-w-80 whitespace-normal'>
-                          {item.risk_code || item.error_message || '—'}
+                          {item.risk_code ? (
+                            <div className='flex flex-col gap-1'>
+                              <span>{pricingRiskLabel(item.risk_code, t)}</span>
+                              <code className='text-muted-foreground text-xs'>
+                                {item.risk_code}
+                              </code>
+                            </div>
+                          ) : (
+                            item.error_message || '—'
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -394,9 +485,72 @@ export function ChangeBatchesPanel() {
                 </EmptyHeader>
               </Empty>
             ) : null}
+            {!detailQuery.isLoading ? (
+              <div className='mt-4'>
+                <div className='flex flex-col gap-2'>
+                  <TableRecordCount total={details.length} />
+                  <ListPagination
+                    page={visibleDetailPage}
+                    pageSize={detailPageSize}
+                    total={details.length}
+                    isFetching={detailQuery.isFetching}
+                    showRecordCount={false}
+                    onPageChange={setDetailPage}
+                    onPageSizeChange={(value) => {
+                      setDetailPageSize(value)
+                      setDetailPage(1)
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
+      <AlertDialog
+        open={Boolean(publishCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !publishMutation.isPending) {
+            setPublishCandidate(undefined)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('Publish generated pricing versions')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'Batch {{batch}} contains {{changed}} changed items and will publish generated purchase and sales versions. This may immediately affect customer billing.',
+                {
+                  batch: publishCandidate?.batch_no ?? '',
+                  changed: publishCandidate?.changed_count ?? 0,
+                }
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={publishMutation.isPending}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={publishMutation.isPending || !publishCandidate}
+              onClick={(event) => {
+                event.preventDefault()
+                if (publishCandidate) {
+                  publishMutation.mutate(publishCandidate.id)
+                }
+              }}
+            >
+              {publishMutation.isPending ? (
+                <Spinner data-icon='inline-start' />
+              ) : null}
+              {t('Publish and apply')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

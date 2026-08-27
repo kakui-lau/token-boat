@@ -110,6 +110,39 @@ func TestAdminListChannelModelsReturnsPublishedPurchaseStatus(t *testing.T) {
 	assert.Equal(t, "0.85", response.Data.Items[0].PurchaseDiscount)
 }
 
+func TestAdminListChannelModelIdsReturnsNamesForSelectionConfirmation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 65, Name: "selection-channel", Status: 1}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 66, ModelName: "selection-model", Status: 1}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 67, ChannelId: 65, ModelId: 66, UpstreamModelName: "upstream-selection-model", Status: 1,
+	}).Error)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet,
+		"/api/pricing-admin/channel-models/ids?status=1", nil)
+
+	AdminListChannelModelIds(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    []struct {
+			Id          int    `json:"id"`
+			ModelId     int    `json:"model_id"`
+			ModelName   string `json:"model_name"`
+			ChannelName string `json:"channel_name"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data, 1)
+	assert.Equal(t, 67, response.Data[0].Id)
+	assert.Equal(t, 66, response.Data[0].ModelId)
+	assert.Equal(t, "selection-model", response.Data[0].ModelName)
+	assert.Equal(t, "selection-channel", response.Data[0].ChannelName)
+}
+
 func TestAdminListSalesPriceBooksUsesServerFiltersAndDefaultPageSize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupPricingAdminControllerTestDB(t)
@@ -157,7 +190,8 @@ func TestAdminExportSalesPriceBookItemsWritesSpreadsheetSafeCSV(t *testing.T) {
 		Status:             pricingadmin.SalesPriceItemStatusEnabled,
 		BillingMode:        "token",
 		PriceStructure:     "flat",
-		PricingMethod:      "fixed",
+		PricingMethod:      "official_discount",
+		OfficialDiscount:   "0.7504123144584937",
 		Currency:           "USD",
 		SalesBillingExpr:   "v2:p / 1000000",
 		SalesExprHash:      "hash",
@@ -177,8 +211,10 @@ func TestAdminExportSalesPriceBookItemsWritesSpreadsheetSafeCSV(t *testing.T) {
 	assert.Contains(t, recorder.Header().Get("Content-Type"), "text/csv")
 	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "sales-price-book-version-92-items")
 	body := strings.TrimPrefix(recorder.Body.String(), "\ufeff")
-	assert.Contains(t, body, "模型名称")
+	assert.Contains(t, body, "模型名称,状态,计费模式,客户售价规则,采购折扣,销售折扣,定价详情")
 	assert.Contains(t, body, "'=unsafe-model-name")
+	assert.Contains(t, body, "已启用,按 Token 用量,自定义计费表达式,—,7.5041折（官方价 × 75.0412%）")
+	assert.NotContains(t, body, "官方折扣")
 }
 
 func TestAdminUpdateChannelModelRejectsIdentityMutation(t *testing.T) {

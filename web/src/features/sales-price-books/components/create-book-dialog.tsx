@@ -45,11 +45,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { createSalesPriceBook } from '../api'
-import type { SalesPriceBookAudience } from '../types'
+import type { SalesPriceBook, SalesPriceBookAudience } from '../types'
 
 type CreateBookDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreated: (book: SalesPriceBook) => void
 }
 
 export function CreateBookDialog(props: CreateBookDialogProps) {
@@ -68,7 +69,7 @@ export function CreateBookDialog(props: CreateBookDialogProps) {
         currency: 'USD',
         remark: remark.trim(),
       }),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       await queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'list'],
       })
@@ -77,6 +78,7 @@ export function CreateBookDialog(props: CreateBookDialogProps) {
       setName('')
       setRemark('')
       props.onOpenChange(false)
+      props.onCreated(response.data)
     },
     onError: handleServerError,
   })

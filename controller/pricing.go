@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -66,6 +68,25 @@ func filterAvailablePublicPricing(pricing []model.Pricing) []model.Pricing {
 	return available
 }
 
+func publicPricingVersion(
+	pricing []model.Pricing,
+	groupRatio map[string]float64,
+	usableGroup map[string]string,
+) string {
+	payload, err := common.Marshal(struct {
+		Pricing     []model.Pricing    `json:"pricing"`
+		GroupRatio  map[string]float64 `json:"group_ratio"`
+		UsableGroup map[string]string  `json:"usable_group"`
+	}{
+		Pricing: pricing, GroupRatio: groupRatio, UsableGroup: usableGroup,
+	})
+	if err != nil {
+		common.SysError("failed to generate public pricing version: " + err.Error())
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(payload))
+}
+
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPublicPricing()
 	userId, exists := c.Get("id")
@@ -104,7 +125,7 @@ func GetPricing(c *gin.Context) {
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),
-		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
+		"pricing_version":    publicPricingVersion(pricing, groupRatio, usableGroup),
 	})
 }
 

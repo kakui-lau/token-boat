@@ -141,8 +141,7 @@ export function LogStatCards(props: LogStatCardsProps) {
       title: config.title,
       value: formatted.displayValue,
       fullValue: formatted.fullValue,
-      subValue:
-        config.key === 'tokens' ? formatTokenMillions(rawValue) : null,
+      subValue: config.key === 'tokens' ? formatTokenMillions(rawValue) : null,
       desc: config.description,
       icon: config.icon,
       iconTone: config.iconTone,

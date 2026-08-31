@@ -25,6 +25,7 @@ import (
 )
 
 const localBootstrapUserId = 1
+const productionBootstrapConfirmation = "BOOTSTRAP_TOC_DEFAULT"
 
 func main() {
 	databasePath := flag.String("database", "", "local SQLite database file")
@@ -49,6 +50,11 @@ func main() {
 		false,
 		"allow --verify to connect to a non-loopback database using a read-only session",
 	)
+	productionBootstrap := flag.Bool(
+		"production-bootstrap",
+		false,
+		"create and publish the production TOC default price book from audited active prices",
+	)
 	flag.Parse()
 
 	if *currentEnv == (strings.TrimSpace(*databasePath) != "") {
@@ -63,13 +69,27 @@ func main() {
 	if *allowRemoteReadOnly && !*verify {
 		exitWithError(errors.New("--allow-remote-read-only requires --verify"))
 	}
+	if *productionBootstrap {
+		if !*currentEnv || !*apply || *verify {
+			exitWithError(errors.New("--production-bootstrap requires --current-env --apply"))
+		}
+		if os.Getenv("PRICING_BOOTSTRAP_CONFIRM") != productionBootstrapConfirmation {
+			exitWithError(fmt.Errorf(
+				"production bootstrap requires PRICING_BOOTSTRAP_CONFIRM=%s",
+				productionBootstrapConfirmation,
+			))
+		}
+	}
 	if *currentEnv {
 		if !*apply && !*verify {
 			fmt.Println("dry run: would bootstrap V2 prices using the local .env database")
 			fmt.Println("re-run with --current-env --apply or --current-env --verify")
 			return
 		}
-		if err := openCurrentEnvironmentDatabase(*verify, *allowRemoteReadOnly); err != nil {
+		if err := openCurrentEnvironmentDatabase(
+			*verify,
+			*allowRemoteReadOnly || *productionBootstrap,
+		); err != nil {
 			exitWithError(err)
 		}
 		if *verify {
@@ -79,6 +99,21 @@ func main() {
 				}
 			}
 			if err := verifyAndReport(*production); err != nil {
+				exitWithError(err)
+			}
+			return
+		}
+		if *productionBootstrap {
+			if err := common.InitRedisClient(); err != nil {
+				exitWithError(fmt.Errorf("initialize Redis: %w", err))
+			}
+			if err := validateProductionPriceEvidence(); err != nil {
+				exitWithError(err)
+			}
+			if err := ensureTocDefaultPriceBook(true); err != nil {
+				exitWithError(err)
+			}
+			if err := verifyAndReport(true); err != nil {
 				exitWithError(err)
 			}
 			return
@@ -141,7 +176,7 @@ func bootstrapAndReport(backupPath string) error {
 		}
 		return err
 	}
-	if err := ensureLocalTocDefaultPriceBook(); err != nil {
+	if err := ensureTocDefaultPriceBook(false); err != nil {
 		if backupPath != "" {
 			return fmt.Errorf("%w; restore from %s if needed", err, backupPath)
 		}
@@ -160,7 +195,7 @@ func bootstrapAndReport(backupPath string) error {
 	return nil
 }
 
-func ensureLocalTocDefaultPriceBook() error {
+func ensureTocDefaultPriceBook(production bool) error {
 	var currentDefault model.SalesPriceBookDefault
 	err := model.DB.First(&currentDefault, "default_key = ?", "toc_default").Error
 	if err == nil {
@@ -200,12 +235,24 @@ func ensureLocalTocDefaultPriceBook() error {
 		return errors.New("cannot create a local TOC default without enabled channel models")
 	}
 
+	bookCode := "local-toc-default"
+	bookName := "Local TOC Default"
+	bookRemark := "local acceptance price book generated from restored purchase prices"
+	versionRemark := "local acceptance default policy"
+	idempotencyKey := "local-toc-default-v1"
+	if production {
+		bookCode = "toc-default"
+		bookName = "TOC Default"
+		bookRemark = "production TOC price book generated from audited active purchase prices"
+		versionRemark = "production default policy migrated with the pricing V2 rollout"
+		idempotencyKey = "production-toc-default-v1"
+	}
+
 	var book model.SalesPriceBook
-	err = model.DB.First(&book, "code = ?", "local-toc-default").Error
+	err = model.DB.First(&book, "code = ?", bookCode).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		book = model.SalesPriceBook{
-			Code: "local-toc-default", Name: "Local TOC Default", Audience: "toc", Currency: "USD",
-			Remark: "local acceptance price book generated from restored purchase prices",
+			Code: bookCode, Name: bookName, Audience: "toc", Currency: "USD", Remark: bookRemark,
 		}
 		if err := pricingadmin.CreateSalesPriceBook(&book, localBootstrapUserId); err != nil {
 			return fmt.Errorf("create local TOC price book: %w", err)
@@ -230,7 +277,7 @@ func ensureLocalTocDefaultPriceBook() error {
 			PriceBookId: book.Id, CostBasisStrategy: "max_eligible_cost",
 			PaymentFeeRate: "0.04", DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
 			TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.165", TargetNetMargin: "0.03",
-			MinimumMarginRate: "0.02", Remark: "local acceptance default policy",
+			MinimumMarginRate: "0.02", Remark: versionRemark,
 		}
 		if err := pricingadmin.CreateSalesPriceBookVersion(&version, localBootstrapUserId); err != nil {
 			return fmt.Errorf("create local TOC price book version: %w", err)
@@ -242,7 +289,7 @@ func ensureLocalTocDefaultPriceBook() error {
 		version.Id,
 		pricingadmin.SalesPriceBookGenerationInput{
 			ChannelModelIds: channelModelIds,
-			IdempotencyKey:  "local-toc-default-v1",
+			IdempotencyKey:  idempotencyKey,
 		},
 		localBootstrapUserId,
 	)

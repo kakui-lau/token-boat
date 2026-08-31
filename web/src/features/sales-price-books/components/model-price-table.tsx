@@ -17,12 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
   Download01Icon,
   InformationCircleIcon,
   Delete02Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -74,8 +76,15 @@ import {
 
 import { formatPurchaseDiscount } from '../../pricing-admin/lib/purchase-discount'
 import { pricingRiskLabel } from '../lib/pricing-risk'
-import type { SalesPriceBookItem, SalesPriceBookVersion } from '../types'
+import type {
+  SalesPriceBookChannelMargin,
+  SalesPriceBookChannelMarginOverrideField,
+  SalesPriceBookItem,
+  SalesPriceBookVersion,
+} from '../types'
+import { ChannelModelOverrideDialog } from './channel-model-override-dialog'
 import { ListPagination } from './list-pagination'
+import { SalesPriceDetailsDialog } from './sales-price-details-dialog'
 import { TableRecordCount } from './table-record-count'
 
 type ModelPriceTableProps = {
@@ -86,12 +95,15 @@ type ModelPriceTableProps = {
   canWrite?: boolean
   canPublish?: boolean
   isExporting: boolean
+  isExportingChannelModels?: boolean
   isDeleting: boolean
   isUpdatingStatus: boolean
   onExport: () => void
+  onExportChannelModels?: () => void
   onEdit: (item: SalesPriceBookItem) => void
   onDelete: (itemIds: number | number[]) => Promise<unknown>
   onReview: (item: SalesPriceBookItem, action: 'accept' | 'reject') => void
+  onRegenerate: (item: SalesPriceBookItem) => void
   onSetEnabled: (itemId: number, enabled: boolean) => void
 }
 
@@ -99,6 +111,34 @@ function formatSellingFactor(value: string) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return '—'
   return parsed.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+function formatMarginRate(value: string) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return '—'
+  return `${(parsed * 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}%`
+}
+
+function formatAboveOfficialPriceWarning(
+  value: string,
+  t: (key: string, values?: Record<string, string>) => string
+) {
+  const multiplier = Number(value)
+  if (!Number.isFinite(multiplier) || multiplier <= 1) {
+    return t('Sales price is above official price')
+  }
+  const discount = (multiplier * 10)
+    .toFixed(4)
+    .replace(/0+$/, '')
+    .replace(/\.$/, '')
+  const percent = ((multiplier - 1) * 100)
+    .toFixed(4)
+    .replace(/0+$/, '')
+    .replace(/\.$/, '')
+  return t(
+    'Sales discount: {{discount}}/10; {{percent}}% above official price.',
+    { discount, percent }
+  )
 }
 
 function itemStatusLabel(
@@ -110,14 +150,32 @@ function itemStatusLabel(
   return t('Requires review')
 }
 
+const channelPolicyFieldLabels: Record<
+  SalesPriceBookChannelMarginOverrideField,
+  string
+> = {
+  payment_fee_rate: 'Payment processing fee',
+  distribution_fee_rate: 'Distribution fee',
+  operations_labor_rate: 'Operations labor cost',
+  effective_tax_rate: 'Tax rate',
+  target_net_margin: 'Target margin',
+  minimum_margin_rate: 'Minimum margin rate',
+}
+
 export function ModelPriceTable(props: ModelPriceTableProps) {
   const { t } = useTranslation()
   const canWrite = props.canWrite ?? true
   const canPublish = props.canPublish ?? true
   const [keyword, setKeyword] = useState('')
   const [formulaItem, setFormulaItem] = useState<SalesPriceBookItem>()
+  const [priceDetailsItem, setPriceDetailsItem] = useState<SalesPriceBookItem>()
+  const [overrideTarget, setOverrideTarget] = useState<{
+    item: SalesPriceBookItem
+    channel: SalesPriceBookChannelMargin
+  }>()
   const [deleteItems, setDeleteItems] = useState<SalesPriceBookItem[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(200)
   const deferredKeyword = useDeferredValue(keyword.trim().toLowerCase())
@@ -141,6 +199,7 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
     selectableItems.length > 0 && selectedOnPage === selectableItems.length
   useEffect(() => {
     setSelectedIds(new Set())
+    setExpandedIds(new Set())
     setPage(1)
   }, [props.version.id])
   const isActive = props.version.status === 'active'
@@ -180,15 +239,34 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
           </CardDescription>
           {props.canExport ? (
             <CardAction>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={props.isExporting}
-                onClick={props.onExport}
-              >
-                <HugeiconsIcon icon={Download01Icon} data-icon='inline-start' />
-                {t('Export model pricing')}
-              </Button>
+              <div className='flex flex-wrap justify-end gap-2'>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  disabled={props.isExporting}
+                  onClick={props.onExport}
+                >
+                  <HugeiconsIcon
+                    icon={Download01Icon}
+                    data-icon='inline-start'
+                  />
+                  {t('Export model pricing')}
+                </Button>
+                {props.onExportChannelModels ? (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={props.isExportingChannelModels}
+                    onClick={props.onExportChannelModels}
+                  >
+                    <HugeiconsIcon
+                      icon={Download01Icon}
+                      data-icon='inline-start'
+                    />
+                    {t('Export channel model pricing')}
+                  </Button>
+                ) : null}
+              </div>
             </CardAction>
           ) : null}
         </CardHeader>
@@ -258,7 +336,7 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
             </Empty>
           ) : null}
           {pagedItems.length > 0 ? (
-            <Table className='min-w-[86rem]'>
+            <Table className='min-w-[76rem]'>
               <TableHeader>
                 <TableRow>
                   {props.version.status === 'draft' && canWrite ? (
@@ -284,7 +362,6 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead>{t('Billing mode')}</TableHead>
                   <TableHead>{t('Customer price rule')}</TableHead>
-                  <TableHead>{t('Purchase Discount')}</TableHead>
                   <TableHead>{t('Sales discount')}</TableHead>
                   <TableHead>{t('Pricing details')}</TableHead>
                   <TableHead>{t('Actions')}</TableHead>
@@ -293,11 +370,45 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
               <TableBody>
                 {pagedItems.map((item) => {
                   const factor = formatSellingFactor(item.selling_factor)
+                  const hasSharedFactor = Number(item.selling_factor) > 0
+                  const channelMargins = item.channel_margins ?? []
+                  const isExpanded = expandedIds.has(item.id)
+                  const detailId = `channel-costs-${item.id}`
+                  let costBasisStrategy = props.version.cost_basis_strategy
+                  let customerPriceRule = t('Custom billing expression')
+                  if (item.pricing_method === 'cost_plus') {
+                    customerPriceRule = hasSharedFactor
+                      ? t('Purchase cost × {{factor}}', { factor })
+                      : t('Generated from channel-specific costs')
+                  }
+                  if (costBasisStrategy === 'max_eligible_cost') {
+                    costBasisStrategy = t(
+                      'Price using the highest eligible channel cost'
+                    )
+                  } else if (costBasisStrategy === 'min_eligible_cost') {
+                    costBasisStrategy = t(
+                      'Price using the lowest eligible channel cost'
+                    )
+                  } else if (costBasisStrategy === 'designated_channel') {
+                    costBasisStrategy = t('Designated channel')
+                  }
                   let actionContent
                   if (props.version.status === 'draft' && canWrite) {
                     let statusActions = null
                     if (item.status === 'review_required') {
-                      if (canPublish) {
+                      if (
+                        item.review_risk_code === 'channel_model_policy_changed'
+                      ) {
+                        statusActions = (
+                          <Button
+                            size='sm'
+                            variant='outline'
+                            onClick={() => props.onRegenerate(item)}
+                          >
+                            {t('Regenerate')}
+                          </Button>
+                        )
+                      } else if (canPublish) {
                         statusActions = (
                           <>
                             <Button
@@ -375,102 +486,359 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                   }
 
                   return (
-                    <TableRow key={item.id}>
-                      {props.version.status === 'draft' && canWrite ? (
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedIds.has(item.id)}
-                            aria-label={t('Select {{model}}', {
-                              model: item.model_name,
-                            })}
-                            onCheckedChange={(checked) => {
-                              const next = new Set(selectedIds)
-                              if (checked) next.add(item.id)
-                              else next.delete(item.id)
-                              setSelectedIds(next)
-                            }}
-                          />
+                    <Fragment key={item.id}>
+                      <TableRow>
+                        {props.version.status === 'draft' && canWrite ? (
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedIds.has(item.id)}
+                              aria-label={t('Select {{model}}', {
+                                model: item.model_name,
+                              })}
+                              onCheckedChange={(checked) => {
+                                const next = new Set(selectedIds)
+                                if (checked) next.add(item.id)
+                                else next.delete(item.id)
+                                setSelectedIds(next)
+                              }}
+                            />
+                          </TableCell>
+                        ) : null}
+                        <TableCell className='bg-card sticky left-0 z-10 font-medium'>
+                          <div className='flex min-w-56 flex-col items-start gap-1'>
+                            <span>{item.model_name}</span>
+                            {channelMargins.length > 0 ? (
+                              <Button
+                                size='sm'
+                                variant='ghost'
+                                className='text-muted-foreground h-auto px-0 py-1 font-normal'
+                                aria-expanded={isExpanded}
+                                aria-controls={detailId}
+                                onClick={() => {
+                                  const next = new Set(expandedIds)
+                                  if (isExpanded) next.delete(item.id)
+                                  else next.add(item.id)
+                                  setExpandedIds(next)
+                                }}
+                              >
+                                <HugeiconsIcon
+                                  icon={
+                                    isExpanded
+                                      ? ArrowDown01Icon
+                                      : ArrowRight01Icon
+                                  }
+                                  data-icon='inline-start'
+                                  aria-hidden='true'
+                                />
+                                {t('{{count}} channel costs', {
+                                  count: channelMargins.length,
+                                })}
+                              </Button>
+                            ) : (
+                              <span className='text-muted-foreground text-xs font-normal'>
+                                {t('No channel cost details')}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
-                      ) : null}
-                      <TableCell className='bg-card sticky left-0 z-10 font-medium'>
-                        {item.model_name}
-                      </TableCell>
-                      <TableCell>
-                        <div className='flex max-w-72 flex-col items-start gap-1.5 whitespace-normal'>
-                          <Badge
-                            variant={
-                              item.status === 'review_required'
-                                ? 'destructive'
-                                : 'outline'
-                            }
+                        <TableCell>
+                          <div className='flex max-w-72 flex-col items-start gap-1.5 whitespace-normal'>
+                            <Badge
+                              variant={
+                                item.status === 'review_required'
+                                  ? 'destructive'
+                                  : 'outline'
+                              }
+                            >
+                              {itemStatusLabel(item.status, t)}
+                            </Badge>
+                            {item.status === 'review_required' ? (
+                              <div className='text-xs'>
+                                <p className='font-medium'>
+                                  {t('Review reason')}
+                                </p>
+                                <p className='text-destructive'>
+                                  {pricingRiskLabel(
+                                    item.review_risk_code ?? '',
+                                    t
+                                  )}
+                                </p>
+                                {item.review_reason ? (
+                                  <p className='text-muted-foreground mt-1'>
+                                    {item.review_reason}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {item.warning_code === 'above_official_price' ? (
+                              <div className='flex flex-col items-start gap-1 text-xs'>
+                                <Badge
+                                  variant='outline'
+                                  className='border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                >
+                                  {t('Sales price is above official price')}
+                                </Badge>
+                                <p className='text-amber-700 dark:text-amber-300'>
+                                  {formatAboveOfficialPriceWarning(
+                                    item.warning_sales_discount ?? '',
+                                    t
+                                  )}
+                                </p>
+                              </div>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {item.billing_mode === 'token'
+                            ? t('Token usage')
+                            : item.billing_mode}
+                        </TableCell>
+                        <TableCell>
+                          <div className='flex flex-col gap-1'>
+                            <span className='font-medium'>
+                              {customerPriceRule}
+                            </span>
+                            <span className='text-muted-foreground text-xs'>
+                              {item.pricing_method === 'cost_plus'
+                                ? t(
+                                    'Purchase cost plus operating costs and margin'
+                                  )
+                                : item.pricing_method}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className='whitespace-nowrap'>
+                          {formatPurchaseDiscount(item.sales_discount ?? '', t)}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size='sm'
+                            variant='ghost'
+                            onClick={() => setFormulaItem(item)}
                           >
-                            {itemStatusLabel(item.status, t)}
-                          </Badge>
-                          {item.status === 'review_required' ? (
-                            <div className='text-xs'>
-                              <p className='font-medium'>
-                                {t('Review reason')}
-                              </p>
-                              <p className='text-destructive'>
-                                {pricingRiskLabel(
-                                  item.review_risk_code ?? '',
-                                  t
+                            <HugeiconsIcon
+                              icon={InformationCircleIcon}
+                              data-icon='inline-start'
+                            />
+                            {t('View formula')}
+                          </Button>
+                        </TableCell>
+                        <TableCell>{actionContent}</TableCell>
+                      </TableRow>
+                      {isExpanded ? (
+                        <TableRow className='hover:bg-transparent'>
+                          <TableCell
+                            colSpan={
+                              props.version.status === 'draft' && canWrite
+                                ? 8
+                                : 7
+                            }
+                            className='bg-muted/20 p-0 whitespace-normal'
+                          >
+                            <section
+                              id={detailId}
+                              aria-label={t(
+                                'Channel costs and margins for {{model}}',
+                                {
+                                  model: item.model_name,
+                                }
+                              )}
+                              className='flex flex-col gap-3 p-4'
+                            >
+                              <div>
+                                <h4 className='font-medium'>
+                                  {t('Channel costs and margins')}
+                                </h4>
+                                <p className='text-muted-foreground mt-1 text-xs'>
+                                  {t(
+                                    'The logical model uses one customer sales price across all channels. Channel purchase costs and margins may differ.'
+                                  )}
+                                </p>
+                              </div>
+                              <dl className='grid gap-2 md:max-w-md'>
+                                <div className='bg-background rounded-md border p-3'>
+                                  <dt className='text-muted-foreground text-xs'>
+                                    {t('Unified sales price strategy')}
+                                  </dt>
+                                  <dd className='mt-1 font-medium'>
+                                    {costBasisStrategy || '—'}
+                                  </dd>
+                                </div>
+                              </dl>
+                              <div>
+                                <Button
+                                  size='sm'
+                                  variant='outline'
+                                  onClick={() => setPriceDetailsItem(item)}
+                                >
+                                  {t('View sales price details')}
+                                </Button>
+                              </div>
+                              <Table className='min-w-[64rem]'>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>{t('Channel')}</TableHead>
+                                    <TableHead>
+                                      {t('Purchase Discount')}
+                                    </TableHead>
+                                    <TableHead>{t('Sales discount')}</TableHead>
+                                    <TableHead>
+                                      {t('Effective parameters')}
+                                    </TableHead>
+                                    <TableHead>
+                                      {t('Routing by price')}
+                                    </TableHead>
+                                    <TableHead>{t('Cost role')}</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {channelMargins.map((channel) => {
+                                    const overriddenFields =
+                                      channel.overridden_fields ?? []
+                                    return (
+                                      <TableRow
+                                        key={`${channel.channel_model_id}-${channel.purchase_price_version_id}`}
+                                      >
+                                        <TableCell>
+                                          <div className='flex flex-col gap-0.5'>
+                                            <span className='font-medium'>
+                                              {channel.channel_name}
+                                            </span>
+                                            <span className='text-muted-foreground text-xs'>
+                                              {t('Channel model #{{id}}', {
+                                                id: channel.channel_model_id,
+                                              })}
+                                            </span>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell>
+                                          {channel.purchase_pricing_mode ===
+                                          'official_ratio'
+                                            ? formatPurchaseDiscount(
+                                                channel.purchase_discount,
+                                                t
+                                              )
+                                            : t('Not applicable')}
+                                        </TableCell>
+                                        <TableCell className='whitespace-nowrap'>
+                                          {channel.sales_discount
+                                            ? formatPurchaseDiscount(
+                                                channel.sales_discount,
+                                                t
+                                              )
+                                            : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                          <div className='flex min-w-52 flex-col gap-1 text-xs'>
+                                            <div className='flex items-center gap-2'>
+                                              <span>
+                                                VCR{' '}
+                                                {formatMarginRate(
+                                                  channel.total_variable_cost_rate
+                                                )}{' '}
+                                                · TR{' '}
+                                                {formatMarginRate(
+                                                  channel.effective_tax_rate
+                                                )}{' '}
+                                                · TM{' '}
+                                                {formatMarginRate(
+                                                  channel.target_net_margin
+                                                )}
+                                              </span>
+                                              {overriddenFields.length > 0 ? (
+                                                <Badge variant='secondary'>
+                                                  {t('{{count}} override', {
+                                                    count:
+                                                      overriddenFields.length,
+                                                  })}
+                                                </Badge>
+                                              ) : (
+                                                <Badge variant='outline'>
+                                                  {t('Version default')}
+                                                </Badge>
+                                              )}
+                                            </div>
+                                            {overriddenFields.length > 0 ? (
+                                              <div className='flex flex-wrap items-center gap-1'>
+                                                <span className='text-muted-foreground'>
+                                                  {t('Override')}:
+                                                </span>
+                                                {overriddenFields.map(
+                                                  (field) => (
+                                                    <Badge
+                                                      key={field}
+                                                      variant='outline'
+                                                    >
+                                                      {t(
+                                                        channelPolicyFieldLabels[
+                                                          field
+                                                        ]
+                                                      )}{' '}
+                                                      {formatMarginRate(
+                                                        props.version[field]
+                                                      )}{' '}
+                                                      →{' '}
+                                                      {formatMarginRate(
+                                                        channel[field]
+                                                      )}
+                                                    </Badge>
+                                                  )
+                                                )}
+                                              </div>
+                                            ) : null}
+                                            {props.version.status === 'draft' &&
+                                            canWrite ? (
+                                              <Button
+                                                size='sm'
+                                                variant='outline'
+                                                className='w-fit'
+                                                onClick={() =>
+                                                  setOverrideTarget({
+                                                    item,
+                                                    channel,
+                                                  })
+                                                }
+                                              >
+                                                {t('Set special parameters')}
+                                              </Button>
+                                            ) : null}
+                                          </div>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Badge
+                                            variant={
+                                              channel.meets_minimum_margin
+                                                ? 'outline'
+                                                : 'destructive'
+                                            }
+                                          >
+                                            {channel.meets_minimum_margin
+                                              ? t('Margin allows routing')
+                                              : t('Margin blocks routing')}
+                                          </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                          {channel.source_role === 'candidate'
+                                            ? t('Comparison only')
+                                            : t(
+                                                'Included in unified sales price basis'
+                                              )}
+                                        </TableCell>
+                                      </TableRow>
+                                    )
+                                  })}
+                                </TableBody>
+                              </Table>
+                              <p className='text-muted-foreground text-xs'>
+                                {t(
+                                  'This status checks pricing and minimum margin only. Actual routing also depends on channel availability, user group, and circuit breaker status.'
                                 )}
                               </p>
-                              {item.review_reason ? (
-                                <p className='text-muted-foreground mt-1'>
-                                  {item.review_reason}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {item.billing_mode === 'token'
-                          ? t('Token usage')
-                          : item.billing_mode}
-                      </TableCell>
-                      <TableCell>
-                        <div className='flex flex-col gap-1'>
-                          <span className='font-medium'>
-                            {item.pricing_method === 'cost_plus'
-                              ? t('Purchase cost × {{factor}}', { factor })
-                              : t('Custom billing expression')}
-                          </span>
-                          <span className='text-muted-foreground text-xs'>
-                            {item.pricing_method === 'cost_plus'
-                              ? t(
-                                  'Purchase cost plus operating costs and margin'
-                                )
-                              : item.pricing_method}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap'>
-                        {formatPurchaseDiscount(
-                          item.purchase_discount ?? '',
-                          t
-                        )}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap'>
-                        {formatPurchaseDiscount(item.sales_discount ?? '', t)}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size='sm'
-                          variant='ghost'
-                          onClick={() => setFormulaItem(item)}
-                        >
-                          <HugeiconsIcon
-                            icon={InformationCircleIcon}
-                            data-icon='inline-start'
-                          />
-                          {t('View formula')}
-                        </Button>
-                      </TableCell>
-                      <TableCell>{actionContent}</TableCell>
-                    </TableRow>
+                            </section>
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </Fragment>
                   )
                 })}
               </TableBody>
@@ -536,6 +904,24 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <SalesPriceDetailsDialog
+        item={priceDetailsItem}
+        onOpenChange={(open) => {
+          if (!open) setPriceDetailsItem(undefined)
+        }}
+      />
+      {overrideTarget ? (
+        <ChannelModelOverrideDialog
+          open
+          version={props.version}
+          modelName={overrideTarget.item.model_name}
+          channel={overrideTarget.channel}
+          onOpenChange={(open) => {
+            if (!open) setOverrideTarget(undefined)
+          }}
+        />
+      ) : null}
 
       <AlertDialog
         open={deleteItems.length > 0}

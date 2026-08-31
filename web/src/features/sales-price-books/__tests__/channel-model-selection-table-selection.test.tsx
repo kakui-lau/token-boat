@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import {
@@ -198,4 +216,40 @@ test('marks generated models and selects only ungenerated models on the current 
 
   expect(onSelectionChange).toHaveBeenCalledOnce()
   expect([...onSelectionChange.mock.calls[0][0]]).toEqual([notGenerated.id])
+})
+
+test('lists ungenerated models before generated models', () => {
+  const generated = channelModel(41, 'openai/gpt-generated-first', 5)
+  const notGenerated = channelModel(42, 'openai/gpt-ungenerated-second', 6)
+
+  render(
+    <ChannelModelSelectionTable
+      items={[generated, notGenerated]}
+      filters={{
+        keyword: '',
+        channelId: '',
+        status: '1',
+        routingStatus: '',
+        purchaseStatus: 'published',
+      }}
+      channels={[{ id: 1, name: 'Primary channel' }]}
+      selectedIds={new Set()}
+      generatedModelIds={new Set([generated.model_id])}
+      total={2}
+      page={1}
+      pageSize={200}
+      isLoading={false}
+      isFetching={false}
+      isError={false}
+      onRetry={vi.fn()}
+      onFiltersChange={vi.fn()}
+      onSelectionChange={vi.fn()}
+      onPageChange={vi.fn()}
+      onPageSizeChange={vi.fn()}
+    />
+  )
+
+  const rows = screen.getAllByRole('row')
+  expect(rows[1]).toHaveTextContent(notGenerated.model_name)
+  expect(rows[2]).toHaveTextContent(generated.model_name)
 })

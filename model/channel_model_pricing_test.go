@@ -145,6 +145,7 @@ func TestPricingChangeBatchMigrationRemovesApprovalWorkflowColumns(t *testing.T)
 }
 
 func TestSalesPriceBookMigrationRemovesPlaceholderPolicyColumns(t *testing.T) {
+	t.Setenv("PRICING_SCHEMA_FINALIZE", "true")
 	originalDB := DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -166,15 +167,140 @@ func TestSalesPriceBookMigrationRemovesPlaceholderPolicyColumns(t *testing.T) {
 			price_locked_until integer
 		)
 	`).Error)
+	require.NoError(t, DB.Exec(`
+		CREATE TABLE sales_price_book_items (
+			id integer primary key,
+			price_book_version_id integer,
+			model_id integer,
+			minimum_margin_override text,
+			currency text
+		)
+	`).Error)
+	require.NoError(t, DB.AutoMigrate(
+		&SalesPriceBookItemCostSource{},
+		&legacySalesPriceBookItemBasisSourceMigration{},
+		&SalesPriceBookChannelModelOverride{},
+	))
+	require.NoError(t, DB.Exec(`
+		INSERT INTO sales_price_book_items
+			(id, price_book_version_id, model_id, minimum_margin_override, currency)
+		VALUES (1, 2, 3, '0.015', 'USD')
+	`).Error)
+	require.NoError(t, DB.Create(&legacySalesPriceBookItemBasisSourceMigration{
+		PriceBookItemId: 1, ChannelModelId: 4, PurchasePriceVersionId: 5,
+		SourceRole: "selected",
+	}).Error)
 
-	require.NoError(t, retireSalesPriceBookPlaceholderColumns())
+	require.NoError(t, migrateSalesPriceBookSchema())
 	for _, column := range []string{
 		"reprice_mode", "rounding_mode", "rounding_scale", "risk_action", "price_locked_until",
 	} {
 		assert.False(t, DB.Migrator().HasColumn(&legacySalesPriceBookVersionPlaceholderMigration{}, column))
 	}
 	assert.False(t, DB.Migrator().HasColumn(&legacyUserPriceBookAssignmentPlaceholderMigration{}, "price_locked_until"))
-	require.NoError(t, retireSalesPriceBookPlaceholderColumns())
+	assert.False(t, DB.Migrator().HasColumn(&legacySalesPriceBookItemPlaceholderMigration{}, "minimum_margin_override"))
+	assert.False(t, DB.Migrator().HasColumn(&legacySalesPriceBookItemPlaceholderMigration{}, "currency"))
+	var override SalesPriceBookChannelModelOverride
+	require.NoError(t, DB.Where(
+		"price_book_version_id = ? AND channel_model_id = ?", 2, 4,
+	).First(&override).Error)
+	require.NotNil(t, override.MinimumMarginRate)
+	assert.Equal(t, "0.015", *override.MinimumMarginRate)
+	require.NoError(t, migrateSalesPriceBookSchema())
+	require.NoError(t, DB.AutoMigrate(&SalesPriceBookVersion{}))
+	assert.False(t, DB.Migrator().HasColumn(
+		&legacySalesPriceBookVersionPricingMigration{}, "total_variable_cost_rate",
+	))
+}
+
+func TestSalesPriceBookSchemaMigrationPreservesLegacyCommercialData(t *testing.T) {
+	t.Setenv("PRICING_SCHEMA_FINALIZE", "true")
+	originalDB := DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	t.Cleanup(func() { DB = originalDB })
+	require.NoError(t, DB.AutoMigrate(
+		&SalesPriceBook{},
+		&SalesPriceBookVersion{},
+		&SalesPriceBookItem{},
+		&SalesPriceBookItemCostSource{},
+		&SalesPriceBookChannelModelOverride{},
+		&ChannelModelPurchasePriceVersion{},
+	))
+	for _, statement := range []string{
+		"ALTER TABLE sales_price_books ADD COLUMN owner_user_id integer",
+		"ALTER TABLE sales_price_book_versions ADD COLUMN total_variable_cost_rate text",
+		"ALTER TABLE sales_price_book_items ADD COLUMN primary_purchase_version_id integer",
+		"ALTER TABLE sales_price_book_items ADD COLUMN selling_factor text",
+		"ALTER TABLE sales_price_book_items ADD COLUMN official_discount text",
+		"ALTER TABLE sales_price_book_items ADD COLUMN currency text",
+		"ALTER TABLE channel_model_purchase_price_versions ADD COLUMN purchase_discount text",
+		"ALTER TABLE channel_model_purchase_price_versions ADD COLUMN input_unit_price text",
+		"ALTER TABLE channel_model_purchase_price_versions ADD COLUMN output_unit_price text",
+		"ALTER TABLE channel_model_purchase_price_versions ADD COLUMN cache_read_unit_price text",
+		"ALTER TABLE channel_model_purchase_price_versions ADD COLUMN cache_write_unit_price text",
+		"ALTER TABLE channel_model_purchase_price_versions ADD COLUMN price_unit text",
+		`CREATE TABLE sales_price_book_item_basis_sources (
+			id integer primary key, price_book_item_id integer, channel_model_id integer,
+			purchase_price_version_id integer, source_role text
+		)`,
+	} {
+		require.NoError(t, DB.Exec(statement).Error)
+	}
+	require.NoError(t, DB.Create(&SalesPriceBook{
+		Id: 1, Code: "legacy", Name: "Legacy", Audience: "tob", Currency: "USD",
+	}).Error)
+	require.NoError(t, DB.Create(&SalesPriceBookVersion{
+		Id: 2, PriceBookId: 1, Version: 1, Status: SalesPriceBookVersionStatusDraft,
+		CostBasisStrategy: "designated_channel", PaymentFeeRate: "0.04",
+		DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
+		EffectiveTaxRate: "0.16", TargetNetMargin: "0.03", MinimumMarginRate: "0.02",
+	}).Error)
+	require.NoError(t, DB.Create(&ChannelModelPurchasePriceVersion{
+		Id: 3, ChannelModelId: 4, BillingMode: "token", PricingMode: "official_ratio",
+		PriceStructure: "flat", PurchaseBillingExpr: "v2:p / 1000000", Currency: "USD",
+		Version: 1, Status: PricingVersionStatusActive,
+	}).Error)
+	require.NoError(t, DB.Create(&SalesPriceBookItem{
+		Id: 5, PriceBookVersionId: 2, ModelId: 6, Status: "enabled",
+		BillingMode: "token", PriceStructure: "flat", SalesBillingExpr: "v2:p / 1000000",
+		PricingMethod: "official_discount",
+	}).Error)
+	require.NoError(t, DB.Exec(`UPDATE sales_price_book_items
+		SET primary_purchase_version_id = 3, official_discount = '0.85', currency = 'USD'
+		WHERE id = 5`).Error)
+	require.NoError(t, DB.Exec(`UPDATE channel_model_purchase_price_versions
+		SET purchase_discount = '0.7', input_unit_price = '1.25', output_unit_price = '5',
+			price_unit = 'per_1m_tokens' WHERE id = 3`).Error)
+	require.NoError(t, DB.Exec(`INSERT INTO sales_price_book_item_basis_sources
+		(id, price_book_item_id, channel_model_id, purchase_price_version_id, source_role)
+		VALUES (1, 5, 4, 3, 'selected')`).Error)
+
+	require.NoError(t, migrateSalesPriceBookSchema())
+	assert.False(t, DB.Migrator().HasTable(&legacySalesPriceBookItemBasisSourceMigration{}))
+	for migrationModel, columns := range map[any][]string{
+		&legacySalesPriceBookItemPlaceholderMigration{}:           {"primary_purchase_version_id", "selling_factor", "official_discount", "currency"},
+		&legacyChannelModelPurchasePriceVersionPricingMigration{}: {"purchase_discount", "input_unit_price", "output_unit_price", "price_unit"},
+	} {
+		for _, column := range columns {
+			assert.False(t, DB.Migrator().HasColumn(migrationModel, column))
+		}
+	}
+	var item SalesPriceBookItem
+	require.NoError(t, DB.First(&item, 5).Error)
+	assert.JSONEq(t, `{"official_discount":"0.85"}`, item.PricingConfig)
+	var purchase ChannelModelPurchasePriceVersion
+	require.NoError(t, DB.First(&purchase, 3).Error)
+	assert.Equal(t, "0.7", purchase.PurchaseDiscount)
+	assert.Equal(t, "1.25", purchase.InputUnitPrice)
+	assert.Equal(t, "5", purchase.OutputUnitPrice)
+	var source SalesPriceBookItemCostSource
+	require.NoError(t, DB.First(&source,
+		"price_book_item_id = ? AND channel_model_id = ?", 5, 4).Error)
+	assert.Equal(t, 3, source.PurchasePriceVersionId)
+	assert.Equal(t, "selected", source.SourceRole)
+	require.NoError(t, migrateSalesPriceBookSchema())
 }
 
 func TestBackfillProviderCostTrackingClassifiesExistingSnapshots(t *testing.T) {

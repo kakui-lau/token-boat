@@ -20,30 +20,33 @@ const migrationConfirmation = "MIGRATE"
 func main() {
 	envFile := strings.TrimSpace(os.Getenv("DB_MIGRATION_ENV_FILE"))
 	confirmed := os.Getenv("DB_MIGRATION_CONFIRM") == migrationConfirmation
-	if envFile == "" {
-		log.Fatal("DB_MIGRATION_ENV_FILE is required; point it to the environment file for the target database")
-	}
-	envValues, err := godotenv.Read(envFile)
-	if err != nil {
-		log.Fatalf("read migration environment file: %v", err)
-	}
-	dsn := strings.TrimSpace(envValues["SQL_DSN"])
+	dsn := strings.TrimSpace(os.Getenv("SQL_DSN"))
 	if dsn == "" {
-		dsn = strings.TrimSpace(envValues["DATABASE_URL"])
+		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	}
+	if envFile != "" {
+		envValues, err := godotenv.Read(envFile)
+		if err != nil {
+			log.Fatalf("read migration environment file: %v", err)
+		}
+		dsn = strings.TrimSpace(envValues["SQL_DSN"])
+		if dsn == "" {
+			dsn = strings.TrimSpace(envValues["DATABASE_URL"])
+		}
+		if err := godotenv.Overload(envFile); err != nil {
+			log.Fatalf("load migration environment file: %v", err)
+		}
+		if _, exists := envValues["LOG_SQL_DSN"]; !exists {
+			if err := os.Unsetenv("LOG_SQL_DSN"); err != nil {
+				log.Fatalf("clear ambient LOG_SQL_DSN: %v", err)
+			}
+		}
 	}
 	if dsn == "" {
-		log.Fatal("SQL_DSN or DATABASE_URL must be set in the migration environment file")
-	}
-	if err := godotenv.Overload(envFile); err != nil {
-		log.Fatalf("load migration environment file: %v", err)
+		log.Fatal("SQL_DSN or DATABASE_URL must be set directly or through DB_MIGRATION_ENV_FILE")
 	}
 	if err := os.Setenv("SQL_DSN", dsn); err != nil {
-		log.Fatalf("set SQL_DSN from migration environment file: %v", err)
-	}
-	if _, exists := envValues["LOG_SQL_DSN"]; !exists {
-		if err := os.Unsetenv("LOG_SQL_DSN"); err != nil {
-			log.Fatalf("clear ambient LOG_SQL_DSN: %v", err)
-		}
+		log.Fatalf("set SQL_DSN for migration: %v", err)
 	}
 	if !confirmed {
 		log.Fatalf("refusing to migrate %s; set DB_MIGRATION_CONFIRM=%s after verifying the target", migrationTarget(dsn), migrationConfirmation)

@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -83,7 +82,7 @@ test('derives the variable cost rate from payment, distribution, and operations 
         distribution_fee_rate: '0.05',
         operations_labor_rate: '0.02',
         total_variable_cost_rate: '0.11',
-        effective_tax_rate: '0.16',
+        effective_tax_rate: '0.165',
         target_net_margin: '0.03',
       })
     )
@@ -102,10 +101,10 @@ test('shows readable cost basis labels and explains the selected strategy', asyn
   )
 
   const strategy = screen.getByRole('combobox', {
-    name: 'Cost basis strategy',
+    name: 'Unified sales price strategy',
   })
   expect(strategy).toHaveTextContent(
-    'Maximum eligible purchase cost (recommended)'
+    'Price using the highest eligible channel cost (recommended)'
   )
   expect(strategy).not.toHaveTextContent('max_eligible_cost')
   expect(
@@ -116,14 +115,16 @@ test('shows readable cost basis labels and explains the selected strategy', asyn
 
   fireEvent.click(strategy)
   const minimumCost = screen.getByRole('option', {
-    name: 'Minimum eligible purchase cost',
+    name: 'Price using the lowest eligible channel cost',
   })
   fireEvent.pointerDown(minimumCost, { button: 0 })
   fireEvent.pointerUp(minimumCost, { button: 0 })
   fireEvent.click(minimumCost)
 
   await waitFor(() => {
-    expect(strategy).toHaveTextContent('Minimum eligible purchase cost')
+    expect(strategy).toHaveTextContent(
+      'Price using the lowest eligible channel cost'
+    )
     expect(
       screen.getByText(
         'Uses the lowest cost from the selected active purchase prices. Use only when routing is guaranteed to stay on a low-cost channel; otherwise margin may fall below the minimum.'

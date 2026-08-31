@@ -75,7 +75,11 @@ export function PublishVersionDialog(props: PublishVersionDialogProps) {
     .filter(Number.isFinite)
   const margins = (diff?.items ?? [])
     .filter((item) => item.new_item?.status === 'enabled')
-    .map((item) => Number(item.margin_after))
+    .flatMap((item) =>
+      item.new_channel_margins.length
+        ? item.new_channel_margins.map((channel) => Number(channel.margin_rate))
+        : [Number(item.margin_after)]
+    )
     .filter(Number.isFinite)
   const maximumIncrease = priceChanges.length
     ? Math.max(...priceChanges, 0).toString()

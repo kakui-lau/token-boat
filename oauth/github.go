@@ -57,6 +57,9 @@ func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.
 		"client_secret": common.GitHubClientSecret,
 		"code":          code,
 	}
+	if redirectURI := GetRedirectURI(c, ""); redirectURI != "" {
+		values["redirect_uri"] = redirectURI
+	}
 	jsonData, err := json.Marshal(values)
 	if err != nil {
 		return nil, err

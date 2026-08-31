@@ -238,8 +238,19 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		"quota_saturation",
 		"upstream_cost",
 		"upstream_actual_cost",
+		"expr_b64",
+		"matched_tier",
+	}
+	internalRoutingFields := []string{
+		"requested_model_name",
+		"resolved_model_name",
+		"upstream_model_name",
+		"is_model_mapped",
+		"request_conversion",
+		"upstream_task_id",
 	}
 	for i := range logs {
+		logs[i].ChannelId = 0
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
@@ -251,6 +262,9 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			// Defense in depth for legacy or malformed records that wrote
 			// confidential billing fields outside admin_info.
 			for _, field := range adminOnlyFields {
+				delete(otherMap, field)
+			}
+			for _, field := range internalRoutingFields {
 				delete(otherMap, field)
 			}
 		}
@@ -270,16 +284,27 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 }
 
 func RecordLog(userId int, logType int, content string) {
+	RecordLogWithIP(userId, logType, content, "")
+}
+
+// RecordLogWithIP records a user-visible activity together with the source IP
+// when the action originated from an HTTP request. Background events without
+// a client request must pass an empty IP instead of inventing one.
+func RecordLogWithIP(userId int, logType int, content string, ip string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
 	username, _ := GetUsernameById(userId, false)
+	if !shouldRecordIp(userId) {
+		ip = ""
+	}
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
+		Ip:        ip,
 	}
 	err := createLog(log)
 	if err != nil {
@@ -380,6 +405,9 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+	if !shouldRecordIp(userId) {
+		callerIp = ""
+	}
 	username, _ := GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{
 		"server_ip":               common.GetIp(),
@@ -438,7 +466,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := common.MapToJsonStr(other)
-	var ip string
+	ip := ""
 	if shouldRecordIp(userId) {
 		ip = c.ClientIP()
 	}
@@ -474,8 +502,13 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 // 失败的任务没有实际 Token 消耗，Prompt/Completion/Quota 全部填 0。
 func RecordTaskFailureErrorLog(userId int, channelId int, modelName string, tokenName string,
 	tokenId int, useTimeSeconds int, isStream bool, group string,
-	username string, requestId string, upstreamRequestId string, ip string,
+	username string, requestId string, upstreamRequestId string, taskId string, ip string,
 	content string, other map[string]interface{}) {
+	if !shouldRecordIp(userId) {
+		ip = ""
+	} else if ip == "" {
+		ip = originatingTaskIP(userId, taskId)
+	}
 	otherStr := common.MapToJsonStr(other)
 	log := &Log{
 		UserId:            userId,
@@ -496,6 +529,7 @@ func RecordTaskFailureErrorLog(userId int, channelId int, modelName string, toke
 		Ip:                ip,
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
+		TaskId:            taskId,
 		Other:             otherStr,
 	}
 	if err := createLog(log); err != nil {
@@ -535,7 +569,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
-	var ip string
+	ip := ""
 	if shouldRecordIp(userId) {
 		ip = c.ClientIP()
 	}
@@ -594,6 +628,7 @@ type RecordTaskBillingLogParams struct {
 	TokenId          int
 	Group            string
 	TaskId           string
+	Ip               string
 	Other            map[string]interface{}
 	NodeName         string // 任务发起节点；为空时回退当前节点
 }
@@ -610,6 +645,12 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		}
 	}
 	createdAt := common.GetTimestamp()
+	ip := params.Ip
+	if !shouldRecordIp(params.UserId) {
+		ip = ""
+	} else if ip == "" {
+		ip = originatingTaskIP(params.UserId, params.TaskId)
+	}
 	log := &Log{
 		UserId:           params.UserId,
 		Username:         username,
@@ -625,6 +666,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		TokenId:          params.TokenId,
 		Group:            params.Group,
 		TaskId:           params.TaskId,
+		Ip:               ip,
 		Other:            common.MapToJsonStr(params.Other),
 	}
 	err := createLog(log)
@@ -653,6 +695,22 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			NodeName:  nodeName,
 		})
 	}
+}
+
+func originatingTaskIP(userId int, taskId string) string {
+	if userId <= 0 || taskId == "" {
+		return ""
+	}
+	var ip string
+	err := LOG_DB.Model(&Log{}).
+		Where("user_id = ? AND task_id = ? AND ip <> ?", userId, taskId, "").
+		Order("created_at asc").
+		Limit(1).
+		Pluck("ip", &ip).Error
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to load originating task IP: userId=%d, taskId=%s, err=%s", userId, taskId, err.Error()))
+	}
+	return ip
 }
 
 // UpdateTaskConsumeLogDetails enriches the original async-task consumption
@@ -891,10 +949,18 @@ func FindRequestIDsByUpstreamRequestIDKeyword(keyword string, limit int) ([]stri
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, scope string, sortOrder string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
+		switch scope {
+		case "request":
+			tx = tx.Where("logs.type IN ?", []int{LogTypeConsume, LogTypeError})
+		case "activity":
+			tx = tx.Where("logs.type IN ?", []int{LogTypeManage, LogTypeSystem, LogTypeLogin})
+		case "billing":
+			tx = tx.Where("logs.type IN ?", []int{LogTypeTopup, LogTypeRefund})
+		}
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
@@ -925,9 +991,13 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		common.SysError("failed to count user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
 	}
-	order := "logs.id desc"
+	direction := "desc"
+	if strings.EqualFold(sortOrder, "asc") {
+		direction = "asc"
+	}
+	order := "logs.id " + direction
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		order = clickHouseLogOrder("logs.")
+		order = "logs.created_at " + direction + ", logs.request_id " + direction
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
@@ -937,6 +1007,32 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
+}
+
+func GetUserRequestLog(userId int, requestId string) (*Log, error) {
+	requestId = strings.TrimSpace(requestId)
+	if requestId == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	order := "created_at DESC, id DESC"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = clickHouseLogOrder("")
+	}
+	var logs []*Log
+	if err := LOG_DB.Model(&Log{}).
+		Where("user_id = ?", userId).
+		Where("request_id = ?", requestId).
+		Where("type IN ?", []int{LogTypeConsume, LogTypeError}).
+		Order(order).
+		Limit(1).
+		Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	if len(logs) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	formatUserLogs(logs, 0)
+	return logs[0], nil
 }
 
 type Stat struct {
@@ -951,6 +1047,347 @@ type Stat struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	CacheHitTokens   int64   `json:"cache_hit_tokens"`
 	CacheHitRate     float64 `json:"cache_hit_rate"`
+}
+
+type UserUsageSeriesPoint struct {
+	DayStart         int64    `json:"day_start"`
+	BucketSeconds    int64    `json:"bucket_seconds"`
+	RequestCount     int64    `json:"request_count"`
+	FailureCount     int64    `json:"failure_count"`
+	PromptTokens     int64    `json:"prompt_tokens"`
+	CompletionTokens int64    `json:"completion_tokens"`
+	TotalTokens      int64    `json:"total_tokens"`
+	CacheHitTokens   int64    `json:"cache_hit_tokens"`
+	CacheHitRate     float64  `json:"cache_hit_rate"`
+	Quota            int64    `json:"quota"`
+	AverageLatencyMs *float64 `json:"average_latency_ms"`
+}
+
+type UserUsageModel struct {
+	ModelName        string   `json:"model_name"`
+	RequestCount     int64    `json:"request_count"`
+	FailureCount     int64    `json:"failure_count"`
+	PromptTokens     int64    `json:"prompt_tokens"`
+	CompletionTokens int64    `json:"completion_tokens"`
+	TotalTokens      int64    `json:"total_tokens"`
+	Quota            int64    `json:"quota"`
+	AverageLatencyMs *float64 `json:"average_latency_ms"`
+}
+
+type UserUsageAPIKey struct {
+	TokenID          int      `json:"token_id"`
+	TokenName        string   `json:"token_name"`
+	RequestCount     int64    `json:"request_count"`
+	FailureCount     int64    `json:"failure_count"`
+	PromptTokens     int64    `json:"prompt_tokens"`
+	CompletionTokens int64    `json:"completion_tokens"`
+	TotalTokens      int64    `json:"total_tokens"`
+	Quota            int64    `json:"quota"`
+	AverageLatencyMs *float64 `json:"average_latency_ms"`
+}
+
+type UserUsageAnalytics struct {
+	Quota            int64                  `json:"quota"`
+	RequestCount     int64                  `json:"request_count"`
+	FailureCount     int64                  `json:"failure_count"`
+	FailureRate      float64                `json:"failure_rate"`
+	PeakRpm          int64                  `json:"peak_rpm"`
+	PeakTpm          int64                  `json:"peak_tpm"`
+	PromptTokens     int64                  `json:"prompt_tokens"`
+	CompletionTokens int64                  `json:"completion_tokens"`
+	TotalTokens      int64                  `json:"total_tokens"`
+	CacheHitTokens   int64                  `json:"cache_hit_tokens"`
+	CacheHitRate     float64                `json:"cache_hit_rate"`
+	AverageLatencyMs *float64               `json:"average_latency_ms"`
+	Series           []UserUsageSeriesPoint `json:"series"`
+	Models           []UserUsageModel       `json:"models"`
+	APIKeys          []UserUsageAPIKey      `json:"api_keys"`
+}
+
+type UserUsageAnalyticsQuery struct {
+	StartTimestamp        int64
+	EndTimestamp          int64
+	TimezoneOffsetMinutes int
+	BucketSeconds         int64
+	LogType               int
+	TokenName             string
+	ModelName             string
+	RequestID             string
+	UpstreamRequestID     string
+}
+
+func usageTimeBucketExpr(timezoneOffsetSeconds int64, bucketSeconds int64) string {
+	shiftedTimestamp := "created_at"
+	if timezoneOffsetSeconds != 0 {
+		shiftedTimestamp = "(created_at + " + strconv.FormatInt(timezoneOffsetSeconds, 10) + ")"
+	}
+	bucket := strconv.FormatInt(bucketSeconds, 10)
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return "intDiv(" + shiftedTimestamp + ", " + bucket + ") * " + bucket + " - " + strconv.FormatInt(timezoneOffsetSeconds, 10)
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
+		return "CAST(FLOOR(" + shiftedTimestamp + " / " + bucket + ") * " + bucket + " AS SIGNED) - " + strconv.FormatInt(timezoneOffsetSeconds, 10)
+	}
+	return shiftedTimestamp + " - (" + shiftedTimestamp + " % " + bucket + ") - " + strconv.FormatInt(timezoneOffsetSeconds, 10)
+}
+
+func responseTimeMillisSQLExpr() string {
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return "CASE WHEN isValidJSON(other) AND JSONHas(other, 'response_time_ms') THEN JSONExtractFloat(other, 'response_time_ms') ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "CASE WHEN JSON_VALID(other) AND JSON_EXTRACT(other, '$.response_time_ms') IS NOT NULL THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$.response_time_ms')) AS DECIMAL(20, 3)) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return "CASE WHEN other IS NOT NULL AND other <> '' AND jsonb_exists(other::jsonb, 'response_time_ms') THEN CAST(other::jsonb ->> 'response_time_ms' AS DOUBLE PRECISION) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		return "CASE WHEN json_valid(other) THEN CAST(json_extract(other, '$.response_time_ms') AS REAL) ELSE NULL END"
+	default:
+		return "NULL"
+	}
+}
+
+func GetUserUsageAnalytics(userId int, startTimestamp int64, endTimestamp int64, timezoneOffsetMinutes int) (UserUsageAnalytics, error) {
+	return GetUserUsageAnalyticsWithQuery(userId, UserUsageAnalyticsQuery{
+		StartTimestamp:        startTimestamp,
+		EndTimestamp:          endTimestamp,
+		TimezoneOffsetMinutes: timezoneOffsetMinutes,
+		BucketSeconds:         86_400,
+	})
+}
+
+func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (UserUsageAnalytics, error) {
+	analytics := UserUsageAnalytics{
+		Series:  make([]UserUsageSeriesPoint, 0),
+		Models:  make([]UserUsageModel, 0),
+		APIKeys: make([]UserUsageAPIKey, 0),
+	}
+	if query.BucketSeconds <= 0 {
+		query.BucketSeconds = 86_400
+	}
+	base := LOG_DB.Model(&Log{}).
+		Where("user_id = ?", userId).
+		Where("type IN ?", []int{LogTypeConsume, LogTypeError}).
+		Where("created_at >= ? AND created_at <= ?", query.StartTimestamp, query.EndTimestamp)
+	if query.LogType == LogTypeConsume || query.LogType == LogTypeError {
+		base = base.Where("type = ?", query.LogType)
+	}
+	var err error
+	if base, err = applyExplicitLogTextFilter(base, "model_name", query.ModelName); err != nil {
+		return analytics, err
+	}
+	if query.TokenName != "" {
+		base = base.Where("token_name = ?", query.TokenName)
+	}
+	if query.RequestID != "" {
+		base = base.Where("request_id = ?", query.RequestID)
+	}
+	if query.UpstreamRequestID != "" {
+		base = base.Where("upstream_request_id = ?", query.UpstreamRequestID)
+	}
+	latencyExpr := responseTimeMillisSQLExpr()
+	cacheExpr := cacheTokensSQLExpr()
+	if cacheExpr == "" {
+		cacheExpr = "0"
+	}
+
+	type aggregateRow struct {
+		Quota            int64
+		RequestCount     int64
+		FailureCount     int64
+		PromptTokens     int64
+		CompletionTokens int64
+		CacheHitTokens   int64
+		AverageLatencyMs sql.NullFloat64
+	}
+	selectAggregate := fmt.Sprintf(`
+		COUNT(CASE WHEN type = ? THEN 1 END) AS request_count,
+		COUNT(CASE WHEN type = ? THEN 1 END) AS failure_count,
+		COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(prompt_tokens, 0) ELSE 0 END), 0) AS prompt_tokens,
+		COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(completion_tokens, 0) ELSE 0 END), 0) AS completion_tokens,
+		COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(quota, 0) ELSE 0 END), 0) AS quota,
+		%s AS cache_hit_tokens,
+		AVG(CASE WHEN type = ? THEN %s ELSE NULL END) AS average_latency_ms`, cacheExpr, latencyExpr)
+
+	var summary aggregateRow
+	if err := base.Session(&gorm.Session{}).Select(
+		selectAggregate,
+		LogTypeConsume,
+		LogTypeError,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+	).Scan(&summary).Error; err != nil {
+		return analytics, err
+	}
+	analytics.Quota = summary.Quota
+	analytics.RequestCount = summary.RequestCount
+	analytics.FailureCount = summary.FailureCount
+	analytics.PromptTokens = summary.PromptTokens
+	analytics.CompletionTokens = summary.CompletionTokens
+	analytics.TotalTokens = summary.PromptTokens + summary.CompletionTokens
+	analytics.CacheHitTokens = summary.CacheHitTokens
+	totalRequests := summary.RequestCount + summary.FailureCount
+	if totalRequests > 0 {
+		analytics.FailureRate = float64(summary.FailureCount) / float64(totalRequests)
+	}
+	if analytics.TotalTokens > 0 {
+		analytics.CacheHitRate = float64(summary.CacheHitTokens) / float64(analytics.TotalTokens)
+	}
+	if summary.AverageLatencyMs.Valid {
+		averageLatencyMs := summary.AverageLatencyMs.Float64
+		analytics.AverageLatencyMs = &averageLatencyMs
+	}
+
+	type seriesRow struct {
+		DayStart         int64
+		Quota            int64
+		RequestCount     int64
+		FailureCount     int64
+		PromptTokens     int64
+		CompletionTokens int64
+		CacheHitTokens   int64
+		AverageLatencyMs sql.NullFloat64
+	}
+	bucketExpr := usageTimeBucketExpr(int64(query.TimezoneOffsetMinutes)*60, query.BucketSeconds)
+	var seriesRows []seriesRow
+	if err := base.Session(&gorm.Session{}).Select(
+		bucketExpr+" AS day_start, "+selectAggregate,
+		LogTypeConsume,
+		LogTypeError,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+		LogTypeConsume,
+	).Group(bucketExpr).Order("day_start ASC").Scan(&seriesRows).Error; err != nil {
+		return analytics, err
+	}
+	for _, row := range seriesRows {
+		point := UserUsageSeriesPoint{
+			DayStart:         row.DayStart,
+			BucketSeconds:    query.BucketSeconds,
+			RequestCount:     row.RequestCount,
+			FailureCount:     row.FailureCount,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			TotalTokens:      row.PromptTokens + row.CompletionTokens,
+			CacheHitTokens:   row.CacheHitTokens,
+			Quota:            row.Quota,
+		}
+		if point.TotalTokens > 0 {
+			point.CacheHitRate = float64(point.CacheHitTokens) / float64(point.TotalTokens)
+		}
+		if row.AverageLatencyMs.Valid {
+			averageLatencyMs := row.AverageLatencyMs.Float64
+			point.AverageLatencyMs = &averageLatencyMs
+		}
+		analytics.Series = append(analytics.Series, point)
+	}
+
+	type modelRow struct {
+		ModelName        string
+		Quota            int64
+		RequestCount     int64
+		FailureCount     int64
+		PromptTokens     int64
+		CompletionTokens int64
+		AverageLatencyMs sql.NullFloat64
+	}
+	var modelRows []modelRow
+	if err := base.Session(&gorm.Session{}).
+		Where("model_name <> ?", "").
+		Select(
+			"model_name, "+selectAggregate,
+			LogTypeConsume,
+			LogTypeError,
+			LogTypeConsume,
+			LogTypeConsume,
+			LogTypeConsume,
+			LogTypeConsume,
+		).
+		Group("model_name").
+		Order("quota DESC, request_count DESC, model_name ASC").
+		Scan(&modelRows).Error; err != nil {
+		return analytics, err
+	}
+	for _, row := range modelRows {
+		modelUsage := UserUsageModel{
+			ModelName:        row.ModelName,
+			RequestCount:     row.RequestCount,
+			FailureCount:     row.FailureCount,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			TotalTokens:      row.PromptTokens + row.CompletionTokens,
+			Quota:            row.Quota,
+		}
+		if row.AverageLatencyMs.Valid {
+			averageLatencyMs := row.AverageLatencyMs.Float64
+			modelUsage.AverageLatencyMs = &averageLatencyMs
+		}
+		analytics.Models = append(analytics.Models, modelUsage)
+	}
+
+	type apiKeyRow struct {
+		TokenID          int
+		TokenName        string
+		Quota            int64
+		RequestCount     int64
+		FailureCount     int64
+		PromptTokens     int64
+		CompletionTokens int64
+		AverageLatencyMs sql.NullFloat64
+	}
+	var apiKeyRows []apiKeyRow
+	if err := base.Session(&gorm.Session{}).
+		Select(
+			"token_id, token_name, "+selectAggregate,
+			LogTypeConsume,
+			LogTypeError,
+			LogTypeConsume,
+			LogTypeConsume,
+			LogTypeConsume,
+			LogTypeConsume,
+		).
+		Group("token_id, token_name").
+		Order("quota DESC, request_count DESC, token_name ASC").
+		Scan(&apiKeyRows).Error; err != nil {
+		return analytics, err
+	}
+	for _, row := range apiKeyRows {
+		apiKeyUsage := UserUsageAPIKey{
+			TokenID:          row.TokenID,
+			TokenName:        row.TokenName,
+			RequestCount:     row.RequestCount,
+			FailureCount:     row.FailureCount,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			TotalTokens:      row.PromptTokens + row.CompletionTokens,
+			Quota:            row.Quota,
+		}
+		if row.AverageLatencyMs.Valid {
+			averageLatencyMs := row.AverageLatencyMs.Float64
+			apiKeyUsage.AverageLatencyMs = &averageLatencyMs
+		}
+		analytics.APIKeys = append(analytics.APIKeys, apiKeyUsage)
+	}
+
+	bucketExpr = peakTimeBucketExpr()
+	peakSub := base.Session(&gorm.Session{}).Select(
+		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) AS tpm",
+	).Where("type = ?", LogTypeConsume).Group(bucketExpr)
+	peak := struct {
+		PeakRpm int64 `gorm:"column:peak_rpm"`
+		PeakTpm int64 `gorm:"column:peak_tpm"`
+	}{}
+	if err := LOG_DB.Table("(?) AS peak", peakSub).Select(
+		"COALESCE(MAX(rpm), 0) AS peak_rpm, COALESCE(MAX(tpm), 0) AS peak_tpm",
+	).Scan(&peak).Error; err != nil {
+		return analytics, err
+	}
+	analytics.PeakRpm = peak.PeakRpm
+	analytics.PeakTpm = peak.PeakTpm
+
+	return analytics, nil
 }
 
 func cacheTokensSQLExpr() string {

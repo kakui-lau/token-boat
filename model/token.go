@@ -103,10 +103,21 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
-func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
+func tokenListOrder(order string) string {
+	if strings.EqualFold(order, "asc") {
+		return "id asc"
+	}
+	return "id desc"
+}
+
+func GetAllUserTokens(userId int, startIdx int, num int, sortOrder ...string) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	order := ""
+	if len(sortOrder) > 0 {
+		order = sortOrder[0]
+	}
+	err = DB.Where("user_id = ?", userId).Order(tokenListOrder(order)).Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -156,7 +167,13 @@ func validateLikePattern(input string) error {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+type UserTokenListOptions struct {
+	Status    int
+	HasStatus bool
+	Order     string
+}
+
+func SearchUserTokens(userId int, keyword string, token string, offset int, limit int, options ...UserTokenListOptions) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -184,6 +201,16 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	}
 
 	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	listOptions := UserTokenListOptions{}
+	if len(options) > 0 {
+		listOptions = options[0]
+	}
+	if listOptions.HasStatus {
+		if listOptions.Status < common.TokenStatusEnabled || listOptions.Status > common.TokenStatusExhausted {
+			return nil, 0, errors.New("无效的令牌状态")
+		}
+		baseQuery = baseQuery.Where("status = ?", listOptions.Status)
+	}
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -209,7 +236,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	}
 
 	// 再分页查数据
-	err = baseQuery.Order("id desc").Offset(offset).Limit(limit).Find(&tokens).Error
+	err = baseQuery.Order(tokenListOrder(listOptions.Order)).Offset(offset).Limit(limit).Find(&tokens).Error
 	if err != nil {
 		common.SysError("failed to search tokens: " + err.Error())
 		return nil, 0, errors.New("搜索令牌失败")

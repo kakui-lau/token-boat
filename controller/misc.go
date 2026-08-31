@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -308,7 +309,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 	if _, err := model.GetUniqueUserByEmail(email); err == nil {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
-		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
+		link := passwordResetLink(email, code, c.Query("redirect_path"))
 		subject := fmt.Sprintf("%s密码重置", common.SystemName)
 		content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
 			"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
@@ -325,6 +326,18 @@ func SendPasswordResetEmail(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
+}
+
+func passwordResetLink(email string, token string, requestedPath string) string {
+	resetPath := "/user/reset"
+	if requestedPath == "/console/user/reset" {
+		resetPath = requestedPath
+	}
+	link := strings.TrimRight(system_setting.ServerAddress, "/") + resetPath
+	query := url.Values{}
+	query.Set("email", email)
+	query.Set("token", token)
+	return link + "?" + query.Encode()
 }
 
 type PasswordResetRequest struct {

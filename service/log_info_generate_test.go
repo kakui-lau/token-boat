@@ -1,7 +1,9 @@
 package service
 
 import (
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -10,9 +12,26 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/types"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGenerateTextOtherInfoRecordsPreciseResponseTime(t *testing.T) {
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	relayInfo := &relaycommon.RelayInfo{
+		StartTime:         time.Now(),
+		FirstResponseTime: time.Now(),
+		ChannelMeta:       &relaycommon.ChannelMeta{},
+	}
+
+	other := GenerateTextOtherInfo(context, relayInfo)
+
+	responseTimeMs, ok := other["response_time_ms"].(int64)
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, responseTimeMs, int64(0))
+}
 
 func TestInjectGeneralBillingAuditRecordsReconciliation(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{

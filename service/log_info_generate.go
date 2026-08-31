@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -191,6 +192,9 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) map[string]interface{} {
 	other := make(map[string]interface{})
 	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
+	if responseTimeMs := time.Since(relayInfo.StartTime).Milliseconds(); !relayInfo.StartTime.IsZero() && responseTimeMs >= 0 {
+		other["response_time_ms"] = responseTimeMs
+	}
 	if relayInfo.RequestedModelName != "" && relayInfo.RequestedModelName != relayInfo.OriginModelName {
 		other["requested_model_name"] = relayInfo.RequestedModelName
 		other["resolved_model_name"] = relayInfo.OriginModelName

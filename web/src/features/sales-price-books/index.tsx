@@ -86,6 +86,7 @@ import {
   deleteSalesPriceBookItems,
   deleteSalesPriceBookVersionDraft,
   enableSalesPriceBook,
+  exportSalesPriceBookChannelModels,
   exportSalesPriceBookItems,
   getDefaultSalesPriceBook,
   getSalesPriceBookItems,
@@ -231,6 +232,8 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
   const [generateTarget, setGenerateTarget] = useState<{
     id: number
     label: string
+    version: SalesPriceBookVersion
+    initialChannelModelIds?: number[]
   }>()
   const [assignOpen, setAssignOpen] = useState(false)
   const [editBookId, setEditBookId] = useState<number>()
@@ -344,9 +347,14 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
   const assignmentBooks = assignmentBooksQuery.data?.data.items ?? []
 
   const refreshBooks = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: ['sales-price-books', 'list'],
-    })
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'list'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'audit-records'],
+      }),
+    ])
   }
   const refreshSelectedVersionPrices = async () => {
     await Promise.all([
@@ -355,6 +363,9 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
       }),
       queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'version-diff'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'audit-records'],
       }),
     ])
   }
@@ -498,9 +509,14 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
       versionId: number
     }) => cloneSalesPriceBookVersion(bookId, versionId),
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'versions', selectedBook?.id],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'versions', selectedBook?.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'audit-records'],
+        }),
+      ])
       setSelectedVersionId(response.data.id)
       toast.success(t('Historical version restored as a new draft'))
     },
@@ -509,9 +525,14 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
   const defaultMutation = useMutation({
     mutationFn: setDefaultSalesPriceBook,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'default', 'toc_default'],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'default', 'toc_default'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'audit-records'],
+        }),
+      ])
       toast.success(t('TOC default price book updated'))
     },
     onError: handleServerError,
@@ -562,9 +583,14 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
   const deleteDraftMutation = useMutation({
     mutationFn: deleteSalesPriceBookVersionDraft,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'versions', selectedBook?.id],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'versions', selectedBook?.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'audit-records'],
+        }),
+      ])
       setSelectedVersionId(undefined)
       toast.success(t('Draft version deleted'))
       setDestructiveAction(undefined)
@@ -574,10 +600,12 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
   const cancelAssignmentMutation = useMutation({
     mutationFn: cancelUserPriceBookAssignment,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'assignments'],
-      })
-      await refreshBooks()
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'assignments'],
+        }),
+        refreshBooks(),
+      ])
       toast.success(t('Price book assignment cancelled'))
       setCancelAssignment(undefined)
     },
@@ -590,6 +618,17 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
       downloadCSV(
         blob,
         `sales-price-book-${selectedBook.code}-v${selectedVersion.version}`
+      )
+    },
+    onError: handleServerError,
+  })
+  const exportChannelModelsMutation = useMutation({
+    mutationFn: exportSalesPriceBookChannelModels,
+    onSuccess: (blob) => {
+      if (!selectedBook || !selectedVersion) return
+      downloadCSV(
+        blob,
+        `sales-price-book-${selectedBook.code}-v${selectedVersion.version}-channel-models`
       )
     },
     onError: handleServerError,
@@ -918,9 +957,11 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
                           const version = versions.find(
                             (item) => item.id === versionId
                           )
+                          if (!version) return
                           setGenerateTarget({
                             id: versionId,
-                            label: `${selectedBook.name} / v${version?.version ?? ''}`,
+                            label: `${selectedBook.name} / v${version.version}`,
+                            version,
                           })
                         }}
                         onPublish={requestVersionPublish}
@@ -993,10 +1034,16 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
                   canWrite={canWrite}
                   canPublish={canPublish}
                   isExporting={exportItemsMutation.isPending}
+                  isExportingChannelModels={
+                    exportChannelModelsMutation.isPending
+                  }
                   isDeleting={deleteItemMutation.isPending}
                   isUpdatingStatus={itemStatusMutation.isPending}
                   onExport={() =>
                     exportItemsMutation.mutate(selectedVersion.id)
+                  }
+                  onExportChannelModels={() =>
+                    exportChannelModelsMutation.mutate(selectedVersion.id)
                   }
                   onEdit={setEditPriceItem}
                   onDelete={(itemIds) =>
@@ -1010,6 +1057,16 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
                       action,
                       reason: pricingRiskLabel(item.review_risk_code ?? '', t),
                       detail: item.review_reason ?? '',
+                    })
+                  }
+                  onRegenerate={(item) =>
+                    setGenerateTarget({
+                      id: selectedVersion.id,
+                      label: `${selectedBook.name} / v${selectedVersion.version}`,
+                      version: selectedVersion,
+                      initialChannelModelIds: (item.channel_margins ?? []).map(
+                        (margin) => margin.channel_model_id
+                      ),
                     })
                   }
                   onSetEnabled={(itemId, enabled) =>
@@ -1211,6 +1268,7 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
               setGenerateTarget({
                 id: version.id,
                 label: `${selectedBook?.name ?? ''} / v${version.version}`,
+                version,
               })
             }}
           />
@@ -1219,7 +1277,9 @@ export function SalesPriceBooks(props: SalesPriceBooksProps) {
           <GenerateItemsDialog
             open
             versionId={generateTarget.id}
+            version={generateTarget.version}
             versionLabel={generateTarget.label}
+            initialChannelModelIds={generateTarget.initialChannelModelIds}
             onOpenChange={(open) => {
               if (!open) setGenerateTarget(undefined)
             }}

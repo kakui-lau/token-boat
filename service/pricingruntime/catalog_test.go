@@ -28,6 +28,7 @@ func setupRuntimeCatalogTestDB(t *testing.T) {
 		&model.ModelOfficialPrice{},
 		&model.ChannelModelPurchasePriceVersion{},
 		&model.RequestPricingSnapshot{},
+		&model.SalesPriceBookChannelModelOverride{},
 		&model.PricingCircuitEvent{},
 		&model.SalesPriceBook{},
 		&model.SalesPriceBookVersion{},

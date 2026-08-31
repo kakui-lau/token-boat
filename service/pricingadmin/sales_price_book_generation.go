@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/service/pricingpolicy"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -33,8 +34,16 @@ type SalesPriceBookGenerationInput struct {
 }
 
 type SalesPriceBookGenerationResult struct {
-	Batch          model.PricingChangeBatch   `json:"batch"`
-	GeneratedItems []model.SalesPriceBookItem `json:"generated_items"`
+	Batch          model.PricingChangeBatch          `json:"batch"`
+	GeneratedItems []model.SalesPriceBookItem        `json:"generated_items"`
+	Warnings       []SalesPriceBookGenerationWarning `json:"warnings"`
+}
+
+type SalesPriceBookGenerationWarning struct {
+	ModelId       int    `json:"model_id"`
+	ModelName     string `json:"model_name"`
+	Code          string `json:"code"`
+	SalesDiscount string `json:"sales_discount"`
 }
 
 type salesPriceBookPurchaseSource struct {
@@ -105,6 +114,7 @@ func GenerateSalesPriceBookItems(
 		if version.Status != model.SalesPriceBookVersionStatusDraft {
 			return errors.New("only sales price book drafts can generate model prices")
 		}
+		populateSalesPriceBookVersionDerived(&version)
 		var book model.SalesPriceBook
 		if err := tx.First(&book, version.PriceBookId).Error; err != nil {
 			return err
@@ -124,12 +134,6 @@ func GenerateSalesPriceBookItems(
 				purchase.price_structure AS purchase_price_structure,
 				purchase.quote_spec AS purchase_quote_spec,
 				purchase.price_components AS purchase_price_components,
-				purchase.purchase_discount AS purchase_purchase_discount,
-				purchase.input_unit_price AS purchase_input_unit_price,
-				purchase.output_unit_price AS purchase_output_unit_price,
-				purchase.cache_read_unit_price AS purchase_cache_read_unit_price,
-				purchase.cache_write_unit_price AS purchase_cache_write_unit_price,
-				purchase.price_unit AS purchase_price_unit,
 				purchase.purchase_billing_expr AS purchase_purchase_billing_expr,
 				purchase.purchase_expr_hash AS purchase_purchase_expr_hash,
 				purchase.expression_source AS purchase_expression_source,
@@ -166,7 +170,11 @@ func GenerateSalesPriceBookItems(
 		if len(sources) != len(selectedIds) {
 			return errors.New("one or more selected channel models have no active purchase price")
 		}
-		for _, source := range sources {
+		for index := range sources {
+			if err := HydratePurchasePriceProjection(&sources[index].Purchase); err != nil {
+				return fmt.Errorf("channel model %d purchase price is invalid: %w", sources[index].ChannelModelId, err)
+			}
+			source := sources[index]
 			if source.Purchase.Currency != book.Currency {
 				return fmt.Errorf(
 					"channel model %d purchase currency %s does not match price book currency %s",
@@ -179,6 +187,15 @@ func GenerateSalesPriceBookItems(
 					source.ChannelModelId,
 				)
 			}
+		}
+		var overrideRows []model.SalesPriceBookChannelModelOverride
+		if err := tx.Where("price_book_version_id = ? AND channel_model_id IN ?", versionId, selectedIds).
+			Find(&overrideRows).Error; err != nil {
+			return err
+		}
+		overridesByChannelModel := make(map[int]model.SalesPriceBookChannelModelOverride, len(overrideRows))
+		for _, override := range overrideRows {
+			overridesByChannelModel[override.ChannelModelId] = override
 		}
 
 		scope, err := common.Marshal(map[string]any{
@@ -211,12 +228,14 @@ func GenerateSalesPriceBookItems(
 			grouped[source.ModelId] = append(grouped[source.ModelId], source)
 		}
 		sort.Ints(modelIds)
+		requireLegacyCurrency := salesPriceBookItemsRequireLegacyCurrency(tx)
 		for _, modelId := range modelIds {
 			modelSources := grouped[modelId]
 			generated, basisSources, generationErr := buildSalesPriceBookItem(
 				version,
 				modelSources,
 				input.DesignatedChannelModel[modelId],
+				overridesByChannelModel,
 			)
 			result.Batch.TotalCount++
 			if generationErr != nil {
@@ -235,6 +254,7 @@ func GenerateSalesPriceBookItems(
 
 			generated.PriceBookVersionId = versionId
 			generated.GeneratedByBatchId = &result.Batch.Id
+			generated.Currency = book.Currency
 			var current model.SalesPriceBookItem
 			err := tx.First(&current,
 				"price_book_version_id = ? AND model_id = ?", versionId, modelId,
@@ -260,6 +280,13 @@ func GenerateSalesPriceBookItems(
 					result.Batch.UnchangedCount++
 					continue
 				}
+				if current.Status == SalesPriceItemStatusReviewRequired {
+					if err := closeSalesPriceBookItemReviewTx(
+						tx, current, PricingChangeBatchItemStatusRejected,
+					); err != nil {
+						return err
+					}
+				}
 				oldHash = current.SalesExprHash
 				oldReferencePrice, oldReferenceCost, marginBefore,
 					oldPurchaseVersions, err = salesPriceBookItemReferenceTx(tx, current, version)
@@ -268,31 +295,31 @@ func GenerateSalesPriceBookItems(
 				}
 				action = "update"
 				generated.Id = current.Id
+				generated.CreatedAt = current.CreatedAt
 				if err := tx.Model(&model.SalesPriceBookItem{}).Where("id = ?", current.Id).
 					Updates(map[string]any{
 						"status": generated.Status, "billing_mode": generated.BillingMode,
-						"price_structure":             generated.PriceStructure,
-						"price_components":            generated.PriceComponents,
-						"sales_billing_expr":          generated.SalesBillingExpr,
-						"sales_expr_hash":             generated.SalesExprHash,
-						"expression_source":           generated.ExpressionSource,
-						"expression_schema_version":   generated.ExpressionSchemaVersion,
-						"pricing_method":              generated.PricingMethod,
-						"primary_purchase_version_id": generated.PrimaryPurchaseVersionId,
-						"selling_factor":              generated.SellingFactor,
-						"minimum_margin_override":     generated.MinimumMarginOverride,
-						"currency":                    generated.Currency,
-						"generated_by_batch_id":       generated.GeneratedByBatchId,
-						"remark":                      generated.Remark,
+						"price_structure":           generated.PriceStructure,
+						"price_components":          generated.PriceComponents,
+						"sales_billing_expr":        generated.SalesBillingExpr,
+						"sales_expr_hash":           generated.SalesExprHash,
+						"expression_source":         generated.ExpressionSource,
+						"expression_schema_version": generated.ExpressionSchemaVersion,
+						"pricing_method":            generated.PricingMethod,
+						"pricing_config":            generated.PricingConfig,
+						"generated_by_batch_id":     generated.GeneratedByBatchId,
+						"remark":                    generated.Remark,
 					}).Error; err != nil {
 					return err
 				}
 				if err := tx.Where("price_book_item_id = ?", current.Id).
-					Delete(&model.SalesPriceBookItemBasisSource{}).Error; err != nil {
+					Delete(&model.SalesPriceBookItemCostSource{}).Error; err != nil {
 					return err
 				}
 			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				if err := tx.Create(&generated).Error; err != nil {
+				if err := createSalesPriceBookItemTx(
+					tx, &generated, book.Currency, requireLegacyCurrency,
+				); err != nil {
 					return err
 				}
 			} else {
@@ -398,7 +425,29 @@ func GenerateSalesPriceBookItems(
 			Action: "generate", OperatorId: userId,
 		}).Error
 	})
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	result.Warnings = make([]SalesPriceBookGenerationWarning, 0)
+	items, listErr := ListSalesPriceBookItems(versionId)
+	if listErr != nil {
+		common.SysError(fmt.Sprintf(
+			"failed to calculate sales price book generation warnings for version %d: %v",
+			versionId, listErr,
+		))
+		return result, nil
+	}
+	for _, item := range items {
+		if item.GeneratedByBatchId == nil || *item.GeneratedByBatchId != result.Batch.Id ||
+			item.WarningCode == "" {
+			continue
+		}
+		result.Warnings = append(result.Warnings, SalesPriceBookGenerationWarning{
+			ModelId: item.ModelId, ModelName: item.ModelName,
+			Code: item.WarningCode, SalesDiscount: item.WarningSalesDiscount,
+		})
+	}
+	return result, nil
 }
 
 func optionalIntEqual(left *int, right *int) bool {
@@ -439,11 +488,66 @@ func buildSalesPriceBookItem(
 	version model.SalesPriceBookVersion,
 	sources []salesPriceBookPurchaseSource,
 	designatedChannelModelId int,
-) (model.SalesPriceBookItem, []model.SalesPriceBookItemBasisSource, error) {
+	overrideSets ...map[int]model.SalesPriceBookChannelModelOverride,
+) (model.SalesPriceBookItem, []model.SalesPriceBookItemCostSource, error) {
 	if len(sources) == 0 {
 		return model.SalesPriceBookItem{}, nil, errors.New("no purchase sources are available")
 	}
-	selected := sources[0].Purchase
+	overridesByChannelModel := map[int]model.SalesPriceBookChannelModelOverride{}
+	if len(overrideSets) > 0 && overrideSets[0] != nil {
+		overridesByChannelModel = overrideSets[0]
+	}
+	salesCandidates := make([]salesPriceBookPurchaseSource, 0, len(sources))
+	for _, source := range sources {
+		var override *model.SalesPriceBookChannelModelOverride
+		if configured, exists := overridesByChannelModel[source.ChannelModelId]; exists {
+			override = &configured
+		}
+		effective, err := pricingpolicy.Resolve(version, override)
+		if err != nil {
+			return model.SalesPriceBookItem{}, nil, fmt.Errorf(
+				"channel model %d special parameters: %w", source.ChannelModelId, err,
+			)
+		}
+		calculator, err := NewSalesPriceCalculator(
+			effective.TotalVariableCostRate,
+			effective.EffectiveTaxRate,
+			effective.TargetNetMargin,
+		)
+		if err != nil {
+			return model.SalesPriceBookItem{}, nil, fmt.Errorf(
+				"channel model %d special parameters: %w", source.ChannelModelId, err,
+			)
+		}
+		factor, err := calculator.SellingFactor()
+		if err != nil {
+			return model.SalesPriceBookItem{}, nil, err
+		}
+		preview, err := BuildSalesPricePreview(SalesPriceGenerationInput{
+			ChannelModelId: source.ChannelModelId, PurchasePriceVersionId: source.Purchase.Id,
+			TotalVariableCostRate: effective.TotalVariableCostRate,
+			EffectiveTaxRate:      effective.EffectiveTaxRate,
+			TargetNetMargin:       effective.TargetNetMargin,
+			MinimumMarginRate:     effective.MinimumMarginRate,
+		}, source.Purchase)
+		if err != nil {
+			return model.SalesPriceBookItem{}, nil, err
+		}
+		candidate := source.Purchase
+		candidate.PriceComponents = preview.PriceComponents
+		candidate.PurchaseBillingExpr = preview.SalesBillingExpr
+		candidate.PurchaseExprHash = billingexpr.ExprHashString(preview.SalesBillingExpr)
+		if discount, err := decimal.NewFromString(strings.TrimSpace(source.Purchase.PurchaseDiscount)); err == nil {
+			candidate.PurchaseDiscount = discount.Mul(factor).String()
+		}
+		salesCandidates = append(salesCandidates, salesPriceBookPurchaseSource{
+			ChannelModelId: source.ChannelModelId,
+			ModelId:        source.ModelId,
+			ModelName:      source.ModelName,
+			Purchase:       candidate,
+		})
+	}
+	selected := salesCandidates[0].Purchase
 	selectionReason := version.CostBasisStrategy
 	sourceRoleByChannel := make(map[int]string, len(sources))
 	for _, source := range sources {
@@ -456,7 +560,7 @@ func buildSalesPriceBookItem(
 			return model.SalesPriceBookItem{}, nil, errors.New("a designated channel model is required")
 		}
 		found := false
-		for _, source := range sources {
+		for _, source := range salesCandidates {
 			if source.ChannelModelId == designatedChannelModelId {
 				selected = source.Purchase
 				found = true
@@ -468,9 +572,9 @@ func buildSalesPriceBookItem(
 		}
 		sourceRoleByChannel[designatedChannelModelId] = "selected"
 	case "max_eligible_cost", "min_eligible_cost":
-		if len(sources) > 1 {
+		if len(salesCandidates) > 1 {
 			chooseMaximum := version.CostBasisStrategy == "max_eligible_cost"
-			merged, err := mergeComparablePurchaseSources(sources, chooseMaximum)
+			merged, err := mergeComparablePurchaseSources(salesCandidates, chooseMaximum)
 			if err != nil {
 				return model.SalesPriceBookItem{}, nil, err
 			}
@@ -486,51 +590,21 @@ func buildSalesPriceBookItem(
 		)
 	}
 
-	preview, err := BuildSalesPricePreview(SalesPriceGenerationInput{
-		ChannelModelId: selected.ChannelModelId, PurchasePriceVersionId: selected.Id,
-		TotalVariableCostRate: version.TotalVariableCostRate,
-		EffectiveTaxRate:      version.EffectiveTaxRate,
-		TargetNetMargin:       version.TargetNetMargin,
-		MinimumMarginRate:     version.MinimumMarginRate,
-	}, selected)
-	if err != nil {
-		return model.SalesPriceBookItem{}, nil, err
-	}
-	factor, err := NewSalesPriceCalculator(
-		version.TotalVariableCostRate,
-		version.EffectiveTaxRate,
-		version.TargetNetMargin,
-	)
-	if err != nil {
-		return model.SalesPriceBookItem{}, nil, err
-	}
-	sellingFactor, err := factor.SellingFactor()
-	if err != nil {
-		return model.SalesPriceBookItem{}, nil, err
-	}
 	item := model.SalesPriceBookItem{
 		ModelId: sources[0].ModelId, Status: SalesPriceItemStatusEnabled,
-		BillingMode: preview.BillingMode, PriceStructure: preview.PriceStructure,
-		PriceComponents: preview.PriceComponents, SalesBillingExpr: preview.SalesBillingExpr,
-		SalesExprHash:    billingexpr.ExprHashString(preview.SalesBillingExpr),
+		BillingMode: selected.BillingMode, PriceStructure: selected.PriceStructure,
+		PriceComponents: selected.PriceComponents, SalesBillingExpr: selected.PurchaseBillingExpr,
+		SalesExprHash:    billingexpr.ExprHashString(selected.PurchaseBillingExpr),
 		ExpressionSource: "generated", ExpressionSchemaVersion: "v2",
-		PricingMethod: "cost_plus", SellingFactor: sellingFactor.String(),
-		MinimumMarginOverride: version.MinimumMarginRate, Currency: preview.Currency,
+		PricingMethod: "cost_plus", PricingConfig: "{}",
 		Remark: "generated from " + selectionReason,
 	}
-	if version.CostBasisStrategy == "designated_channel" {
-		purchaseVersionId := selected.Id
-		item.PrimaryPurchaseVersionId = &purchaseVersionId
-	}
-	basisSources := make([]model.SalesPriceBookItemBasisSource, 0, len(sources))
+	basisSources := make([]model.SalesPriceBookItemCostSource, 0, len(sources))
 	for _, source := range sources {
-		basisSources = append(basisSources, model.SalesPriceBookItemBasisSource{
+		basisSources = append(basisSources, model.SalesPriceBookItemCostSource{
 			ChannelModelId:         source.ChannelModelId,
 			PurchasePriceVersionId: source.Purchase.Id,
-			TierKey:                "base", ComponentKey: "expression",
-			SourceRole:      sourceRoleByChannel[source.ChannelModelId],
-			SourceValue:     source.Purchase.PurchaseBillingExpr,
-			SelectionReason: selectionReason,
+			SourceRole:             sourceRoleByChannel[source.ChannelModelId],
 		})
 	}
 	return item, basisSources, nil

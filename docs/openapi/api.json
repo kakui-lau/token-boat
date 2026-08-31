@@ -4243,6 +4243,99 @@
         ]
       }
     },
+    "/api/log/self/usage": {
+      "get": {
+        "summary": "获取个人用量分析",
+        "deprecated": false,
+        "description": "返回选定日期范围内的请求汇总、精确平均延迟、每日趋势和模型用量。最多查询 366 天。🔐 需要登录（User权限）",
+        "tags": [
+          "日志"
+        ],
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "description": "闭区间开始时间（Unix 秒）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "description": "闭区间结束时间（Unix 秒）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "timezone_offset_minutes",
+            "in": "query",
+            "description": "相对 UTC 的时区偏移分钟数，用于按用户本地自然日聚合；范围 -840 到 840，默认 0",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": -840,
+              "maximum": 840,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功或返回参数错误",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/log/self/detail/{request_id}": {
+      "get": {
+        "summary": "获取个人请求详情",
+        "deprecated": false,
+        "description": "按请求 ID 返回当前账户可见的单条 API 请求详情，不返回渠道、模型映射、采购成本等内部字段。🔐 需要登录（User权限）",
+        "tags": [
+          "日志"
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "description": "请求 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、请求不存在或无权访问",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/log/search": {
       "get": {
         "summary": "搜索日志",

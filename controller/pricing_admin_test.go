@@ -33,7 +33,9 @@ func setupPricingAdminControllerTestDB(t *testing.T) {
 		&model.ModelOfficialPrice{}, &model.ChannelModelPurchasePriceVersion{},
 		&model.RequestPricingSnapshot{}, &model.PricingCircuitEvent{},
 		&model.SalesPriceBook{}, &model.SalesPriceBookVersion{},
-		&model.SalesPriceBookItem{}, &model.SalesPriceBookDefault{},
+		&model.SalesPriceBookItem{}, &model.SalesPriceBookItemCostSource{},
+		&model.SalesPriceBookDefault{}, &model.PricingAuditRecord{},
+		&model.SalesPriceBookChannelModelOverride{},
 		&model.UserPriceBookAssignment{},
 	))
 	t.Cleanup(func() {
@@ -184,6 +186,14 @@ func TestAdminExportSalesPriceBookItemsWritesSpreadsheetSafeCSV(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.Model{
 		Id: 91, ModelName: "=unsafe-model-name",
 	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBook{
+		Id: 90, Code: "csv-export", Name: "CSV Export", Audience: "tob", Currency: "USD",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookVersion{
+		Id: 92, PriceBookId: 90, Version: 1, Status: model.SalesPriceBookVersionStatusDraft,
+		CostBasisStrategy: "max_eligible_cost", PaymentFeeRate: "0", DistributionFeeRate: "0",
+		OperationsLaborRate: "0", EffectiveTaxRate: "0", TargetNetMargin: "0", MinimumMarginRate: "0",
+	}).Error)
 	require.NoError(t, model.DB.Create(&model.SalesPriceBookItem{
 		PriceBookVersionId: 92,
 		ModelId:            91,
@@ -192,6 +202,7 @@ func TestAdminExportSalesPriceBookItemsWritesSpreadsheetSafeCSV(t *testing.T) {
 		PriceStructure:     "flat",
 		PricingMethod:      "official_discount",
 		OfficialDiscount:   "0.7504123144584937",
+		PricingConfig:      `{"official_discount":"0.7504123144584937"}`,
 		Currency:           "USD",
 		SalesBillingExpr:   "v2:p / 1000000",
 		SalesExprHash:      "hash",
@@ -211,10 +222,127 @@ func TestAdminExportSalesPriceBookItemsWritesSpreadsheetSafeCSV(t *testing.T) {
 	assert.Contains(t, recorder.Header().Get("Content-Type"), "text/csv")
 	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "sales-price-book-version-92-items")
 	body := strings.TrimPrefix(recorder.Body.String(), "\ufeff")
-	assert.Contains(t, body, "模型名称,状态,计费模式,客户售价规则,采购折扣,销售折扣,定价详情")
+	assert.Contains(t, body, "模型名称,状态,计费模式,客户售价规则,统一售价取价策略,采购折扣,销售折扣,定价详情")
 	assert.Contains(t, body, "'=unsafe-model-name")
-	assert.Contains(t, body, "已启用,按 Token 用量,自定义计费表达式,—,7.5041折（官方价 × 75.0412%）")
+	assert.Contains(t, body, "已启用,按 Token 用量,自定义计费表达式,按最高符合路由条件的渠道成本定价,—,7.5041折（官方价 × 75.0412%）")
 	assert.NotContains(t, body, "官方折扣")
+}
+
+func TestAdminExportSalesPriceBookChannelModelsWritesAuditableCSV(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 201, Name: "=unsafe-channel", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 202, ModelName: "channel-model-export", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 203, ChannelId: 201, ModelId: 202,
+		UpstreamModelName: "+unsafe-upstream", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.OfficialModelPriceVersion{
+		Id: 204, ModelId: 202, BillingMode: "token", PriceStructure: "flat",
+		PriceComponents: `{"input_unit_price":"2","price_unit":"million_tokens"}`,
+		BillingExpr:     `v2:p * 2 / 1000000`, ExprHash: "official-hash",
+		ExpressionSource: "manual", ExpressionSchemaVersion: "v2", Currency: "USD",
+		Source: "manual", Version: 1, Status: model.PricingVersionStatusActive, EffectiveFrom: 1,
+	}).Error)
+	officialPriceVersionId := 204
+	purchase := model.ChannelModelPurchasePriceVersion{
+		Id: 205, ChannelModelId: 203, OfficialPriceVersionId: &officialPriceVersionId,
+		BillingMode: "token", PricingMode: "official_ratio", PriceStructure: "flat",
+		PurchaseDiscount:    "0.7",
+		PriceComponents:     `{"input_unit_price":"1.4","price_unit":"million_tokens"}`,
+		PurchaseBillingExpr: `v2:p * 1.4 / 1000000`, PurchaseExprHash: "purchase-hash",
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", Currency: "USD",
+		Version: 3, Status: model.PricingVersionStatusActive, EffectiveFrom: 1,
+	}
+	require.NoError(t, model.DB.Create(&purchase).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBook{
+		Id: 206, Code: "channel-export", Name: "Channel Export", Audience: "tob", Currency: "USD",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookVersion{
+		Id: 207, PriceBookId: 206, Version: 4, Status: model.SalesPriceBookVersionStatusDraft,
+		CostBasisStrategy: "max_eligible_cost", PaymentFeeRate: "0.04", DistributionFeeRate: "0.05",
+		OperationsLaborRate: "0.02", EffectiveTaxRate: "0.165", TargetNetMargin: "0.03", MinimumMarginRate: "0.02",
+	}).Error)
+	item := model.SalesPriceBookItem{
+		PriceBookVersionId: 207, ModelId: 202, Status: pricingadmin.SalesPriceItemStatusEnabled,
+		BillingMode: "token", PriceStructure: "flat",
+		PriceComponents:  `{"input_unit_price":"1.6","price_unit":"million_tokens"}`,
+		SalesBillingExpr: `v2:p * 1.6 / 1000000`, SalesExprHash: "sales-hash",
+		ExpressionSource: "generated", ExpressionSchemaVersion: "v2", PricingMethod: "cost_plus",
+	}
+	require.NoError(t, model.DB.Create(&item).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookItemCostSource{
+		PriceBookItemId: item.Id, ChannelModelId: 203,
+		PurchasePriceVersionId: 205, SourceRole: "cost_basis",
+	}).Error)
+	zero := "0"
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookChannelModelOverride{
+		PriceBookVersionId: 207, ChannelModelId: 203,
+		DistributionFeeRate: &zero,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/api/pricing-admin/price-book-versions/207/channel-models/export",
+		nil,
+	)
+	context.Params = gin.Params{{Key: "id", Value: "207"}}
+
+	AdminExportSalesPriceBookChannelModels(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Header().Get("Content-Disposition"), "sales-price-book-version-207-channel-models")
+	body := strings.TrimPrefix(recorder.Body.String(), "\ufeff")
+	assert.Contains(t, body, "报价组,报价版本,模型名称,渠道名称,渠道模型ID,上游模型名称")
+	assert.Contains(t, body, "统一售价取价策略")
+	assert.Contains(t, body, "'=unsafe-channel")
+	assert.Contains(t, body, "'+unsafe-upstream")
+	assert.Contains(t, body, "官方价统一折扣,7折（官方价的70%）,8折（官方价 × 80%）")
+	assert.Contains(t, body, "4%,0%,2%,6%,16.5%,3%,2%")
+	assert.Contains(t, body, "分销手续费 5% → 0%")
+	assert.Contains(t, body, "纳入统一售价基准,v3 (#205),USD")
+}
+
+func TestAdminSavesChannelModelSpecialParametersForDraftVersion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 111, Name: "contract-channel"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{Id: 112, ModelName: "contract-model"}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 113, ChannelId: 111, ModelId: 112, UpstreamModelName: "contract-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBook{Id: 114, Code: "contract", Name: "Contract", Audience: "tob", Currency: "USD"}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookVersion{
+		Id: 115, PriceBookId: 114, Version: 1, Status: model.SalesPriceBookVersionStatusDraft,
+		CostBasisStrategy: "max_eligible_cost", PaymentFeeRate: "0.04",
+		DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
+		TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.16",
+		TargetNetMargin: "0.03", MinimumMarginRate: "0.02",
+	}).Error)
+	zero := "0"
+	context, recorder := newPricingAdminJSONContext(t, http.MethodPut,
+		"/api/pricing-admin/price-book-versions/115/channel-model-overrides/113",
+		model.SalesPriceBookChannelModelOverride{PaymentFeeRate: &zero},
+	)
+	context.Params = gin.Params{{Key: "id", Value: "115"}, {Key: "channel_model_id", Value: "113"}}
+
+	AdminSaveSalesPriceBookChannelModelOverride(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool                                     `json:"success"`
+		Data    model.SalesPriceBookChannelModelOverride `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.NotNil(t, response.Data.PaymentFeeRate)
+	assert.Equal(t, "0", *response.Data.PaymentFeeRate)
 }
 
 func TestAdminUpdateChannelModelRejectsIdentityMutation(t *testing.T) {

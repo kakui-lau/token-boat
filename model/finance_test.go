@@ -139,3 +139,28 @@ func TestListAdminTopUpsFiltersWalletAndSubscriptionOrders(t *testing.T) {
 	assert.Equal(t, TopUpOrderTypeSubscription, subscriptionRows[0].OrderType)
 	assert.Zero(t, subscriptionRows[0].CreditedQuota)
 }
+
+func TestListUserTopUpsScopesFiltersAndSortsTransactions(t *testing.T) {
+	truncateTables(t)
+	now := common.GetTimestamp()
+	require.NoError(t, DB.Create(&[]TopUp{
+		{UserId: 7, TradeNo: "wallet-success", Status: common.TopUpStatusSuccess, CreateTime: now - 30},
+		{UserId: 7, TradeNo: "subscription-pending", Status: common.TopUpStatusPending, CreateTime: now - 20},
+		{UserId: 8, TradeNo: "other-user", Status: common.TopUpStatusSuccess, CreateTime: now - 10},
+	}).Error)
+	require.NoError(t, DB.Create(&SubscriptionOrder{
+		UserId: 7, TradeNo: "subscription-pending", Status: common.TopUpStatusPending, CreateTime: now - 20,
+	}).Error)
+
+	rows, total, err := ListUserTopUps(7, AdminTopUpFilter{
+		OrderType: TopUpOrderTypeSubscription,
+		SortOrder: "asc",
+		StartAt:   now - 25,
+		EndAt:     now,
+	}, 0, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "subscription-pending", rows[0].TradeNo)
+	assert.Equal(t, TopUpOrderTypeSubscription, rows[0].OrderType)
+}

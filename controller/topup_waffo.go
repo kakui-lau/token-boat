@@ -110,6 +110,7 @@ type WaffoPayRequest struct {
 	PayMethodIndex *int   `json:"pay_method_index"` // 服务端支付方式列表的索引，nil 表示由 Waffo 自动选择
 	PayMethodType  string `json:"pay_method_type"`  // Deprecated: 兼容旧前端，优先使用 pay_method_index
 	PayMethodName  string `json:"pay_method_name"`  // Deprecated: 兼容旧前端，优先使用 pay_method_index
+	ReturnURL      string `json:"return_url,omitempty"`
 }
 
 func RequestWaffoAmount(c *gin.Context) {
@@ -250,7 +251,13 @@ func RequestWaffoPay(c *gin.Context) {
 		notifyUrl = setting.WaffoNotifyUrl
 	}
 	returnUrl := paymentReturnPath("/wallet?show_history=true")
-	if setting.WaffoReturnUrl != "" {
+	if req.ReturnURL != "" {
+		if common.ValidateRedirectURL(req.ReturnURL) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "支付重定向URL不在可信任域名列表中", "data": ""})
+			return
+		}
+		returnUrl = req.ReturnURL
+	} else if setting.WaffoReturnUrl != "" {
 		returnUrl = setting.WaffoReturnUrl
 	}
 

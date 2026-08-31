@@ -37,5 +37,8 @@ export function pricingRiskLabel(code: string, t: TFunction) {
   if (code === 'unsupported_cost_basis') {
     return t('Selected purchase prices cannot be combined safely')
   }
+  if (code === 'channel_model_policy_changed') {
+    return t('Channel model special parameters changed')
+  }
   return code || t('Requires review')
 }

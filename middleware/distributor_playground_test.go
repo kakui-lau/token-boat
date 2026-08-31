@@ -57,6 +57,108 @@ func TestApplyPlaygroundChannelSelection(t *testing.T) {
 	}
 }
 
+func TestApplyPlaygroundAPIKeySelection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	require.NoError(t, projecti18n.Init())
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.Token{}))
+	require.NoError(t, db.Create(&[]model.Token{
+		{
+			Id:                 201,
+			UserId:             42,
+			Key:                "playground-active-key",
+			Status:             common.TokenStatusEnabled,
+			Name:               "Development key",
+			ExpiredTime:        -1,
+			UnlimitedQuota:     true,
+			Group:              "vip",
+			ModelLimitsEnabled: true,
+			ModelLimits:        "gpt-5",
+		},
+		{
+			Id:             202,
+			UserId:         42,
+			Key:            "playground-disabled-key",
+			Status:         common.TokenStatusDisabled,
+			Name:           "Disabled key",
+			ExpiredTime:    -1,
+			UnlimitedQuota: true,
+		},
+		{
+			Id:             203,
+			UserId:         99,
+			Key:            "another-user-key",
+			Status:         common.TokenStatusEnabled,
+			Name:           "Another user's key",
+			ExpiredTime:    -1,
+			UnlimitedQuota: true,
+		},
+		{
+			Id:             204,
+			UserId:         42,
+			Key:            "playground-expired-key",
+			Status:         common.TokenStatusEnabled,
+			Name:           "Expired key",
+			ExpiredTime:    common.GetTimestamp() - 1,
+			UnlimitedQuota: true,
+		},
+		{
+			Id:             205,
+			UserId:         42,
+			Key:            "playground-exhausted-key",
+			Status:         common.TokenStatusEnabled,
+			Name:           "Exhausted key",
+			ExpiredTime:    -1,
+			RemainQuota:    0,
+			UnlimitedQuota: false,
+		},
+	}).Error)
+	t.Cleanup(func() { model.DB = originalDB })
+
+	tests := []struct {
+		name       string
+		body       string
+		wantOK     bool
+		wantStatus int
+	}{
+		{name: "owned active key", body: `{"model":"gpt-5","api_key_id":201}`, wantOK: true, wantStatus: http.StatusOK},
+		{name: "disabled key", body: `{"model":"gpt-5","api_key_id":202}`, wantOK: false, wantStatus: http.StatusForbidden},
+		{name: "another user key", body: `{"model":"gpt-5","api_key_id":203}`, wantOK: false, wantStatus: http.StatusForbidden},
+		{name: "invalid key id", body: `{"model":"gpt-5","api_key_id":-1}`, wantOK: false, wantStatus: http.StatusBadRequest},
+		{name: "mismatched key group", body: `{"model":"gpt-5","group":"default","api_key_id":201}`, wantOK: false, wantStatus: http.StatusForbidden},
+		{name: "expired key", body: `{"model":"gpt-5","api_key_id":204}`, wantOK: false, wantStatus: http.StatusForbidden},
+		{name: "exhausted key", body: `{"model":"gpt-5","api_key_id":205}`, wantOK: false, wantStatus: http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(recorder)
+			context.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", strings.NewReader(tt.body))
+			context.Request.Header.Set("Content-Type", "application/json")
+			context.Set("id", 42)
+
+			assert.Equal(t, tt.wantOK, applyPlaygroundChannelSelection(context))
+			assert.Equal(t, tt.wantStatus, recorder.Code)
+			if !tt.wantOK {
+				return
+			}
+			assert.Equal(t, 201, context.GetInt("token_id"))
+			assert.Equal(t, "Development key", context.GetString("token_name"))
+			assert.Equal(t, "vip", common.GetContextKeyString(context, constant.ContextKeyTokenGroup))
+			assert.True(t, common.GetContextKeyBool(context, constant.ContextKeyTokenModelLimitEnabled))
+			_, exists := context.Get("playground_api_key")
+			assert.True(t, exists)
+			request, _, err := getModelRequest(context)
+			require.NoError(t, err)
+			assert.Equal(t, "vip", request.Group)
+		})
+	}
+}
+
 func TestApplyPlaygroundChannelSelectionSkipsTaskFetch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

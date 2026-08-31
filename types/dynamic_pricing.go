@@ -30,6 +30,7 @@ type DynamicPriceCandidate struct {
 	DistributionFeeRate        string
 	OperationsLaborRate        string
 	TargetNetMargin            string
+	ChannelModelOverrideId     int
 }
 
 type DynamicPricingSnapshot struct {

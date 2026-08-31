@@ -77,6 +77,7 @@ type AdminTopUpFilter struct {
 	Status    string
 	Provider  string
 	OrderType string
+	SortOrder string
 	StartAt   int64
 	EndAt     int64
 }
@@ -86,6 +87,7 @@ func normalizeAdminTopUpFilter(filter AdminTopUpFilter) (AdminTopUpFilter, error
 	filter.Status = strings.TrimSpace(filter.Status)
 	filter.Provider = strings.TrimSpace(filter.Provider)
 	filter.OrderType = strings.TrimSpace(filter.OrderType)
+	filter.SortOrder = strings.ToLower(strings.TrimSpace(filter.SortOrder))
 	if filter.StartAt < 0 || filter.EndAt < 0 {
 		return AdminTopUpFilter{}, errors.New("invalid topup time range")
 	}
@@ -101,6 +103,9 @@ func normalizeAdminTopUpFilter(filter AdminTopUpFilter) (AdminTopUpFilter, error
 	case "", TopUpOrderTypeWallet, TopUpOrderTypeSubscription:
 	default:
 		return AdminTopUpFilter{}, errors.New("invalid topup order type")
+	}
+	if filter.SortOrder != "" && filter.SortOrder != "asc" && filter.SortOrder != "desc" {
+		return AdminTopUpFilter{}, errors.New("invalid topup sort order")
 	}
 	return filter, nil
 }
@@ -157,7 +162,38 @@ func ListAdminTopUps(filter AdminTopUpFilter, offset int, limit int) ([]*TopUp, 
 		return nil, 0, err
 	}
 	var rows []*TopUp
-	if err := query.Order("id DESC").Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
+	order := "id DESC"
+	if strings.EqualFold(strings.TrimSpace(filter.SortOrder), "asc") {
+		order = "id ASC"
+	}
+	if err := query.Order(order).Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := populateTopUpPresentationFields(rows); err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+func ListUserTopUps(userID int, filter AdminTopUpFilter, offset int, limit int) ([]*TopUp, int64, error) {
+	if userID <= 0 || offset < 0 || limit <= 0 || limit > 100 {
+		return nil, 0, errors.New("invalid user topup pagination")
+	}
+	query := DB.Model(&TopUp{}).Where("user_id = ? AND create_time >= ?", userID, topUpQueryCutoff())
+	query, err := applyAdminTopUpFilter(query, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	order := "id DESC"
+	if strings.EqualFold(strings.TrimSpace(filter.SortOrder), "asc") {
+		order = "id ASC"
+	}
+	var rows []*TopUp
+	if err := query.Order(order).Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 	if err := populateTopUpPresentationFields(rows); err != nil {

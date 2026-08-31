@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 
 	"github.com/glebarez/sqlite"
+	"github.com/shopspring/decimal"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -252,6 +253,7 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	pricingChangeBatchTableExisted := DB.Migrator().HasTable(&PricingChangeBatch{})
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -310,7 +312,8 @@ func migrateDB() error {
 		&SalesPriceBook{},
 		&SalesPriceBookVersion{},
 		&SalesPriceBookItem{},
-		&SalesPriceBookItemBasisSource{},
+		&SalesPriceBookItemCostSource{},
+		&SalesPriceBookChannelModelOverride{},
 		&SalesPriceBookDefault{},
 		&UserPriceBookAssignment{},
 		&PricingChangeBatch{},
@@ -324,13 +327,18 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if !pricingChangeBatchTableExisted {
+		if err := InitializePricingAutomationBaselines(); err != nil {
+			return err
+		}
+	}
 	if err := retireLegacyChannelRetailPricing(); err != nil {
 		return err
 	}
 	if err := retirePricingChangeBatchApprovalColumns(); err != nil {
 		return err
 	}
-	if err := retireSalesPriceBookPlaceholderColumns(); err != nil {
+	if err := migrateSalesPriceBookSchema(); err != nil {
 		return err
 	}
 	if err := retirePricingApprovalIndex(); err != nil {
@@ -367,6 +375,7 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	pricingChangeBatchTableExisted := DB.Migrator().HasTable(&PricingChangeBatch{})
 	if err := renameLegacyPricingSnapshotColumns(); err != nil {
 		return err
 	}
@@ -422,7 +431,8 @@ func migrateDBFast() error {
 		{&SalesPriceBook{}, "SalesPriceBook"},
 		{&SalesPriceBookVersion{}, "SalesPriceBookVersion"},
 		{&SalesPriceBookItem{}, "SalesPriceBookItem"},
-		{&SalesPriceBookItemBasisSource{}, "SalesPriceBookItemBasisSource"},
+		{&SalesPriceBookItemCostSource{}, "SalesPriceBookItemCostSource"},
+		{&SalesPriceBookChannelModelOverride{}, "SalesPriceBookChannelModelOverride"},
 		{&SalesPriceBookDefault{}, "SalesPriceBookDefault"},
 		{&UserPriceBookAssignment{}, "UserPriceBookAssignment"},
 		{&PricingChangeBatch{}, "PricingChangeBatch"},
@@ -456,13 +466,18 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if !pricingChangeBatchTableExisted {
+		if err := InitializePricingAutomationBaselines(); err != nil {
+			return err
+		}
+	}
 	if err := retireLegacyChannelRetailPricing(); err != nil {
 		return err
 	}
 	if err := retirePricingChangeBatchApprovalColumns(); err != nil {
 		return err
 	}
-	if err := retireSalesPriceBookPlaceholderColumns(); err != nil {
+	if err := migrateSalesPriceBookSchema(); err != nil {
 		return err
 	}
 	if err := retirePricingApprovalIndex(); err != nil {
@@ -622,7 +637,92 @@ func (legacyUserPriceBookAssignmentPlaceholderMigration) TableName() string {
 	return "user_price_book_assignments"
 }
 
-func retireSalesPriceBookPlaceholderColumns() error {
+type legacySalesPriceBookItemPlaceholderMigration struct {
+	Id                       int
+	PriceBookVersionId       int    `gorm:"column:price_book_version_id"`
+	ModelId                  int    `gorm:"column:model_id"`
+	PricingMethod            string `gorm:"column:pricing_method"`
+	MinimumMarginOverride    string `gorm:"column:minimum_margin_override"`
+	PrimaryPurchaseVersionId *int   `gorm:"column:primary_purchase_version_id"`
+	SellingFactor            string `gorm:"column:selling_factor"`
+	OfficialDiscount         string `gorm:"column:official_discount"`
+	Currency                 string `gorm:"column:currency"`
+}
+
+func (legacySalesPriceBookItemPlaceholderMigration) TableName() string {
+	return "sales_price_book_items"
+}
+
+type legacySalesPriceBookMigration struct {
+	Id          int
+	OwnerUserId *int `gorm:"column:owner_user_id"`
+}
+
+func (legacySalesPriceBookMigration) TableName() string {
+	return "sales_price_books"
+}
+
+type legacySalesPriceBookVersionPricingMigration struct {
+	Id                    int
+	TotalVariableCostRate string `gorm:"column:total_variable_cost_rate"`
+}
+
+func (legacySalesPriceBookVersionPricingMigration) TableName() string {
+	return "sales_price_book_versions"
+}
+
+type legacySalesPriceBookItemBasisSourceMigration struct {
+	Id                     int
+	PriceBookItemId        int    `gorm:"column:price_book_item_id"`
+	ChannelModelId         int    `gorm:"column:channel_model_id"`
+	PurchasePriceVersionId int    `gorm:"column:purchase_price_version_id"`
+	SourceRole             string `gorm:"column:source_role"`
+}
+
+func (legacySalesPriceBookItemBasisSourceMigration) TableName() string {
+	return "sales_price_book_item_basis_sources"
+}
+
+type legacyChannelModelPurchasePriceVersionPricingMigration struct {
+	Id                  int
+	PricingMode         string `gorm:"column:pricing_mode"`
+	QuoteSpec           string `gorm:"column:quote_spec"`
+	PriceComponents     string `gorm:"column:price_components"`
+	PurchaseDiscount    string `gorm:"column:purchase_discount"`
+	InputUnitPrice      string `gorm:"column:input_unit_price"`
+	OutputUnitPrice     string `gorm:"column:output_unit_price"`
+	CacheReadUnitPrice  string `gorm:"column:cache_read_unit_price"`
+	CacheWriteUnitPrice string `gorm:"column:cache_write_unit_price"`
+	PriceUnit           string `gorm:"column:price_unit"`
+}
+
+func (legacyChannelModelPurchasePriceVersionPricingMigration) TableName() string {
+	return "channel_model_purchase_price_versions"
+}
+
+func migrateSalesPriceBookSchema() error {
+	if err := migrateLegacySalesPriceBookCostSources(); err != nil {
+		return err
+	}
+	if err := backfillLegacySalesPriceBookItemMinimumMargins(); err != nil {
+		return err
+	}
+	if err := backfillSalesPriceBookItemPricingConfig(); err != nil {
+		return err
+	}
+	if err := backfillPurchasePriceCanonicalFields(); err != nil {
+		return err
+	}
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("PRICING_SCHEMA_FINALIZE")), "true") {
+		return nil
+	}
+	return finalizeSalesPriceBookSchema()
+}
+
+// finalizeSalesPriceBookSchema is the contract phase of the online migration.
+// Keep it behind an explicit switch so a rolling deployment can first move all
+// readers and writers to the canonical columns before old pods are drained.
+func finalizeSalesPriceBookSchema() error {
 	tables := []struct {
 		model any
 		name  string
@@ -633,6 +733,18 @@ func retireSalesPriceBookPlaceholderColumns() error {
 		}},
 		{model: &legacyUserPriceBookAssignmentPlaceholderMigration{}, name: "user_price_book_assignments", cols: []string{
 			"price_locked_until",
+		}},
+		{model: &legacySalesPriceBookItemPlaceholderMigration{}, name: "sales_price_book_items", cols: []string{
+			"minimum_margin_override", "primary_purchase_version_id", "selling_factor", "official_discount", "currency",
+		}},
+		{model: &legacySalesPriceBookMigration{}, name: "sales_price_books", cols: []string{
+			"owner_user_id",
+		}},
+		{model: &legacySalesPriceBookVersionPricingMigration{}, name: "sales_price_book_versions", cols: []string{
+			"total_variable_cost_rate",
+		}},
+		{model: &legacyChannelModelPurchasePriceVersionPricingMigration{}, name: "channel_model_purchase_price_versions", cols: []string{
+			"purchase_discount", "input_unit_price", "output_unit_price", "cache_read_unit_price", "cache_write_unit_price", "price_unit",
 		}},
 	}
 	for _, table := range tables {
@@ -649,7 +761,318 @@ func retireSalesPriceBookPlaceholderColumns() error {
 			}
 		}
 	}
+	legacySources := &legacySalesPriceBookItemBasisSourceMigration{}
+	if DB.Migrator().HasTable(legacySources) {
+		common.SysLog("dropping retired sales price-book basis source table")
+		if err := DB.Migrator().DropTable(legacySources); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func migrateLegacySalesPriceBookCostSources() error {
+	legacy := &legacySalesPriceBookItemBasisSourceMigration{}
+	if !DB.Migrator().HasTable(legacy) || !DB.Migrator().HasTable(&SalesPriceBookItemCostSource{}) {
+		return nil
+	}
+	var rows []legacySalesPriceBookItemBasisSourceMigration
+	if err := DB.Table(legacy.TableName()).Order("id ASC").Find(&rows).Error; err != nil {
+		return err
+	}
+	type sourceKey struct {
+		itemId         int
+		channelModelId int
+	}
+	merged := make(map[sourceKey]legacySalesPriceBookItemBasisSourceMigration, len(rows))
+	for _, row := range rows {
+		key := sourceKey{itemId: row.PriceBookItemId, channelModelId: row.ChannelModelId}
+		current, ok := merged[key]
+		if !ok {
+			merged[key] = row
+			continue
+		}
+		if current.PurchasePriceVersionId != row.PurchasePriceVersionId {
+			return fmt.Errorf(
+				"sales price item %d has conflicting purchase versions for channel model %d",
+				row.PriceBookItemId, row.ChannelModelId,
+			)
+		}
+		if pricingSourceRolePriority(row.SourceRole) > pricingSourceRolePriority(current.SourceRole) {
+			current.SourceRole = row.SourceRole
+			merged[key] = current
+		}
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, row := range merged {
+			var current SalesPriceBookItemCostSource
+			err := tx.Where(
+				"price_book_item_id = ? AND channel_model_id = ?",
+				row.PriceBookItemId, row.ChannelModelId,
+			).First(&current).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := tx.Create(&SalesPriceBookItemCostSource{
+					PriceBookItemId:        row.PriceBookItemId,
+					ChannelModelId:         row.ChannelModelId,
+					PurchasePriceVersionId: row.PurchasePriceVersionId,
+					SourceRole:             row.SourceRole,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if current.PurchasePriceVersionId != row.PurchasePriceVersionId {
+				return fmt.Errorf(
+					"migrated sales price cost source conflicts for item %d channel model %d",
+					row.PriceBookItemId, row.ChannelModelId,
+				)
+			}
+		}
+		return nil
+	})
+}
+
+func pricingSourceRolePriority(role string) int {
+	switch strings.TrimSpace(role) {
+	case "selected", "cost_basis":
+		return 2
+	case "candidate":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func backfillSalesPriceBookItemPricingConfig() error {
+	legacy := &legacySalesPriceBookItemPlaceholderMigration{}
+	if !DB.Migrator().HasTable(legacy) ||
+		!DB.Migrator().HasColumn(&SalesPriceBookItem{}, "PricingConfig") {
+		return nil
+	}
+	columns := []string{"id", "price_book_version_id", "model_id", "pricing_method"}
+	for _, column := range []string{
+		"primary_purchase_version_id", "official_discount", "currency",
+	} {
+		if DB.Migrator().HasColumn(legacy, column) {
+			columns = append(columns, column)
+		}
+	}
+	var items []legacySalesPriceBookItemPlaceholderMigration
+	if err := DB.Table(legacy.TableName()).Select(columns).Find(&items).Error; err != nil {
+		return err
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, item := range items {
+			if strings.TrimSpace(item.Currency) != "" {
+				var bookCurrency string
+				if err := tx.Table("sales_price_book_versions AS version").
+					Select("book.currency").
+					Joins("JOIN sales_price_books AS book ON book.id = version.price_book_id").
+					Where("version.id = ?", item.PriceBookVersionId).
+					Scan(&bookCurrency).Error; err != nil {
+					return err
+				}
+				if bookCurrency == "" || !strings.EqualFold(bookCurrency, item.Currency) {
+					return fmt.Errorf(
+						"sales price item %d currency %q does not match price book currency %q",
+						item.Id, item.Currency, bookCurrency,
+					)
+				}
+			}
+			if item.PrimaryPurchaseVersionId != nil {
+				var count int64
+				if err := tx.Model(&SalesPriceBookItemCostSource{}).
+					Where("price_book_item_id = ?", item.Id).Count(&count).Error; err != nil {
+					return err
+				}
+				if count == 0 {
+					var purchase ChannelModelPurchasePriceVersion
+					if err := tx.Select("id", "channel_model_id").First(
+						&purchase, *item.PrimaryPurchaseVersionId,
+					).Error; err != nil {
+						return fmt.Errorf("load sales price item %d primary purchase version: %w", item.Id, err)
+					}
+					if err := tx.Create(&SalesPriceBookItemCostSource{
+						PriceBookItemId: item.Id, ChannelModelId: purchase.ChannelModelId,
+						PurchasePriceVersionId: purchase.Id, SourceRole: "cost_basis",
+					}).Error; err != nil {
+						return err
+					}
+				}
+			}
+			if item.PricingMethod != "official_discount" || strings.TrimSpace(item.OfficialDiscount) == "" {
+				continue
+			}
+			config, err := common.Marshal(map[string]string{
+				"official_discount": strings.TrimSpace(item.OfficialDiscount),
+			})
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&SalesPriceBookItem{}).Where("id = ?", item.Id).
+				Where("pricing_config = ? OR pricing_config IS NULL", "").
+				Update("pricing_config", string(config)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+type legacyFlatPriceComponentsMigration struct {
+	InputUnitPrice      string `json:"input_unit_price,omitempty"`
+	OutputUnitPrice     string `json:"output_unit_price,omitempty"`
+	CacheReadUnitPrice  string `json:"cache_read_unit_price,omitempty"`
+	CacheWriteUnitPrice string `json:"cache_write_unit_price,omitempty"`
+	PriceUnit           string `json:"price_unit,omitempty"`
+}
+
+func backfillPurchasePriceCanonicalFields() error {
+	legacy := &legacyChannelModelPurchasePriceVersionPricingMigration{}
+	if !DB.Migrator().HasTable(legacy) ||
+		!DB.Migrator().HasColumn(legacy, "PurchaseDiscount") {
+		return nil
+	}
+	var versions []legacyChannelModelPurchasePriceVersionPricingMigration
+	if err := DB.Table(legacy.TableName()).Select(
+		"id", "pricing_mode", "quote_spec", "price_components", "purchase_discount",
+		"input_unit_price", "output_unit_price", "cache_read_unit_price", "cache_write_unit_price", "price_unit",
+	).Find(&versions).Error; err != nil {
+		return err
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, version := range versions {
+			components := legacyFlatPriceComponentsMigration{}
+			if strings.TrimSpace(version.PriceComponents) != "" {
+				if err := common.UnmarshalJsonStr(version.PriceComponents, &components); err != nil {
+					return fmt.Errorf("purchase price version %d has invalid price components: %w", version.Id, err)
+				}
+			} else {
+				components = legacyFlatPriceComponentsMigration{
+					InputUnitPrice: version.InputUnitPrice, OutputUnitPrice: version.OutputUnitPrice,
+					CacheReadUnitPrice: version.CacheReadUnitPrice, CacheWriteUnitPrice: version.CacheWriteUnitPrice,
+					PriceUnit: version.PriceUnit,
+				}
+				encoded, err := common.Marshal(components)
+				if err != nil {
+					return err
+				}
+				version.PriceComponents = string(encoded)
+			}
+			legacyValues := []struct {
+				name      string
+				legacy    string
+				canonical string
+			}{
+				{"input unit price", version.InputUnitPrice, components.InputUnitPrice},
+				{"output unit price", version.OutputUnitPrice, components.OutputUnitPrice},
+				{"cache read unit price", version.CacheReadUnitPrice, components.CacheReadUnitPrice},
+				{"cache write unit price", version.CacheWriteUnitPrice, components.CacheWriteUnitPrice},
+			}
+			for _, value := range legacyValues {
+				if strings.TrimSpace(value.legacy) != "" &&
+					strings.TrimSpace(value.canonical) != strings.TrimSpace(value.legacy) {
+					return fmt.Errorf("purchase price version %d has conflicting %s", version.Id, value.name)
+				}
+			}
+			quoteSpec := strings.TrimSpace(version.QuoteSpec)
+			if version.PricingMode == "official_ratio" && strings.TrimSpace(version.PurchaseDiscount) != "" {
+				var spec map[string]string
+				if quoteSpec == "" {
+					spec = make(map[string]string)
+				} else if err := common.UnmarshalJsonStr(quoteSpec, &spec); err != nil {
+					return fmt.Errorf("purchase price version %d has invalid quote spec: %w", version.Id, err)
+				}
+				if existing := strings.TrimSpace(spec["discount"]); existing != "" &&
+					existing != strings.TrimSpace(version.PurchaseDiscount) {
+					return fmt.Errorf("purchase price version %d has conflicting uniform discount", version.Id)
+				}
+				spec["discount"] = strings.TrimSpace(version.PurchaseDiscount)
+				encoded, err := common.Marshal(spec)
+				if err != nil {
+					return err
+				}
+				quoteSpec = string(encoded)
+			}
+			if err := tx.Model(&ChannelModelPurchasePriceVersion{}).Where("id = ?", version.Id).
+				Updates(map[string]any{
+					"quote_spec": quoteSpec, "price_components": version.PriceComponents,
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func backfillLegacySalesPriceBookItemMinimumMargins() error {
+	legacy := &legacySalesPriceBookItemPlaceholderMigration{}
+	if !DB.Migrator().HasTable(legacy) ||
+		!DB.Migrator().HasColumn(legacy, "MinimumMarginOverride") ||
+		!DB.Migrator().HasTable(&SalesPriceBookChannelModelOverride{}) {
+		return nil
+	}
+	var items []legacySalesPriceBookItemPlaceholderMigration
+	if err := DB.Table(legacy.TableName()).Select(
+		"id", "price_book_version_id", "model_id", "minimum_margin_override",
+	).Find(&items).Error; err != nil {
+		return err
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, item := range items {
+			minimum, err := decimal.NewFromString(strings.TrimSpace(item.MinimumMarginOverride))
+			if err != nil || !minimum.IsPositive() {
+				continue
+			}
+			var channelModelIds []int
+			if tx.Migrator().HasTable(&SalesPriceBookItemCostSource{}) {
+				if err := tx.Model(&SalesPriceBookItemCostSource{}).
+					Where("price_book_item_id = ?", item.Id).
+					Distinct("channel_model_id").Pluck("channel_model_id", &channelModelIds).Error; err != nil {
+					return err
+				}
+			}
+			if len(channelModelIds) == 0 && tx.Migrator().HasTable(&ChannelModel{}) {
+				if err := tx.Model(&ChannelModel{}).Where("model_id = ?", item.ModelId).
+					Pluck("id", &channelModelIds).Error; err != nil {
+					return err
+				}
+			}
+			minimumValue := minimum.String()
+			for _, channelModelId := range channelModelIds {
+				var override SalesPriceBookChannelModelOverride
+				err := tx.Where(
+					"price_book_version_id = ? AND channel_model_id = ?",
+					item.PriceBookVersionId, channelModelId,
+				).First(&override).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					override = SalesPriceBookChannelModelOverride{
+						PriceBookVersionId: item.PriceBookVersionId,
+						ChannelModelId:     channelModelId,
+						MinimumMarginRate:  &minimumValue,
+					}
+					if err := tx.Create(&override).Error; err != nil {
+						return err
+					}
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				if override.MinimumMarginRate == nil {
+					if err := tx.Model(&SalesPriceBookChannelModelOverride{}).
+						Where("id = ?", override.Id).
+						Update("minimum_margin_rate", minimumValue).Error; err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func retireLegacyChannelRetailPricing() error {

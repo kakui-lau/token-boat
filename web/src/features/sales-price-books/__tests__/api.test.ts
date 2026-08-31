@@ -25,15 +25,19 @@ import {
   assignUserPriceBook,
   compareSalesPriceBookVersions,
   createSalesPriceBookVersion,
+  deleteSalesPriceBookChannelModelOverride,
   deleteSalesPriceBookItem,
+  exportSalesPriceBookChannelModels,
   exportSalesPriceBookItems,
   generateSalesPriceBookItems,
   getDefaultSalesPriceBook,
   getSalesPriceBooks,
+  getSalesPriceBookChannelModelOverrides,
   getPricingChangeBatch,
   getPricingChangeBatches,
   getUserPriceBookAssignments,
   saveSalesPriceBookItem,
+  saveSalesPriceBookChannelModelOverride,
   setDefaultSalesPriceBook,
 } from '../api'
 
@@ -111,6 +115,18 @@ test('exports every model price item from the selected immutable version', async
   )
 })
 
+test('exports channel-model pricing from the selected immutable version', async () => {
+  const blob = new Blob(['channel-model'])
+  vi.mocked(api.get).mockResolvedValueOnce({ data: blob })
+
+  await exportSalesPriceBookChannelModels(31)
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/31/channel-models/export',
+    { responseType: 'blob' }
+  )
+})
+
 test('compares the selected version with an explicit base version', async () => {
   await compareSalesPriceBookVersions(12, 18)
 
@@ -184,6 +200,37 @@ test('generates only selected channel models with an idempotency key', async () 
   )
 })
 
+test('manages channel-model special parameters inside one draft version', async () => {
+  const input = {
+    payment_fee_rate: '0.02',
+    distribution_fee_rate: null,
+    operations_labor_rate: '0',
+    effective_tax_rate: null,
+    target_net_margin: '0.01',
+    minimum_margin_rate: '0.01',
+    remark: 'Special upstream contract',
+  }
+
+  await getSalesPriceBookChannelModelOverrides(31)
+  await saveSalesPriceBookChannelModelOverride(31, 205, input)
+  await deleteSalesPriceBookChannelModelOverride(31, 205)
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/31/channel-model-overrides',
+    {
+      params: { cache_bust: expect.any(Number) },
+      headers: { 'Cache-Control': 'no-cache' },
+    }
+  )
+  expect(api.put).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/31/channel-model-overrides/205',
+    input
+  )
+  expect(api.delete).toHaveBeenCalledWith(
+    '/api/pricing-admin/price-book-versions/31/channel-model-overrides/205'
+  )
+})
+
 test('binds a user directly to a price book and updates the TOC default separately', async () => {
   const assignment = {
     user_id: 9001,
@@ -234,7 +281,6 @@ test('saves a manual correction only inside the selected draft version', async (
     pricing_method: 'manual',
     selling_factor: '',
     official_discount: '',
-    minimum_margin_override: '',
     currency: 'USD',
     remark: 'Contract correction',
   }

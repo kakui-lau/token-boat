@@ -141,6 +141,7 @@ type RelayInfo struct {
 	SubscriptionPlanTitle string
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
+	ClientIP  string
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
@@ -484,6 +485,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		Request: request,
 
 		RequestId:  reqId,
+		ClientIP:   c.ClientIP(),
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
 		UsingGroup: usingGroup,
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),

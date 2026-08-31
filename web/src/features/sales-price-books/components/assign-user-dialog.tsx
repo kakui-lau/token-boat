@@ -166,6 +166,9 @@ export function AssignUserDialog(props: AssignUserDialogProps) {
       await queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'list'],
       })
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'audit-records'],
+      })
       toast.success(t('User assigned to price book'))
       setConfirmOpen(false)
       props.onOpenChange(false)

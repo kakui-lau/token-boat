@@ -983,7 +983,7 @@ func RelayTask(c *gin.Context) {
 					relayInfo.RequestId, "task_billing_settlement_failed", "task billing settlement did not complete",
 				)
 			}
-			service.LogTaskConsumption(c, relayInfo, chargedQuota)
+			service.LogTaskConsumption(c, relayInfo, chargedQuota, result.Platform)
 			if response, exists := c.Get("deferred_task_response"); exists {
 				c.JSON(http.StatusAccepted, response)
 			}
@@ -1007,7 +1007,7 @@ func RelayTask(c *gin.Context) {
 				} else {
 					_ = model.UpdateTaskInitialSettlement(task.ID, chargedQuota, chargedQuota, model.TaskSettlementStatusCompleted, "")
 				}
-				service.LogTaskConsumption(c, relayInfo, chargedQuota)
+				service.LogTaskConsumption(c, relayInfo, chargedQuota, task.Platform)
 				if response, exists := c.Get("deferred_task_response"); exists {
 					c.JSON(http.StatusAccepted, response)
 				}

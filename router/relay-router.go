@@ -64,6 +64,21 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundRouter.Use(middleware.UserAuth())
 	{
+		playgroundRouter.GET("/copilotkit/info", controller.CopilotPlaygroundInfo)
+		playgroundRouter.POST(
+			"/copilotkit/agent/:agent_id/run",
+			controller.CopilotPlaygroundRunAdapter(),
+			middleware.Distribute(),
+			controller.Playground,
+		)
+		playgroundRouter.POST(
+			"/copilotkit/agent/:agent_id/connect",
+			controller.CopilotPlaygroundConnect,
+		)
+		playgroundRouter.POST(
+			"/copilotkit/agent/:agent_id/stop/:thread_id",
+			controller.CopilotPlaygroundStop,
+		)
 		playgroundRouter.POST("/chat/completions", middleware.Distribute(), controller.Playground)
 		playgroundRouter.POST("/videos", func(c *gin.Context) {
 			c.Set("playground_request", true)

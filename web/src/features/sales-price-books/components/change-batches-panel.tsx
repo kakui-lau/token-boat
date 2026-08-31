@@ -91,6 +91,9 @@ function triggerLabel(trigger: string, t: TFunction) {
   if (trigger === 'manual_price_book_edit') {
     return t('Manual price edit')
   }
+  if (trigger === 'channel_model_policy_change') {
+    return t('Channel model special parameters changed')
+  }
   return trigger
 }
 
@@ -102,6 +105,13 @@ function targetLabel(target: string, t: TFunction) {
   return target === 'sales_price_book_item'
     ? t('Model sales price')
     : t('Purchase price version')
+}
+
+function referenceAmount(value: string | undefined) {
+  if (!value) return '—'
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return value
+  return parsed.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
 }
 
 function actionLabel(action: string, t: TFunction) {
@@ -451,10 +461,18 @@ export function ChangeBatchesPanel(props: ChangeBatchesPanelProps) {
                           {item.price_book_name || item.price_book_id || '—'}
                         </TableCell>
                         <TableCell>{actionLabel(item.action, t)}</TableCell>
-                        <TableCell>{item.old_reference_price || '—'}</TableCell>
-                        <TableCell>{item.new_reference_price || '—'}</TableCell>
-                        <TableCell>{item.old_reference_cost || '—'}</TableCell>
-                        <TableCell>{item.new_reference_cost || '—'}</TableCell>
+                        <TableCell>
+                          {referenceAmount(item.old_reference_price)}
+                        </TableCell>
+                        <TableCell>
+                          {referenceAmount(item.new_reference_price)}
+                        </TableCell>
+                        <TableCell>
+                          {referenceAmount(item.old_reference_cost)}
+                        </TableCell>
+                        <TableCell>
+                          {referenceAmount(item.new_reference_cost)}
+                        </TableCell>
                         <TableCell>{percent(item.margin_before)}</TableCell>
                         <TableCell>{percent(item.margin_after)}</TableCell>
                         <TableCell className='max-w-80 whitespace-normal'>

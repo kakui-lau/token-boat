@@ -16,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -455,6 +457,67 @@ func TestGetAllTokensMasksKeyInResponse(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("list response leaked raw token key: %s", recorder.Body.String())
 	}
+}
+
+func TestGetAllTokensAppliesStatusAndSortFilters(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedToken(t, db, 1, "active-token", "active1234token5678")
+	disabled := seedToken(t, db, 1, "disabled-token", "disabled12token5678")
+	require.NoError(t, db.Model(disabled).Update("status", common.TokenStatusDisabled).Error)
+	disabledLater := seedToken(t, db, 1, "disabled-later", "disabled34token5678")
+	require.NoError(t, db.Model(disabledLater).Update("status", common.TokenStatusDisabled).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/?p=1&size=10&status=2&order=asc", nil, 1)
+	GetAllTokens(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var page tokenPageResponse
+	require.NoError(t, common.Unmarshal(response.Data, &page))
+	require.Len(t, page.Items, 2)
+	assert.Equal(t, "disabled-token", page.Items[0].Name)
+	assert.Equal(t, common.TokenStatusDisabled, page.Items[0].Status)
+	assert.Equal(t, "disabled-later", page.Items[1].Name)
+}
+
+func TestAddTokenReturnsFullKeyOnlyInCreateResponse(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	body := map[string]any{
+		"name":                 "new-console-key",
+		"expired_time":         -1,
+		"remain_quota":         500,
+		"unlimited_quota":      false,
+		"model_limits_enabled": true,
+		"model_limits":         "gpt-5",
+		"allow_ips":            "192.0.2.1",
+		"group":                "default",
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var created tokenResponseItem
+	require.NoError(t, common.Unmarshal(response.Data, &created))
+	assert.NotZero(t, created.ID)
+	assert.Equal(t, "new-console-key", created.Name)
+	assert.NotEmpty(t, created.Key)
+
+	var stored model.Token
+	require.NoError(t, db.First(&stored, created.ID).Error)
+	assert.Equal(t, stored.GetFullKey(), created.Key)
+
+	listContext, listRecorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/token/?p=1&size=10",
+		nil,
+		1,
+	)
+	GetAllTokens(listContext)
+	assert.NotContains(t, listRecorder.Body.String(), stored.GetFullKey())
+	assert.Contains(t, listRecorder.Body.String(), stored.GetMaskedKey())
 }
 
 func TestSearchTokensMasksKeyInResponse(t *testing.T) {

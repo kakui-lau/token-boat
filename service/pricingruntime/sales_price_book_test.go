@@ -24,6 +24,7 @@ func setupSalesPriceResolverTestDB(t *testing.T) {
 		&model.SalesPriceBook{},
 		&model.SalesPriceBookVersion{},
 		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookChannelModelOverride{},
 		&model.SalesPriceBookDefault{},
 		&model.UserPriceBookAssignment{},
 	))
@@ -47,6 +48,7 @@ func TestQuoteCandidatesWithSalesPriceKeepsCustomerChargeConstantAcrossChannels(
 	salesExpression := `v2:tier("base", p * 2.5 / 1000000)`
 	resolved := ResolvedSalesPrice{
 		PriceBookId: 11, PriceBookVersionId: 12, PriceBookItemId: 13,
+		Book: model.SalesPriceBook{Currency: "USD"},
 		Version: model.SalesPriceBookVersion{
 			TotalVariableCostRate: "0", EffectiveTaxRate: "0", MinimumMarginRate: "0.1",
 		},
@@ -70,6 +72,48 @@ func TestQuoteCandidatesWithSalesPriceKeepsCustomerChargeConstantAcrossChannels(
 	assert.NotEqual(t, quotes[0].PurchaseCost, quotes[1].PurchaseCost)
 }
 
+func TestQuoteCandidatesUsesChannelModelSpecialMarginPolicy(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 811)
+	createRuntimeBundle(t, 812)
+	require.NoError(t, model.DB.Model(&model.ChannelModel{}).
+		Where("id = ?", 812).Update("model_id", 811).Error)
+	require.NoError(t, RefreshCatalog())
+
+	version := model.SalesPriceBookVersion{
+		Id: 810, PaymentFeeRate: "0", DistributionFeeRate: "0",
+		OperationsLaborRate: "0", EffectiveTaxRate: "0",
+		TargetNetMargin: "0.1", MinimumMarginRate: "0.1",
+	}
+	target := "0.7"
+	minimum := "0.7"
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookChannelModelOverride{
+		PriceBookVersionId: version.Id, ChannelModelId: 812,
+		TargetNetMargin: &target, MinimumMarginRate: &minimum,
+	}).Error)
+	salesExpression := `v2:tier("base", p * 2.5 / 1000000)`
+	quotes, err := QuoteCandidates(
+		"default", "runtime-model",
+		pricingengine.Usage{PromptTokens: 1_000_000},
+		billingexpr.RequestInput{},
+		ResolvedSalesPrice{
+			Book:    model.SalesPriceBook{Currency: "USD"},
+			Version: version,
+			Item: model.SalesPriceBookItem{
+				BillingMode: "token", Currency: "USD",
+				SalesBillingExpr: salesExpression,
+				SalesExprHash:    billingexpr.ExprHashString(salesExpression),
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.Len(t, quotes, 2)
+	assert.True(t, quotes[0].MeetsMinimumMargin)
+	assert.False(t, quotes[1].MeetsMinimumMargin)
+	assert.NotZero(t, quotes[1].ChannelModelOverrideId)
+	assert.Equal(t, "0.7", quotes[1].MinimumMarginRate)
+}
+
 func TestSalesPriceBookQuotesUsePurchaseOnlyCatalog(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 851)
@@ -78,6 +122,7 @@ func TestSalesPriceBookQuotesUsePurchaseOnlyCatalog(t *testing.T) {
 
 	salesExpression := `v2:tier("base", p * 2.5 / 1000000)`
 	resolved := ResolvedSalesPrice{
+		Book: model.SalesPriceBook{Currency: "USD"},
 		Version: model.SalesPriceBookVersion{
 			TotalVariableCostRate: "0", EffectiveTaxRate: "0", MinimumMarginRate: "0.1",
 		},

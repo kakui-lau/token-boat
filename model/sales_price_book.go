@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -16,7 +17,6 @@ const (
 	SalesPriceBookStatusArchived = "archived"
 
 	SalesPriceBookVersionStatusDraft      = "draft"
-	SalesPriceBookVersionStatusScheduled  = "scheduled"
 	SalesPriceBookVersionStatusActive     = "active"
 	SalesPriceBookVersionStatusSuperseded = "superseded"
 	SalesPriceBookVersionStatusCancelled  = "cancelled"
@@ -37,7 +37,6 @@ type SalesPriceBook struct {
 	Currency         string `json:"currency" gorm:"type:varchar(8);not null"`
 	Status           string `json:"status" gorm:"type:varchar(16);not null;index"`
 	CurrentVersionId *int   `json:"current_version_id" gorm:"index"`
-	OwnerUserId      *int   `json:"owner_user_id" gorm:"index"`
 	CreatedBy        int    `json:"created_by" gorm:"not null"`
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;not null;index"`
 	UpdatedAt        int64  `json:"updated_at" gorm:"bigint;not null"`
@@ -63,15 +62,17 @@ func (b *SalesPriceBook) BeforeUpdate(tx *gorm.DB) error {
 // SalesPriceBookVersion freezes the commercial policy shared by all model
 // prices in one price-book revision.
 type SalesPriceBookVersion struct {
-	Id                    int    `json:"id"`
-	PriceBookId           int    `json:"price_book_id" gorm:"not null;uniqueIndex:uk_sales_price_book_version,priority:1;index"`
-	Version               int64  `json:"version" gorm:"bigint;not null;uniqueIndex:uk_sales_price_book_version,priority:2"`
-	Status                string `json:"status" gorm:"type:varchar(24);not null;index"`
-	CostBasisStrategy     string `json:"cost_basis_strategy" gorm:"type:varchar(32);not null"`
-	PaymentFeeRate        string `json:"payment_fee_rate" gorm:"type:decimal(18,12);not null"`
-	DistributionFeeRate   string `json:"distribution_fee_rate" gorm:"type:decimal(18,12);not null"`
-	OperationsLaborRate   string `json:"operations_labor_rate" gorm:"type:decimal(18,12);not null"`
-	TotalVariableCostRate string `json:"total_variable_cost_rate" gorm:"type:decimal(18,12);not null"`
+	Id                  int    `json:"id"`
+	PriceBookId         int    `json:"price_book_id" gorm:"not null;uniqueIndex:uk_sales_price_book_version,priority:1;index"`
+	Version             int64  `json:"version" gorm:"bigint;not null;uniqueIndex:uk_sales_price_book_version,priority:2"`
+	Status              string `json:"status" gorm:"type:varchar(24);not null;index"`
+	CostBasisStrategy   string `json:"cost_basis_strategy" gorm:"type:varchar(32);not null"`
+	PaymentFeeRate      string `json:"payment_fee_rate" gorm:"type:decimal(18,12);not null"`
+	DistributionFeeRate string `json:"distribution_fee_rate" gorm:"type:decimal(18,12);not null"`
+	OperationsLaborRate string `json:"operations_labor_rate" gorm:"type:decimal(18,12);not null"`
+	// API projection derived from the three component rates. It is intentionally
+	// not mapped so AutoMigrate cannot recreate the retired database column.
+	TotalVariableCostRate string `json:"total_variable_cost_rate" gorm:"-"`
 	EffectiveTaxRate      string `json:"effective_tax_rate" gorm:"type:decimal(18,12);not null"`
 	TargetNetMargin       string `json:"target_net_margin" gorm:"type:decimal(18,12);not null"`
 	MinimumMarginRate     string `json:"minimum_margin_rate" gorm:"type:decimal(18,12);not null"`
@@ -112,55 +113,97 @@ func (v *SalesPriceBookVersion) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
+func (v *SalesPriceBookVersion) AfterFind(tx *gorm.DB) error {
+	payment, paymentErr := decimal.NewFromString(strings.TrimSpace(v.PaymentFeeRate))
+	distribution, distributionErr := decimal.NewFromString(strings.TrimSpace(v.DistributionFeeRate))
+	operations, operationsErr := decimal.NewFromString(strings.TrimSpace(v.OperationsLaborRate))
+	if paymentErr != nil || distributionErr != nil || operationsErr != nil {
+		v.TotalVariableCostRate = ""
+		return nil
+	}
+	v.TotalVariableCostRate = payment.Add(distribution).Add(operations).String()
+	return nil
+}
+
 // SalesPriceBookItem is the one customer-facing price for a logical model in
 // a complete price-book version.
 type SalesPriceBookItem struct {
-	Id                       int    `json:"id"`
-	PriceBookVersionId       int    `json:"price_book_version_id" gorm:"not null;uniqueIndex:uk_sales_price_book_item,priority:1;index"`
-	ModelId                  int    `json:"model_id" gorm:"not null;uniqueIndex:uk_sales_price_book_item,priority:2;index"`
-	Status                   string `json:"status" gorm:"type:varchar(24);not null;index"`
-	BillingMode              string `json:"billing_mode" gorm:"type:varchar(32);not null"`
-	PriceStructure           string `json:"price_structure" gorm:"type:varchar(16);not null"`
-	PriceComponents          string `json:"price_components" gorm:"type:text"`
-	SalesBillingExpr         string `json:"sales_billing_expr" gorm:"type:text;not null"`
-	SalesExprHash            string `json:"sales_expr_hash" gorm:"type:varchar(64);not null"`
-	ExpressionSource         string `json:"expression_source" gorm:"type:varchar(16);not null"`
-	ExpressionSchemaVersion  string `json:"expression_schema_version" gorm:"type:varchar(16);not null"`
-	PricingMethod            string `json:"pricing_method" gorm:"type:varchar(24);not null;index"`
-	OfficialPriceVersionId   *int   `json:"official_price_version_id" gorm:"index"`
-	PrimaryPurchaseVersionId *int   `json:"primary_purchase_version_id" gorm:"index"`
-	SellingFactor            string `json:"selling_factor" gorm:"type:decimal(36,18)"`
-	OfficialDiscount         string `json:"official_discount" gorm:"type:decimal(18,12)"`
-	MinimumMarginOverride    string `json:"minimum_margin_override" gorm:"type:decimal(18,12)"`
-	Currency                 string `json:"currency" gorm:"type:varchar(8);not null"`
-	GeneratedByBatchId       *int   `json:"generated_by_batch_id" gorm:"index"`
-	CreatedAt                int64  `json:"created_at" gorm:"bigint;not null"`
-	Remark                   string `json:"remark" gorm:"type:varchar(255)"`
+	Id                      int    `json:"id"`
+	PriceBookVersionId      int    `json:"price_book_version_id" gorm:"not null;uniqueIndex:uk_sales_price_book_item,priority:1;index"`
+	ModelId                 int    `json:"model_id" gorm:"not null;uniqueIndex:uk_sales_price_book_item,priority:2;index"`
+	Status                  string `json:"status" gorm:"type:varchar(24);not null;index"`
+	BillingMode             string `json:"billing_mode" gorm:"type:varchar(32);not null"`
+	PriceStructure          string `json:"price_structure" gorm:"type:varchar(16);not null"`
+	PriceComponents         string `json:"price_components" gorm:"type:text"`
+	SalesBillingExpr        string `json:"sales_billing_expr" gorm:"type:text;not null"`
+	SalesExprHash           string `json:"sales_expr_hash" gorm:"type:varchar(64);not null"`
+	ExpressionSource        string `json:"expression_source" gorm:"type:varchar(16);not null"`
+	ExpressionSchemaVersion string `json:"expression_schema_version" gorm:"type:varchar(16);not null"`
+	PricingMethod           string `json:"pricing_method" gorm:"type:varchar(24);not null;index"`
+	OfficialPriceVersionId  *int   `json:"official_price_version_id" gorm:"index"`
+	PricingConfig           string `json:"pricing_config" gorm:"type:text"`
+	GeneratedByBatchId      *int   `json:"generated_by_batch_id" gorm:"index"`
+	CreatedAt               int64  `json:"created_at" gorm:"bigint;not null"`
+	Remark                  string `json:"remark" gorm:"type:varchar(255)"`
+
+	// Admin API projections derived from canonical config, cost sources, and
+	// the parent price book. They are not database columns.
+	PrimaryPurchaseVersionId *int   `json:"primary_purchase_version_id,omitempty" gorm:"-"`
+	SellingFactor            string `json:"selling_factor" gorm:"-"`
+	OfficialDiscount         string `json:"official_discount" gorm:"-"`
+	Currency                 string `json:"currency" gorm:"-"`
 }
 
 func (i *SalesPriceBookItem) BeforeCreate(tx *gorm.DB) error {
-	normalizeOptionalPricingDecimal(&i.SellingFactor)
-	normalizeOptionalPricingDecimal(&i.OfficialDiscount)
-	normalizeOptionalPricingDecimal(&i.MinimumMarginOverride)
 	i.CreatedAt = common.GetTimestamp()
 	return nil
 }
 
-type SalesPriceBookItemBasisSource struct {
+type SalesPriceBookItemCostSource struct {
 	Id                     int    `json:"id"`
-	PriceBookItemId        int    `json:"price_book_item_id" gorm:"not null;uniqueIndex:uk_sales_price_basis_source,priority:1;index"`
-	ChannelModelId         int    `json:"channel_model_id" gorm:"not null;uniqueIndex:uk_sales_price_basis_source,priority:2;index"`
-	PurchasePriceVersionId int    `json:"purchase_price_version_id" gorm:"not null;uniqueIndex:uk_sales_price_basis_source,priority:3;index"`
-	TierKey                string `json:"tier_key" gorm:"type:varchar(64);not null;uniqueIndex:uk_sales_price_basis_source,priority:4"`
-	ComponentKey           string `json:"component_key" gorm:"type:varchar(32);not null;uniqueIndex:uk_sales_price_basis_source,priority:5"`
+	PriceBookItemId        int    `json:"price_book_item_id" gorm:"not null;uniqueIndex:uk_sales_price_cost_source,priority:1;index"`
+	ChannelModelId         int    `json:"channel_model_id" gorm:"not null;uniqueIndex:uk_sales_price_cost_source,priority:2;index"`
+	PurchasePriceVersionId int    `json:"purchase_price_version_id" gorm:"not null;index"`
 	SourceRole             string `json:"source_role" gorm:"type:varchar(16);not null;index"`
-	SourceValue            string `json:"source_value" gorm:"type:text"`
-	SelectionReason        string `json:"selection_reason" gorm:"type:varchar(255)"`
 	CreatedAt              int64  `json:"created_at" gorm:"bigint;not null"`
 }
 
-func (s *SalesPriceBookItemBasisSource) BeforeCreate(tx *gorm.DB) error {
+func (s *SalesPriceBookItemCostSource) BeforeCreate(tx *gorm.DB) error {
 	s.CreatedAt = common.GetTimestamp()
+	return nil
+}
+
+// SalesPriceBookChannelModelOverride stores the exceptional commercial policy
+// for one channel-model inside one price-book version. Nil rates inherit the
+// version default while an explicit zero disables that cost for this route.
+// The parent version owns the lifecycle: draft rows are editable and published
+// rows are immutable together with the version.
+type SalesPriceBookChannelModelOverride struct {
+	Id                  int     `json:"id"`
+	PriceBookVersionId  int     `json:"price_book_version_id" gorm:"not null;uniqueIndex:uk_sales_price_book_channel_model_override,priority:1;index"`
+	ChannelModelId      int     `json:"channel_model_id" gorm:"not null;uniqueIndex:uk_sales_price_book_channel_model_override,priority:2;index"`
+	PaymentFeeRate      *string `json:"payment_fee_rate" gorm:"type:decimal(18,12)"`
+	DistributionFeeRate *string `json:"distribution_fee_rate" gorm:"type:decimal(18,12)"`
+	OperationsLaborRate *string `json:"operations_labor_rate" gorm:"type:decimal(18,12)"`
+	EffectiveTaxRate    *string `json:"effective_tax_rate" gorm:"type:decimal(18,12)"`
+	TargetNetMargin     *string `json:"target_net_margin" gorm:"type:decimal(18,12)"`
+	MinimumMarginRate   *string `json:"minimum_margin_rate" gorm:"type:decimal(18,12)"`
+	CreatedBy           int     `json:"created_by" gorm:"not null"`
+	UpdatedBy           int     `json:"updated_by" gorm:"not null"`
+	CreatedAt           int64   `json:"created_at" gorm:"bigint;not null"`
+	UpdatedAt           int64   `json:"updated_at" gorm:"bigint;not null"`
+	Remark              string  `json:"remark" gorm:"type:varchar(255)"`
+}
+
+func (o *SalesPriceBookChannelModelOverride) BeforeCreate(tx *gorm.DB) error {
+	now := common.GetTimestamp()
+	o.CreatedAt = now
+	o.UpdatedAt = now
+	return nil
+}
+
+func (o *SalesPriceBookChannelModelOverride) BeforeUpdate(tx *gorm.DB) error {
+	o.UpdatedAt = common.GetTimestamp()
 	return nil
 }
 
@@ -271,7 +314,7 @@ type PricingAuditRecord struct {
 	Id         int    `json:"id"`
 	ObjectType string `json:"object_type" gorm:"type:varchar(32);not null;index:idx_pricing_audit_object,priority:1"`
 	ObjectId   int    `json:"object_id" gorm:"not null;index:idx_pricing_audit_object,priority:2"`
-	Action     string `json:"action" gorm:"type:varchar(24);not null;index"`
+	Action     string `json:"action" gorm:"type:varchar(64);not null;index"`
 	OperatorId int    `json:"operator_id" gorm:"not null;index"`
 	Comment    string `json:"comment" gorm:"type:text"`
 	CreatedAt  int64  `json:"created_at" gorm:"bigint;not null;index"`

@@ -172,8 +172,17 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 		err := model.DB.First(&existing, "idempotency_key = ?", idempotencyKey).Error
 		if err == nil {
 			var version model.SalesPriceBookVersion
-			if err := model.DB.First(&version, "change_batch_id = ?", existing.Id).Error; err != nil {
-				return nil, err
+			versionErr := model.DB.First(&version, "change_batch_id = ?", existing.Id).Error
+			if errors.Is(versionErr, gorm.ErrRecordNotFound) &&
+				existing.Status == PricingChangeBatchStatusCompleted &&
+				existing.ChangedCount == 0 && existing.ReviewCount == 0 {
+				results = append(results, SalesPriceBookAutoRepriceResult{
+					PriceBookId: book.PriceBookId, BatchId: existing.Id, Status: existing.Status,
+				})
+				continue
+			}
+			if versionErr != nil {
+				return nil, versionErr
 			}
 			results = append(results, SalesPriceBookAutoRepriceResult{
 				PriceBookId: book.PriceBookId, PriceBookVersionId: version.Id,
@@ -184,11 +193,15 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-		if err := cancelSupersededAutomaticSalesDrafts(book.PriceBookId); err != nil {
+		sourceVersionId, err := latestAutomaticSalesDraftVersionId(
+			book.PriceBookId,
+			book.CurrentVersionId,
+		)
+		if err != nil {
 			return nil, err
 		}
 		draft, err := CloneSalesPriceBookVersion(
-			book.PriceBookId, book.CurrentVersionId, userId,
+			book.PriceBookId, sourceVersionId, userId,
 		)
 		if err != nil {
 			return nil, err
@@ -202,16 +215,15 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 				draft.Id,
 				channelModel.ModelId,
 			).Error
-			if err == nil && currentItem.PrimaryPurchaseVersionId != nil {
-				var designatedPurchase model.ChannelModelPurchasePriceVersion
-				if err := model.DB.First(
-					&designatedPurchase,
-					*currentItem.PrimaryPurchaseVersionId,
+			if err == nil {
+				var selectedSource model.SalesPriceBookItemCostSource
+				if err := model.DB.First(&selectedSource,
+					"price_book_item_id = ? AND source_role = ?", currentItem.Id, "selected",
 				).Error; err != nil {
 					return nil, err
 				}
 				designatedChannelModels = map[int]int{
-					channelModel.ModelId: designatedPurchase.ChannelModelId,
+					channelModel.ModelId: selectedSource.ChannelModelId,
 				}
 			} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, err
@@ -237,6 +249,22 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 				book.PriceBookId, draft.Id, err,
 			)
 		}
+		if generated.Batch.ChangedCount == 0 && generated.Batch.ReviewCount == 0 {
+			if err := deleteSalesPriceBookDraft(draft.Id, 0); err != nil {
+				return nil, fmt.Errorf(
+					"remove unchanged sales price book %d draft %d: %w",
+					book.PriceBookId, draft.Id, err,
+				)
+			}
+			results = append(results, SalesPriceBookAutoRepriceResult{
+				PriceBookId: book.PriceBookId, BatchId: generated.Batch.Id,
+				Status: generated.Batch.Status,
+			})
+			continue
+		}
+		if err := cancelSupersededAutomaticSalesDrafts(book.PriceBookId, draft.Id); err != nil {
+			return nil, err
+		}
 		results = append(results, SalesPriceBookAutoRepriceResult{
 			PriceBookId: book.PriceBookId, PriceBookVersionId: draft.Id,
 			BatchId: generated.Batch.Id, Status: generated.Batch.Status,
@@ -245,7 +273,26 @@ func AutoRepriceSalesPriceBooksForPurchaseVersion(
 	return results, nil
 }
 
-func cancelSupersededAutomaticSalesDrafts(priceBookId int) error {
+func latestAutomaticSalesDraftVersionId(priceBookId int, fallbackVersionId int) (int, error) {
+	var draft model.SalesPriceBookVersion
+	err := model.DB.Table("sales_price_book_versions AS version").
+		Select("version.*").
+		Joins("JOIN pricing_change_batches AS batch ON batch.id = version.change_batch_id").
+		Where("version.price_book_id = ? AND version.status = ?",
+			priceBookId, model.SalesPriceBookVersionStatusDraft).
+		Where("batch.trigger_type = ?", SalesPriceBookTriggerPurchasePricePublished).
+		Order("version.version DESC").
+		First(&draft).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return fallbackVersionId, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return draft.Id, nil
+}
+
+func cancelSupersededAutomaticSalesDrafts(priceBookId int, keepVersionId int) error {
 	var batchIds []int
 	if err := model.DB.Model(&model.PricingChangeBatch{}).
 		Where("trigger_type = ?", SalesPriceBookTriggerPurchasePricePublished).
@@ -258,6 +305,7 @@ func cancelSupersededAutomaticSalesDrafts(priceBookId int) error {
 	return model.DB.Model(&model.SalesPriceBookVersion{}).
 		Where("price_book_id = ? AND status = ? AND change_batch_id IN ?",
 			priceBookId, model.SalesPriceBookVersionStatusDraft, batchIds).
+		Where("id <> ?", keepVersionId).
 		Updates(map[string]any{
 			"status":     model.SalesPriceBookVersionStatusCancelled,
 			"updated_at": common.GetTimestamp(),
@@ -280,9 +328,13 @@ func deleteSalesPriceBookDraft(versionId int, userId int) error {
 		}
 		if len(itemIds) > 0 {
 			if err := tx.Where("price_book_item_id IN ?", itemIds).
-				Delete(&model.SalesPriceBookItemBasisSource{}).Error; err != nil {
+				Delete(&model.SalesPriceBookItemCostSource{}).Error; err != nil {
 				return err
 			}
+		}
+		if err := tx.Where("price_book_version_id = ?", versionId).
+			Delete(&model.SalesPriceBookChannelModelOverride{}).Error; err != nil {
+			return err
 		}
 		auditQuery := tx.Where("object_type = ? AND object_id = ?",
 			"sales_price_book_version", versionId)

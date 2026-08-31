@@ -95,6 +95,9 @@ func AutoCreatePurchaseDraftsForOfficialPrice(
 		Scan(&active).Error; err != nil {
 		return nil, err
 	}
+	for index := range active {
+		_ = HydratePurchasePriceProjection(&active[index])
+	}
 	idempotencyKey := fmt.Sprintf("auto-official-%d-purchase-drafts", officialPriceVersionId)
 	var existing model.PricingChangeBatch
 	err := model.DB.First(&existing, "idempotency_key = ?", idempotencyKey).Error

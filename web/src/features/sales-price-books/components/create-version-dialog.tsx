@@ -83,7 +83,7 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
   const [paymentFee, setPaymentFee] = useState('4')
   const [distributionFee, setDistributionFee] = useState('5')
   const [operationsRate, setOperationsRate] = useState('2')
-  const [taxRate, setTaxRate] = useState('16')
+  const [taxRate, setTaxRate] = useState('16.5')
   const [targetMargin, setTargetMargin] = useState('3')
   const [minimumMargin, setMinimumMargin] = useState('2')
   const [dirty, setDirty] = useState(false)
@@ -102,7 +102,7 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
       version ? storedRateToPercentage(version.operations_labor_rate) : '2'
     )
     setTaxRate(
-      version ? storedRateToPercentage(version.effective_tax_rate) : '16'
+      version ? storedRateToPercentage(version.effective_tax_rate) : '16.5'
     )
     setTargetMargin(
       version ? storedRateToPercentage(version.target_net_margin) : '3'
@@ -119,12 +119,14 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
       .reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
       .toString()
   }, [distributionFee, operationsRate, paymentFee])
-  let costBasisLabel = t('Maximum eligible purchase cost (recommended)')
+  let costBasisLabel = t(
+    'Price using the highest eligible channel cost (recommended)'
+  )
   let costBasisDescription = t(
     'Uses the highest cost from the selected active purchase prices to protect margin when routing changes. Recommended for TOC and most TOB price books.'
   )
   if (costBasis === 'min_eligible_cost') {
-    costBasisLabel = t('Minimum eligible purchase cost')
+    costBasisLabel = t('Price using the lowest eligible channel cost')
     costBasisDescription = t(
       'Uses the lowest cost from the selected active purchase prices. Use only when routing is guaranteed to stay on a low-cost channel; otherwise margin may fall below the minimum.'
     )
@@ -148,9 +150,20 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
       return createSalesPriceBookVersion(props.priceBookId, input)
     },
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({
-        queryKey: ['sales-price-books', 'versions', props.priceBookId],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'versions', props.priceBookId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'items', response.data.id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'version-diff'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['sales-price-books', 'audit-records'],
+        }),
+      ])
       toast.success(
         props.version
           ? t('Draft pricing parameters updated')
@@ -228,7 +241,7 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
             <FieldGroup className='py-5'>
               <Field>
                 <FieldLabel htmlFor='cost-basis-strategy'>
-                  {t('Cost basis strategy')}
+                  {t('Unified sales price strategy')}
                 </FieldLabel>
                 <Select
                   value={costBasis}
@@ -244,10 +257,12 @@ export function CreateVersionDialog(props: CreateVersionDialogProps) {
                   <SelectContent>
                     <SelectGroup>
                       <SelectItem value='max_eligible_cost'>
-                        {t('Maximum eligible purchase cost (recommended)')}
+                        {t(
+                          'Price using the highest eligible channel cost (recommended)'
+                        )}
                       </SelectItem>
                       <SelectItem value='min_eligible_cost'>
-                        {t('Minimum eligible purchase cost')}
+                        {t('Price using the lowest eligible channel cost')}
                       </SelectItem>
                     </SelectGroup>
                   </SelectContent>

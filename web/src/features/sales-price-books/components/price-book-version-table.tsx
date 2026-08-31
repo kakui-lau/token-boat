@@ -86,10 +86,10 @@ function percentage(value: string) {
 
 function costBasisLabel(strategy: string, t: (key: string) => string) {
   if (strategy === 'max_eligible_cost') {
-    return t('Highest eligible purchase cost')
+    return t('Price using the highest eligible channel cost')
   }
   if (strategy === 'min_eligible_cost') {
-    return t('Minimum eligible purchase cost')
+    return t('Price using the lowest eligible channel cost')
   }
   if (strategy === 'designated_channel') {
     return t('Designated channel')
@@ -240,7 +240,7 @@ export function PriceBookVersionTable(props: PriceBookVersionTableProps) {
               {t('Version')}
             </TableHead>
             <TableHead>{t('Status')}</TableHead>
-            <TableHead>{t('Cost basis')}</TableHead>
+            <TableHead>{t('Unified sales price strategy')}</TableHead>
             <TableHead>{t('Pricing parameters')}</TableHead>
             <TableHead>{t('Actions')}</TableHead>
           </TableRow>
@@ -269,7 +269,7 @@ export function PriceBookVersionTable(props: PriceBookVersionTableProps) {
                     {t('Version')}
                   </TableHead>
                   <TableHead>{t('Status')}</TableHead>
-                  <TableHead>{t('Cost basis')}</TableHead>
+                  <TableHead>{t('Unified sales price strategy')}</TableHead>
                   <TableHead>{t('Pricing parameters')}</TableHead>
                   <TableHead>{t('Actions')}</TableHead>
                 </TableRow>

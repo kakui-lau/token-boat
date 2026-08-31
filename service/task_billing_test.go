@@ -148,6 +148,25 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 	}
 }
 
+func TestTaskBillingOtherIncludesUserVisibleTaskContext(t *testing.T) {
+	task := makeTask(1, 2, 300, 4, BillingSourceWallet, 0)
+	task.Platform = "video"
+	task.Action = "generate"
+	task.Status = model.TaskStatusFailure
+	task.SubmitTime = 100
+	task.FinishTime = 112
+	task.FailReason = "generation failed"
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, task.TaskID, other["task_id"])
+	assert.Equal(t, "video", other["task_platform"])
+	assert.Equal(t, "generate", other["task_action"])
+	assert.Equal(t, string(model.TaskStatusFailure), other["task_status"])
+	assert.Equal(t, int64(12), other["task_duration_sec"])
+	assert.Equal(t, "generation failed", other["task_failure_reason"])
+}
+
 func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
 	priceData := types.PriceData{}
 

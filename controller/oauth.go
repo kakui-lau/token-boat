@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -13,25 +14,42 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-const oauthAuthFlowTTL = 10 * time.Minute
+const (
+	oauthAuthFlowTTL     = 10 * time.Minute
+	oauthClientConsoleV2 = "console_v2"
+)
 
 type oauthStateRequest struct {
 	Provider string `json:"provider"`
 	Intent   string `json:"intent"`
 	Aff      string `json:"aff,omitempty"`
+	Client   string `json:"client,omitempty"`
 }
 
 type oauthFlowPayload struct {
 	AffiliateCode string `json:"affiliate_code,omitempty"`
+	Client        string `json:"client,omitempty"`
+	RedirectURI   string `json:"redirect_uri,omitempty"`
 }
 
 // providerParams returns map with Provider key for i18n templates
 func providerParams(name string) map[string]any {
 	return map[string]any{"Provider": name}
+}
+
+func consoleOAuthRedirectURI(provider string) (string, bool) {
+	base := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
+	parsed, err := url.Parse(base)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false
+	}
+	return base + "/console/oauth/" + url.PathEscape(provider), true
 }
 
 // GenerateOAuthCode generates a state code for OAuth CSRF protection
@@ -44,12 +62,23 @@ func GenerateOAuthCode(c *gin.Context) {
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Intent = strings.TrimSpace(request.Intent)
 	request.Aff = strings.TrimSpace(request.Aff)
+	request.Client = strings.TrimSpace(request.Client)
 	if oauth.GetProvider(request.Provider) == nil ||
 		(request.Intent != model.AuthFlowIntentLogin && request.Intent != model.AuthFlowIntentBind) ||
+		(request.Client != "" && request.Client != oauthClientConsoleV2) ||
 		len(request.Aff) > 32 ||
 		(request.Intent == model.AuthFlowIntentBind && request.Aff != "") {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
+	}
+	redirectURI := ""
+	if request.Client == oauthClientConsoleV2 {
+		var ok bool
+		redirectURI, ok = consoleOAuthRedirectURI(request.Provider)
+		if !ok {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
 	}
 	userID := 0
 	sessionID := ""
@@ -62,7 +91,11 @@ func GenerateOAuthCode(c *gin.Context) {
 		userID = identity.UserID
 		sessionID = identity.SessionID
 	}
-	payload, err := common.Marshal(oauthFlowPayload{AffiliateCode: request.Aff})
+	payload, err := common.Marshal(oauthFlowPayload{
+		AffiliateCode: request.Aff,
+		Client:        request.Client,
+		RedirectURI:   redirectURI,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -81,13 +114,17 @@ func GenerateOAuthCode(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	data := gin.H{
+		"flow_token": state,
+		"expires_at": expiresAt.Unix(),
+	}
+	if redirectURI != "" {
+		data["redirect_uri"] = redirectURI
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
-			"flow_token": state,
-			"expires_at": expiresAt.Unix(),
-		},
+		"data":    data,
 	})
 }
 
@@ -115,6 +152,31 @@ func HandleOAuth(c *gin.Context) {
 			"message": i18n.T(c, i18n.MsgOAuthStateInvalid),
 		})
 		return
+	}
+	var pendingPayload oauthFlowPayload
+	pendingPayloadError := common.UnmarshalJsonStr(pendingFlow.Payload, &pendingPayload)
+	if pendingPayloadError == nil &&
+		pendingPayload.Client != "" && pendingPayload.Client != oauthClientConsoleV2 {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": i18n.T(c, i18n.MsgOAuthStateInvalid),
+		})
+		return
+	}
+	if pendingPayloadError == nil && pendingPayload.Client == oauthClientConsoleV2 {
+		redirectURI := strings.TrimSpace(pendingPayload.RedirectURI)
+		parsedRedirectURI, err := url.Parse(redirectURI)
+		expectedPathSuffix := "/console/oauth/" + url.PathEscape(providerName)
+		if err != nil || (parsedRedirectURI.Scheme != "http" && parsedRedirectURI.Scheme != "https") ||
+			parsedRedirectURI.Host == "" || parsedRedirectURI.User != nil || parsedRedirectURI.RawQuery != "" ||
+			parsedRedirectURI.Fragment != "" || !strings.HasSuffix(parsedRedirectURI.EscapedPath(), expectedPathSuffix) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": i18n.T(c, i18n.MsgOAuthStateInvalid),
+			})
+			return
+		}
+		oauth.SetRedirectURI(c, redirectURI)
 	}
 
 	consumeMatch := model.AuthFlowMatch{

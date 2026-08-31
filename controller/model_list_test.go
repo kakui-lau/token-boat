@@ -64,6 +64,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 		&model.SalesPriceBook{},
 		&model.SalesPriceBookVersion{},
 		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookChannelModelOverride{},
 		&model.SalesPriceBookDefault{},
 		&model.UserPriceBookAssignment{},
 		&model.RequestPricingSnapshot{},

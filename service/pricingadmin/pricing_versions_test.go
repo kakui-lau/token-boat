@@ -25,11 +25,12 @@ func setupPricingAdminTestDB(t *testing.T) {
 		&model.OfficialModelPriceVersion{},
 		&model.OfficialPriceSyncBatch{},
 		&model.ChannelModelPurchasePriceVersion{},
+		&model.SalesPriceBookChannelModelOverride{},
 	))
 	t.Cleanup(func() { model.DB = originalDB })
 }
 
-func TestPurchaseOptionalPricesUseTextColumns(t *testing.T) {
+func TestPurchaseCanonicalPricingUsesJSONTextColumn(t *testing.T) {
 	setupPricingAdminTestDB(t)
 	columnTypes, err := model.DB.Migrator().ColumnTypes(&model.ChannelModelPurchasePriceVersion{})
 	require.NoError(t, err)
@@ -37,10 +38,12 @@ func TestPurchaseOptionalPricesUseTextColumns(t *testing.T) {
 	for _, columnType := range columnTypes {
 		typesByName[columnType.Name()] = columnType.DatabaseTypeName()
 	}
+	assert.Equal(t, "text", typesByName["price_components"])
 	for _, column := range []string{
-		"input_unit_price", "output_unit_price", "cache_read_unit_price", "cache_write_unit_price",
+		"purchase_discount", "input_unit_price", "output_unit_price", "cache_read_unit_price", "cache_write_unit_price", "price_unit",
 	} {
-		assert.Equal(t, "text", typesByName[column])
+		_, exists := typesByName[column]
+		assert.False(t, exists)
 	}
 }
 

@@ -39,6 +39,55 @@ func appendToolSurchargeLogInfo(other map[string]interface{}, items []ToolSurcha
 	other["tool_surcharges"] = items
 }
 
+// appendTextUsageLogInfo persists the user-visible usage breakdown exactly as
+// returned by the normalized billing usage. Missing historical fields are not
+// reconstructed later because cache and protocol semantics differ by provider.
+func appendTextUsageLogInfo(other map[string]interface{}, summary textQuotaSummary, usage *dto.Usage) {
+	if other == nil {
+		return
+	}
+	// Write the observed cache-read count even when it is zero. This lets new
+	// logs distinguish an observed zero from legacy logs that never recorded it.
+	other["cache_tokens"] = summary.CacheTokens
+	if summary.CacheCreationTokens > 0 {
+		other["cache_creation_tokens"] = summary.CacheCreationTokens
+	}
+	if summary.CacheCreationTokens5m > 0 {
+		other["cache_creation_tokens_5m"] = summary.CacheCreationTokens5m
+	}
+	if summary.CacheCreationTokens1h > 0 {
+		other["cache_creation_tokens_1h"] = summary.CacheCreationTokens1h
+	}
+	if cacheWriteTokens := cacheWriteTokensTotal(summary); cacheWriteTokens > 0 {
+		other["cache_write_tokens"] = cacheWriteTokens
+	}
+	if summary.ImageTokens > 0 {
+		// Keep the existing generic image-token field for compatibility. Its
+		// historical name is image_output even though it represents the image
+		// token component reported for the request.
+		other["image"] = true
+		other["image_output"] = summary.ImageTokens
+	}
+	if usage == nil {
+		return
+	}
+	if usage.UsageSource != "" {
+		other["input_tokens_total"] = usage.InputTokens
+	}
+	if usage.PromptTokensDetails.TextTokens > 0 {
+		other["text_input"] = usage.PromptTokensDetails.TextTokens
+	}
+	if usage.CompletionTokenDetails.TextTokens > 0 {
+		other["text_output"] = usage.CompletionTokenDetails.TextTokens
+	}
+	if usage.PromptTokensDetails.AudioTokens > 0 {
+		other["audio_input"] = usage.PromptTokensDetails.AudioTokens
+	}
+	if usage.CompletionTokenDetails.AudioTokens > 0 {
+		other["audio_output"] = usage.CompletionTokenDetails.AudioTokens
+	}
+}
+
 type textQuotaSummary struct {
 	PromptTokens           int
 	CompletionTokens       int
@@ -332,45 +381,16 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	logContent := strings.Join(extraContent, ", ")
-	var other map[string]interface{}
-	if summary.IsClaudeUsageSemantic {
-		other = GenerateTextOtherInfo(ctx, relayInfo)
-		other["usage_semantic"] = "anthropic"
-	} else {
-		other = GenerateTextOtherInfo(ctx, relayInfo)
+	other := GenerateTextOtherInfo(ctx, relayInfo)
+	if summary.UsageSemantic != "" {
+		other["usage_semantic"] = summary.UsageSemantic
 	}
 	appendUsageBillingPathForLog(other, common.GetContextKeyBool(ctx, constant.ContextKeyLocalCountTokens), originUsage)
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
 	}
-	if summary.ImageTokens != 0 {
-		other["image"] = true
-		other["image_output"] = summary.ImageTokens
-	}
 	appendToolSurchargeLogInfo(other, summary.ToolSurchargeItems)
-	if summary.CacheCreationTokens > 0 {
-		other["cache_creation_tokens"] = summary.CacheCreationTokens
-	}
-	if summary.CacheCreationTokens5m > 0 {
-		other["cache_creation_tokens_5m"] = summary.CacheCreationTokens5m
-	}
-	if summary.CacheCreationTokens1h > 0 {
-		other["cache_creation_tokens_1h"] = summary.CacheCreationTokens1h
-	}
-	cacheWriteTokens := cacheWriteTokensTotal(summary)
-	if cacheWriteTokens > 0 {
-		// cache_write_tokens: normalized cache creation total for UI display.
-		// If split 5m/1h values are present, this is their sum; otherwise it falls back
-		// to cache_creation_tokens.
-		other["cache_write_tokens"] = cacheWriteTokens
-	}
-	if relayInfo.GetFinalRequestRelayFormat() != types.RelayFormatClaude && billingUsage != nil && billingUsage.UsageSource != "" && billingUsage.InputTokens > 0 {
-		// input_tokens_total: explicit normalized total input used by the usage log UI.
-		// Only write this field when upstream/current conversion has already provided a
-		// reliable total input value and tagged the usage source. Do not infer it from
-		// prompt/cache fields here, otherwise old upstream payloads may be double-counted.
-		other["input_tokens_total"] = billingUsage.InputTokens
-	}
+	appendTextUsageLogInfo(other, summary, billingUsage)
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}

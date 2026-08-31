@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -75,7 +76,7 @@ func ManuallyFailAndRefundTask(ctx context.Context, taskID, reason string) (Manu
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
-func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuota int) {
+func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuota int, platform constant.TaskPlatform) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
 	logContent = fmt.Sprintf("%s，销售报价已冻结", logContent)
@@ -84,6 +85,8 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, chargedQuot
 	other["billing_stage"] = "submitted"
 	other["task_status"] = string(model.TaskStatusSubmitted)
 	other["task_id"] = info.PublicTaskID
+	other["task_platform"] = string(platform)
+	other["task_action"] = info.Action
 	other["local_estimated_quota"] = info.PriceData.Quota
 	other["actual_pre_consumed_quota"] = info.FinalPreConsumedQuota
 	other["request_path"] = c.Request.URL.Path
@@ -127,6 +130,17 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["task_id"] = task.TaskID
+	other["task_platform"] = string(task.Platform)
+	other["task_action"] = task.Action
+	if task.Status != "" {
+		other["task_status"] = string(task.Status)
+	}
+	if task.FinishTime > 0 && task.SubmitTime > 0 && task.FinishTime >= task.SubmitTime {
+		other["task_duration_sec"] = task.FinishTime - task.SubmitTime
+	}
+	if task.FailReason != "" {
+		other["task_failure_reason"] = task.FailReason
+	}
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		if bc.QuotaPerUnit > 0 {
 			other["quota_per_unit"] = bc.QuotaPerUnit
@@ -174,6 +188,14 @@ func updateTaskBillingAudit(task *model.Task, status string, finalQuota, refunde
 		"billing_stage":        "completed",
 		"task_status":          status,
 		"customer_final_quota": finalQuota,
+		"task_platform":        string(task.Platform),
+		"task_action":          task.Action,
+	}
+	if task.FinishTime > 0 && task.SubmitTime > 0 && task.FinishTime >= task.SubmitTime {
+		fields["task_duration_sec"] = task.FinishTime - task.SubmitTime
+	}
+	if task.FailReason != "" {
+		fields["task_failure_reason"] = task.FailReason
 	}
 	if refundedQuota > 0 {
 		fields["refunded_quota"] = refundedQuota
@@ -324,6 +346,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,
 		TaskId:    task.TaskID,
+		Ip:        task.PrivateData.ClientIP,
 		Other:     other,
 	})
 	completeTaskRefundPricingAudit(task, quota)
@@ -464,6 +487,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		TokenId:          task.PrivateData.TokenId,
 		Group:            task.Group,
 		TaskId:           task.TaskID,
+		Ip:               task.PrivateData.ClientIP,
 		Other:            other,
 		NodeName:         task.PrivateData.NodeName,
 	})

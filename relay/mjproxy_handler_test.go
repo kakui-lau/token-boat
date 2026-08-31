@@ -37,6 +37,7 @@ func TestMidjourneyPricingAuditIsCreatedOnlyAfterPreConsume(t *testing.T) {
 		&model.SalesPriceBook{},
 		&model.SalesPriceBookVersion{},
 		&model.SalesPriceBookItem{},
+		&model.SalesPriceBookChannelModelOverride{},
 		&model.SalesPriceBookDefault{},
 		&model.UserPriceBookAssignment{},
 		&model.RequestPricingSnapshot{},

@@ -674,7 +674,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 				task.Username,
 				"", // requestId
 				task.TaskID,
-				"", // ip
+				task.TaskID,
+				task.PrivateData.ClientIP,
 				recordErrorBody,
 				other,
 			)

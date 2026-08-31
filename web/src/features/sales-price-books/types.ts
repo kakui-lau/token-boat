@@ -85,13 +85,22 @@ export type SalesPriceBookItem = {
   selling_factor: string
   purchase_discount?: string
   sales_discount?: string
+  warning_code?: string
+  warning_sales_discount?: string
   official_discount: string
-  minimum_margin_override: string
   currency: string
   generated_by_batch_id?: number
   review_risk_code?: string
   review_reason?: string
+  channel_margins?: SalesPriceBookChannelMargin[]
   remark: string
+}
+
+export type SalesPriceBookGenerationWarning = {
+  model_id: number
+  model_name: string
+  code: string
+  sales_discount: string
 }
 
 export type UserPriceBookAssignment = {
@@ -220,11 +229,74 @@ export type SalesPriceBookPolicyChange = {
 export type SalesPriceBookChannelMargin = {
   channel_model_id: number
   channel_name: string
+  channel_status?: number
+  upstream_model_name?: string
+  channel_model_status?: number
   purchase_price_version_id: number
+  purchase_price_version?: number
+  purchase_pricing_mode: string
+  purchase_quote_spec?: string
+  purchase_price_components?: string
+  purchase_billing_expr?: string
+  currency?: string
+  purchase_discount: string
+  sales_discount?: string
+  source_role: string
   reference_cost: string
   margin_rate: string
   meets_minimum_margin: boolean
+  channel_model_override_id: number
+  payment_fee_rate: string
+  distribution_fee_rate: string
+  operations_labor_rate: string
+  total_variable_cost_rate: string
+  effective_tax_rate: string
+  target_net_margin: string
+  minimum_margin_rate: string
+  overridden_fields?: SalesPriceBookChannelMarginOverrideField[]
 }
+
+export type SalesPriceBookChannelMarginOverrideField =
+  | 'payment_fee_rate'
+  | 'distribution_fee_rate'
+  | 'operations_labor_rate'
+  | 'effective_tax_rate'
+  | 'target_net_margin'
+  | 'minimum_margin_rate'
+
+export type SalesPriceBookChannelModelOverride = {
+  id: number
+  price_book_version_id: number
+  channel_model_id: number
+  channel_name: string
+  model_id: number
+  model_name: string
+  payment_fee_rate?: string | null
+  distribution_fee_rate?: string | null
+  operations_labor_rate?: string | null
+  effective_tax_rate?: string | null
+  target_net_margin?: string | null
+  minimum_margin_rate?: string | null
+  effective_payment_fee_rate: string
+  effective_distribution_fee_rate: string
+  effective_operations_labor_rate: string
+  effective_total_variable_cost_rate: string
+  effective_tax_rate_value: string
+  effective_target_net_margin: string
+  effective_minimum_margin_rate: string
+  remark: string
+}
+
+export type SaveSalesPriceBookChannelModelOverrideInput = Pick<
+  SalesPriceBookChannelModelOverride,
+  | 'payment_fee_rate'
+  | 'distribution_fee_rate'
+  | 'operations_labor_rate'
+  | 'effective_tax_rate'
+  | 'target_net_margin'
+  | 'minimum_margin_rate'
+  | 'remark'
+>
 
 export type SalesPriceBookItemDiff = {
   model_id: number

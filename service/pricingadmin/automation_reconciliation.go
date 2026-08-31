@@ -21,8 +21,12 @@ func ReconcilePricingAutomation(userId int) (PricingAutomationReconciliationSumm
 	if !model.DB.Migrator().HasTable(&model.PricingChangeBatch{}) {
 		return summary, nil
 	}
+	officialBaseline, purchaseBaseline, err := model.GetPricingAutomationBaselines()
+	if err != nil {
+		return summary, err
+	}
 	var officialVersions []model.OfficialModelPriceVersion
-	if err := model.DB.Where("status = ?", model.PricingVersionStatusActive).
+	if err := model.DB.Where("status = ? AND id > ?", model.PricingVersionStatusActive, officialBaseline).
 		Order("id ASC").Find(&officialVersions).Error; err != nil {
 		return summary, err
 	}
@@ -43,7 +47,7 @@ func ReconcilePricingAutomation(userId int) (PricingAutomationReconciliationSumm
 	}
 
 	var purchaseVersions []model.ChannelModelPurchasePriceVersion
-	if err := model.DB.Where("status = ?", model.PricingVersionStatusActive).
+	if err := model.DB.Where("status = ? AND id > ?", model.PricingVersionStatusActive, purchaseBaseline).
 		Order("id ASC").Find(&purchaseVersions).Error; err != nil {
 		return summary, err
 	}

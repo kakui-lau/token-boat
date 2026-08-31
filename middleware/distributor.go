@@ -230,6 +230,30 @@ func applyPlaygroundChannelSelection(c *gin.Context) bool {
 		abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
 		return false
 	}
+	if playgroundRequest.APIKeyId != nil {
+		if *playgroundRequest.APIKeyId <= 0 {
+			abortWithOpenAiMessage(c, http.StatusBadRequest, common.TranslateMessage(c, i18n.MsgTokenInvalid))
+			return false
+		}
+		token, err := model.GetTokenByIds(*playgroundRequest.APIKeyId, c.GetInt("id"))
+		if err != nil || token.Status != common.TokenStatusEnabled ||
+			(token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp()) ||
+			(!token.UnlimitedQuota && token.RemainQuota <= 0) {
+			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgTokenInvalid))
+			return false
+		}
+		if playgroundRequest.Group != "" && token.Group != "" && playgroundRequest.Group != token.Group {
+			abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+			return false
+		}
+		if err := SetupContextForToken(c, token); err != nil {
+			return false
+		}
+		c.Set("playground_api_key", token)
+		if token.Group != "" {
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, token.Group)
+		}
+	}
 	if playgroundRequest.ChannelId == nil {
 		return true
 	}
@@ -507,6 +531,11 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		modelRequest.Model = req.Model
 		modelRequest.Group = req.Group
+		if selectedToken, ok := c.Get("playground_api_key"); ok && modelRequest.Group == "" {
+			if token, valid := selectedToken.(*model.Token); valid {
+				modelRequest.Group = token.Group
+			}
+		}
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
 	}
 

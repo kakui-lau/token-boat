@@ -11,6 +11,7 @@ export const priceComponentLabels: Record<string, string> = {
   output_unit_price: 'Output / 1M tokens',
   cache_read_unit_price: 'Cache Read / 1M tokens',
   cache_write_unit_price: 'Cache Write / 1M tokens',
+  cache_write_1h_unit_price: 'Cache Write (1h)',
   image_input_unit_price: 'Image Input / 1M tokens',
   image_output_unit_price: 'Image Output / 1M tokens',
   audio_input_unit_price: 'Audio Input / 1M tokens',

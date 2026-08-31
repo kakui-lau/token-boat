@@ -20,6 +20,7 @@ import (
 type SubscriptionEpayPayRequest struct {
 	PlanId        int    `json:"plan_id"`
 	PaymentMethod string `json:"payment_method"`
+	ReturnURL     string `json:"return_url,omitempty"`
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
@@ -65,7 +66,15 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	callBackAddress := service.GetCallbackAddress()
-	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
+	returnAddress := callBackAddress + "/api/subscription/epay/return"
+	if req.ReturnURL != "" {
+		if common.ValidateRedirectURL(req.ReturnURL) != nil {
+			common.ApiErrorMsg(c, "支付重定向URL不在可信任域名列表中")
+			return
+		}
+		returnAddress = req.ReturnURL
+	}
+	returnUrl, err := url.Parse(returnAddress)
 	if err != nil {
 		common.ApiErrorMsg(c, "回调地址配置错误")
 		return
@@ -113,7 +122,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri, "order_id": tradeNo})
 }
 
 func SubscriptionEpayNotify(c *gin.Context) {
@@ -170,7 +179,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type, c.ClientIP()); err != nil {
 		middleware.MarkPaymentCallbackFailed(c, err.Error())
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
@@ -221,7 +230,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type, c.ClientIP()); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
 			return
 		}

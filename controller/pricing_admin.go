@@ -28,6 +28,7 @@ type channelModelAdminRow struct {
 	ActivePurchasePriceVersion   int64  `json:"active_purchase_price_version"`
 	PurchasePricingMode          string `json:"purchase_pricing_mode"`
 	PurchaseDiscount             string `json:"purchase_discount"`
+	PurchaseQuoteSpec            string `json:"-"`
 }
 
 type channelModelSelectionOption struct {
@@ -58,7 +59,6 @@ type channelPricingExportRow struct {
 	PurchasePriceComponents string
 	PurchaseBillingExpr     string
 	PurchaseCurrency        string
-	PurchasePriceUnit       string
 }
 
 type channelModelSelectionInput struct {
@@ -422,7 +422,7 @@ func AdminListChannelModels(c *gin.Context) {
 			"COALESCE(active_purchase.active_purchase_price_version_id, 0) AS active_purchase_price_version_id, "+
 			"COALESCE(active_purchase.active_purchase_price_version, 0) AS active_purchase_price_version, "+
 			"COALESCE(selected_purchase.pricing_mode, '') AS purchase_pricing_mode, "+
-			"COALESCE(selected_purchase.purchase_discount, '') AS purchase_discount",
+			"COALESCE(selected_purchase.quote_spec, '') AS purchase_quote_spec",
 		true,
 	)
 
@@ -438,6 +438,9 @@ func AdminListChannelModels(c *gin.Context) {
 		Scan(&rows).Error; err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	for index := range rows {
+		rows[index].PurchaseDiscount = purchaseDiscountFromQuoteSpec(rows[index].PurchaseQuoteSpec)
 	}
 	common.ApiSuccess(c, gin.H{
 		"items":     rows,
@@ -547,14 +550,12 @@ func channelPricingExportQuery(c *gin.Context) (*gorm.DB, error) {
 			selected_purchase.id AS purchase_price_version_id,
 			selected_purchase.version AS purchase_price_version,
 			COALESCE(selected_purchase.pricing_mode, '') AS purchase_pricing_mode,
-			COALESCE(selected_purchase.purchase_discount, '') AS purchase_discount,
 			COALESCE(selected_purchase.quote_spec, '') AS purchase_quote_spec,
 			COALESCE(selected_purchase.billing_mode, '') AS purchase_billing_mode,
 			COALESCE(selected_purchase.price_structure, '') AS purchase_price_structure,
 			COALESCE(selected_purchase.price_components, '') AS purchase_price_components,
 			COALESCE(selected_purchase.purchase_billing_expr, '') AS purchase_billing_expr,
-			COALESCE(selected_purchase.currency, '') AS purchase_currency,
-			COALESCE(selected_purchase.price_unit, '') AS purchase_price_unit`).
+			COALESCE(selected_purchase.currency, '') AS purchase_currency`).
 		Joins("LEFT JOIN official_model_price_versions AS linked_official ON linked_official.id = selected_purchase.official_price_version_id").
 		Joins("LEFT JOIN model_official_prices ON model_official_prices.model_id = channel_models.model_id").
 		Joins("LEFT JOIN official_model_price_versions AS current_official ON current_official.id = model_official_prices.current_revision_id"), nil
@@ -1286,6 +1287,9 @@ func formatPurchasePricingModeForCSV(pricingMode string) string {
 
 func formatPurchaseDiscountForCSV(pricingMode string, purchaseDiscount string, quoteSpec string) string {
 	if strings.TrimSpace(pricingMode) == "official_ratio" {
+		if strings.TrimSpace(purchaseDiscount) == "" {
+			purchaseDiscount = purchaseDiscountFromQuoteSpec(quoteSpec)
+		}
 		return formatPurchaseDiscountMultiplierForCSV(purchaseDiscount, true)
 	}
 
@@ -1309,6 +1313,9 @@ func formatPurchaseDiscountForCSV(pricingMode string, purchaseDiscount string, q
 
 func purchaseDiscountMultipliersForCSV(pricingMode string, purchaseDiscount string, quoteSpec string) []decimal.Decimal {
 	if strings.TrimSpace(pricingMode) == "official_ratio" {
+		if strings.TrimSpace(purchaseDiscount) == "" {
+			purchaseDiscount = purchaseDiscountFromQuoteSpec(quoteSpec)
+		}
 		multiplier, err := decimal.NewFromString(strings.TrimSpace(purchaseDiscount))
 		if err != nil || multiplier.IsNegative() {
 			return nil
@@ -1329,6 +1336,16 @@ func purchaseDiscountMultipliersForCSV(pricingMode string, purchaseDiscount stri
 		}
 	}
 	return multipliers
+}
+
+func purchaseDiscountFromQuoteSpec(quoteSpec string) string {
+	var spec struct {
+		Discount string `json:"discount"`
+	}
+	if err := common.UnmarshalJsonStr(strings.TrimSpace(quoteSpec), &spec); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(spec.Discount)
 }
 
 func formatPurchaseDiscountMultiplierForCSV(value string, includeOfficialPriceLabel bool) string {
@@ -2035,6 +2052,12 @@ func AdminListPurchasePriceVersions(c *gin.Context) {
 		Find(&versions).Error; err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	for index := range versions {
+		if err := pricingadmin.HydratePurchasePriceProjection(&versions[index]); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	common.ApiSuccess(c, versions)
 }

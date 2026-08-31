@@ -59,9 +59,16 @@ function auditActionLabel(action: string, t: TFunction) {
     generate: t('Generated model prices'),
     create_item: t('Created model price'),
     edit_item: t('Edited model price'),
+    manual_edit: t('Edited model price'),
     delete_item: t('Deleted model price'),
     accept_review: t('Accepted pricing risk'),
     reject_review: t('Rejected pricing risk'),
+    accept_risk: t('Accepted pricing risk'),
+    reject_risk: t('Rejected pricing risk'),
+    review: t('Reviewed pricing risk'),
+    clone: t('Historical version restored as a new draft'),
+    enable_item: t('Enabled model price'),
+    disable_item: t('Disabled model price'),
     publish: t('Published version'),
     disable: t('Disabled price book'),
     enable: t('Enabled price book'),
@@ -69,6 +76,8 @@ function auditActionLabel(action: string, t: TFunction) {
     assign: t('Assign user'),
     cancel: t('Cancel assignment'),
     set_default: t('TOC default'),
+    save_channel_model_override: t('Updated pricing parameters'),
+    delete_channel_model_override: t('Updated pricing parameters'),
   }
   return labels[action] ?? action
 }

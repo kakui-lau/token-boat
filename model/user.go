@@ -1236,11 +1236,13 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if err = increaseUserQuota(id, quota); err != nil {
 		return err
 	}
-	gopool.Go(func() {
-		if cacheErr := cacheIncrUserQuota(id, int64(quota)); cacheErr != nil {
-			common.SysLog("failed to increase user quota: " + cacheErr.Error())
-		}
-	})
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			if cacheErr := cacheIncrUserQuota(id, int64(quota)); cacheErr != nil {
+				common.SysLog("failed to increase user quota: " + cacheErr.Error())
+			}
+		})
+	}
 	return nil
 }
 
@@ -1259,11 +1261,13 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if err = decreaseUserQuota(id, quota); err != nil {
 		return err
 	}
-	gopool.Go(func() {
-		if cacheErr := cacheDecrUserQuota(id, int64(quota)); cacheErr != nil {
-			common.SysLog("failed to decrease user quota: " + cacheErr.Error())
-		}
-	})
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			if cacheErr := cacheDecrUserQuota(id, int64(quota)); cacheErr != nil {
+				common.SysLog("failed to decrease user quota: " + cacheErr.Error())
+			}
+		})
+	}
 	return nil
 }
 

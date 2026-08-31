@@ -19,6 +19,25 @@ import (
 
 const manualTaskRefundReason = "管理员手动终止任务并退款"
 
+func taskStatusesForGroup(group string) []model.TaskStatus {
+	switch group {
+	case "queued":
+		return []model.TaskStatus{model.TaskStatusNotStart, model.TaskStatusSubmitted, model.TaskStatusQueued}
+	case "processing":
+		return []model.TaskStatus{model.TaskStatusInProgress}
+	case "succeeded":
+		return []model.TaskStatus{model.TaskStatusSuccess}
+	case "failed":
+		return []model.TaskStatus{model.TaskStatusFailure}
+	case "cancelled":
+		return []model.TaskStatus{model.TaskStatusCancelled}
+	case "expired":
+		return []model.TaskStatus{model.TaskStatusExpired}
+	default:
+		return nil
+	}
+}
+
 func GetAllTask(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 
@@ -29,6 +48,9 @@ func GetAllTask(c *gin.Context) {
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
 		Status:         c.Query("status"),
+		Statuses:       taskStatusesForGroup(c.Query("status_group")),
+		TaskType:       c.Query("task_type"),
+		SortOrder:      c.Query("order"),
 		Action:         c.Query("action"),
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
@@ -54,6 +76,9 @@ func GetUserTask(c *gin.Context) {
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
 		Status:         c.Query("status"),
+		Statuses:       taskStatusesForGroup(c.Query("status_group")),
+		TaskType:       c.Query("task_type"),
+		SortOrder:      c.Query("order"),
 		Action:         c.Query("action"),
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
@@ -61,6 +86,22 @@ func GetUserTask(c *gin.Context) {
 
 	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllUserTask(userId, queryParams)
+	if c.Query("include_type_counts") == "true" {
+		typeCounts := make(map[string]int64, 4)
+		for _, taskType := range []string{"all", "image", "video", "audio"} {
+			countParams := queryParams
+			countParams.TaskType = taskType
+			typeCounts[taskType] = model.TaskCountAllUserTask(userId, countParams)
+		}
+		common.ApiSuccess(c, gin.H{
+			"page":        pageInfo.GetPage(),
+			"page_size":   pageInfo.GetPageSize(),
+			"total":       total,
+			"items":       tasksToDto(items, false),
+			"type_counts": typeCounts,
+		})
+		return
+	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.ApiSuccess(c, pageInfo)

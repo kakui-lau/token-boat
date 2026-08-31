@@ -21,7 +21,6 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -50,15 +50,20 @@ import {
   EMPTY_CHANNEL_MODEL_FILTERS,
   type ChannelModelFilterValues,
 } from '@/features/pricing-admin/lib/channel-model-filters'
+import type { ChannelModel } from '@/features/pricing-admin/types'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { generateSalesPriceBookItems, getSalesPriceBookItems } from '../api'
+import type { SalesPriceBookVersion } from '../types'
+import { ChannelModelOverrideDialog } from './channel-model-override-dialog'
 import { ChannelModelSelectionTable } from './channel-model-selection-table'
 
 type GenerateItemsDialogProps = {
   open: boolean
   versionId: number
+  version: SalesPriceBookVersion
   versionLabel?: string
+  initialChannelModelIds?: number[]
   onOpenChange: (open: boolean) => void
 }
 
@@ -81,8 +86,12 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
   })
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(200)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const initialChannelModelIds = props.initialChannelModelIds ?? emptyItems
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(
+    () => new Set(initialChannelModelIds)
+  )
   const [confirmationOpen, setConfirmationOpen] = useState(false)
+  const [overrideTarget, setOverrideTarget] = useState<ChannelModel>()
   const [confirmationRows, setConfirmationRows] = useState<
     ChannelModelSelectionPreview[]
   >([])
@@ -112,11 +121,11 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
     ]
   )
   useEffect(() => {
-    setSelectedIds(new Set())
+    setSelectedIds(new Set(initialChannelModelIds))
     setConfirmationOpen(false)
     setConfirmationRows([])
     setPage(1)
-  }, [props.versionId])
+  }, [initialChannelModelIds, props.versionId])
   const catalogQuery = useQuery({
     queryKey: ['sales-price-books', 'catalog-options'],
     queryFn: () => getPricingCatalogOptions(),
@@ -163,6 +172,9 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
       await queryClient.invalidateQueries({
         queryKey: ['sales-price-books', 'version-diff'],
       })
+      await queryClient.invalidateQueries({
+        queryKey: ['sales-price-books', 'audit-records'],
+      })
       if (response.data.batch.review_count > 0) {
         toast.warning(
           t('{{count}} model prices require review', {
@@ -171,6 +183,17 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
         )
       } else {
         toast.success(t('Sales price book items generated'))
+      }
+      if (response.data.warnings?.length > 0) {
+        const details = response.data.warnings
+          .slice(0, 3)
+          .map((warning) => warning.model_name)
+          .join(', ')
+        toast.warning(
+          `${t('{{count}} model prices exceed official price', {
+            count: response.data.warnings.length,
+          })}${details ? `: ${details}` : ''}`
+        )
       }
       setSelectedIds(new Set())
       setConfirmationOpen(false)
@@ -313,6 +336,7 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
               onSelectAllMatchingUngenerated={() =>
                 selectMatchingMutation.mutate(true)
               }
+              onConfigureSpecialParameters={setOverrideTarget}
               onPageChange={setPage}
               onPageSizeChange={(next) => {
                 setPageSize(next)
@@ -412,6 +436,20 @@ export function GenerateItemsDialog(props: GenerateItemsDialogProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {overrideTarget ? (
+        <ChannelModelOverrideDialog
+          open
+          version={props.version}
+          modelName={overrideTarget.model_name}
+          channel={{
+            channel_model_id: overrideTarget.id,
+            channel_name: overrideTarget.channel_name,
+          }}
+          onOpenChange={(open) => {
+            if (!open) setOverrideTarget(undefined)
+          }}
+        />
+      ) : null}
     </>
   )
 }

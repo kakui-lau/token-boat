@@ -22,6 +22,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircle, Database } from 'lucide-react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -78,6 +79,7 @@ type SupportedChannelModelTableProps = {
   onSelectionChange: (selectedIds: Set<number>) => void
   onSelectAllMatching?: () => void
   onSelectAllMatchingUngenerated?: () => void
+  onConfigureSpecialParameters?: (item: ChannelModel) => void
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
 }
@@ -90,6 +92,15 @@ export function ChannelModelSelectionTable(
   props: SupportedChannelModelTableProps
 ) {
   const { t } = useTranslation()
+  const displayedItems = useMemo(
+    () =>
+      [...props.items].sort(
+        (left, right) =>
+          Number(props.generatedModelIds.has(left.model_id)) -
+          Number(props.generatedModelIds.has(right.model_id))
+      ),
+    [props.generatedModelIds, props.items]
+  )
   const selectableItems = props.items.filter(
     canGenerateSalesPriceFromChannelModel
   )
@@ -335,10 +346,13 @@ export function ChannelModelSelectionTable(
                   <TableHead>{t('Purchase Discount')}</TableHead>
                   <TableHead>{t('Purchase Status')}</TableHead>
                   <TableHead>{t('Generation status')}</TableHead>
+                  {props.onConfigureSpecialParameters ? (
+                    <TableHead>{t('Actions')}</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {props.items.map((item) => (
+                {displayedItems.map((item) => (
                   <TableRow
                     key={item.id}
                     data-state={
@@ -393,6 +407,19 @@ export function ChannelModelSelectionTable(
                           : t('Not generated')}
                       </Badge>
                     </TableCell>
+                    {props.onConfigureSpecialParameters ? (
+                      <TableCell>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() =>
+                            props.onConfigureSpecialParameters?.(item)
+                          }
+                        >
+                          {t('Set special parameters')}
+                        </Button>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>

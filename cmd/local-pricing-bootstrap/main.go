@@ -229,7 +229,7 @@ func ensureLocalTocDefaultPriceBook() error {
 		version = model.SalesPriceBookVersion{
 			PriceBookId: book.Id, CostBasisStrategy: "max_eligible_cost",
 			PaymentFeeRate: "0.04", DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
-			TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.16", TargetNetMargin: "0.03",
+			TotalVariableCostRate: "0.11", EffectiveTaxRate: "0.165", TargetNetMargin: "0.03",
 			MinimumMarginRate: "0.02", Remark: "local acceptance default policy",
 		}
 		if err := pricingadmin.CreateSalesPriceBookVersion(&version, localBootstrapUserId); err != nil {

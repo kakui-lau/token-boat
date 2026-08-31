@@ -119,12 +119,16 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	options, err := userTokenListOptions(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	tokens, total, err := model.SearchUserTokens(userId, "", "", pageInfo.GetStartIdx(), pageInfo.GetPageSize(), options)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -137,7 +141,12 @@ func SearchTokens(c *gin.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	options, err := userTokenListOptions(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), options)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -145,6 +154,21 @@ func SearchTokens(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
+}
+
+func userTokenListOptions(c *gin.Context) (model.UserTokenListOptions, error) {
+	options := model.UserTokenListOptions{Order: c.Query("order")}
+	rawStatus := c.Query("status")
+	if rawStatus == "" {
+		return options, nil
+	}
+	status, err := strconv.Atoi(rawStatus)
+	if err != nil {
+		return model.UserTokenListOptions{}, fmt.Errorf("invalid token status")
+	}
+	options.Status = status
+	options.HasStatus = true
+	return options, nil
 }
 
 func GetToken(c *gin.Context) {
@@ -334,9 +358,12 @@ func AddToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	createdToken := buildMaskedTokenResponse(&cleanToken)
+	createdToken.Key = cleanToken.GetFullKey()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
+		"data":    createdToken,
 	})
 }
 

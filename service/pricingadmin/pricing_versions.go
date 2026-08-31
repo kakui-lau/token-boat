@@ -215,6 +215,9 @@ func CreatePurchasePriceVersion(input *model.ChannelModelPurchasePriceVersion, u
 		&input.Currency,
 		&input.PurchaseBillingExpr,
 	)
+	if err := normalizePurchasePriceCanonical(input); err != nil {
+		return err
+	}
 	if err := validateExpressionMetadata(input.ExpressionSchemaVersion, input.PurchaseBillingExpr); err != nil {
 		return err
 	}

@@ -204,6 +204,64 @@ func AdminListSalesPriceBookItems(c *gin.Context) {
 	common.ApiSuccess(c, items)
 }
 
+func AdminListSalesPriceBookChannelModelOverrides(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	items, err := pricingadmin.ListSalesPriceBookChannelModelOverrides(versionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, items)
+}
+
+func AdminSaveSalesPriceBookChannelModelOverride(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	channelModelId, err := strconv.Atoi(c.Param("channel_model_id"))
+	if err != nil || channelModelId <= 0 {
+		common.ApiError(c, errors.New("channel_model_id must be a positive integer"))
+		return
+	}
+	var input model.SalesPriceBookChannelModelOverride
+	if err := c.ShouldBindJSON(&input); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	saved, err := pricingadmin.SaveSalesPriceBookChannelModelOverride(
+		versionId, channelModelId, &input, c.GetInt("id"),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, saved)
+}
+
+func AdminDeleteSalesPriceBookChannelModelOverride(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	channelModelId, err := strconv.Atoi(c.Param("channel_model_id"))
+	if err != nil || channelModelId <= 0 {
+		common.ApiError(c, errors.New("channel_model_id must be a positive integer"))
+		return
+	}
+	if err := pricingadmin.DeleteSalesPriceBookChannelModelOverride(
+		versionId, channelModelId, c.GetInt("id"),
+	); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 func AdminCompareSalesPriceBookVersions(c *gin.Context) {
 	targetVersionId, ok := positivePathId(c)
 	if !ok {
@@ -231,6 +289,11 @@ func AdminExportSalesPriceBookItems(c *gin.Context) {
 	if !ok {
 		return
 	}
+	var version model.SalesPriceBookVersion
+	if err := model.DB.First(&version, versionId).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	items, err := pricingadmin.ListSalesPriceBookItems(versionId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -247,24 +310,214 @@ func AdminExportSalesPriceBookItems(c *gin.Context) {
 	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
 	writer := csv.NewWriter(c.Writer)
 	_ = writer.Write([]string{
-		"模型名称", "状态", "计费模式", "客户售价规则", "采购折扣", "销售折扣", "定价详情",
+		"模型名称", "状态", "计费模式", "客户售价规则", "统一售价取价策略", "采购折扣", "销售折扣", "定价详情",
 	})
 	for _, item := range items {
-		priceRule := "自定义计费表达式"
-		if item.PricingMethod == "cost_plus" {
-			priceRule = "采购成本 × " + formatSalesPriceBookDecimal(item.SellingFactor)
-		}
 		_ = writer.Write([]string{
 			spreadsheetSafeCSVCell(item.ModelName),
 			formatSalesPriceBookItemStatus(item.Status),
 			formatSalesPriceBookBillingMode(item.BillingMode),
-			priceRule,
+			formatSalesPriceBookRule(item),
+			formatSalesPriceBookCostBasisStrategy(version.CostBasisStrategy),
 			formatSalesPriceBookDiscount(item.PurchaseDiscount),
 			formatSalesPriceBookDiscount(item.SalesDiscount),
 			spreadsheetSafeCSVCell(item.SalesBillingExpr),
 		})
 	}
 	writer.Flush()
+}
+
+func AdminExportSalesPriceBookChannelModels(c *gin.Context) {
+	versionId, ok := positivePathId(c)
+	if !ok {
+		return
+	}
+	var version model.SalesPriceBookVersion
+	if err := model.DB.First(&version, versionId).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var book model.SalesPriceBook
+	if err := model.DB.First(&book, version.PriceBookId).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items, err := pricingadmin.ListSalesPriceBookItems(versionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	filename := fmt.Sprintf(
+		"sales-price-book-version-%d-channel-models-%s.csv",
+		versionId,
+		time.Now().UTC().Format("20060102-150405"),
+	)
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Status(200)
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+	writer := csv.NewWriter(c.Writer)
+	_ = writer.Write([]string{
+		"报价组", "报价版本", "模型名称", "渠道名称", "渠道模型ID", "上游模型名称",
+		"模型状态", "渠道状态", "渠道模型状态", "计费模式", "统一售价取价策略", "客户售价规则",
+		"采购定价方式", "采购折扣", "销售折扣", "支付手续费", "分销手续费", "运维人力成本",
+		"变动成本率", "利得税率", "目标净利率", "最低净利率", "特殊参数覆盖", "最低利润校验",
+		"成本角色", "采购价版本", "币种", "采购价格分项", "销售价格分项", "采购计费表达式", "销售计费表达式",
+	})
+	for _, item := range items {
+		for _, margin := range item.ChannelMargins {
+			purchaseDiscount := formatPurchaseDiscountForCSV(
+				margin.PurchasePricingMode,
+				margin.PurchaseDiscount,
+				margin.PurchaseQuoteSpec,
+			)
+			if purchaseDiscount == "" {
+				purchaseDiscount = "—"
+			}
+			currency := strings.TrimSpace(margin.Currency)
+			if currency == "" {
+				currency = strings.TrimSpace(item.Currency)
+			}
+			_ = writer.Write([]string{
+				spreadsheetSafeCSVCell(book.Name),
+				fmt.Sprintf("v%d (#%d)", version.Version, version.Id),
+				spreadsheetSafeCSVCell(item.ModelName),
+				spreadsheetSafeCSVCell(margin.ChannelName),
+				strconv.Itoa(margin.ChannelModelId),
+				spreadsheetSafeCSVCell(margin.UpstreamModelName),
+				formatSalesPriceBookItemStatus(item.Status),
+				formatSalesPriceBookAvailabilityStatus(margin.ChannelStatus),
+				formatSalesPriceBookAvailabilityStatus(margin.ChannelModelStatus),
+				formatSalesPriceBookBillingMode(item.BillingMode),
+				formatSalesPriceBookCostBasisStrategy(version.CostBasisStrategy),
+				formatSalesPriceBookRule(item),
+				formatPurchasePricingModeForCSV(margin.PurchasePricingMode),
+				purchaseDiscount,
+				formatSalesPriceBookDiscount(margin.SalesDiscount),
+				formatSalesPriceBookRate(margin.PaymentFeeRate),
+				formatSalesPriceBookRate(margin.DistributionFeeRate),
+				formatSalesPriceBookRate(margin.OperationsLaborRate),
+				formatSalesPriceBookRate(margin.TotalVariableCostRate),
+				formatSalesPriceBookRate(margin.EffectiveTaxRate),
+				formatSalesPriceBookRate(margin.TargetNetMargin),
+				formatSalesPriceBookRate(margin.MinimumMarginRate),
+				spreadsheetSafeCSVCell(formatSalesPriceBookOverrides(version, margin)),
+				formatSalesPriceBookMarginQualification(margin.MeetsMinimumMargin),
+				formatSalesPriceBookCostRole(margin.SourceRole),
+				fmt.Sprintf("v%d (#%d)", margin.PurchasePriceVersion, margin.PurchasePriceVersionId),
+				currency,
+				formatPricingComponentsForCSV(
+					margin.PurchasePriceComponents,
+					margin.PurchaseBillingExpr,
+					currency,
+				),
+				formatPricingComponentsForCSV(
+					item.PriceComponents,
+					item.SalesBillingExpr,
+					item.Currency,
+				),
+				spreadsheetSafeCSVCell(margin.PurchaseBillingExpr),
+				spreadsheetSafeCSVCell(item.SalesBillingExpr),
+			})
+		}
+	}
+	writer.Flush()
+}
+
+func formatSalesPriceBookRule(item pricingadmin.SalesPriceBookItemListItem) string {
+	if item.PricingMethod != "cost_plus" {
+		return "自定义计费表达式"
+	}
+	factor, err := decimal.NewFromString(strings.TrimSpace(item.SellingFactor))
+	if err == nil && factor.IsPositive() {
+		return "采购成本 × " + formatSalesPriceBookDecimal(item.SellingFactor)
+	}
+	return "基于渠道成本及特殊参数统一定价"
+}
+
+func formatSalesPriceBookCostBasisStrategy(strategy string) string {
+	switch strings.TrimSpace(strategy) {
+	case "max_eligible_cost":
+		return "按最高符合路由条件的渠道成本定价"
+	case "min_eligible_cost":
+		return "按最低符合路由条件的渠道成本定价"
+	case "designated_channel":
+		return "按指定渠道成本定价"
+	default:
+		return spreadsheetSafeCSVCell(strings.TrimSpace(strategy))
+	}
+}
+
+func formatSalesPriceBookRate(value string) string {
+	parsed, err := decimal.NewFromString(strings.TrimSpace(value))
+	if err != nil || parsed.IsNegative() {
+		return "—"
+	}
+	return parsed.Mul(decimal.NewFromInt(100)).Round(4).String() + "%"
+}
+
+func formatSalesPriceBookOverrides(
+	version model.SalesPriceBookVersion,
+	margin pricingadmin.SalesPriceBookChannelMargin,
+) string {
+	if len(margin.OverriddenFields) == 0 {
+		return "无"
+	}
+	parts := make([]string, 0, len(margin.OverriddenFields))
+	for _, field := range margin.OverriddenFields {
+		label := field
+		defaultValue := ""
+		effectiveValue := ""
+		switch field {
+		case "payment_fee_rate":
+			label, defaultValue, effectiveValue = "支付手续费", version.PaymentFeeRate, margin.PaymentFeeRate
+		case "distribution_fee_rate":
+			label, defaultValue, effectiveValue = "分销手续费", version.DistributionFeeRate, margin.DistributionFeeRate
+		case "operations_labor_rate":
+			label, defaultValue, effectiveValue = "运维人力成本", version.OperationsLaborRate, margin.OperationsLaborRate
+		case "effective_tax_rate":
+			label, defaultValue, effectiveValue = "利得税率", version.EffectiveTaxRate, margin.EffectiveTaxRate
+		case "target_net_margin":
+			label, defaultValue, effectiveValue = "目标净利率", version.TargetNetMargin, margin.TargetNetMargin
+		case "minimum_margin_rate":
+			label, defaultValue, effectiveValue = "最低净利率", version.MinimumMarginRate, margin.MinimumMarginRate
+		}
+		parts = append(parts, fmt.Sprintf(
+			"%s %s → %s",
+			label,
+			formatSalesPriceBookRate(defaultValue),
+			formatSalesPriceBookRate(effectiveValue),
+		))
+	}
+	return strings.Join(parts, "；")
+}
+
+func formatSalesPriceBookAvailabilityStatus(status int) string {
+	if status == 1 {
+		return "已启用"
+	}
+	return "已禁用"
+}
+
+func formatSalesPriceBookMarginQualification(qualified bool) string {
+	if qualified {
+		return "通过"
+	}
+	return "未通过（低于最低净利率）"
+}
+
+func formatSalesPriceBookCostRole(role string) string {
+	switch strings.TrimSpace(role) {
+	case "selected":
+		return "指定渠道（纳入统一售价基准）"
+	case "cost_basis":
+		return "纳入统一售价基准"
+	case "candidate":
+		return "仅供成本与利润比较"
+	default:
+		return spreadsheetSafeCSVCell(strings.TrimSpace(role))
+	}
 }
 
 func formatSalesPriceBookDecimal(value string) string {

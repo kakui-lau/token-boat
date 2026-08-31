@@ -129,6 +129,7 @@ func GetTopUpInfo(c *gin.Context) {
 type EpayRequest struct {
 	Amount        int64  `json:"amount"`
 	PaymentMethod string `json:"payment_method"`
+	ReturnURL     string `json:"return_url,omitempty"`
 }
 
 type AmountRequest struct {
@@ -219,7 +220,15 @@ func RequestEpay(c *gin.Context) {
 	}
 
 	callBackAddress := service.GetCallbackAddress()
-	returnUrl, _ := url.Parse(paymentReturnPath("/usage-logs"))
+	returnAddress := paymentReturnPath("/usage-logs")
+	if req.ReturnURL != "" {
+		if common.ValidateRedirectURL(req.ReturnURL) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "支付重定向URL不在可信任域名列表中", "data": ""})
+			return
+		}
+		returnAddress = req.ReturnURL
+	}
+	returnUrl, _ := url.Parse(returnAddress)
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
@@ -265,7 +274,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, uri, common.GetJsonString(params)))
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri, "order_id": tradeNo})
 }
 
 // tradeNo lock
@@ -426,18 +435,17 @@ func RequestAmount(c *gin.Context) {
 func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	keyword := c.Query("keyword")
-
-	var (
-		topups []*model.TopUp
-		total  int64
-		err    error
-	)
-	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
-	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
+	filter, err := adminTopUpFilterFromRequest(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
+	topups, total, err := model.ListUserTopUps(
+		userId,
+		filter,
+		pageInfo.GetStartIdx(),
+		pageInfo.GetPageSize(),
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -477,6 +485,7 @@ func adminTopUpFilterFromRequest(c *gin.Context) (model.AdminTopUpFilter, error)
 		Status:    c.Query("status"),
 		Provider:  c.Query("provider"),
 		OrderType: c.Query("order_type"),
+		SortOrder: c.Query("order"),
 	}
 	if raw := c.Query("start_time"); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)

@@ -118,12 +118,6 @@ type ChannelModelPurchasePriceVersion struct {
 	PriceStructure          string `json:"price_structure" gorm:"type:varchar(16);not null"`
 	QuoteSpec               string `json:"quote_spec" gorm:"type:text"`
 	PriceComponents         string `json:"price_components" gorm:"type:text"`
-	PurchaseDiscount        string `json:"purchase_discount" gorm:"type:text"`
-	InputUnitPrice          string `json:"input_unit_price" gorm:"type:text"`
-	OutputUnitPrice         string `json:"output_unit_price" gorm:"type:text"`
-	CacheReadUnitPrice      string `json:"cache_read_unit_price" gorm:"type:text"`
-	CacheWriteUnitPrice     string `json:"cache_write_unit_price" gorm:"type:text"`
-	PriceUnit               string `json:"price_unit" gorm:"type:varchar(32)"`
 	PurchaseBillingExpr     string `json:"purchase_billing_expr" gorm:"type:text;not null"`
 	PurchaseExprHash        string `json:"purchase_expr_hash" gorm:"type:varchar(64);not null"`
 	ExpressionSource        string `json:"expression_source" gorm:"type:varchar(16);not null"`
@@ -143,6 +137,27 @@ type ChannelModelPurchasePriceVersion struct {
 	CreatedAt               int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt               int64  `json:"updated_at" gorm:"bigint"`
 	Remark                  string `json:"remark" gorm:"type:varchar(255)"`
+
+	// API projections derived from QuoteSpec and PriceComponents. These values
+	// are never stored as independent columns.
+	PurchaseDiscount    string `json:"purchase_discount" gorm:"-"`
+	InputUnitPrice      string `json:"input_unit_price" gorm:"-"`
+	OutputUnitPrice     string `json:"output_unit_price" gorm:"-"`
+	CacheReadUnitPrice  string `json:"cache_read_unit_price" gorm:"-"`
+	CacheWriteUnitPrice string `json:"cache_write_unit_price" gorm:"-"`
+	PriceUnit           string `json:"price_unit" gorm:"-"`
+}
+
+type purchasePriceQuoteProjection struct {
+	Discount string `json:"discount,omitempty"`
+}
+
+type purchasePriceComponentProjection struct {
+	InputUnitPrice      string `json:"input_unit_price,omitempty"`
+	OutputUnitPrice     string `json:"output_unit_price,omitempty"`
+	CacheReadUnitPrice  string `json:"cache_read_unit_price,omitempty"`
+	CacheWriteUnitPrice string `json:"cache_write_unit_price,omitempty"`
+	PriceUnit           string `json:"price_unit,omitempty"`
 }
 
 type RequestPricingSnapshot struct {
@@ -151,7 +166,10 @@ type RequestPricingSnapshot struct {
 	UserId                  int     `json:"user_id" gorm:"not null;index"`
 	ModelId                 int     `json:"model_id" gorm:"not null;index"`
 	ChannelModelId          int     `json:"channel_model_id" gorm:"not null;index"`
+	ChannelModelOverrideId  int     `json:"channel_model_override_id" gorm:"index"`
 	PurchasePriceVersionId  int     `json:"purchase_price_version_id" gorm:"not null"`
+	PurchaseBillingExpr     string  `json:"purchase_billing_expr" gorm:"type:text"`
+	PurchaseExprHash        string  `json:"purchase_expr_hash" gorm:"type:varchar(64)"`
 	SalesPriceBookId        int     `json:"sales_price_book_id" gorm:"index"`
 	SalesPriceBookVersionId int     `json:"sales_price_book_version_id" gorm:"index"`
 	SalesPriceBookItemId    int     `json:"sales_price_book_item_id" gorm:"index"`
@@ -242,7 +260,56 @@ func (v *OfficialModelPriceVersion) BeforeUpdate(tx *gorm.DB) error {
 }
 
 func (v *ChannelModelPurchasePriceVersion) BeforeCreate(tx *gorm.DB) error {
+	if strings.TrimSpace(v.QuoteSpec) == "" && strings.TrimSpace(v.PurchaseDiscount) != "" {
+		encoded, err := common.Marshal(purchasePriceQuoteProjection{Discount: strings.TrimSpace(v.PurchaseDiscount)})
+		if err != nil {
+			return err
+		}
+		v.QuoteSpec = string(encoded)
+	}
+	if strings.TrimSpace(v.PriceComponents) == "" &&
+		(v.InputUnitPrice != "" || v.OutputUnitPrice != "" ||
+			v.CacheReadUnitPrice != "" || v.CacheWriteUnitPrice != "") {
+		encoded, err := common.Marshal(purchasePriceComponentProjection{
+			InputUnitPrice: v.InputUnitPrice, OutputUnitPrice: v.OutputUnitPrice,
+			CacheReadUnitPrice: v.CacheReadUnitPrice, CacheWriteUnitPrice: v.CacheWriteUnitPrice,
+			PriceUnit: v.PriceUnit,
+		})
+		if err != nil {
+			return err
+		}
+		v.PriceComponents = string(encoded)
+	}
 	setPricingVersionCreateTimes(&v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (v *ChannelModelPurchasePriceVersion) AfterFind(tx *gorm.DB) error {
+	v.PurchaseDiscount = ""
+	if strings.TrimSpace(v.QuoteSpec) != "" {
+		var spec purchasePriceQuoteProjection
+		if err := common.UnmarshalJsonStr(v.QuoteSpec, &spec); err != nil {
+			return err
+		}
+		v.PurchaseDiscount = strings.TrimSpace(spec.Discount)
+	}
+	v.InputUnitPrice = ""
+	v.OutputUnitPrice = ""
+	v.CacheReadUnitPrice = ""
+	v.CacheWriteUnitPrice = ""
+	v.PriceUnit = ""
+	if strings.TrimSpace(v.PriceComponents) == "" {
+		return nil
+	}
+	var components purchasePriceComponentProjection
+	if err := common.UnmarshalJsonStr(v.PriceComponents, &components); err != nil {
+		return err
+	}
+	v.InputUnitPrice = components.InputUnitPrice
+	v.OutputUnitPrice = components.OutputUnitPrice
+	v.CacheReadUnitPrice = components.CacheReadUnitPrice
+	v.CacheWriteUnitPrice = components.CacheWriteUnitPrice
+	v.PriceUnit = components.PriceUnit
 	return nil
 }
 

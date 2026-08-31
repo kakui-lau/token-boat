@@ -123,7 +123,14 @@ func TestRelayOpenAPIOperationContractsAreComplete(t *testing.T) {
 					hasSuccess = true
 				}
 			}
-			require.True(t, hasSuccess, "%s %s must document a 2xx response", strings.ToUpper(method), path)
+			_, explicitlyUnimplemented := responses["501"]
+			require.True(
+				t,
+				hasSuccess || explicitlyUnimplemented,
+				"%s %s must document a 2xx response or explicitly document 501",
+				strings.ToUpper(method),
+				path,
+			)
 
 			parameters := make(map[string]bool)
 			for _, owner := range []map[string]any{pathItem, operation} {

@@ -17,7 +17,9 @@ import (
 )
 
 type SubscriptionStripePayRequest struct {
-	PlanId int `json:"plan_id"`
+	PlanId     int    `json:"plan_id"`
+	SuccessURL string `json:"success_url,omitempty"`
+	CancelURL  string `json:"cancel_url,omitempty"`
 }
 
 func SubscriptionRequestStripePay(c *gin.Context) {
@@ -28,6 +30,14 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	var req SubscriptionStripePayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.SuccessURL != "" && common.ValidateRedirectURL(req.SuccessURL) != nil {
+		common.ApiErrorMsg(c, "支付成功重定向URL不在可信任域名列表中")
+		return
+	}
+	if req.CancelURL != "" && common.ValidateRedirectURL(req.CancelURL) != nil {
+		common.ApiErrorMsg(c, "支付取消重定向URL不在可信任域名列表中")
 		return
 	}
 
@@ -79,7 +89,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	reference := fmt.Sprintf("sub-stripe-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
+	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅支付链接创建失败 trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
@@ -105,17 +115,24 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		"message": "success",
 		"data": gin.H{
 			"pay_link": payLink,
+			"order_id": referenceId,
 		},
 	})
 }
 
-func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
+func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string, successURL string, cancelURL string) (string, error) {
 	stripe.Key = setting.StripeApiSecret
+	if successURL == "" {
+		successURL = paymentReturnPath("/wallet")
+	}
+	if cancelURL == "" {
+		cancelURL = paymentReturnPath("/wallet")
+	}
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
-		CancelURL:         stripe.String(paymentReturnPath("/wallet")),
+		SuccessURL:        stripe.String(successURL),
+		CancelURL:         stripe.String(cancelURL),
 		AdaptivePricing: &stripe.CheckoutSessionAdaptivePricingParams{
 			Enabled: stripe.Bool(false),
 		},

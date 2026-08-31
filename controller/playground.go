@@ -47,12 +47,17 @@ func Playground(c *gin.Context) {
 	}
 	userCache.WriteContext(c)
 
-	tempToken := &model.Token{
+	playgroundToken := &model.Token{
 		UserId: userId,
 		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
 		Group:  relayInfo.UsingGroup,
 	}
-	_ = middleware.SetupContextForToken(c, tempToken)
+	if selectedToken, ok := c.Get("playground_api_key"); ok {
+		if token, valid := selectedToken.(*model.Token); valid && token.UserId == userId {
+			playgroundToken = token
+		}
+	}
+	_ = middleware.SetupContextForToken(c, playgroundToken)
 
 	Relay(c, types.RelayFormatOpenAI)
 }
@@ -84,11 +89,16 @@ func preparePlaygroundContext(c *gin.Context) *types.NewAPIError {
 		return types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}
 	userCache.WriteContext(c)
-	tempToken := &model.Token{
+	playgroundToken := &model.Token{
 		UserId: c.GetInt("id"),
 		Name:   "playground-video",
 		Group:  common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 	}
-	_ = middleware.SetupContextForToken(c, tempToken)
+	if selectedToken, ok := c.Get("playground_api_key"); ok {
+		if token, valid := selectedToken.(*model.Token); valid && token.UserId == c.GetInt("id") {
+			playgroundToken = token
+		}
+	}
+	_ = middleware.SetupContextForToken(c, playgroundToken)
 	return nil
 }

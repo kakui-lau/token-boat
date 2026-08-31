@@ -97,6 +97,7 @@ type flatTokenPriceComponents struct {
 }
 
 type purchaseDiscountSpec struct {
+	Discount            string `json:"discount,omitempty"`
 	InputDiscount       string `json:"input_discount,omitempty"`
 	OutputDiscount      string `json:"output_discount,omitempty"`
 	CacheReadDiscount   string `json:"cache_read_discount,omitempty"`
@@ -105,6 +106,92 @@ type purchaseDiscountSpec struct {
 	ImageOutputDiscount string `json:"image_output_discount,omitempty"`
 	AudioInputDiscount  string `json:"audio_input_discount,omitempty"`
 	AudioOutputDiscount string `json:"audio_output_discount,omitempty"`
+}
+
+// normalizePurchasePriceCanonical keeps QuoteSpec and PriceComponents as the
+// only persisted purchase-pricing representation. The flat fields remain API
+// projections so older clients can migrate without maintaining duplicate DB
+// columns.
+func normalizePurchasePriceCanonical(version *model.ChannelModelPurchasePriceVersion) error {
+	if version == nil {
+		return errors.New("purchase price is required")
+	}
+	var spec purchaseDiscountSpec
+	if strings.TrimSpace(version.QuoteSpec) != "" {
+		if err := common.UnmarshalJsonStr(version.QuoteSpec, &spec); err != nil {
+			return fmt.Errorf("quote_spec must be a JSON object: %w", err)
+		}
+	}
+	if version.PricingMode == "official_ratio" {
+		projection := strings.TrimSpace(version.PurchaseDiscount)
+		canonical := strings.TrimSpace(spec.Discount)
+		if projection != "" && canonical != "" && projection != canonical {
+			return errors.New("purchase_discount conflicts with quote_spec.discount")
+		}
+		if projection != "" {
+			spec.Discount = projection
+		}
+		encoded, err := common.Marshal(spec)
+		if err != nil {
+			return err
+		}
+		version.QuoteSpec = string(encoded)
+	}
+
+	if strings.TrimSpace(version.PriceComponents) == "" {
+		if version.InputUnitPrice != "" || version.OutputUnitPrice != "" ||
+			version.CacheReadUnitPrice != "" || version.CacheWriteUnitPrice != "" {
+			components, err := marshalFlatPriceComponents(FlatTokenPriceInput{
+				InputUnitPrice:      version.InputUnitPrice,
+				OutputUnitPrice:     version.OutputUnitPrice,
+				CacheReadUnitPrice:  version.CacheReadUnitPrice,
+				CacheWriteUnitPrice: version.CacheWriteUnitPrice,
+			})
+			if err != nil {
+				return err
+			}
+			version.PriceComponents = components
+		}
+	}
+	return HydratePurchasePriceProjection(version)
+}
+
+// HydratePurchasePriceProjection exposes compatibility fields from the
+// canonical JSON documents without creating a second source of truth.
+func HydratePurchasePriceProjection(version *model.ChannelModelPurchasePriceVersion) error {
+	if version == nil {
+		return errors.New("purchase price is required")
+	}
+	version.PurchaseDiscount = ""
+	if strings.TrimSpace(version.QuoteSpec) != "" {
+		var spec purchaseDiscountSpec
+		if err := common.UnmarshalJsonStr(version.QuoteSpec, &spec); err != nil {
+			return fmt.Errorf("quote_spec must be a JSON object: %w", err)
+		}
+		version.PurchaseDiscount = strings.TrimSpace(spec.Discount)
+	}
+	version.InputUnitPrice = ""
+	version.OutputUnitPrice = ""
+	version.CacheReadUnitPrice = ""
+	version.CacheWriteUnitPrice = ""
+	version.PriceUnit = ""
+	if strings.TrimSpace(version.PriceComponents) == "" {
+		return nil
+	}
+	prices, err := unmarshalFlatPriceComponents(version.PriceComponents)
+	if err != nil {
+		return err
+	}
+	version.InputUnitPrice = prices.InputUnitPrice
+	version.OutputUnitPrice = prices.OutputUnitPrice
+	version.CacheReadUnitPrice = prices.CacheReadUnitPrice
+	version.CacheWriteUnitPrice = prices.CacheWriteUnitPrice
+	var components flatTokenPriceComponents
+	if err := common.UnmarshalJsonStr(version.PriceComponents, &components); err != nil {
+		return err
+	}
+	version.PriceUnit = components.PriceUnit
+	return nil
 }
 
 func CreateOfficialFlatDraft(input OfficialFlatDraftInput, userId int) (model.OfficialModelPriceVersion, error) {
@@ -332,12 +419,6 @@ func UpdatePurchaseDraft(id int, input PurchaseDraftInput) (model.ChannelModelPu
 			"price_structure":           replacement.PriceStructure,
 			"quote_spec":                replacement.QuoteSpec,
 			"price_components":          replacement.PriceComponents,
-			"purchase_discount":         replacement.PurchaseDiscount,
-			"input_unit_price":          replacement.InputUnitPrice,
-			"output_unit_price":         replacement.OutputUnitPrice,
-			"cache_read_unit_price":     replacement.CacheReadUnitPrice,
-			"cache_write_unit_price":    replacement.CacheWriteUnitPrice,
-			"price_unit":                replacement.PriceUnit,
 			"purchase_billing_expr":     replacement.PurchaseBillingExpr,
 			"purchase_expr_hash":        replacement.PurchaseExprHash,
 			"expression_source":         replacement.ExpressionSource,
@@ -645,10 +726,11 @@ func buildFlatPurchaseDraft(
 }
 
 func buildPurchaseDiscountSpec(input PurchaseDraftInput) (string, error) {
-	if input.PricingMode != "component_ratio" {
+	if input.PricingMode != "component_ratio" && input.PricingMode != "official_ratio" {
 		return "", nil
 	}
 	data, err := common.Marshal(purchaseDiscountSpec{
+		Discount:            input.PurchaseDiscount,
 		InputDiscount:       input.InputDiscount,
 		OutputDiscount:      input.OutputDiscount,
 		CacheReadDiscount:   input.CacheReadDiscount,

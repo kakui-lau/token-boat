@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/service/pricingengine"
+	"github.com/QuantumNous/new-api/service/pricingpolicy"
 	"github.com/shopspring/decimal"
 )
 
@@ -23,6 +25,13 @@ type Quote struct {
 	MeetsMinimumMargin     bool   `json:"meets_minimum_margin"`
 	MinimumMarginRate      string `json:"minimum_margin_rate"`
 	EstimatedNetMarginRate string `json:"estimated_net_margin_rate"`
+	ChannelModelOverrideId int    `json:"channel_model_override_id"`
+	PaymentFeeRate         string `json:"payment_fee_rate"`
+	DistributionFeeRate    string `json:"distribution_fee_rate"`
+	OperationsLaborRate    string `json:"operations_labor_rate"`
+	TotalVariableCostRate  string `json:"total_variable_cost_rate"`
+	EffectiveTaxRate       string `json:"effective_tax_rate"`
+	TargetNetMargin        string `json:"target_net_margin"`
 }
 
 type SalesQuoteRange struct {
@@ -75,32 +84,27 @@ func QuoteCandidates(
 	if err != nil {
 		return nil, fmt.Errorf("evaluate sales price book item %d: %w", resolved.Item.Id, err)
 	}
-	variableCostRate, err := parseRate(
-		"total variable cost rate",
-		resolved.Version.TotalVariableCostRate,
-	)
-	if err != nil {
+	channelModelIds := make([]int, 0, len(bundles))
+	for _, bundle := range bundles {
+		channelModelIds = append(channelModelIds, bundle.ChannelModel.Id)
+	}
+	var overrideRows []model.SalesPriceBookChannelModelOverride
+	if err := model.DB.Where(
+		"price_book_version_id = ? AND channel_model_id IN ?",
+		resolved.Version.Id, channelModelIds,
+	).Find(&overrideRows).Error; err != nil {
 		return nil, err
 	}
-	taxRate, err := parseRate("effective tax rate", resolved.Version.EffectiveTaxRate)
-	if err != nil {
-		return nil, err
-	}
-	minimumMarginValue := resolved.Version.MinimumMarginRate
-	if resolved.Item.MinimumMarginOverride != "" {
-		minimumMarginValue = resolved.Item.MinimumMarginOverride
-	}
-	minimumMargin, err := parseMargin(minimumMarginValue)
-	if err != nil {
-		return nil, err
+	overridesByChannelModel := make(map[int]model.SalesPriceBookChannelModelOverride, len(overrideRows))
+	for _, override := range overrideRows {
+		overridesByChannelModel[override.ChannelModelId] = override
 	}
 	quotes := make([]Quote, 0, len(bundles))
 	for _, bundle := range bundles {
 		if bundle.Purchase.BillingMode != resolved.Item.BillingMode {
 			continue
 		}
-		if bundle.Purchase.Currency != resolved.Item.Currency ||
-			(resolved.Book.Currency != "" && resolved.Item.Currency != resolved.Book.Currency) {
+		if bundle.Purchase.Currency != resolved.Book.Currency {
 			continue
 		}
 		purchase, err := pricingengine.EvaluateWithRequest(
@@ -116,6 +120,31 @@ func QuoteCandidates(
 				err,
 			)
 		}
+		var override *model.SalesPriceBookChannelModelOverride
+		if configured, exists := overridesByChannelModel[bundle.ChannelModel.Id]; exists {
+			override = &configured
+		}
+		effective, err := pricingpolicy.Resolve(resolved.Version, override)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"resolve channel model %d commercial policy: %w",
+				bundle.ChannelModel.Id, err,
+			)
+		}
+		variableCostRate, err := parseRate(
+			"total variable cost rate", effective.TotalVariableCostRate,
+		)
+		if err != nil {
+			return nil, err
+		}
+		taxRate, err := parseRate("effective tax rate", effective.EffectiveTaxRate)
+		if err != nil {
+			return nil, err
+		}
+		minimumMargin, err := parseMargin(effective.MinimumMarginRate)
+		if err != nil {
+			return nil, err
+		}
 		netMargin := calculateNetMargin(
 			purchase.Amount,
 			sales.Amount,
@@ -130,12 +159,19 @@ func QuoteCandidates(
 			PurchaseCost:           purchase.Amount.String(),
 			SalesAmount:            sales.Amount.String(),
 			CustomerCharge:         sales.Amount.String(),
-			Currency:               resolved.Item.Currency,
+			Currency:               resolved.Book.Currency,
 			PurchaseMatchedTier:    purchase.MatchedTier,
 			SalesMatchedTier:       sales.MatchedTier,
 			MeetsMinimumMargin:     meetsMinimumMargin(netMargin, minimumMargin),
 			MinimumMarginRate:      minimumMargin.String(),
 			EstimatedNetMarginRate: netMargin.String(),
+			ChannelModelOverrideId: effective.OverrideId,
+			PaymentFeeRate:         effective.PaymentFeeRate,
+			DistributionFeeRate:    effective.DistributionFeeRate,
+			OperationsLaborRate:    effective.OperationsLaborRate,
+			TotalVariableCostRate:  effective.TotalVariableCostRate,
+			EffectiveTaxRate:       effective.EffectiveTaxRate,
+			TargetNetMargin:        effective.TargetNetMargin,
 		})
 	}
 	if len(quotes) == 0 {
@@ -191,7 +227,7 @@ func QuoteSalesPrice(
 	if err != nil {
 		return SalesQuoteRange{}, err
 	}
-	return quoteRange(quotes, resolved.Item.Currency)
+	return quoteRange(quotes, resolved.Book.Currency)
 }
 
 func quoteRange(quotes []Quote, currency string) (SalesQuoteRange, error) {

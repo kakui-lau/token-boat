@@ -213,7 +213,7 @@ function changeTypeLabel(
 
 function policyFieldLabel(field: string, t: TFunction) {
   const labels: Record<string, string> = {
-    cost_basis_strategy: t('Cost basis'),
+    cost_basis_strategy: t('Unified sales price strategy'),
     payment_fee_rate: t('Payment processing fee'),
     distribution_fee_rate: t('Distribution fee'),
     operations_labor_rate: t('Operations labor cost'),
@@ -229,10 +229,10 @@ function policyFieldLabel(field: string, t: TFunction) {
 function policyValue(field: string, value: string, t: TFunction) {
   if (field === 'cost_basis_strategy') {
     if (value === 'min_eligible_cost') {
-      return t('Minimum eligible purchase cost')
+      return t('Price using the lowest eligible channel cost')
     }
     if (value === 'max_eligible_cost') {
-      return t('Maximum eligible purchase cost')
+      return t('Price using the highest eligible channel cost')
     }
     if (value === 'designated_channel') {
       return t('Designated channel')

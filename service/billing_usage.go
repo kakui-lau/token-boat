@@ -58,12 +58,25 @@ func appendUsageBillingPathForLog(other map[string]interface{}, isLocalCountToke
 	if other == nil {
 		return
 	}
+	path := usageBillingPathForLog(isLocalCountTokens, usage)
+	if usage != nil || isLocalCountTokens {
+		switch path {
+		case usageBillingPathLocal:
+			other["usage_count_source"] = "locally_counted"
+		case usageBillingPathUpstream:
+			other["usage_count_source"] = "service_reported"
+		case usageBillingPathOpenAIEstimated, usageBillingPathAnthropicEstimated, usageBillingPathGeminiEstimated:
+			other["usage_count_source"] = "normalized_estimate"
+		default:
+			other["usage_count_source"] = "normalized_usage"
+		}
+	}
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	if !ok || adminInfo == nil {
 		adminInfo = make(map[string]interface{})
 		other["admin_info"] = adminInfo
 	}
-	adminInfo["usage_billing_path"] = usageBillingPathForLog(isLocalCountTokens, usage)
+	adminInfo["usage_billing_path"] = path
 }
 
 func usageFromBillingUsage(usage *dto.Usage) (*dto.Usage, bool) {

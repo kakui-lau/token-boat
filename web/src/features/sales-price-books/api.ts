@@ -30,11 +30,14 @@ import type {
   PricingChangeBatchListFilters,
   PaginatedSalesPriceBookList,
   SalesPriceBook,
+  SalesPriceBookChannelModelOverride,
   SalesPriceBookDefault,
   SalesPriceBookItem,
+  SalesPriceBookGenerationWarning,
   SalesPriceBookListFilters,
   SalesPriceBookVersion,
   SalesPriceBookVersionDiff,
+  SaveSalesPriceBookChannelModelOverrideInput,
   UserPriceBookAssignment,
   UserPriceBookAssignmentListFilters,
 } from './types'
@@ -162,6 +165,45 @@ export async function getSalesPriceBookItems(versionId: number) {
   return requireSuccess(response.data)
 }
 
+export async function getSalesPriceBookChannelModelOverrides(
+  versionId: number
+) {
+  const response = await api.get<
+    ApiResponse<SalesPriceBookChannelModelOverride[]>
+  >(
+    `/api/pricing-admin/price-book-versions/${versionId}/channel-model-overrides`,
+    {
+      params: { cache_bust: Date.now() },
+      headers: { 'Cache-Control': 'no-cache' },
+    }
+  )
+  return requireSuccess(response.data)
+}
+
+export async function saveSalesPriceBookChannelModelOverride(
+  versionId: number,
+  channelModelId: number,
+  input: SaveSalesPriceBookChannelModelOverrideInput
+) {
+  const response = await api.put<
+    ApiResponse<SalesPriceBookChannelModelOverride>
+  >(
+    `/api/pricing-admin/price-book-versions/${versionId}/channel-model-overrides/${channelModelId}`,
+    input
+  )
+  return requireSuccess(response.data)
+}
+
+export async function deleteSalesPriceBookChannelModelOverride(
+  versionId: number,
+  channelModelId: number
+) {
+  const response = await api.delete<ApiResponse<null>>(
+    `/api/pricing-admin/price-book-versions/${versionId}/channel-model-overrides/${channelModelId}`
+  )
+  return requireSuccess(response.data)
+}
+
 export async function saveSalesPriceBookItem(item: SalesPriceBookItem) {
   const response = await api.post<ApiResponse<SalesPriceBookItem>>(
     `/api/pricing-admin/price-book-versions/${item.price_book_version_id}/items`,
@@ -250,6 +292,7 @@ export async function generateSalesPriceBookItems(
     ApiResponse<{
       batch: PricingChangeBatch
       generated_items: SalesPriceBookItem[]
+      warnings: SalesPriceBookGenerationWarning[]
     }>
   >(`/api/pricing-admin/price-book-versions/${versionId}/generate-items`, input)
   return requireSuccess(response.data)
@@ -297,6 +340,14 @@ export async function getUserPriceBookAssignments(
 export async function exportSalesPriceBookItems(versionId: number) {
   const response = await api.get(
     `/api/pricing-admin/price-book-versions/${versionId}/items/export`,
+    { responseType: 'blob' }
+  )
+  return response.data as Blob
+}
+
+export async function exportSalesPriceBookChannelModels(versionId: number) {
+  const response = await api.get(
+    `/api/pricing-admin/price-book-versions/${versionId}/channel-models/export`,
     { responseType: 'blob' }
   )
   return response.data as Blob

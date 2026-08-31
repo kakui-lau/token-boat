@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/pricingpolicy"
 	"github.com/shopspring/decimal"
 )
 
@@ -68,6 +69,7 @@ func ApplySalesPriceBookPricing(
 		}
 	}
 	officialByModel := map[string]model.OfficialModelPriceVersion{}
+	overridesByVersion := make(map[int]map[int]*model.SalesPriceBookChannelModelOverride)
 	if snapshot, ok := getCatalogSnapshot(); ok {
 		officialByModel = snapshot.OfficialByModelName
 	}
@@ -86,6 +88,19 @@ func ApplySalesPriceBookPricing(
 		if err != nil {
 			continue
 		}
+		if _, loaded := overridesByVersion[resolved.Version.Id]; !loaded {
+			var overrides []model.SalesPriceBookChannelModelOverride
+			if err := model.DB.Where("price_book_version_id = ?", resolved.Version.Id).
+				Find(&overrides).Error; err != nil {
+				continue
+			}
+			byChannelModel := make(map[int]*model.SalesPriceBookChannelModelOverride, len(overrides))
+			for overrideIndex := range overrides {
+				override := overrides[overrideIndex]
+				byChannelModel[override.ChannelModelId] = &override
+			}
+			overridesByVersion[resolved.Version.Id] = byChannelModel
+		}
 		groupNames := make([]string, 0, len(usableGroups))
 		for group := range usableGroups {
 			groupNames = append(groupNames, group)
@@ -99,7 +114,11 @@ func ApplySalesPriceBookPricing(
 				if _, blocked := blockedRoutes[[2]int{bundle.ChannelModel.ChannelId, bundle.ChannelModel.ModelId}]; blocked {
 					continue
 				}
-				if !salesPriceBookCandidateHasSafeStructuredMargins(resolved, bundle) {
+				if !salesPriceBookCandidateHasSafeStructuredMargins(
+					resolved,
+					bundle,
+					overridesByVersion[resolved.Version.Id][bundle.ChannelModel.Id],
+				) {
 					continue
 				}
 				groupEligible = true
@@ -120,7 +139,7 @@ func ApplySalesPriceBookPricing(
 		baseSummary := buildPublicPriceSummary(
 			resolved.Item.BillingMode,
 			resolved.Item.PriceStructure,
-			resolved.Item.Currency,
+			resolved.Book.Currency,
 			resolved.Item.PriceComponents,
 			decimal.NewFromInt(1),
 		)
@@ -135,7 +154,7 @@ func ApplySalesPriceBookPricing(
 			summary := buildPublicPriceSummary(
 				resolved.Item.BillingMode,
 				resolved.Item.PriceStructure,
-				resolved.Item.Currency,
+				resolved.Book.Currency,
 				resolved.Item.PriceComponents,
 				decimal.NewFromInt(1),
 			)
@@ -161,6 +180,7 @@ func ApplySalesPriceBookPricing(
 func salesPriceBookCandidateHasSafeStructuredMargins(
 	resolved ResolvedSalesPrice,
 	bundle ActivePriceBundle,
+	override *model.SalesPriceBookChannelModelOverride,
 ) bool {
 	purchase := buildPublicPriceSummary(
 		bundle.Purchase.BillingMode,
@@ -172,7 +192,7 @@ func salesPriceBookCandidateHasSafeStructuredMargins(
 	sales := buildPublicPriceSummary(
 		resolved.Item.BillingMode,
 		resolved.Item.PriceStructure,
-		resolved.Item.Currency,
+		resolved.Book.Currency,
 		resolved.Item.PriceComponents,
 		decimal.NewFromInt(1),
 	)
@@ -184,22 +204,19 @@ func salesPriceBookCandidateHasSafeStructuredMargins(
 	if purchase.Currency != sales.Currency {
 		return false
 	}
-	variableCostRate, err := parseRate(
-		"total variable cost rate",
-		resolved.Version.TotalVariableCostRate,
-	)
+	effective, err := pricingpolicy.Resolve(resolved.Version, override)
 	if err != nil {
 		return false
 	}
-	taxRate, err := parseRate("effective tax rate", resolved.Version.EffectiveTaxRate)
+	variableCostRate, err := parseRate("total variable cost rate", effective.TotalVariableCostRate)
 	if err != nil {
 		return false
 	}
-	minimumMarginValue := resolved.Version.MinimumMarginRate
-	if resolved.Item.MinimumMarginOverride != "" {
-		minimumMarginValue = resolved.Item.MinimumMarginOverride
+	taxRate, err := parseRate("effective tax rate", effective.EffectiveTaxRate)
+	if err != nil {
+		return false
 	}
-	minimumMargin, err := parseMargin(minimumMarginValue)
+	minimumMargin, err := parseMargin(effective.MinimumMarginRate)
 	if err != nil {
 		return false
 	}

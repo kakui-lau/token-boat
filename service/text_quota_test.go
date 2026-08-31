@@ -123,3 +123,49 @@ func TestAppendToolSurchargeLogInfoUsesStructuredField(t *testing.T) {
 	assert.Equal(t, items, other["tool_surcharges"])
 	assert.NotContains(t, other, "model_ratio")
 }
+
+func TestAppendTextUsageLogInfoPersistsObservedBreakdownWithoutInference(t *testing.T) {
+	other := map[string]interface{}{}
+	summary := textQuotaSummary{
+		CacheTokens:           30,
+		CacheCreationTokens:   50,
+		CacheCreationTokens5m: 20,
+		CacheCreationTokens1h: 30,
+		ImageTokens:           7,
+	}
+	usage := &dto.Usage{
+		InputTokens: 180,
+		UsageSource: "claude_messages",
+		PromptTokensDetails: dto.InputTokenDetails{
+			TextTokens:  100,
+			AudioTokens: 4,
+		},
+		CompletionTokenDetails: dto.OutputTokenDetails{
+			TextTokens:  40,
+			AudioTokens: 6,
+		},
+	}
+
+	appendTextUsageLogInfo(other, summary, usage)
+
+	assert.Equal(t, 30, other["cache_tokens"])
+	assert.Equal(t, 50, other["cache_write_tokens"])
+	assert.Equal(t, 20, other["cache_creation_tokens_5m"])
+	assert.Equal(t, 30, other["cache_creation_tokens_1h"])
+	assert.Equal(t, 180, other["input_tokens_total"])
+	assert.Equal(t, 7, other["image_output"])
+	assert.Equal(t, 100, other["text_input"])
+	assert.Equal(t, 40, other["text_output"])
+	assert.Equal(t, 4, other["audio_input"])
+	assert.Equal(t, 6, other["audio_output"])
+}
+
+func TestAppendTextUsageLogInfoRecordsObservedZeroCacheRead(t *testing.T) {
+	other := map[string]interface{}{}
+
+	appendTextUsageLogInfo(other, textQuotaSummary{}, nil)
+
+	assert.Equal(t, 0, other["cache_tokens"])
+	assert.NotContains(t, other, "input_tokens_total")
+	assert.NotContains(t, other, "cache_write_tokens")
+}

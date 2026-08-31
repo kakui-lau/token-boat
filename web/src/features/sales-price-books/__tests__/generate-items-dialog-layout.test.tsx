@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -14,6 +32,25 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { getChannelModels } from '@/features/pricing-admin/api'
 
 import { GenerateItemsDialog } from '../components/generate-items-dialog'
+
+const draftVersion = {
+  id: 1,
+  price_book_id: 1,
+  version: 1,
+  status: 'draft' as const,
+  cost_basis_strategy: 'max_eligible_cost',
+  payment_fee_rate: '0.04',
+  distribution_fee_rate: '0.05',
+  operations_labor_rate: '0.02',
+  total_variable_cost_rate: '0.11',
+  effective_tax_rate: '0.16',
+  target_net_margin: '0.03',
+  minimum_margin_rate: '0.02',
+  content_hash: '',
+  created_at: 1,
+  published_at: 0,
+  remark: '',
+}
 
 const { generateSalesPriceBookItems } = vi.hoisted(() => ({
   generateSalesPriceBookItems: vi.fn(),
@@ -105,7 +142,12 @@ test('uses a large workspace and keeps the model list independently scrollable',
 
   render(
     <QueryClientProvider client={queryClient}>
-      <GenerateItemsDialog open versionId={1} onOpenChange={vi.fn()} />
+      <GenerateItemsDialog
+        open
+        versionId={1}
+        version={draftVersion}
+        onOpenChange={vi.fn()}
+      />
     </QueryClientProvider>
   )
 
@@ -124,6 +166,9 @@ test('uses a large workspace and keeps the model list independently scrollable',
     expect(screen.getByText('openai/gpt-test')).toBeInTheDocument()
   })
   expect(screen.getByText('Generated')).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Set special parameters' })
+  ).toBeInTheDocument()
   expect(getChannelModels).toHaveBeenCalledWith(
     expect.objectContaining({
       status: 1,
@@ -151,15 +196,21 @@ test('previews the final logical models before generating prices', async () => {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <GenerateItemsDialog open versionId={7} onOpenChange={vi.fn()} />
+      <GenerateItemsDialog
+        open
+        versionId={7}
+        version={{ ...draftVersion, id: 7 }}
+        initialChannelModelIds={[11]}
+        onOpenChange={vi.fn()}
+      />
     </QueryClientProvider>
   )
 
-  fireEvent.click(
+  expect(
     await screen.findByRole('checkbox', {
       name: 'Select openai/gpt-test',
     })
-  )
+  ).toHaveAttribute('aria-checked', 'true')
   fireEvent.click(
     screen.getByRole('button', { name: 'Generate selected models' })
   )

@@ -110,7 +110,7 @@ func TestRechargeWaffoPancake_RejectsMismatchedPaymentMethod(t *testing.T) {
 	insertUserForPaymentGuardTest(t, 101, 0)
 	insertTopUpForPaymentGuardTest(t, "waffo-pancake-guard", 101, PaymentProviderStripe)
 
-	err := RechargeWaffoPancake("waffo-pancake-guard")
+	err := RechargeWaffoPancake("waffo-pancake-guard", "203.0.113.44")
 	require.Error(t, err)
 
 	topUp := GetTopUpByTradeNo("waffo-pancake-guard")
@@ -178,7 +178,7 @@ func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T
 	plan := insertSubscriptionPlanForPaymentGuardTest(t, 301)
 	insertSubscriptionOrderForPaymentGuardTest(t, "sub-guard-order", 202, plan.Id, PaymentProviderStripe)
 
-	err := CompleteSubscriptionOrder("sub-guard-order", `{"provider":"epay"}`, PaymentProviderEpay, "alipay")
+	err := CompleteSubscriptionOrder("sub-guard-order", `{"provider":"epay"}`, PaymentProviderEpay, "alipay", "203.0.113.45")
 	require.ErrorIs(t, err, ErrPaymentMethodMismatch)
 
 	order := GetSubscriptionOrderByTradeNo("sub-guard-order")

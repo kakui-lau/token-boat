@@ -38,7 +38,6 @@ function item(status: SalesPriceBookItem['status']): SalesPriceBookItem {
     pricing_method: 'cost_plus',
     selling_factor: '1.2',
     official_discount: '0',
-    minimum_margin_override: '0',
     currency: 'USD',
     remark: '',
   }

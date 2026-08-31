@@ -1378,7 +1378,7 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	quota, err := model.Redeem(req.Key, id, c.ClientIP())
 	if err != nil {
 		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
 		common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
@@ -1406,6 +1406,33 @@ type UpdateUserSettingRequest struct {
 	RecordIpLog                      bool    `json:"record_ip_log"`
 }
 
+func GetUserSetting(c *gin.Context) {
+	userId := c.GetInt("id")
+	user, err := model.GetUserById(userId, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	settings := user.GetSetting()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"notify_type":                          settings.NotifyType,
+			"quota_warning_threshold":              settings.QuotaWarningThreshold,
+			"webhook_url":                          settings.WebhookUrl,
+			"webhook_secret_configured":            settings.WebhookSecret != "",
+			"notification_email":                   settings.NotificationEmail,
+			"bark_url":                             settings.BarkUrl,
+			"gotify_url":                           settings.GotifyUrl,
+			"gotify_token_configured":              settings.GotifyToken != "",
+			"gotify_priority":                      settings.GotifyPriority,
+			"upstream_model_update_notify_enabled": settings.UpstreamModelUpdateNotifyEnabled,
+			"record_ip_log":                        settings.RecordIpLog,
+		},
+	})
+}
+
 func UpdateUserSetting(c *gin.Context) {
 	var req UpdateUserSettingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1425,14 +1452,30 @@ func UpdateUserSetting(c *gin.Context) {
 		return
 	}
 
+	userId := c.GetInt("id")
+	user, err := model.GetUserById(userId, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	existingSettings := user.GetSetting()
+
+	webhookUrl := strings.TrimSpace(req.WebhookUrl)
+	barkUrl := strings.TrimSpace(req.BarkUrl)
+	gotifyUrl := strings.TrimSpace(req.GotifyUrl)
+	gotifyToken := strings.TrimSpace(req.GotifyToken)
+	if gotifyToken == "" {
+		gotifyToken = existingSettings.GotifyToken
+	}
+
 	// 如果是webhook类型,验证webhook地址
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {
-		if req.WebhookUrl == "" {
+		if webhookUrl == "" {
 			common.ApiErrorI18n(c, i18n.MsgSettingWebhookEmpty)
 			return
 		}
 		// 验证URL格式
-		if _, err := url.ParseRequestURI(req.WebhookUrl); err != nil {
+		if _, err := url.ParseRequestURI(webhookUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingWebhookInvalid)
 			return
 		}
@@ -1449,17 +1492,17 @@ func UpdateUserSetting(c *gin.Context) {
 
 	// 如果是Bark类型，验证Bark URL
 	if req.QuotaWarningType == dto.NotifyTypeBark {
-		if req.BarkUrl == "" {
+		if barkUrl == "" {
 			common.ApiErrorI18n(c, i18n.MsgSettingBarkUrlEmpty)
 			return
 		}
 		// 验证URL格式
-		if _, err := url.ParseRequestURI(req.BarkUrl); err != nil {
+		if _, err := url.ParseRequestURI(barkUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingBarkUrlInvalid)
 			return
 		}
 		// 检查是否是HTTP或HTTPS
-		if !strings.HasPrefix(req.BarkUrl, "https://") && !strings.HasPrefix(req.BarkUrl, "http://") {
+		if !strings.HasPrefix(barkUrl, "https://") && !strings.HasPrefix(barkUrl, "http://") {
 			common.ApiErrorI18n(c, i18n.MsgSettingUrlMustHttp)
 			return
 		}
@@ -1467,49 +1510,39 @@ func UpdateUserSetting(c *gin.Context) {
 
 	// 如果是Gotify类型，验证Gotify URL和Token
 	if req.QuotaWarningType == dto.NotifyTypeGotify {
-		if req.GotifyUrl == "" {
+		if gotifyUrl == "" {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyUrlEmpty)
 			return
 		}
-		if req.GotifyToken == "" {
+		if gotifyToken == "" {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyTokenEmpty)
 			return
 		}
 		// 验证URL格式
-		if _, err := url.ParseRequestURI(req.GotifyUrl); err != nil {
+		if _, err := url.ParseRequestURI(gotifyUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyUrlInvalid)
 			return
 		}
 		// 检查是否是HTTP或HTTPS
-		if !strings.HasPrefix(req.GotifyUrl, "https://") && !strings.HasPrefix(req.GotifyUrl, "http://") {
+		if !strings.HasPrefix(gotifyUrl, "https://") && !strings.HasPrefix(gotifyUrl, "http://") {
 			common.ApiErrorI18n(c, i18n.MsgSettingUrlMustHttp)
 			return
 		}
 	}
 
-	userId := c.GetInt("id")
-	user, err := model.GetUserById(userId, true)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	existingSettings := user.GetSetting()
-	upstreamModelUpdateNotifyEnabled := existingSettings.UpstreamModelUpdateNotifyEnabled
 	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
-		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+		existingSettings.UpstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
 	}
 
-	// 构建设置
-	settings := dto.UserSetting{
-		NotifyType:                       req.QuotaWarningType,
-		QuotaWarningThreshold:            req.QuotaWarningThreshold,
-		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
-		RecordIpLog:                      req.RecordIpLog,
-	}
+	// 只更新本表单拥有的字段，保留语言、侧边栏、扣费偏好和其他通知渠道配置。
+	settings := existingSettings
+	settings.NotifyType = req.QuotaWarningType
+	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
+	settings.RecordIpLog = req.RecordIpLog
 
 	// 如果是webhook类型,添加webhook相关设置
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {
-		settings.WebhookUrl = req.WebhookUrl
+		settings.WebhookUrl = webhookUrl
 		if req.WebhookSecret != "" {
 			settings.WebhookSecret = req.WebhookSecret
 		}
@@ -1522,13 +1555,13 @@ func UpdateUserSetting(c *gin.Context) {
 
 	// 如果是Bark类型，添加Bark URL到设置中
 	if req.QuotaWarningType == dto.NotifyTypeBark {
-		settings.BarkUrl = req.BarkUrl
+		settings.BarkUrl = barkUrl
 	}
 
 	// 如果是Gotify类型，添加Gotify配置到设置中
 	if req.QuotaWarningType == dto.NotifyTypeGotify {
-		settings.GotifyUrl = req.GotifyUrl
-		settings.GotifyToken = req.GotifyToken
+		settings.GotifyUrl = gotifyUrl
+		settings.GotifyToken = gotifyToken
 		// Gotify优先级范围0-10，超出范围则使用默认值5
 		if req.GotifyPriority < 0 || req.GotifyPriority > 10 {
 			settings.GotifyPriority = 5

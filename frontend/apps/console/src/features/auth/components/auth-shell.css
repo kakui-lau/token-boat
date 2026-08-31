@@ -1,0 +1,685 @@
+.auth-stage {
+  position: relative;
+  isolation: isolate;
+  overscroll-behavior: none;
+  background:
+    radial-gradient(
+      circle at 9% 12%,
+      color-mix(in oklab, var(--primary) 15%, transparent) 0,
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 92% 88%,
+      color-mix(in oklab, var(--chart-2) 10%, transparent) 0,
+      transparent 30rem
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--background) 92%, var(--primary)),
+      var(--background) 56%,
+      color-mix(in oklab, var(--background) 94%, var(--chart-2))
+    );
+}
+
+.auth-stage__grid {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  opacity: 0.38;
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--border) 48%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--border) 48%, transparent) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  mask-image: linear-gradient(to bottom, black, transparent 86%);
+}
+
+.auth-stage__glow {
+  position: absolute;
+  z-index: -1;
+  border-radius: 999px;
+  filter: blur(6rem);
+  opacity: 0.36;
+  pointer-events: none;
+}
+
+.auth-stage__glow--one {
+  top: -8rem;
+  left: 18%;
+  width: 24rem;
+  height: 24rem;
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+.auth-stage__glow--two {
+  right: 4%;
+  bottom: -8rem;
+  width: 28rem;
+  height: 28rem;
+  background: color-mix(in oklab, var(--chart-2) 18%, transparent);
+}
+
+.auth-frame {
+  --auth-panel-surface: color-mix(in oklab, var(--background) 90%, var(--primary));
+  height: 100svh;
+  min-height: 0;
+  border: 0;
+  background:
+    radial-gradient(
+      circle at 52% 56%,
+      color-mix(in oklab, var(--primary) 15%, transparent),
+      transparent 25rem
+    ),
+    radial-gradient(
+      circle at 87% 20%,
+      color-mix(in oklab, var(--primary) 7%, transparent),
+      transparent 20rem
+    ),
+    var(--auth-panel-surface);
+  box-shadow: none;
+  animation: auth-frame-enter 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-visual-panel {
+  --primary-foreground: var(--background);
+  --auth-particle-color: color-mix(in oklab, var(--primary-foreground) 84%, transparent);
+  --auth-particle-line: color-mix(in oklab, var(--primary-foreground) 36%, transparent);
+  --auth-particle-accent: color-mix(in oklab, var(--primary-foreground) 92%, var(--primary));
+  isolation: isolate;
+  background:
+    linear-gradient(
+      116deg,
+      transparent 0 42%,
+      color-mix(in oklab, var(--primary) 11%, transparent) 42% 43%,
+      transparent 43% 100%
+    ),
+    radial-gradient(
+      circle at 74% 32%,
+      color-mix(in oklab, var(--primary) 74%, transparent),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 20% 82%,
+      color-mix(in oklab, var(--chart-2) 38%, transparent),
+      transparent 30%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--foreground) 93%, var(--primary)),
+      color-mix(in oklab, var(--foreground) 78%, var(--primary))
+    );
+}
+
+.auth-visual-panel--sculpted {
+  clip-path: url("#auth-panel-smooth-clip");
+}
+
+.auth-visual-panel,
+.auth-form-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.dark .auth-visual-panel {
+  --primary-foreground: var(--foreground);
+  --auth-particle-color: color-mix(in oklab, var(--primary-foreground) 78%, transparent);
+  --auth-particle-line: color-mix(in oklab, var(--primary-foreground) 30%, transparent);
+  --auth-particle-accent: color-mix(in oklab, var(--primary-foreground) 88%, var(--primary));
+  background:
+    radial-gradient(
+      circle at 74% 32%,
+      color-mix(in oklab, var(--primary) 42%, transparent),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 20% 82%,
+      color-mix(in oklab, var(--chart-2) 28%, transparent),
+      transparent 30%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--background) 90%, var(--primary)),
+      color-mix(in oklab, var(--background) 76%, var(--primary))
+    );
+}
+
+.auth-particle-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.94;
+  pointer-events: none;
+}
+
+.auth-visual-panel__mesh {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.22;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      color-mix(in oklab, var(--primary-foreground) 18%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--primary-foreground) 18%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 3.5rem 3.5rem;
+  mask-image: linear-gradient(145deg, black, transparent 72%);
+}
+
+.auth-visual-panel__scan {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.34;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      118deg,
+      transparent 0 36%,
+      color-mix(in oklab, var(--primary-foreground) 9%, transparent) 45%,
+      transparent 54% 100%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 0.38rem,
+      color-mix(in oklab, var(--primary-foreground) 5%, transparent) 0.42rem,
+      transparent 0.46rem
+    );
+  mask-image: linear-gradient(to right, black, transparent 94%);
+}
+
+.auth-brand-mark {
+  border: 1px solid color-mix(in oklab, var(--primary-foreground) 24%, transparent);
+  background: color-mix(in oklab, var(--primary-foreground) 10%, transparent);
+  box-shadow: 0 0 2.5rem color-mix(in oklab, var(--primary) 42%, transparent);
+  backdrop-filter: blur(0.75rem);
+}
+
+.auth-motion-control {
+  position: relative;
+  color: color-mix(in oklab, var(--primary-foreground) 72%, transparent);
+  background: color-mix(in oklab, var(--primary-foreground) 8%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary-foreground) 16%, transparent);
+  backdrop-filter: blur(0.75rem);
+}
+
+.auth-motion-control:hover {
+  color: var(--primary-foreground);
+  background: color-mix(in oklab, var(--primary-foreground) 14%, transparent);
+}
+
+.auth-hero-title {
+  color: transparent;
+  background: linear-gradient(
+    112deg,
+    var(--primary-foreground) 0 56%,
+    color-mix(in oklab, var(--primary-foreground) 70%, var(--primary)) 76%,
+    var(--primary-foreground) 100%
+  );
+  background-clip: text;
+  text-shadow: 0 1.25rem 4rem color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+.auth-hero-badge {
+  border-color: color-mix(in oklab, var(--primary-foreground) 20%, transparent);
+  background: color-mix(in oklab, var(--primary-foreground) 8%, transparent);
+  color: var(--primary-foreground);
+  backdrop-filter: blur(0.75rem);
+}
+
+.auth-hero-badge {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 24%, transparent) inset;
+}
+
+.auth-brand-enter {
+  animation: auth-materialize 620ms 100ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-hero-enter {
+  animation: auth-materialize 720ms 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-neural-field {
+  animation: auth-materialize 820ms 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-security-enter {
+  animation: auth-materialize 620ms 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-neural-field__aura,
+.auth-neural-field__beam,
+.auth-neural-orbit,
+.auth-neural-core,
+.auth-neural-node {
+  position: absolute;
+  pointer-events: none;
+}
+
+.auth-neural-field__aura {
+  top: 50%;
+  left: 50%;
+  width: min(92%, 36rem);
+  height: 15rem;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, color-mix(in oklab, var(--primary) 28%, transparent), transparent 60%),
+    radial-gradient(
+      circle at 28% 62%,
+      color-mix(in oklab, var(--chart-2) 22%, transparent),
+      transparent 45%
+    );
+  filter: blur(2.8rem);
+  transform: translate(-50%, -50%);
+  animation: auth-neural-breathe 3.6s ease-in-out infinite;
+}
+
+.auth-neural-field__beam {
+  top: 50%;
+  left: 50%;
+  width: min(96%, 40rem);
+  height: 1px;
+  transform-origin: center;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--primary-foreground) 8%, transparent) 16%,
+    color-mix(in oklab, var(--primary-foreground) 56%, transparent) 50%,
+    color-mix(in oklab, var(--primary-foreground) 8%, transparent) 84%,
+    transparent
+  );
+  animation: auth-neural-beam 2.8s ease-in-out infinite;
+}
+
+.auth-neural-field__beam--one {
+  transform: translate(-50%, -50%) rotate(-12deg);
+}
+
+.auth-neural-field__beam--two {
+  transform: translate(-50%, -50%) rotate(16deg);
+  animation-delay: -1.4s;
+}
+
+.auth-neural-orbit {
+  top: 50%;
+  left: 50%;
+  border: 1px solid color-mix(in oklab, var(--primary-foreground) 22%, transparent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.auth-neural-orbit--outer {
+  width: min(92%, 36rem);
+  height: 13.5rem;
+  transform: translate(-50%, -50%) rotate(-8deg);
+  animation: auth-neural-orbit-clockwise 15s linear infinite;
+}
+
+.auth-neural-orbit--middle {
+  width: min(72%, 27rem);
+  height: 10rem;
+  border-style: dashed;
+  transform: translate(-50%, -50%) rotate(12deg);
+  animation: auth-neural-orbit-counter 11s linear infinite;
+}
+
+.auth-neural-orbit--inner {
+  width: min(48%, 17rem);
+  height: 7rem;
+  border-color: color-mix(in oklab, var(--primary-foreground) 30%, transparent);
+  transform: translate(-50%, -50%) rotate(-18deg);
+  animation: auth-neural-orbit-clockwise 8s linear infinite;
+}
+
+.auth-neural-orbit__runner {
+  position: absolute;
+  top: 50%;
+  left: -0.3rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid color-mix(in oklab, var(--primary-foreground) 76%, transparent);
+  border-radius: 999px;
+  background: var(--primary-foreground);
+  box-shadow:
+    0 0 1rem color-mix(in oklab, var(--primary-foreground) 80%, transparent),
+    0 0 2.25rem color-mix(in oklab, var(--primary) 60%, transparent);
+  transform: translateY(-50%);
+}
+
+.auth-neural-core {
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 8rem;
+  height: 8rem;
+  transform: translate(-50%, -50%);
+}
+
+.auth-neural-core__mark {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: 6.5rem;
+  height: 6.5rem;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--primary-foreground) 42%, transparent);
+  border-radius: 2rem;
+  background: color-mix(in oklab, var(--background) 88%, transparent);
+  box-shadow:
+    0 1.5rem 4rem color-mix(in oklab, var(--foreground) 40%, transparent),
+    0 0 3.5rem color-mix(in oklab, var(--primary) 58%, transparent),
+    0 0 0 0.55rem color-mix(in oklab, var(--primary-foreground) 7%, transparent);
+  backdrop-filter: blur(1.25rem);
+}
+
+.auth-neural-core__pulse {
+  position: absolute;
+  width: 7rem;
+  height: 7rem;
+  border: 1px solid color-mix(in oklab, var(--primary-foreground) 52%, transparent);
+  border-radius: 2.2rem;
+  animation: auth-neural-pulse 2.4s ease-out infinite;
+}
+
+.auth-neural-node {
+  z-index: 3;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  background: var(--primary-foreground);
+  box-shadow: 0 0 1.5rem color-mix(in oklab, var(--primary-foreground) 78%, transparent);
+  animation: auth-neural-node 2.2s ease-in-out infinite;
+}
+
+.auth-neural-node--one {
+  top: 24%;
+  left: 15%;
+}
+
+.auth-neural-node--two {
+  top: 18%;
+  right: 12%;
+  animation-delay: -0.7s;
+}
+
+.auth-neural-node--three {
+  right: 18%;
+  bottom: 18%;
+  animation-delay: -1.3s;
+}
+
+.auth-neural-node--four {
+  bottom: 22%;
+  left: 12%;
+  animation-delay: -1.8s;
+}
+
+.auth-form-panel {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  background: transparent;
+}
+
+.auth-form-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.auth-form-panel::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  opacity: 0.28;
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) 18%, transparent) 0.75px,
+    transparent 0.75px
+  );
+  background-size: 1.5rem 1.5rem;
+  mask-image: linear-gradient(to bottom, black, transparent 45%);
+}
+
+.auth-access-badge {
+  position: relative;
+  background: color-mix(in oklab, var(--background) 78%, transparent);
+  backdrop-filter: blur(0.75rem);
+}
+
+.auth-form-enter {
+  position: relative;
+  animation: auth-form-enter 760ms 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-form-card {
+  gap: 1.5rem;
+  overflow: visible;
+  padding: clamp(1.5rem, 3vw, 2.75rem);
+  border-radius: clamp(1.5rem, 3vw, 2rem);
+  background: color-mix(in oklab, var(--background) 68%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--background) 78%, var(--primary)),
+    0 1px 0 color-mix(in oklab, var(--background) 86%, transparent) inset,
+    0 1.75rem 5rem -2.25rem color-mix(in oklab, var(--primary) 34%, transparent);
+  backdrop-filter: blur(1.75rem) saturate(1.16);
+}
+
+.auth-form-card [data-slot="card-header"],
+.auth-form-card [data-slot="card-content"] {
+  padding-inline: 0;
+}
+
+.auth-form-card [data-slot="card-header"] {
+  padding-top: 0;
+}
+
+.auth-form-card [data-slot="card-content"] {
+  padding-bottom: 0;
+}
+
+.auth-form-card input:not([type="checkbox"]):not([type="radio"]),
+.auth-form-card [data-slot="button"] {
+  min-height: 2.65rem;
+}
+
+.auth-form-card input:not([type="checkbox"]):not([type="radio"]) {
+  background: color-mix(in oklab, var(--background) 78%, transparent);
+}
+
+.auth-form-card input:not([type="checkbox"]):not([type="radio"]):focus-visible {
+  box-shadow: 0 0 0 0.2rem color-mix(in oklab, var(--ring) 18%, transparent);
+}
+
+@keyframes auth-frame-enter {
+  from {
+    opacity: 0;
+    filter: blur(0.65rem);
+    transform: translateY(1.25rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes auth-materialize {
+  from {
+    opacity: 0;
+    filter: blur(0.4rem);
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes auth-form-enter {
+  from {
+    opacity: 0;
+    filter: blur(0.45rem);
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0);
+  }
+}
+
+@keyframes auth-neural-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+@keyframes auth-neural-beam {
+  0%,
+  100% {
+    opacity: 0.2;
+    filter: blur(0.12rem);
+  }
+  50% {
+    opacity: 0.88;
+    filter: blur(0);
+  }
+}
+
+@keyframes auth-neural-orbit-clockwise {
+  to {
+    transform: translate(-50%, -50%) rotate(352deg);
+  }
+}
+
+@keyframes auth-neural-orbit-counter {
+  to {
+    transform: translate(-50%, -50%) rotate(-348deg);
+  }
+}
+
+@keyframes auth-neural-pulse {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.78);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes auth-neural-node {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.72);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+}
+
+.is-motion-paused .auth-neural-field__aura,
+.is-motion-paused .auth-neural-field__beam,
+.is-motion-paused .auth-neural-orbit,
+.is-motion-paused .auth-neural-core__pulse,
+.is-motion-paused .auth-neural-node {
+  animation-play-state: paused;
+}
+
+@media (max-width: 639px) {
+  .auth-frame {
+    height: 100svh;
+    min-height: 100svh;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .auth-stage__grid {
+    background-size: 3rem 3rem;
+  }
+
+  .auth-form-panel {
+    min-height: 100svh;
+    background:
+      radial-gradient(
+        circle at 50% 8%,
+        color-mix(in oklab, var(--primary) 12%, transparent),
+        transparent 22rem
+      ),
+      var(--auth-panel-surface);
+  }
+
+  .auth-form-card {
+    gap: 1.25rem;
+    padding: 1.25rem;
+    border-radius: 1.4rem;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 780px) {
+  .auth-stage-shell {
+    padding: 0;
+  }
+
+  .auth-frame,
+  .auth-visual-panel,
+  .auth-form-panel {
+    height: 100svh;
+    min-height: 0;
+  }
+
+  .auth-visual-panel {
+    padding: 2rem 2.5rem;
+  }
+
+  .auth-hero-enter {
+    margin-top: 1.5rem;
+  }
+
+  .auth-hero-title {
+    margin-top: 1rem;
+    font-size: 3rem;
+  }
+
+  .auth-hero-enter > p {
+    margin-top: 1rem;
+  }
+
+  .auth-neural-field {
+    min-height: 11.5rem;
+    margin-top: 1rem;
+  }
+
+  .auth-security-enter {
+    margin-top: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-neural-field__aura,
+  .auth-neural-field__beam,
+  .auth-neural-orbit,
+  .auth-neural-core__pulse,
+  .auth-neural-node {
+    animation: none;
+  }
+}

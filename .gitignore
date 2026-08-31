@@ -10,6 +10,12 @@ build
 logs
 web/dist
 web/node_modules
+frontend/node_modules
+frontend/**/node_modules
+frontend/**/dist
+frontend/coverage
+!frontend/apps/console/src/data/
+!frontend/apps/console/src/data/**
 .env
 .env.*
 !.env.example

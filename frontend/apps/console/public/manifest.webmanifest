@@ -1,0 +1,23 @@
+{
+  "name": "Token Boat Console",
+  "short_name": "Token Boat",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#073b70",
+  "icons": [
+    {
+      "src": "brand/token-boat-logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "brand/token-boat-logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

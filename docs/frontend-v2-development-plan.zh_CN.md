@@ -1,12 +1,285 @@
 # Frontend V2 全量重构与开发推进方案
 
-> 状态：Draft RFC
+> 状态：In Progress — User Console 首批范围已完成生产收口并接入联合发布链路；暂缓能力见第 52 节
 >
 > 适用范围：Token Boat / new-api 全部 Web 前端，包括公共站点、用户控制台、管理控制台和 Electron 内嵌页面
 >
-> 更新时间：2026-08-27
+> 更新时间：2026-08-31
 >
 > 目标：在不继承现有前端框架和实现约束的前提下，重新定义产品交互、技术架构、工程规范、迁移方式和交付计划
+
+## 0. 实施记录
+
+### 0.1 2026-08-28：User Console 旁路功能模板已落地
+
+第一批代码已经放入仓库根目录下独立的 `frontend/` Bun workspace，当前只搭建 User Console，不创建 Admin Console、公共 Site，也不改变现有发布链路。默认使用进程内 Demo Repository；可通过环境变量显式启用 Live Repository 在隔离环境联调现有 API。后端仅为 Playground 增加向后兼容的可选 `api_key_id`，未携带该字段的旧前端请求保持原行为。
+
+已落地内容：
+
+- `frontend/apps/console`：React 19.2.8、Vite 8.2.2、TanStack Router 文件路由、Tailwind CSS 4 和 i18next；共享开发入口中的新版地址为 `http://localhost:5173/console/`。
+- `frontend/packages/ui`：由 shadcn `base-nova` + Base UI 生成并由项目持有的 Sidebar、Sheet、Command、Chart、Scroll Area、Item、Slider、Kbd、Button、Card、Badge、Calendar、Popover、Dropdown Menu、Dialog、Alert Dialog、Field、Input、Select、Switch、Tabs、Table、Progress、Empty、Skeleton、Toast 等源码。
+- `frontend/packages/api-client`：统一 JSON Envelope 与 OpenAI 兼容原始响应、内存 Access Token、HttpOnly Refresh Cookie 和错误标准化的轻量客户端。
+- `frontend/packages/tokens`：Light/Dark 语义色、Sidebar Token、圆角和 Tailwind Theme 映射基础。
+- `frontend/packages/app-core`：带版本号和异常回退的布局偏好持久化；当前保存 Sidebar 折叠状态。
+- Studio Admin 风格 User Console Shell：桌面折叠侧边栏、移动端抽屉导航、顶部搜索入口、Light/Dark/System、账户菜单和中英文切换。
+- 用户中台路由：Sign In、Overview、Getting Started、Integration Center、Playground、API Keys、Models & Pricing、Usage、Request Logs、Tasks、Alerts & Status、Billing、Team & Access、Account（含主题设置），已全部从占位页替换为可操作页面；旧 Preferences 路由仅保留兼容重定向。
+- 首次接入闭环：登录态 Bootstrap、三步接入向导、首次请求示例、API Key 创建/一次性展示/复制/停用/撤销和 Playground 消息发送。
+- 日常管理闭环：用量指标与趋势、模型用量、异步任务进度、账单交易与套餐、兑换码、资料、通知偏好、安全状态和登录会话。
+- TanStack Query 管理服务端状态、缓存失效和 mutation；Demo/Live 通过同一 `ConsoleRepository` 接口隔离，页面不感知数据来源。
+- 语言资源彻底收敛为 en、zh；`bun run i18n:sync` 自动收集页面翻译键、清理废弃键并同步两份资源，测试强制简体中文与英文基准键集合一致。
+- Demo 数据全部明确标记为非生产数据；Live Adapter 仅在设置 `VITE_CONSOLE_DATA_MODE=live` 后启用，接口映射和待确认项见 `docs/frontend-v2-user-console-api-map.zh_CN.md`。
+
+当时的隔离边界保持不变：该批次没有修改 `web/`、`web/dist/`、`main.go`、Go Router、Dockerfile 或发布脚本。该历史边界已在第 54 节的联合发布里程碑中结束；现行产物会同时包含新旧前端。
+
+已通过的门槛：
+
+```text
+bun run lint          通过
+bun run format:check  通过
+bun run typecheck     通过
+bun run test          20 files / 49 tests 通过
+bun run build         通过
+桌面与 390 × 844 移动视口检查 通过
+```
+
+下一步不切换现网：在独立 Go/数据库/Redis 测试环境验证 Live Adapter 的响应结构、额度单位、2FA/Passkey 分支和充值/订阅跳转；继续补齐账户设置与支付 MSW 契约，再加入 Playwright 关键流程。Shared Shell 在 Admin 开工前从 `apps/console` 抽到 `packages/patterns`，避免过早抽象尚未验证的 Admin 差异。
+
+### 0.2 2026-08-28：Live Adapter 第一批契约加固
+
+已开始从“可评审 Demo”推进到“可隔离联调”状态，本批完成：
+
+- 引入 MSW Node 测试服务器，建立真实 HTTP 请求层的 Live Repository 契约测试；覆盖刷新会话的 401/503 分流、用量统计字段、额度换算、分页 API Key 映射和创建密钥的一次性 Secret。
+- 会话恢复只有在后端明确返回 401/403 时才进入未登录状态；网络错误、5xx 和无效响应不再错误清除前端会话，而是保留当前状态并展示可重试错误页。
+- 用量接口按现有 Go 契约读取 `request_count + failure_count`、`total_tokens` 和 `quota`；成功率由成功/失败请求数计算，不再读取后端不存在的 `success_rate`、`token_count` 和 `avg_latency` 字段。
+- 余额、用量费用和请求日志费用通过 `/api/status.quota_per_unit` 从原始 quota 统一换算为 USD 领域值，充值页再根据 USD/CNY/TOKENS 展示设置进行转换，避免同一字段在账单页和充值页使用不同单位。
+- `POST /api/token/` 向后兼容地增加创建结果，完整 Key 只随创建响应返回；列表、搜索、详情和编辑接口仍保持掩码输出。V2 客户端在展示时补齐 `sk-` 前缀。
+
+当时门槛：`21 files / 54 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过；Go Controller 回归测试通过。后续进度见 0.3、0.4。
+
+### 0.3 2026-08-28：账户设置真实契约
+
+账户页不再使用固定安全状态和通知默认值，本批完成：
+
+- Live Adapter 并发读取当前用户、通知设置、Passkey、2FA、登录会话和 quota 单位；账户页展示真实安全状态与已保存配置。
+- 新增向后兼容的 `GET /api/user/setting`，只返回通知目标、阈值和 Secret/Token 是否已配置，不返回 Webhook Secret 或 Gotify Token 明文。
+- 支持后端已有的 Email、Webhook、Bark、Gotify 四种通知渠道；移除后端不接受的 `none`，并补齐渠道专属字段、必填校验和无障碍状态。
+- 余额预警阈值在前端统一按 USD 编辑，Live Adapter 根据 `quota_per_unit` 与后端 quota 整数互相换算。
+- `PUT /api/user/setting` 改为合并更新：保存通知设置时保留语言、侧边栏、扣费偏好、管理员通知开关和其他渠道配置；留空的已有 Webhook Secret/Gotify Token 不会被意外清除。
+- 增加 MSW 与 Go 回归测试，固定安全读取、配置映射、quota 换算、无损保存和 Secret 不回传契约。
+
+### 0.4 2026-08-28：2FA 与 Passkey 操作闭环
+
+账户安全页已从只读状态推进为可执行的安全设置，本批完成：
+
+- 2FA 启用流程接入现有 setup/enable 协议：展示 shadcn Dialog、标准 TOTP 二维码、手动密钥和一次性恢复码，用户输入验证器代码后启用。
+- 已启用 2FA 的账户可重新生成恢复码或禁用 2FA；两项敏感操作都要求当前验证器代码，并使用 Alert Dialog 明确影响范围。
+- Passkey 支持注册、替换和解绑；浏览器不支持 WebAuthn 时给出明确提示，不显示虚假的成功结果。
+- 启用 2FA 时，Passkey 注册与删除先通过 `/api/verify` 获取限定 scope 的 `X-Security-Proof`；未启用 2FA 的 Passkey 删除通过浏览器 WebAuthn assertion 完成 step-up 验证。
+- WebAuthn challenge、credential ID、attestation 和 assertion 均按 base64url 边界转换；注册和删除后的 Access Token、Session ID 与过期时间使用后端轮换结果更新内存会话。
+- 二维码使用 `qrcode.react` 生成；页面结构、输入、弹层、确认和状态反馈继续优先使用项目自有 shadcn 组件，新增文案同步到 en/zh 两套资源。
+- MSW 契约测试覆盖 2FA setup/enable、Passkey 注册序列化、Passkey assertion 解绑和安全状态刷新；组件测试覆盖恢复码展示、2FA 验证码及 Passkey 的 2FA 前置验证。
+
+当前门槛：`22 files / 59 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过。下一批继续接入充值渠道回跳、套餐购买和服务端分页契约，仍不切换现网入口。
+
+### 0.5 2026-08-28：充值回跳确认与套餐购买闭环
+
+计费页和账户充值页已从静态展示推进为完整购买流程，本批完成：
+
+- Live Adapter 并发读取账户余额、充值历史、公开套餐、当前/历史订阅、充值渠道配置和 quota 单位；套餐卡展示真实启用状态、有效期、额度、购买次数与购买上限。
+- 套餐购买 Dialog 根据服务端配置只展示当前套餐可用的账户余额、Stripe、Creem、Waffo Pancake 和 Epay 支付方式；账户余额不足、无可用渠道和达到购买上限时均给出明确状态并阻止重复提交。
+- 账户余额购买直接完成后刷新 Billing 与 Overview；外部支付统一处理 Redirect 与 POST Form 两种 Checkout，并在跳转前只将订单号、套餐 ID、支付类型和开始时间写入版本化 Session Storage，不保存支付凭据。
+- 支付回跳进入确认状态后按订单号或套餐 ID 轮询后端事实状态；确认成功后刷新余额和账单，失败时明确提示，超时不会误报失败，并允许用户安全地重新检查而不是重复付款。
+- Stripe 余额充值与订阅响应向后兼容地增加 `order_id`；Stripe 订阅、Epay 余额/订阅和 Waffo 余额支付支持经可信来源校验的可选回跳 URL。旧客户端不传新字段时保持原有 `/wallet`/`/usage-logs` 行为。
+- Creem 与 Waffo Pancake 的回跳仍由支付产品/平台配置控制；隔离环境必须把其 Success URL 指向 `/console/recharge?payment=pending`，并在 Sandbox 验证 Webhook 延迟、重复通知和用户主动关闭支付页三类场景。
+- MSW 契约测试覆盖套餐能力映射、Epay Form、订单追踪和充值确认；组件测试覆盖余额购买与余额不足；Go 回归测试固定不可信支付回跳 URL 必须被拒绝。
+
+当前门槛：`24 files / 66 tests`、TypeScript、Oxlint、Oxfmt、生产构建和 Go Controller 全量回归全部通过。下一批进入 API Key、请求日志、任务和账单记录的服务端分页、筛选与排序契约。
+
+### 0.6 2026-08-28：核心长列表服务端分页契约
+
+API Key、请求日志、异步任务和账单交易不再固定下载前 100 条后在浏览器内分页，本批完成：
+
+- 从 shadcn Registry 安装并纳入项目源码的 Pagination，封装统一 `DataPagination` 组合；四类列表共享总数区间、每页行数、第一页/上一页/下一页/最后一页、加载禁用和移动端收敛行为。
+- API Key 列表按页请求，支持名称模糊搜索、Active/Disabled/Expired/Exhausted 服务端状态筛选和最新/最早排序；创建、启停或撤销后继续按 query-key 前缀刷新所有分页缓存。
+- 请求日志按日期闭区间、成功/失败、Request ID/模型/API Key 指定字段、页码和时间顺序查询；搜索字段不再声称支持后端没有实现的跨列模糊匹配。顶部总请求数使用服务端 `total`，本页失败、延迟和费用明确标记为本页指标。
+- 异步任务按日期、聚合状态、图片/视频/音频类型和顺序在服务端过滤；Queued 映射 `NOT_START/SUBMITTED/QUEUED`，其他 UI 状态映射对应后端状态。任务类型使用平台、动作和模型属性形成的描述符分类，并针对 SQLite、MySQL、PostgreSQL 使用兼容的文本表达式；各类型 Tab 总数来自独立服务端 count。
+- 账单交易按日期、订单号、钱包充值/套餐、支付状态和顺序查询；用户作用域、30 天安全窗口、订阅订单子查询及最大 100 条页大小继续由后端约束。
+- 所有分页查询使用 TanStack Query `keepPreviousData` 保持翻页和切换筛选时布局稳定；筛选、日期、类型、状态、顺序和 page size 变化都在事件处理器中同步回到第一页。
+- Go 接口只新增可选查询参数，未传参数时仍保持旧版默认倒序和分页语义；现有 `web/` 构建入口与 V2 旁路隔离边界没有变化。
+
+当前门槛：`30 files / 89 tests`、TypeScript、Oxlint、Oxfmt、生产构建、Go Controller 与 Model 回归全部通过。下一批进入列表 URL Search Params、Playwright 关键路径和隔离环境 Live 联调。
+
+### 0.7 2026-08-28：公开账户访问流程
+
+User Console 的认证入口从“已有账户登录”扩展为完整的公开账户访问页面，本批完成：
+
+- 登录页继续按 `/api/status` 能力显示密码、2FA 和 Passkey，并在开放密码注册时提供创建账户入口；品牌分栏抽为共享 Auth Shell，注册、找回与重置页面保持同一响应式结构。
+- 注册页接入 `register_enabled`、`password_register_enabled`、`email_verification`、Turnstile 和邀请码；用户名、8～20 位密码、确认密码、邮箱与验证码均在提交前验证。
+- 邮箱验证使用 shadcn `InputGroup + Field` 组合发送动作，提供 60 秒防重复发送；Turnstile Token 使用后立即清空并重新挂载 Widget，避免一次性 Token 被第二个请求复用。
+- 找回密码请求使用防账户枚举文案，不向用户确认邮箱是否存在；密码确认页只在链接包含 `email` 与 `token` 时允许提交，后端生成的新密码只显示一次，并提供 shadcn InputGroup 复制操作。
+- 新增 `/console/register`、`/console/forgot-password` 和 `/console/user/reset` 公开路由；Session Boundary 不再把这些页面误判为登录后业务页。
+- Live Repository 与 MSW 固定注册、邮箱验证码、Turnstile 查询参数、重置请求和确认响应契约；组件测试覆盖注册、通用重置提示和一次性密码展示；en/zh 文案同步。
+- 本批没有修改 Go。审计确认现有邮件和 OAuth Provider 分别固定回调根路径 `/user/reset` 与 `/oauth/:provider`；在 `/console` 隔离部署下需要下一批增加向后兼容的回调路由或配置能力，修改 Go 前必须单独标注并保留旧前端语义。
+
+当前门槛：`28 files / 84 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过；本地浏览器已验证注册、找回密码和重置确认页为默认中文且无控制台错误。Passkey 实机与 OAuth 回调仍是独立待验项。
+
+### 0.8 2026-08-28：密码重置邮件的 `/console` 路径兼容
+
+为避免 V2 用户在邮件中点击重置链接后落回旧前端，本批增加一个严格受限、向后兼容的 Go 参数：
+
+- `GET /api/reset_password` 接受可选 `redirect_path`；只允许精确值 `/console/user/reset`，缺省值、未知路径、绝对 URL 或恶意 URL 均回退现有 `/user/reset`，不能把重置 Token 导向第三方域名。
+- 邮件链接使用 `net/url.Values` 编码邮箱和 Token，修复邮箱 `+` 等字符直接拼接进查询字符串时的歧义。
+- V2 Live Repository 固定发送 `redirect_path=/console/user/reset`；旧前端不传新参数，现有行为和路由保持不变。
+- Go Controller 回归测试固定旧路径默认值、V2 白名单路径、查询参数编码和恶意路径回退；Frontend MSW 固定 V2 查询契约。
+- 本批修改了 Go：`controller/misc.go`，并新增 `controller/password_reset_link_test.go`。没有改动现有 Go Router、数据库结构、服务端口或旧前端构建入口。
+
+OAuth 不能仅靠相同方式修改前端路径：Discord、OIDC 和自定义 Provider 的 Authorization Redirect URI 必须与后端 Token Exchange 使用的 URI 完全一致，且还要兼容已注册的旧 `/oauth/:provider`。下一批先形成带 Auth Flow 绑定与 Provider 回调白名单的协议，再决定是否增加 Go 能力。
+
+### 0.9 2026-08-28：OAuth `/console` 双路径兼容
+
+User Console 已补齐 GitHub、Discord、OIDC、Linux DO 和自定义 OAuth Provider 登录，并通过 Auth Flow 绑定回调客户端，避免让浏览器直接指定任意 Redirect URI：
+
+- `POST /api/oauth/state` 新增可选枚举 `client=console_v2`；服务端只接受空值或该精确值，V2 回调固定从 `server_address` 派生为 `/console/oauth/:provider`，并把精确 URI 与一次性 State 一起写入 `auth_flows.payload`。客户端不能提交绝对回调 URL，也不能把 OAuth Code 导向第三方地址。
+- OAuth 回调处理器在交换 Code 前从已验证的 Auth Flow 恢复创建 State 时绑定的精确 URI，并把它传给 GitHub、Discord、OIDC、Linux DO 和自定义 Provider 的 Token Exchange；即使期间服务端地址配置变化，Authorization Request 与 Token Exchange 也不会产生 V2 路径不一致。
+- 旧前端创建 State 时不传 `client`，各 Provider 继续使用原有 `/oauth/:provider` 或既有 Linux DO API 回调，不修改旧路由、旧 OAuth 应用配置和默认行为。
+- V2 登录页按 `/api/status` 展示已启用 Provider，新增 `/console/oauth/:provider` 公共回调页；回调只交换一次，成功建立统一 Session Bundle，缺失参数、Provider 拒绝和服务端失败均进入明确错误状态。Authorization Endpoint 与回调 URL 只允许 HTTP(S)，防止可执行协议进入浏览器跳转。
+- Provider 应用仍需在隔离环境登记精确的 V2 Callback；本地 `server_address` 必须指向浏览器实际访问的 V2 Origin。该步骤涉及外部 OAuth 应用配置，本批只完成协议、UI 与自动化契约，不宣称已完成真实 Provider 登录。
+- 本批修改了 Go：`controller/oauth.go`、`oauth/github.go`、`oauth/discord.go`、`oauth/oidc.go`、`oauth/linuxdo.go`、`oauth/generic.go`，新增 `oauth/redirect_uri.go`、`controller/oauth_callback_test.go`、`oauth/redirect_uri_test.go`，并扩展 `oauth/oidc_test.go`。没有修改数据库结构、Go Router、现有 `web/`、服务端口或发布入口。
+- 已重新构建并启动独立 `3001` Go API，只把 PostgreSQL 快照的 `ServerAddress` 更新为 `http://127.0.0.1:4173`；真实 `POST /api/oauth/state` Smoke 返回精确的 `/console/oauth/github`、一次性 Token 和过期时间。现有 `3000` 服务仍健康且保留原配置，未被重启或切换。
+
+当前质量门槛：Frontend `31 files / 95 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过，Go `go test ./...` 全量通过。真实 OAuth Provider 登录仍需先登记隔离 Callback 并配置正确 `server_address`；Passkey 实机验证仍需启用正确 RP ID/Origin 的浏览器环境。
+
+### 0.10 2026-08-28：核心列表 URL 状态与真实浏览器验收
+
+核心长列表已从页面内临时状态收敛为可恢复、可分享和支持浏览器前进后退的 URL Search Params，本批完成：
+
+- API Key、请求日志、任务、账单交易和用量分析的日期范围、搜索词、搜索字段、类型、状态、排序、Tab、页码与每页行数按页面能力写入 URL；默认值不产生冗余参数，筛选变化继续回到第一页。
+- 各路由使用强类型 `validateSearch` 过滤未知枚举、非法日期、超长搜索词、越界页码和不支持的 page size；无效参数安全回退页面默认值，不会带入 Repository 请求。
+- 自定义日期范围保留精确起止日期，快捷日期只保存 preset；刷新、复制链接和浏览器前进后退均可恢复同一筛选界面。
+- 已在连接独立 `3001` Go API 与 PostgreSQL 快照的真实 Live 环境中，用 Playwright CLI 验证 API Key、请求日志、任务和账单的直接链接恢复、筛选提交、历史回退、空状态与默认中文；浏览器控制台无 Error。
+- 已检查 `1440 × 1000` 桌面与 `390 × 844` 移动视口，页面无文档级横向溢出；任务类型在移动端改为两列两行，避免选中 Tab 自动滚动后裁掉首项，桌面任务卡继续使用四列布局。
+- 补齐 `Search` 与 `Top-up` 的简体中文资源，仍只保留 en、zh 两种语言；翻译通过项目同步脚本生成，没有手工维护派生语言文件。
+- 本批没有修改 Go 后端代码、数据库结构、现有 `web/` 发布入口或服务端口。
+
+当前质量门槛：Frontend `32 files / 99 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过。下一批继续处理 Passkey/OAuth 外部环境验收，并按 User Console API Map 推进仍缺少真实领域接口的团队、告警与状态能力。
+
+### 0.11 2026-08-28：告警真实状态与团队能力边界
+
+告警与团队页面已移除 Live 模式中的本地假写入，本批完成：
+
+- 告警中心并行读取现有 `GET /api/uptime/status` 与账户通知设置：平台状态、监控项、当前状态和 24 小时最低可用率来自真实 Uptime Kuma 数据；余额预警阈值与通知渠道来自已保存的 `/api/user/setting`。
+- 未配置 Uptime Kuma 时明确展示“尚未配置状态监控”和监控空状态，不再固定声称“全部系统正常”或伪造 99.99% 可用率；当前状态服务不提供故障历史时也明确说明数据边界。
+- 告警页不再在浏览器内伪造消费、错误率、延迟规则或本地开关；“管理告警设置”直接进入 `/console/account?tab=preferences`，复用现有 Email、Webhook、Bark、Gotify 和余额阈值真实保存流程。
+- 团队页在 Live 模式明确展示为个人工作区，不把当前账户资料伪造成工作区成员记录；移除本地假邀请成功、假成员和假活跃时间。Workspace、Invite、Role Assignment 与 Member Audit API 未落地前，不向用户展示可执行邀请按钮。
+- Demo Repository 继续保留明确标识的多成员和多告警样例，仅用于 UI 评审；Live Repository 与页面能力边界分开处理，Demo 行为不会被误认为后端已持久化。
+- 新增 MSW 契约测试固定 Uptime 状态、最低可用率和账户余额预警映射；组件测试固定 Live 团队无邀请入口、告警无假创建/开关及真实设置跳转。
+- 已在真实 Live 环境用 `localadmin` 验证桌面与 `390 × 844` 移动视口，页面无文档级横向溢出，浏览器控制台无 Error。
+- 本批没有修改 Go 后端代码、数据库结构、现有 `web/` 发布入口或服务端口。
+
+完整自定义告警仍需要服务端规则存储、指标求值、通知去重和触发历史；多人团队仍需要 Workspace、Member、Invite、Role 与 Audit 领域契约。两者必须作为独立后端里程碑实现，不能用前端本地状态替代。
+
+当前质量门槛：Frontend `34 files / 102 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过。
+
+### 0.12 2026-08-28：环境标识降噪与开发顺序调整
+
+- 侧边栏移除独立的“数据源 / 真实 API / 已连接现有后端 API”信息卡，不再让运行环境说明占据持续可见的导航空间。
+- 只有 Demo 模式在登录账户名称旁显示轻量“演示数据”角标；Live 模式不显示环境角标。账户菜单仍可承载必要的身份与账户分组信息，不新增另一块环境说明。
+- 后续 User Console 开发顺序调整为：先完成纯前端页面、交互、响应式、空/错/加载状态和可访问性；再接入现有稳定接口并完成 Live、MSW 与浏览器验收；必须新增 Go、接口或表结构的能力统一进入最后的“后端扩展与正式切换准备”工作包。
+- 后置能力包括但不限于多人 Workspace、成员邀请与角色审计、自定义告警规则与求值历史、用量聚合缺失字段、发票、Playground 持久化会话等。后置不代表删除需求；前端可先完成不伪造数据的安全降级界面与契约草案，但不得提前改动现有服务。
+- 只有当前页面无法基于现有接口完成安全、计费或正确性闭环时，才允许在前端阶段提前修改后端；此类例外必须单独说明 Go 文件、兼容性、数据影响和回归结果。
+- 本批没有修改 Go 后端代码、接口、数据库结构、现有 `web/` 发布入口或服务端口。
+
+当前质量门槛：Frontend `35 files / 104 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过；Demo 与 Live 环境均完成桌面浏览器验收，Live `390 × 844` 移动视口无文档级横向溢出。
+
+### 0.13 2026-08-29：模型价格与 Playground 验证闭环
+
+- Models & Pricing 不再读取已废弃的平面 `input_price` / `output_price` 作为主要价格来源；Live Adapter 优先读取当前账户分组的 `sales_prices_by_group`，再安全回退 `lowest_price` 与 `official_price`，支持 Token、按请求和按秒计费以及阶梯“起价”。
+- 页面金额统一使用两位小数；模型目录明确展示当前账户分组，不向用户暴露采购价、渠道成本或管理员定价血缘。底层价格、计费和 API 数值精度不受展示格式影响。
+- 模型名称、类型、可用状态筛选进入强类型 URL Search Params；刷新、复制链接和浏览器前进后退均可恢复，非法参数安全丢弃。筛选无结果提供“清除筛选”，加载失败使用独立 Alert 与原条件重试，不再误显示为空数据。
+- 每个可用模型可直接进入 `/console/playground?model=...`；Playground 会优先选择允许该模型的有效 API Key，再保持密钥分组和模型权限校验，避免静默回退到无关模型。
+- 补齐模型空状态简体中文文案，并增加价格映射、URL 参数、筛选/错误状态和跨页预选模型测试；真实 Live 环境已验证 `default` 分组价格、筛选 URL 和模型带参进入 Playground。
+- 本批没有修改 Go 后端、接口、数据库结构、价格数据、现有 `web/` 发布入口或服务端口。
+
+当前质量门槛：Frontend `37 files / 112 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过。
+
+### 0.14 2026-08-29：全局表格信息密度规范
+
+- shadcn Table Primitive 统一改为紧凑表头与行间距；主题设置中的 Compact 密度会进一步收紧表头、单元格横向和纵向留白，所有现有与后续表格自动继承，不再由页面各自维护行高。
+- 完成 Models、API Keys、Usage、Request Logs、Billing、Overview、Integration、Team 共九张业务表审计：标识符显示为“前 8 位…后 4 位”，列表时间显示月日和分钟，长模型名、端点、密钥名、成员信息与描述按列宽截断，完整值通过原生标题提示或详情弹层保留。
+- 数字、Token、延迟、上下文、额度和金额列统一右对齐并使用等宽数字；所有页面金额统一展示两位小数。模型目录价格例如“`US$9.95/1M`”，按请求与按秒分别显示“`/次`”和“`/秒`”。底层价格和计费精度不变，模型价格悬停标题仍展示五位小数的完整价格与单位，避免影响核对。
+- 低频多值列只展示决策所需摘要：模型能力最多显示两个标签和 `+N`，完整能力集合保留在标题提示中；操作列使用图标按钮与紧凑间距，避免重复文字挤占主数据。
+- 桌面端请求日志九列在正常内容宽度内无需横向滚动，Demo 实测数据行高度约 `33.5px`；窄屏仍由 Table 容器提供横向滚动，不以压缩字体或删除核心列换取伪响应式。
+- 本批只修改 Frontend V2 组件、页面和文档，没有修改 Go 后端、接口、数据库结构、现有 `web/` 发布入口或服务端口。
+
+当前质量门槛：Frontend `37 files / 115 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过。
+
+### 0.15 2026-08-29：模型详情与折叠能力交互
+
+- 模型目录中的模型名称改为可点击入口，使用 shadcn Dialog 展示真实 `/api/pricing` 已提供的用户侧完整信息：模型 ID、说明、提供商、类型、完整上下文、可用状态及原因、当前账户分组、计费模式、价格结构、报价来源、价格表来源、兼容端点和全部能力。
+- Live Adapter 不再把结构化报价永久压扁成输入/输出两个数字；`ModelCatalogItem` 保留当前分组报价、官方参考价及每一项公开计费组件，包括金额、基础金额、单位与单位数量、阶梯、上限、操作、质量、分辨率、音频条件和实际生效分组。详情使用紧凑 shadcn Table 逐项展示输入、输出、缓存读写及媒体阶梯等完整报价，并按相同条件匹配官方参考价。
+- 目录表继续使用两位小数保持扫描效率；详情报价使用五位小数和完整计费单位。当前分组无精确报价而回退最低价或官方价时，弹层明确标注报价来源与参考性质，不把回退价格伪装成账户精确价格。
+- 能力列的 `+1`、`+2` 改为 shadcn Tooltip 悬停提示，按钮聚焦时同样可达，并保留原生标题作为触屏与降级提示；不再要求点击后打开独立菜单。
+- 详情弹层保留复制 Model ID 和带模型参数进入 Playground 的快捷操作；新增文案通过 Frontend V2 的 en/zh 同步脚本生成，没有恢复其他语言包。
+- 本批继续复用现有 Go `/api/pricing` 契约，只扩展 Frontend V2 的类型、Live Adapter 与展示层，没有修改 Go 后端、接口、数据库结构、现有 `web/` 发布入口或服务端口；后端未来补充官方文档、上下文分项或多模态限制时，只需继续扩展 `ModelCatalogItem` 与详情区域。
+
+当前质量门槛：Frontend `37 files / 118 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过；真实 `/api/pricing` 响应已审计 Token、缓存、媒体阶梯和全部公开条件字段，Demo 浏览器已验证详情布局与 `+N` 悬停 Tooltip，控制台无错误。
+
+### 0.16 2026-08-29：模型详情长报价视口约束
+
+- 修复模型含大量阶梯报价时 Dialog 被内容撑出浏览器视口的问题。弹层改为明确的纵向 Flex 布局，最大高度为 `100dvh - 2rem`；Header 与 Footer 固定，中间模型信息和完整报价区域独立纵向滚动。
+- 滚动区域使用 `min-height: 0`、`flex: 1`、横向裁切和 `overscroll-contain`，报价 Table 继续由 shadcn Table 容器负责自身横向滚动，避免长价格、官方参考价或适用条件把整个页面撑宽。
+- 滚动区域提供可访问名称、键盘焦点和焦点环；报价表头在内部滚动时保持置顶，复制模型 ID 与进入游乐场操作始终留在视口内。
+- 新增长报价结构回归测试，确保弹层具备视口最大高度、中间滚动区以及固定 Header/Footer。`900 × 600` 浏览器验收中，弹层边界稳定在视口上下各 `16px`，内容区产生内部滚动，滚动后 Header/Footer 坐标不变，页面无横向溢出且控制台无错误。
+- 本批只修改 Frontend V2 模型详情布局、测试、en/zh 文案和开发文档，没有修改 Go 后端、接口、数据库结构、现有 `web/` 发布入口或服务端口。
+
+当前质量门槛：Frontend `37 files / 119 tests`、TypeScript、Oxlint、Oxfmt 和生产构建全部通过。
+
+### 0.17 2026-08-30：用户日志类型隔离
+
+- 后端日志 `type=0` 仅作为“未指定类型”的查询哨兵，不是持久化业务类型；实际类型固定为：`1` 充值、`2` API 消费成功、`3` 管理操作、`4` 系统/账户事件、`5` API 或任务失败、`6` 退款、`7` 登录审计。
+- User Console 的“请求日志”只查询 `2` 与 `5`，不再混入登录、账户操作、系统事件、充值或退款记录；账户活动范围为 `3/4/7`，账务范围为 `1/6`。后续建设账户活动和账务明细页面时复用对应范围，不把不同语义的数据强行套入请求表格。
+- `/api/log/self` 新增可选 `scope=request|activity|billing` 查询参数；不传 `scope` 时继续返回原有全部类型，旧前端和既有 API 调用保持兼容。显式 `type` 的优先级高于 `scope`，成功/失败筛选仍可精确查询 `2` 或 `5`。
+- Live Adapter 对请求日志再做一次 `2/5` 防御性过滤，并删除缺失端点时伪造 `/v1/chat/completions` 的兜底；历史日志没有真实端点时统一展示 `—`。因此登录审计不会再被误标为模型请求。
+- 本批修改 Go 日志查询契约与 Frontend V2 展示，没有修改数据库表结构、日志枚举值、写入格式或旧前端默认查询语义；新增 Model 与 Frontend 契约回归测试覆盖全部七种类型、三个范围和错误端点兜底。
+
+### 0.18 2026-08-30：账户活动工作台
+
+- 新增 `/console/activity` 账户活动页面，将登录审计、账户操作和系统事件按 `3/4/7` 三类独立展示，不再进入请求日志。页面支持 URL 持久化的活动类型、排序、分页、快捷日期和自定义日期范围。
+- 列表只展示服务端真实返回的时间、类型、说明、来源 IP、登录方式和事件 ID；字段缺失时显示“—”。详情 Sheet 展示用户可见的稳定 action、结构化参数、原始说明和 User Agent，不展示已由后端剥离的管理员身份、内部路由或审计中间件信息。
+- Live Repository 固定使用 `scope=activity`，选择具体类型时再发送明确的 `type=3/4/7`。若接口错误返回 API 请求、充值或退款日志，前端直接进入契约错误态，禁止将其改名为账户活动。
+- Demo Repository 保留显式测试样例用于界面评审；Live 页面不推断活动状态、成功结果或不存在的请求端点。本批复用现有日志范围接口，没有修改 Go 后端、数据库表结构或旧前端入口。
+
+### 0.19 2026-08-30：全局路由与服务异常边界
+
+- Root Router 增加独立 Not Found 页面；未知 `/console/*` 路径显示明确的 404 状态和返回概览动作，不再落入空白 Outlet。路由异常按真实 HTTP 状态区分 401 会话失效、403 无权访问、404 资源不存在、5xx 服务暂不可用以及没有状态码的未知前端异常。
+- API Client 从真实响应头 `X-Oneapi-Request-Id` 读取请求编号并附加到 `ApiClientError`。全局异常页与会话恢复失败页仅在响应实际提供编号时显示“支持参考编号”，没有编号时保持缺失，不生成随机追踪 ID。
+- 401 不展示无意义的原地重试，只提供重新登录；403/404 提供返回概览；5xx 与未知前端异常保留重试。错误页不直接展示服务端原始错误文本，避免将内部诊断信息或敏感字段暴露给用户。
+- 错误状态统一复用 shadcn `Empty`、`Badge` 与 `Button` 组合，具备明确标题、说明、状态码、支持编号和下一步动作。本批没有修改 Go 后端、接口、数据库结构或旧前端入口。
+
+### 0.20 2026-08-30：告警摘要与真实异常边界
+
+- 顶栏告警入口升级为按需加载的 shadcn Popover：首次打开时才读取告警中心，展示真实平台状态、24 小时最低可用率和已保存告警规则状态，并可直接进入完整告警中心。查询结果复用 TanStack Query 的 `alert-center` 缓存，不额外制造并发重复请求。
+- 告警中心修复加载失败时被误展示为“平台状态暂不可用”“未配置监控”或“无事件历史”的隐性兜底。初次加载统一展示 Skeleton；请求失败统一进入可重试错误状态，只有接口成功返回空集合时才展示空状态。
+- 已启用规则数量仅在后端明确返回每条规则启用状态时计算；现有接口没有启用状态时继续显示“状态暂不可用”，不把通知渠道存在推断为规则已启用。
+- 顶栏摘要和告警页面复用同一套平台状态、监控状态、渠道与阈值领域映射，减少两处展示产生语义漂移。交互使用 shadcn Popover、Item、Badge、Alert、Skeleton 与 Button 组合，支持键盘焦点、加载提示和原地重试。
+- 本批只修改 Frontend V2 页面、组件、测试、en/zh 文案和开发文档，没有修改 Go 后端、接口、数据库结构、旧前端入口或服务端口。
+
+### 0.21 2026-08-30：支付订单与财务事实边界
+
+- “财务与账单”页面明确当前交易接口的真实范围为充值与订阅支付订单，不再用“用量、兑换、发票”等当前接口未返回的领域描述扩大页面能力。交易标签调整为“支付记录 / 支付订单”，筛选和空状态继续围绕真实订单号、类型、状态和日期范围。
+- 修复支付订单请求失败时本页扣款被计算成 `0`、列表被显示成“暂无交易”的错误判断。加载中展示 Skeleton；失败时扣款显示“—”和明确不可用说明，列表进入独立可重试错误状态；只有接口成功返回空集合时才展示支付订单空状态。
+- 支付订单表新增紧凑订单号列，点击订单号使用 shadcn Sheet 展示完整订单号、类型、状态、记录时间、金额和说明，并支持复制订单号。币种只在账单摘要真实返回后使用；账单摘要失败时订单金额显示“—”，不默认假设 USD。
+- 订单类型、状态标签和 Badge 变体提取为共享领域映射，列表与详情保持一致；本页扣款直接从当前成功返回的分页数据派生，不保存第二份状态，也不把失败结果转换为金融事实。
+- 本批只修改 Frontend V2 页面、组件、测试、en/zh 文案和开发文档，没有修改 Go 后端、接口、数据库结构、旧前端入口或服务端口。
+
+### 0.22 2026-08-30：账户余额活动与支付订单分层
+
+- “财务与账单”新增独立“余额活动”标签，复用现有 `GET /api/log/self?scope=billing`，只接收账户财务记录 `type=1` 与退款 `type=6`；后端历史上也使用 `type=1` 记录部分订阅购买，因此用户侧采用中性的“余额记录”，不一律标成充值入账。支付订单、API 请求和账户活动继续使用各自的数据源与页面语义，不再混成一张“交易明细”表。
+- 余额活动支持日期、类型、排序和独立分页 URL 参数。切换支付记录与余额活动时，各自筛选和页码互不覆盖；只有进入余额活动标签后才请求该数据，避免账单首页增加无用请求。
+- 列表展示事件 ID、类型、原始记录说明、时间、来源 IP 和结构化余额变化；点击事件 ID 使用 shadcn Sheet 查看关联模型、API Key、任务 ID 与完整说明，并支持复制事件 ID。加载、错误、首次为空和筛选为空均使用独立状态。
+- 退款日志中的结构化额度按当前服务端 `quota_per_unit` 转换为 USD，两位小数展示；现有充值日志没有结构化金额字段，因此充值事件金额明确显示“— / 结构化数据中未记录”，不会解析自然语言说明，也不会用支付订单金额或 `0` 进行补齐。
+- Live Repository 对 `scope=billing` 返回非 `1/6` 类型直接抛出契约错误，避免请求、登录或管理日志被误包装成余额事件；Demo Repository、URL 校验、失败重试、详情与复制交互均补充回归测试。
+- 本批只修改 Frontend V2 页面、Repository、测试、en/zh 文案和开发文档，没有修改 Go 后端、接口、数据库结构、旧前端入口或服务端口。
 
 ## 1. 执行摘要
 
@@ -49,7 +322,7 @@ User Console 与 Admin Console 都以 [Studio Admin E-commerce Dashboard](https:
 - 产品同时服务游客、API 使用者、管理员和超级管理员。
 - 功能横跨登录、API Key、模型、渠道、路由、日志、计费、财务、订阅、系统配置和 AI Playground。
 - 页面既有简单资料展示，也有大规模表格、实时状态、复杂动态表单、富文本、代码编辑器和图表。
-- 前端需支持 en、zh、zh-TW、fr、ru、ja、vi 七种语言。
+- V2 前端只支持 en、zh 两种语言，默认简体中文；不保留未交付语言的入口、资源文件或运行时注册。
 - 权限不只是角色判断，还包含细粒度资源/动作权限和服务端模块开关。
 
 ### 2.2 部署事实
@@ -94,13 +367,13 @@ User Console 与 Admin Console 都以 [Studio Admin E-commerce Dashboard](https:
 
 ### 4.1 评估方案
 
-| 方案 | 优势 | 主要问题 | 结论 |
-| --- | --- | --- | --- |
-| 单一 React SPA | 部署最简单，适合控制台 | 公共站点 SEO、首屏与内容构建能力弱，公共和后台依赖容易互相污染 | 不采用 |
-| 单一 Next.js 应用 | 统一路由，SSR/RSC 能力强 | 静态导出不支持全部动态能力；完整能力需要 Node 生产运行时，影响单二进制和 Electron | 不采用 |
-| 单一 Astro 应用 + 大型 React Island | 公共页面优秀 | 控制台边界不清，最终容易形成一个巨型 Island | 不采用 |
-| Astro Site + 单一 React Console | 公共和应用依赖隔离；都可静态输出 | 用户功能与管理员功能仍共享路由、入口包和导航边界 | 不采用 |
-| Astro Site + User Console + Admin Console | 三个产品面独立；用户不下载管理员业务；可分别测试、发布和限制网络访问；共享包可控 | Workspace、构建合并和认证跳转稍复杂 | **采用** |
+| 方案                                      | 优势                                                                             | 主要问题                                                                          | 结论     |
+| ----------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------- |
+| 单一 React SPA                            | 部署最简单，适合控制台                                                           | 公共站点 SEO、首屏与内容构建能力弱，公共和后台依赖容易互相污染                    | 不采用   |
+| 单一 Next.js 应用                         | 统一路由，SSR/RSC 能力强                                                         | 静态导出不支持全部动态能力；完整能力需要 Node 生产运行时，影响单二进制和 Electron | 不采用   |
+| 单一 Astro 应用 + 大型 React Island       | 公共页面优秀                                                                     | 控制台边界不清，最终容易形成一个巨型 Island                                       | 不采用   |
+| Astro Site + 单一 React Console           | 公共和应用依赖隔离；都可静态输出                                                 | 用户功能与管理员功能仍共享路由、入口包和导航边界                                  | 不采用   |
+| Astro Site + User Console + Admin Console | 三个产品面独立；用户不下载管理员业务；可分别测试、发布和限制网络访问；共享包可控 | Workspace、构建合并和认证跳转稍复杂                                               | **采用** |
 
 ### 4.2 为什么不选择 Next.js 作为默认方案
 
@@ -132,31 +405,31 @@ V2 的核心难点是复杂控制台交互和领域治理，而不是服务端 R
 
 版本采用“主版本锁定、补丁版本定期升级”，脚手架落地时记录完整版本到 ADR 和 lockfile。
 
-| 层级 | 选择 | 使用原则 |
-| --- | --- | --- |
-| Workspace | Bun workspaces | 根目录统一安装、脚本和锁文件，不引入额外任务编排工具 |
-| 公共站点 | Astro 7.x | 默认静态输出；React 仅用于动态 Island |
-| 用户中台 | React 19.2 + Vite 8 | 独立 SPA；只包含普通用户和开发者能力 |
-| 管理员后台 | React 19.2 + Vite 8 | 独立 SPA；管理员领域按路由级和功能级分包 |
-| 路由 | TanStack Router | 文件路由、类型安全 params/search、beforeLoad、intent preload |
-| 服务端状态 | TanStack Query | 查询缓存、并发去重、失效、预取和乐观更新 |
-| 客户端状态 | React state/context；必要时 Zustand | 禁止把服务端数据复制到全局 store |
-| API | openapi-typescript + openapi-fetch | 由 OpenAPI 生成类型；统一错误和请求 ID |
-| 表单 | React Hook Form + Zod | Schema 为唯一客户端校验来源；映射服务端字段错误 |
-| 表格 | TanStack Table + TanStack Virtual | 服务器分页优先；大列表虚拟化 |
-| UI Primitive | Base UI | 负责弹层、焦点、键盘和 ARIA 行为 |
-| UI Distribution | 自有 shadcn registry | 组件源码归项目所有；禁止业务页面直接拼第三方 Primitive |
-| Shared Console Shell 基线 | `next-shadcn-admin-dashboard` Demo + 同作者 Base UI/TanStack 实现 | 共享组件与视觉语言；User/Admin 使用独立导航、搜索和业务 Slot |
-| 样式 | Tailwind CSS + CSS Variables | 语义 Token；OKLCH；不在业务组件写品牌硬编码颜色 |
-| 图标 | Lucide，直接路径导入 | 全产品只保留一个通用图标库；品牌图标例外 |
-| 图表 | Apache ECharts，按模块导入 | 只在图表路由加载；封装主题、Tooltip 和无障碍摘要 |
-| 代码编辑 | CodeMirror 6 | 仅在实际打开编辑器时动态加载 |
-| i18n | i18next + ICU message | React 与非 React 共用资源；构建期检查缺失键 |
-| 单元/组件测试 | Vitest + Testing Library | 测用户行为，不测实现细节 |
-| API Mock | MSW | 开发、组件测试和部分 E2E 共用 handler |
-| E2E | Playwright | Chromium 必跑；WebKit/Firefox 跑关键流程 |
-| 静态检查 | TypeScript、Oxlint、Oxfmt、Knip | 不依赖预览版类型检查器作为唯一门槛 |
-| 观测 | Web Vitals + 可替换错误上报 Adapter | 默认不上传敏感请求和模型内容 |
+| 层级                      | 选择                                                              | 使用原则                                                                                      |
+| ------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Workspace                 | Bun workspaces                                                    | 根目录统一安装、脚本和锁文件，不引入额外任务编排工具                                          |
+| 公共站点                  | Astro 7.x                                                         | 默认静态输出；React 仅用于动态 Island                                                         |
+| 用户中台                  | React 19.2 + Vite 8                                               | 独立 SPA；只包含普通用户和开发者能力                                                          |
+| 管理员后台                | React 19.2 + Vite 8                                               | 独立 SPA；管理员领域按路由级和功能级分包                                                      |
+| 路由                      | TanStack Router                                                   | 文件路由、类型安全 params/search、beforeLoad、intent preload                                  |
+| 服务端状态                | TanStack Query                                                    | 查询缓存、并发去重、失效、预取和乐观更新                                                      |
+| 客户端状态                | React state/context；必要时 Zustand                               | 禁止把服务端数据复制到全局 store                                                              |
+| API                       | openapi-typescript + openapi-fetch                                | 由 OpenAPI 生成类型；统一错误和请求 ID                                                        |
+| 表单                      | React Hook Form + Zod                                             | Schema 为唯一客户端校验来源；映射服务端字段错误                                               |
+| 表格                      | TanStack Table + TanStack Virtual                                 | 服务器分页优先；大列表虚拟化                                                                  |
+| UI Primitive              | Base UI                                                           | 负责弹层、焦点、键盘和 ARIA 行为                                                              |
+| UI Distribution           | 自有 shadcn registry                                              | 组件源码归项目所有；禁止业务页面直接拼第三方 Primitive                                        |
+| Shared Console Shell 基线 | `next-shadcn-admin-dashboard` Demo + 同作者 Base UI/TanStack 实现 | 共享组件与视觉语言；User/Admin 使用独立导航、搜索和业务 Slot                                  |
+| 样式                      | Tailwind CSS + CSS Variables                                      | 语义 Token；OKLCH；不在业务组件写品牌硬编码颜色                                               |
+| 图标                      | Lucide，直接路径导入                                              | 全产品只保留一个通用图标库；品牌图标例外                                                      |
+| 图表                      | shadcn Chart + Recharts 3，按路由加载                             | 使用 ChartContainer、语义 chart Token、统一 Tooltip 和 `accessibilityLayer`；只在图表路由加载 |
+| 代码编辑                  | CodeMirror 6                                                      | 仅在实际打开编辑器时动态加载                                                                  |
+| i18n                      | i18next + ICU message                                             | React 与非 React 共用资源；构建期检查缺失键                                                   |
+| 单元/组件测试             | Vitest + Testing Library                                          | 测用户行为，不测实现细节                                                                      |
+| API Mock                  | MSW                                                               | 开发、组件测试和部分 E2E 共用 handler                                                         |
+| E2E                       | Playwright                                                        | Chromium 必跑；WebKit/Firefox 跑关键流程                                                      |
+| 静态检查                  | TypeScript、Oxlint、Oxfmt、Knip                                   | 不依赖预览版类型检查器作为唯一门槛                                                            |
+| 观测                      | Web Vitals + 可替换错误上报 Adapter                               | 默认不上传敏感请求和模型内容                                                                  |
 
 ## 6. Workspace 与目录结构
 
@@ -266,17 +539,17 @@ api-client -X-> React components
 
 ### 6.3 User Console 与 Admin Console 边界
 
-| 维度 | User Console | Admin Console |
-| --- | --- | --- |
-| 正式路径 | `/console/*` | `/admin/*` |
-| 目标用户 | 普通用户、API 开发者 | 管理员、运营、财务和超级管理员 |
-| Router | 独立 TanStack Router | 独立 TanStack Router |
-| RouteCatalog | 只包含自助服务和开发工具 | 只包含运营和管理能力 |
-| 全局搜索 | Key、用量、任务、文档和个人设置 | 渠道、模型、用户、请求、价格、订单和系统设置 |
-| 构建产物 | `assets/console/*` | `assets/admin/*` |
-| 偏好存储 | 共享 `appearance_preferences_v1`，布局使用 `console_layout_preferences_v1` | 共享 `appearance_preferences_v1`，布局使用 `admin_layout_preferences_v1` |
-| 会话 | 与 Admin 共享服务端登录会话 | 与 User Console 共享会话，但额外校验管理员 capability |
-| 部署 | 默认与 Go 静态产物一起发布 | 默认一起发布，未来可单独域名、内网或零信任访问 |
+| 维度         | User Console                                                                                 | Admin Console                                                            |
+| ------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 正式路径     | `/console/*`                                                                                 | `/admin/*`                                                               |
+| 目标用户     | 普通用户、API 开发者                                                                         | 管理员、运营、财务和超级管理员                                           |
+| Router       | 独立 TanStack Router                                                                         | 独立 TanStack Router                                                     |
+| RouteCatalog | 只包含自助服务和开发工具                                                                     | 只包含运营和管理能力                                                     |
+| 全局搜索     | Key、用量、任务、文档和个人设置                                                              | 渠道、模型、用户、请求、价格、订单和系统设置                             |
+| 构建产物     | `assets/console/*`                                                                           | `assets/admin/*`                                                         |
+| 偏好存储     | 共享 `appearance_preferences_v1`，当前 User Shell 统一迁移到 `console_layout_preferences_v3` | 共享 `appearance_preferences_v1`，布局使用 `admin_layout_preferences_v1` |
+| 会话         | 与 Admin 共享服务端登录会话                                                                  | 与 User Console 共享会话，但额外校验管理员 capability                    |
+| 部署         | 默认与 Go 静态产物一起发布                                                                   | 默认一起发布，未来可单独域名、内网或零信任访问                           |
 
 共享只发生在 `packages/`。两个应用不得互相 import 页面、feature、Router、Query Cache 或 Zustand Store。`packages/patterns` 可以提供同一套 `SharedConsoleShell`、`PageHeader`、`DataGrid` 和弹层 Pattern，但每个应用必须注入自己的导航、搜索 Provider、通知入口和账户菜单。
 
@@ -305,12 +578,18 @@ api-client -X-> React components
 ```text
 /console                         个性化首页
 /console/getting-started         接入向导
+/console/integration             接入中心、端点与 SDK 示例
 /console/playground              API Playground
 /console/api-keys                API Key 管理
-/console/usage                   用量与调用日志
-/console/tasks                   图片、视频等异步任务
+/console/models                  可用模型、能力与当前销售价格
+/console/usage                   用量与成本分析
+/console/logs                    请求日志与故障诊断
+/console/tasks                   图片、视频、音频任务分类、四列卡片、分页与详情
+/console/alerts                  预算、错误、延迟告警与平台状态
 /console/billing                 余额、充值、订单、订阅
-/console/account                 资料、安全、登录会话、OAuth 绑定
+/console/team                    团队、角色与工作区权限
+/console/account                 资料、用量通知、安全、登录会话、主题设置
+/console/preferences             兼容旧链接，重定向到 /console/account?tab=theme
 ```
 
 ### 7.3 管理控制台
@@ -368,14 +647,14 @@ api-client -X-> React components
 
 ```ts
 type Capability =
-  | 'apiKeys.read'
-  | 'apiKeys.write'
-  | 'channels.read'
-  | 'channels.write'
-  | 'pricing.read'
-  | 'pricing.approve'
-  | 'finance.export'
-  | 'system.maintain'
+  | "apiKeys.read"
+  | "apiKeys.write"
+  | "channels.read"
+  | "channels.write"
+  | "pricing.read"
+  | "pricing.approve"
+  | "finance.export"
+  | "system.maintain";
 ```
 
 权限流程：
@@ -466,14 +745,14 @@ type Capability =
 
 ### 9.7 弹层选择规则
 
-| 任务 | 组件 |
-| --- | --- |
-| 简单输入任务 | Dialog |
-| 破坏性确认 | AlertDialog |
-| 只读详情、辅助筛选 | Sheet |
-| 移动端底部操作 | Drawer |
-| 复杂创建/编辑 | 独立 TaskPage |
-| 小型上下文信息 | Popover / HoverCard |
+| 任务               | 组件                |
+| ------------------ | ------------------- |
+| 简单输入任务       | Dialog              |
+| 破坏性确认         | AlertDialog         |
+| 只读详情、辅助筛选 | Sheet               |
+| 移动端底部操作     | Drawer              |
+| 复杂创建/编辑      | 独立 TaskPage       |
+| 小型上下文信息     | Popover / HoverCard |
 
 所有 Dialog、Sheet、Drawer 必须有可访问标题和关闭路径。
 
@@ -548,16 +827,16 @@ Token 至少覆盖：
 
 V2 保留 Studio Admin 的动态外观与布局设置，并将其视为 Console Shell 的正式产品能力，而不是仅供演示的开发工具。
 
-| 偏好 | 可选值 | V2 默认值 | 说明 |
-| --- | --- | --- | --- |
-| Theme Mode | Light / Dark / System | System | 跟随系统且允许手动覆盖 |
-| Theme Preset | Default / Brutalist / Soft Pop / Tangerine | Default | 每套预设必须覆盖明暗模式和完整语义 Token |
-| Font | V2 字体 Registry 中的可用字体 | Geist | 只加载当前字体，避免全量字体进入首屏 |
-| Content Layout | Centered / Full Width | Centered | 数据密集页可自行请求 Full Width |
-| Navbar Behavior | Sticky / Scroll | Sticky | 全屏工作台可覆盖为 Scroll 或隐藏 |
-| Sidebar Style | Sidebar / Inset / Floating | Sidebar | 保留模板三种外观 |
-| Sidebar Collapse Mode | Icon / Offcanvas | Icon | 桌面端默认 Icon；移动端统一 Drawer/Offcanvas |
-| Density | Compact / Comfortable | Comfortable | Token Boat 增补，用于表格、设置和详情页 |
+| 偏好                  | 可选值                                     | V2 默认值   | 说明                                         |
+| --------------------- | ------------------------------------------ | ----------- | -------------------------------------------- |
+| Theme Mode            | Light / Dark / System                      | System      | 跟随系统且允许手动覆盖                       |
+| Theme Preset          | Default / Brutalist / Soft Pop / Tangerine | Default     | 每套预设必须覆盖明暗模式和完整语义 Token     |
+| Font                  | V2 字体 Registry 中的可用字体              | Geist       | 只加载当前字体，避免全量字体进入首屏         |
+| Content Layout        | Centered / Full Width                      | Centered    | 数据密集页可自行请求 Full Width              |
+| Navbar Behavior       | Sticky / Scroll                            | Sticky      | 全屏工作台可覆盖为 Scroll 或隐藏             |
+| Sidebar Style         | Sidebar / Inset / Floating                 | Sidebar     | 保留模板三种外观                             |
+| Sidebar Collapse Mode | Icon / Offcanvas                           | Icon        | 桌面端默认 Icon；移动端统一 Drawer/Offcanvas |
+| Density               | Compact / Comfortable                      | Comfortable | Token Boat 增补，用于表格、设置和详情页      |
 
 设置面板提供实时预览和 Restore Defaults。Theme Mode、Theme Preset 和 Font 写入共享、带版本的 `appearance_preferences_v1`；Content Layout、Navbar、Sidebar 和 Density 分别写入 User/Admin 布局 Store，防止管理后台的密集布局改变用户中台。应用启动时在 React 挂载前同步根元素的 `data-*` 属性和 `.dark` class，避免主题闪烁和布局跳动。未来如需要跨设备同步，可增加用户偏好 API，但本地偏好不得与管理员系统设置混存。
 
@@ -568,6 +847,7 @@ V2 保留 Studio Admin 的动态外观与布局设置，并将其视为 Console 
 V2 使用 `base-nova`，组件 API 以项目 `components.json` 和 `bunx --bun shadcn@latest info --json` 的实际输出为准。Studio Admin 的 Next 主仓库当前使用 Radix API，V2 只把它作为视觉与交互基线；代码优先取同作者 Base UI/TanStack 版本，或按 Base UI API 移植，不得直接复制 `asChild` 等 Radix 写法。
 
 - 优先使用项目已安装组件；新增官方组件通过 shadcn CLI 添加，不手工下载 GitHub Raw 文件。
+- 业务页面不得重复实现 shadcn 已提供的交互控件；日期区间统一采用官方 Date Picker 组合，即 `Popover + Calendar(mode="range")`，快捷范围使用 `ToggleGroup`。
 - 不整体复制或覆盖 Donor Repository 的 `components/ui`；页面迁移只引入缺失的组合组件。
 - 更新已有组件前必须使用 `--dry-run` 和 `--diff` 检查本地修改，不允许未经确认使用 `--overwrite`。
 - Base UI 的自定义 Trigger 使用 `render`；渲染为非 Button 元素时同时设置 `nativeButton={false}`。
@@ -623,12 +903,12 @@ Go handler/DTO
 
 ```ts
 type ChannelSummary = {
-  id: number
-  name: string
-  provider: ProviderCode
-  health: 'healthy' | 'degraded' | 'offline' | 'unknown'
-  enabled: boolean
-}
+  id: number;
+  name: string;
+  provider: ProviderCode;
+  health: "healthy" | "degraded" | "offline" | "unknown";
+  enabled: boolean;
+};
 ```
 
 Adapter 负责：
@@ -645,10 +925,10 @@ Adapter 负责：
 
 ```ts
 const channelKeys = {
-  all: ['channels'] as const,
-  list: (filters: ChannelFilters) => [...channelKeys.all, 'list', filters] as const,
-  detail: (id: number) => [...channelKeys.all, 'detail', id] as const,
-}
+  all: ["channels"] as const,
+  list: (filters: ChannelFilters) => [...channelKeys.all, "list", filters] as const,
+  detail: (id: number) => [...channelKeys.all, "detail", id] as const,
+};
 ```
 
 - 路由 loader 使用 `ensureQueryData` 预取首屏数据。
@@ -660,15 +940,15 @@ const channelKeys = {
 
 ### 11.4 状态归属
 
-| 状态 | 存放位置 |
-| --- | --- |
-| 服务端实体、列表、统计 | TanStack Query |
-| 搜索、分页、过滤、Tab | URL search params |
-| 输入、校验、提交 | React Hook Form |
-| 弹层开关、当前选中 | 页面局部 state |
-| 主题、语言、密度 | 带版本的 preference storage |
-| 登录会话摘要、capability | Auth context/store，内存为主 |
-| 长任务进度 | Query/SSE + notification center |
+| 状态                     | 存放位置                        |
+| ------------------------ | ------------------------------- |
+| 服务端实体、列表、统计   | TanStack Query                  |
+| 搜索、分页、过滤、Tab    | URL search params               |
+| 输入、校验、提交         | React Hook Form                 |
+| 弹层开关、当前选中       | 页面局部 state                  |
+| 主题、语言、密度         | 带版本的 preference storage     |
+| 登录会话摘要、capability | Auth context/store，内存为主    |
+| 长任务进度               | Query/SSE + notification center |
 
 User Console 与 Admin Console 分别创建 QueryClient、Router 和客户端 Store。应用切换后重新执行 bootstrap，不把用户中台缓存直接带入管理员后台。生成的 OpenAPI 类型可以共享，但 Domain Adapter、query key 和 mutation 必须归属各自应用或共享领域 package，不能从另一个应用的 feature 导入。
 
@@ -724,21 +1004,16 @@ packages/i18n/locales/
     channels.json
     billing.json
   zh/
-  zh-TW/
-  fr/
-  ru/
-  ja/
-  vi/
 ```
 
 - Key 使用稳定语义路径，不使用整句英文作为 key。
 - 领域术语进入共享 glossary。
 - 数量、复数、性别和插值使用 ICU message。
 - 日期、时间、数字、金额和百分比必须使用 locale formatter。
-- UI 布局必须覆盖法语/俄语长文本和 CJK 无空格文本。
+- UI 布局必须覆盖英文长文本和中文无空格文本。
 - 公共站点为语言页面生成 canonical 与 `hreflang`。
-- 默认语言 URL 不强制前缀，其他语言使用 `/{locale}/...`。
-- Console 语言来自用户设置，未登录时使用浏览器语言，最后回退 en。
+- 默认语言 URL 不强制前缀；英文公共页面未来统一使用 `/en/...`，Console 通过用户偏好切换。
+- Console 语言优先读取用户本地选择；没有已保存选择时默认简体中文（`zh`），不跟随浏览器语言自动切换。
 
 ### 13.2 CI 检查
 
@@ -801,15 +1076,15 @@ packages/i18n/locales/
 
 ### 16.1 测试金字塔
 
-| 层级 | 目标 | 工具 |
-| --- | --- | --- |
-| Domain 单元测试 | 金额、额度、权限、过滤、状态机 | Vitest |
-| Component 行为测试 | 表单、弹层、表格、键盘、错误状态 | Testing Library |
-| API 集成测试 | 查询、mutation、错误、重试、缓存 | MSW + Vitest |
-| Route 集成测试 | 权限、参数、预取、错误边界 | Router test harness |
-| E2E | 用户完整任务 | Playwright |
-| 视觉回归 | Shell、关键页面、明暗模式、语言 | Playwright screenshot |
-| 契约测试 | OpenAPI 与客户端生成一致 | OpenAPI validation + typecheck |
+| 层级               | 目标                             | 工具                           |
+| ------------------ | -------------------------------- | ------------------------------ |
+| Domain 单元测试    | 金额、额度、权限、过滤、状态机   | Vitest                         |
+| Component 行为测试 | 表单、弹层、表格、键盘、错误状态 | Testing Library                |
+| API 集成测试       | 查询、mutation、错误、重试、缓存 | MSW + Vitest                   |
+| Route 集成测试     | 权限、参数、预取、错误边界       | Router test harness            |
+| E2E                | 用户完整任务                     | Playwright                     |
+| 视觉回归           | Shell、关键页面、明暗模式、语言  | Playwright screenshot          |
+| 契约测试           | OpenAPI 与客户端生成一致         | OpenAPI validation + typecheck |
 
 ### 16.2 发布前关键 E2E
 
@@ -915,12 +1190,12 @@ frontend/dist/
 
 ### 18.3 部署模式
 
-| 模式 | 说明 |
-| --- | --- |
-| Embedded | 默认模式；`frontend/dist` 嵌入 Go 二进制 |
-| External static | 通过 `FRONTEND_BASE_URL` 托管到 CDN/对象存储 |
-| Electron | Electron 加载本地 Go 服务的 `/console` |
-| Development | Site、Console 和 Go API 分别启动，通过 Vite/Astro proxy 访问 API |
+| 模式            | 说明                                                             |
+| --------------- | ---------------------------------------------------------------- |
+| Embedded        | 默认模式；`frontend/dist` 嵌入 Go 二进制                         |
+| External static | 通过 `FRONTEND_BASE_URL` 托管到 CDN/对象存储                     |
+| Electron        | Electron 加载本地 Go 服务的 `/console`                           |
+| Development     | Site、Console 和 Go API 分别启动，通过 Vite/Astro proxy 访问 API |
 
 ### 18.4 迁移期产物隔离
 
@@ -1034,16 +1309,16 @@ V2 staging `/admin/*`     Admin Console 内部预览
 
 ### 20.4 零影响并行开发策略
 
-| 层级 | 现有版本 | V2 开发期 | 隔离要求 |
-| --- | --- | --- | --- |
-| 源码 | `web/` | `frontend/` | 不直接导入旧前端内部模块，不覆盖生成文件 |
-| Git | 当前稳定分支/工作区 | 独立 feature 分支或 worktree | 当前紧急修复按明确流程同步，不混合未完成 V2 变更 |
-| 依赖 | `web/bun.lock` | `frontend/bun.lock` | 不共享 `node_modules`、锁文件或脚本副作用 |
-| 构建 | `web/dist` | `frontend/dist` | 现有 Go embed 和 Docker Release Job 在切换前保持原样 |
-| 运行 | 当前生产域名 | 独立本地端口和 staging 域名 | 不在生产 Router 暴露半成品路由 |
-| API | 当前稳定契约 | Mock → staging API → Release Candidate | 新接口只做向后兼容扩展，不改变旧接口语义 |
-| 数据 | 生产 DB/Redis | 脱敏 DB 副本、独立 Redis 和对象存储 | 禁止开发环境写生产数据 |
-| 外部集成 | 生产 OAuth/支付/回调 | 独立应用、Sandbox 和 Callback Domain | 生产密钥不进入 V2 环境 |
+| 层级     | 现有版本             | V2 开发期                              | 隔离要求                                             |
+| -------- | -------------------- | -------------------------------------- | ---------------------------------------------------- |
+| 源码     | `web/`               | `frontend/`                            | 不直接导入旧前端内部模块，不覆盖生成文件             |
+| Git      | 当前稳定分支/工作区  | 独立 feature 分支或 worktree           | 当前紧急修复按明确流程同步，不混合未完成 V2 变更     |
+| 依赖     | `web/bun.lock`       | `frontend/bun.lock`                    | 不共享 `node_modules`、锁文件或脚本副作用            |
+| 构建     | `web/dist`           | `frontend/dist`                        | 现有 Go embed 和 Docker Release Job 在切换前保持原样 |
+| 运行     | 当前生产域名         | 独立本地端口和 staging 域名            | 不在生产 Router 暴露半成品路由                       |
+| API      | 当前稳定契约         | Mock → staging API → Release Candidate | 新接口只做向后兼容扩展，不改变旧接口语义             |
+| 数据     | 生产 DB/Redis        | 脱敏 DB 副本、独立 Redis 和对象存储    | 禁止开发环境写生产数据                               |
+| 外部集成 | 生产 OAuth/支付/回调 | 独立应用、Sandbox 和 Callback Domain   | 生产密钥不进入 V2 环境                               |
 
 如果 V2 需要后端或数据库变化，采用 Expand–Migrate–Contract：
 
@@ -1079,6 +1354,15 @@ V2 staging `/admin/*`     Admin Console 内部预览
 单机、自托管和 Electron 没有外部负载均衡时，最终 Go Release 应同时保留 Legacy 与 V2 静态资源，通过启动配置选择入口。当前 `web/dist` embed 的替换和 Router fallback 调整只能在 Phase 7 的切换工作包中落地。
 
 ## 21. 分阶段路线图
+
+### 21.0 当前旁路实施的优先级覆盖
+
+下面 Phase 0～7 仍用于描述完整产品交付依赖，但当前 User Console 旁路开发采用以下实际排期：
+
+1. **前端完成度优先**：使用 Demo Repository 和现有接口完成全部页面、交互、组件状态、响应式与测试，不伪造 Live 写入。
+2. **现有接口联调其次**：逐页切换到 Live Repository，校验真实字段、权限、错误和空状态；能复用现有接口时不新增后端能力。
+3. **后端扩展最后集中实施**：新增 Go endpoint、领域服务、数据表、迁移或索引的需求统一进入独立工作包，完成影响评审后再开发，并继续使用隔离数据库和旁路端口。
+4. **发布切换仍为最终步骤**：后端扩展、支付/OAuth 外部环境和回归全部通过后，才进入 Legacy/V2 双入口、灰度、回滚和正式替换。
 
 ### Phase 0：立项与契约盘点，2 周
 
@@ -1197,16 +1481,16 @@ Playground 保留现有流式请求、多模态、消息解析、AI Elements 和
 
 ## 22. 团队与职责
 
-| 角色 | 建议人数 | 主要职责 |
-| --- | ---: | --- |
-| Product Owner | 1 | 范围、优先级、验收、关键指标 |
-| UX Lead | 1 | 信息架构、用户流程、研究、可用性测试 |
-| Product Designer | 1 | 视觉系统、原型、组件规范、设计 QA |
-| Frontend Architect | 1 | ADR、workspace、API、性能和代码审查 |
-| Frontend Engineer | 4 | 按领域交付页面和测试 |
-| QA Automation | 1 | 测试矩阵、Playwright、发布验证 |
-| Backend Engineer | 0.5～1 | OpenAPI、错误契约、权限、必要接口调整 |
-| SRE/DevOps | 0.25 | 构建、静态缓存、Telemetry、灰度与回滚 |
+| 角色               | 建议人数 | 主要职责                              |
+| ------------------ | -------: | ------------------------------------- |
+| Product Owner      |        1 | 范围、优先级、验收、关键指标          |
+| UX Lead            |        1 | 信息架构、用户流程、研究、可用性测试  |
+| Product Designer   |        1 | 视觉系统、原型、组件规范、设计 QA     |
+| Frontend Architect |        1 | ADR、workspace、API、性能和代码审查   |
+| Frontend Engineer  |        4 | 按领域交付页面和测试                  |
+| QA Automation      |        1 | 测试矩阵、Playwright、发布验证        |
+| Backend Engineer   |   0.5～1 | OpenAPI、错误契约、权限、必要接口调整 |
+| SRE/DevOps         |     0.25 | 构建、静态缓存、Telemetry、灰度与回滚 |
 
 推荐按领域组成两个交付小组，共享设计系统和架构负责人：
 
@@ -1261,19 +1545,19 @@ Playground 保留现有流式请求、多模态、消息解析、AI Elements 和
 
 ## 25. 主要风险与缓解措施
 
-| 风险 | 影响 | 缓解 |
-| --- | --- | --- |
-| OpenAPI 不完整 | 前后端反复返工 | Phase 0 先补已使用接口，按迁移波次完成契约 |
-| 隐藏功能遗漏 | 无法删除旧版 | 建立页面/按钮/权限矩阵，旧版埋点识别真实使用 |
-| 双轨时间过长 | 维护成本翻倍 | 每个领域设删除日期；不在旧版继续做纯视觉优化 |
-| 复杂表单失控 | 再次形成巨型组件 | Schema、步骤状态机、FormSection 和领域 adapter 分层 |
-| 设计系统过度抽象 | 延迟业务交付 | 只有两个以上已确认用例才进入 Pattern；单一业务留在 Domain |
-| Bundle 再次膨胀 | 控制台体验下降 | 路由预算、直接导入、重型库懒加载、CI 阻断 |
-| User/Admin 再次耦合 | 普通用户下载管理代码，发布和导航互相影响 | 独立 app、Router、RouteCatalog、QueryClient、构建和依赖边界检查 |
-| 权限不一致 | 越权或入口混乱 | 后端 capability、RouteCatalog、路由和 E2E 四层验证 |
-| 计费展示错误 | 财务风险 | 金额/额度领域测试、后端值为准、禁止浮点自行推导 |
-| Electron 路由异常 | 桌面版不可用 | Phase 2 即接入 Electron smoke，不留到最终阶段 |
-| 静态公共站点配置滞后 | 品牌/价格不及时 | 稳定内容 SSG；运行时价格、状态和租户配置使用小型 Island |
+| 风险                 | 影响                                     | 缓解                                                            |
+| -------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| OpenAPI 不完整       | 前后端反复返工                           | Phase 0 先补已使用接口，按迁移波次完成契约                      |
+| 隐藏功能遗漏         | 无法删除旧版                             | 建立页面/按钮/权限矩阵，旧版埋点识别真实使用                    |
+| 双轨时间过长         | 维护成本翻倍                             | 每个领域设删除日期；不在旧版继续做纯视觉优化                    |
+| 复杂表单失控         | 再次形成巨型组件                         | Schema、步骤状态机、FormSection 和领域 adapter 分层             |
+| 设计系统过度抽象     | 延迟业务交付                             | 只有两个以上已确认用例才进入 Pattern；单一业务留在 Domain       |
+| Bundle 再次膨胀      | 控制台体验下降                           | 路由预算、直接导入、重型库懒加载、CI 阻断                       |
+| User/Admin 再次耦合  | 普通用户下载管理代码，发布和导航互相影响 | 独立 app、Router、RouteCatalog、QueryClient、构建和依赖边界检查 |
+| 权限不一致           | 越权或入口混乱                           | 后端 capability、RouteCatalog、路由和 E2E 四层验证              |
+| 计费展示错误         | 财务风险                                 | 金额/额度领域测试、后端值为准、禁止浮点自行推导                 |
+| Electron 路由异常    | 桌面版不可用                             | Phase 2 即接入 Electron smoke，不留到最终阶段                   |
+| 静态公共站点配置滞后 | 品牌/价格不及时                          | 稳定内容 SSG；运行时价格、状态和租户配置使用小型 Island         |
 
 ## 26. 前 30 天具体行动
 
@@ -1364,29 +1648,29 @@ Playground 保留现有流式请求、多模态、消息解析、AI Elements 和
 
 因此，整体 Shell 和右侧内容采用不同复用等级：
 
-| 层级 | 预估可复用比例 | 决策 |
-| --- | ---: | --- |
-| Base UI / shadcn Primitive | 70%～90% | 复用兼容概念，实际组件以 V2 registry 为准 |
-| Shared Console Shell、侧栏、顶栏、偏好设置 | 85%～95% | 作为两套新版应用壳的共同基线，按 Base UI 和 Token Boat 权限模型适配 |
-| 页面布局与组合组件 | 50%～75% | 主要价值，按页面迁移 |
-| 图表、表格、表单实现 | 30%～60% | 保留布局，接入 V2 统一内核 |
-| 数据、权限、API 和业务逻辑 | 低于 20% | 按 Token Boat 领域重写 |
-| 整个模板代码库 | 约 25%～35% | 不 Fork，不整体迁入 |
+| 层级                                       | 预估可复用比例 | 决策                                                                |
+| ------------------------------------------ | -------------: | ------------------------------------------------------------------- |
+| Base UI / shadcn Primitive                 |       70%～90% | 复用兼容概念，实际组件以 V2 registry 为准                           |
+| Shared Console Shell、侧栏、顶栏、偏好设置 |       85%～95% | 作为两套新版应用壳的共同基线，按 Base UI 和 Token Boat 权限模型适配 |
+| 页面布局与组合组件                         |       50%～75% | 主要价值，按页面迁移                                                |
+| 图表、表格、表单实现                       |       30%～60% | 保留布局，接入 V2 统一内核                                          |
+| 数据、权限、API 和业务逻辑                 |       低于 20% | 按 Token Boat 领域重写                                              |
+| 整个模板代码库                             |    约 25%～35% | 不 Fork，不整体迁入                                                 |
 
 ### 29.2 Shared Console Shell 强制采用范围
 
-| 模板能力 | 采用决策 | Token Boat 适配 |
-| --- | --- | --- |
-| SidebarProvider / SidebarInset | 完整采用布局模型 | 保持内容区独立滚动、移动端 Drawer、桌面端折叠和 full-bleed 页面契约 |
-| AppSidebar | 完整采用视觉和交互 | User/Admin 分别注入 RouteCatalog；不共享菜单数据 |
-| NavMain | 完整采用 | 保留分组、二级折叠、活动状态、Badge、Tooltip 和 Icon Mode |
-| Header | 完整采用布局 | 左侧保留 Sidebar Trigger 和 Search；右侧放设置、主题、通知、语言、账户 |
-| SearchDialog | 完整采用交互 | User 搜索 Key、用量、任务和文档；Admin 搜索渠道、模型、用户、价格、订单和设置；分别经过权限过滤 |
-| LayoutControls | 完整采用能力 | Theme Preset、Font、Mode、Page Layout、Navbar、Sidebar Style、Collapse、Density、Restore Defaults |
-| ThemeSwitcher | 完整采用 | 提供 Light、Dark、System 快捷切换，与完整设置面板共享同一 Store |
-| AccountSwitcher | 保留位置和菜单结构 | 接入真实用户、角色、账户设置和退出登录；管理员可在此进入 Admin 或返回 User Console |
-| GitHub Repositories Menu | 替换 | 改为通知、系统状态、帮助文档和语言入口 |
-| Support Card | 二次开发 | 改为文档、社区、工单或系统告警摘要 |
+| 模板能力                       | 采用决策           | Token Boat 适配                                                                                   |
+| ------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------- |
+| SidebarProvider / SidebarInset | 完整采用布局模型   | 保持内容区独立滚动、移动端 Drawer、桌面端折叠和 full-bleed 页面契约                               |
+| AppSidebar                     | 完整采用视觉和交互 | User/Admin 分别注入 RouteCatalog；不共享菜单数据                                                  |
+| NavMain                        | 完整采用           | 保留分组、二级折叠、活动状态、Badge、Tooltip 和 Icon Mode                                         |
+| Header                         | 完整采用布局       | 左侧保留 Sidebar Trigger 和 Search；右侧放设置、主题、通知、语言、账户                            |
+| SearchDialog                   | 完整采用交互       | User 搜索 Key、用量、任务和文档；Admin 搜索渠道、模型、用户、价格、订单和设置；分别经过权限过滤   |
+| LayoutControls                 | 完整采用能力       | Theme Preset、Font、Mode、Page Layout、Navbar、Sidebar Style、Collapse、Density、Restore Defaults |
+| ThemeSwitcher                  | 完整采用           | 提供 Light、Dark、System 快捷切换，与完整设置面板共享同一 Store                                   |
+| AccountSwitcher                | 保留位置和菜单结构 | 接入真实用户、角色、账户设置和退出登录；管理员可在此进入 Admin 或返回 User Console                |
+| GitHub Repositories Menu       | 替换               | 改为通知、系统状态、帮助文档和语言入口                                                            |
+| Support Card                   | 二次开发           | 改为文档、社区、工单或系统告警摘要                                                                |
 
 Shell 不得在各业务路由重复实现。目标组件边界为：
 
@@ -1420,48 +1704,48 @@ SharedConsoleShell
 
 “直接迁移”只指布局和组合组件，数据适配器、权限、i18n 和测试仍必须重新实现。
 
-| 模板页面/组件 | V2 目标页面 | 可保留部分 | 必须改造部分 | 优先级 |
-| --- | --- | --- | --- | --- |
-| Dashboard Shell | User/Admin 共享框架 | 分组侧栏、折叠菜单、顶栏、全局搜索、账户切换、动态主题、布局偏好和响应式导航 | 移除 GitHub 菜单和 Server Function；抽成 Shared Shell，由两套 appConfig 接入 RouteCatalog、capability、i18n | P0 |
-| Default Dashboard | 开发者/管理员总览 | MetricCard、趋势、近期记录和异常摘要布局 | 指标模型、时间范围、真实 API、权限 | P0 |
-| Analytics | 用量与运营分析 | KPI、时间筛选、趋势、排行和实时数据布局 | 使用统一图表组件；替换流量语义和 Mock 数据 | P0 |
-| Infrastructure | 渠道、Provider 和系统运行监控 | 健康状态、延迟、可用率、分组和快捷操作 | 删除固定 1700px 宽表格；改为核心列、可选列和详情 Sheet | P0 |
-| Mail | 使用日志、任务日志、请求追踪 | 可调整宽度的列表/详情、移动端 Drawer | 邮件内容改成概览、请求、响应、计费、路由、错误标签页 | P0 |
-| Tasks | 通用 CollectionPage | 筛选栏、列设置、分页和行操作的视觉结构 | 不复制表格内核；使用 V2 服务端 DataGrid | P0 |
-| Users | 管理员用户页 | 页面信息密度、筛选和动作布局 | 权限、服务端查询、批量操作和移动端卡片 | P1 |
-| Roles | 权限管理页 | 分组和角色信息结构 | 与后端 capability 模型对齐，不伪造不存在的 RBAC 能力 | P1 |
-| Profile | 用户、渠道、模型、Key 等实体详情 | Header、Tabs、主内容和状态侧栏 | 抽象为 `EntityDetailLayout`，替换领域内容 | P1 |
-| Finance | 钱包、充值、订阅、财务运营 | 余额、交易、分布和快捷操作 | 统一金额精度、时区、审计和权限 | P1 |
-| Auth v1/v2 | 登录和注册外壳 | 分栏、品牌区和响应式结构 | Passkey、OAuth、OTP、Turnstile、协议和错误契约 | P1 |
-| Unauthorized / Not Found / Error | 401/403/404/500/503 | 错误页视觉壳和返回动作 | i18n、request ID、重试和错误上报 | P1 |
+| 模板页面/组件                    | V2 目标页面                      | 可保留部分                                                                   | 必须改造部分                                                                                                | 优先级 |
+| -------------------------------- | -------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------ |
+| Dashboard Shell                  | User/Admin 共享框架              | 分组侧栏、折叠菜单、顶栏、全局搜索、账户切换、动态主题、布局偏好和响应式导航 | 移除 GitHub 菜单和 Server Function；抽成 Shared Shell，由两套 appConfig 接入 RouteCatalog、capability、i18n | P0     |
+| Default Dashboard                | 开发者/管理员总览                | MetricCard、趋势、近期记录和异常摘要布局                                     | 指标模型、时间范围、真实 API、权限                                                                          | P0     |
+| Analytics                        | 用量与运营分析                   | KPI、时间筛选、趋势、排行和实时数据布局                                      | 使用统一图表组件；替换流量语义和 Mock 数据                                                                  | P0     |
+| Infrastructure                   | 渠道、Provider 和系统运行监控    | 健康状态、延迟、可用率、分组和快捷操作                                       | 删除固定 1700px 宽表格；改为核心列、可选列和详情 Sheet                                                      | P0     |
+| Mail                             | 使用日志、任务日志、请求追踪     | 可调整宽度的列表/详情、移动端 Drawer                                         | 邮件内容改成概览、请求、响应、计费、路由、错误标签页                                                        | P0     |
+| Tasks                            | 用户异步任务中心                 | 类型切换、状态与日期筛选、分页和详情结构                                     | 按图片/视频/音频拆分 shadcn Tabs；桌面四列卡片展示核心状态，完整字段进入详情 Dialog；后续接服务端分页       | P0     |
+| Users                            | 管理员用户页                     | 页面信息密度、筛选和动作布局                                                 | 权限、服务端查询、批量操作和移动端卡片                                                                      | P1     |
+| Roles                            | 权限管理页                       | 分组和角色信息结构                                                           | 与后端 capability 模型对齐，不伪造不存在的 RBAC 能力                                                        | P1     |
+| Profile                          | 用户、渠道、模型、Key 等实体详情 | Header、Tabs、主内容和状态侧栏                                               | 抽象为 `EntityDetailLayout`，替换领域内容                                                                   | P1     |
+| Finance                          | 钱包、充值、订阅、财务运营       | 余额、交易、分布和快捷操作                                                   | 统一金额精度、时区、审计和权限                                                                              | P1     |
+| Auth v1/v2                       | 登录和注册外壳                   | 分栏、品牌区和响应式结构                                                     | Passkey、OAuth、OTP、Turnstile、协议和错误契约                                                              | P1     |
+| Unauthorized / Not Found / Error | 401/403/404/500/503              | 错误页视觉壳和返回动作                                                       | i18n、request ID、重试和错误上报                                                                            | P1     |
 
 ### 29.4 适合二次开发的页面
 
-| 模板页面 | V2 使用方向 | 复用策略 |
-| --- | --- | --- |
-| Chat | Playground | 只取三栏、会话列表、Thread、Composer 外壳和移动端 Sheet；保留 Token Boat 的 AI 业务内核 |
-| Invoice | 销售价目表、渠道配置、价格版本编辑 | 采用“左侧编辑 + 右侧实时预览”，替换发票领域和计算逻辑 |
-| Logistics | 异步绘图/视频任务、请求路由链路 | 保留主从详情、阶段状态和移动端 Sheet；世界地图默认删除 |
-| File Manager | Files API、批处理文件或模型资源目录 | 有明确产品能力后再启用，保留搜索、网格/列表切换和批量动作 |
-| E-commerce | 模型市场、模型目录、公开定价 | 参考商品、热门项目和订单布局，领域内容全部重写 |
-| Patient Monitoring | 实时渠道监控和 NOC 运行中心 | 波形和病人卡片改为吞吐、并发、延迟、错误、队列和熔断 |
-| Kanban | 渠道接入、模型商业化、价格发布流程 | 路由级加载 DND，只在流程状态确实存在时开发 |
-| CRM | 渠道接入或经销商管理 | 保留 Pipeline、任务和机会结构，业务模型重写 |
-| Productivity | 管理员工作台 | 参考待处理事项、快捷动作和右侧辅助栏 |
+| 模板页面           | V2 使用方向                         | 复用策略                                                                                |
+| ------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| Chat               | Playground                          | 只取三栏、会话列表、Thread、Composer 外壳和移动端 Sheet；保留 Token Boat 的 AI 业务内核 |
+| Invoice            | 销售价目表、渠道配置、价格版本编辑  | 采用“左侧编辑 + 右侧实时预览”，替换发票领域和计算逻辑                                   |
+| Logistics          | 异步绘图/视频任务、请求路由链路     | 保留主从详情、阶段状态和移动端 Sheet；世界地图默认删除                                  |
+| File Manager       | Files API、批处理文件或模型资源目录 | 有明确产品能力后再启用，保留搜索、网格/列表切换和批量动作                               |
+| E-commerce         | 模型市场、模型目录、公开定价        | 参考商品、热门项目和订单布局，领域内容全部重写                                          |
+| Patient Monitoring | 实时渠道监控和 NOC 运行中心         | 波形和病人卡片改为吞吐、并发、延迟、错误、队列和熔断                                    |
+| Kanban             | 渠道接入、模型商业化、价格发布流程  | 路由级加载 DND，只在流程状态确实存在时开发                                              |
+| CRM                | 渠道接入或经销商管理                | 保留 Pipeline、任务和机会结构，业务模型重写                                             |
+| Productivity       | 管理员工作台                        | 参考待处理事项、快捷动作和右侧辅助栏                                                    |
 
 ### 29.5 只参考布局或默认放弃的页面
 
-| 页面/模块 | 决策 | 原因 |
-| --- | --- | --- |
-| Academy | 只参考 | 可用于 Getting Started 和文档中心，但教育业务模型无复用价值 |
-| Calendar | 默认放弃 | 当前缺少核心日历场景，FullCalendar 成本和包体不值得 |
-| Legacy Dashboards | 放弃 | 与新版 Dashboard 重复，只增加维护面 |
-| Dashboard Chat/Mail iframe 路由 | 放弃 | Playground 和日志必须是一等路由，不允许 iframe 包装 |
-| GitHub Repository 菜单 | 放弃 | 与 Token Boat 产品任务无关 |
-| 未经设计验收的新增主题预设 | 默认放弃 | 保留模板现有 Default、Brutalist、Soft Pop、Tangerine；新增预设需完成完整 Token 和可访问性验收 |
-| Mock 数据和演示 Store | 放弃 | 不得成为生产领域模型或 Query Cache 的替代品 |
-| 重复 Tasks/Users/Roles 表格实现 | 放弃 | 统一收敛到 V2 DataGrid Pattern |
-| D3 世界地图、Flag CSS、Simple Icons 全量资源 | 默认放弃 | 只有明确页面需求时才按需引入 |
+| 页面/模块                                    | 决策     | 原因                                                                                          |
+| -------------------------------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| Academy                                      | 只参考   | 可用于 Getting Started 和文档中心，但教育业务模型无复用价值                                   |
+| Calendar                                     | 默认放弃 | 当前缺少核心日历场景，FullCalendar 成本和包体不值得                                           |
+| Legacy Dashboards                            | 放弃     | 与新版 Dashboard 重复，只增加维护面                                                           |
+| Dashboard Chat/Mail iframe 路由              | 放弃     | Playground 和日志必须是一等路由，不允许 iframe 包装                                           |
+| GitHub Repository 菜单                       | 放弃     | 与 Token Boat 产品任务无关                                                                    |
+| 未经设计验收的新增主题预设                   | 默认放弃 | 保留模板现有 Default、Brutalist、Soft Pop、Tangerine；新增预设需完成完整 Token 和可访问性验收 |
+| Mock 数据和演示 Store                        | 放弃     | 不得成为生产领域模型或 Query Cache 的替代品                                                   |
+| 重复 Tasks/Users/Roles 表格实现              | 放弃     | 统一收敛到 V2 DataGrid Pattern                                                                |
+| D3 世界地图、Flag CSS、Simple Icons 全量资源 | 默认放弃 | 只有明确页面需求时才按需引入                                                                  |
 
 ### 29.6 Playground 专项迁移方案
 
@@ -1486,6 +1770,16 @@ SharedConsoleShell
 - 消息内容继续使用 V2 AI Elements，不复制模板客服消息模型。
 - 发送逻辑继续使用 SSE/流式请求，保留停止、重试、重新生成、分支和多模态能力。
 - `/console/playground` 作为一等路由；不使用模板的 Dashboard iframe 包装。
+
+当前 V2 已交付基线：
+
+- 页面采用 shadcn `Message`、`InputGroup`、`Select`、`Sheet`、`Slider`、`ScrollArea`、`Empty` 和 `Alert` 组合为单栏 AI Chatbox；Composer 保持大输入区，并支持 Enter 发送、Shift+Enter 换行和停止请求。
+- 顶部必须选择有效 API Key；密钥切换联动环境、分组、剩余额度和可用模型。请求携带可选 `api_key_id`，后端校验密钥归属、启用状态、有效期、额度、分组和模型白名单；旧前端未携带此字段时行为不变。
+- 每轮请求携带完整 user/assistant 对话上下文，而非只发送最后一条消息；回复展示输入/输出 Token、延迟和预估费用，并提供复制操作。
+- System Prompt、Temperature、Maximum Output Tokens 收入右侧参数 Sheet；无有效密钥、配置加载失败和空对话均有明确状态。
+- `@shadcn/helpers/ai-sdk` 与 `@shadcn/helpers/tanstack-ai` 适用于无模型、无网络的确定性流式演示和测试，不负责生产 API Key 鉴权；V2 现有 Demo Repository 已承担同类离线职责，因此暂不引入重复运行时依赖。
+
+下一阶段仍需补齐 SSE 增量渲染、Markdown/代码块、Reasoning/Tool/Source、多模态附件、重试/重新生成/分支和持久化会话，之后再演进为上图所示三栏调试工作台。
 
 ### 29.7 模板无法覆盖的 V2 范围
 
@@ -1516,14 +1810,14 @@ SharedConsoleShell
 
 V2 的右侧业务页面最终按“Shell + 业务聚合工作台”组织，而不是按现有菜单或数据库表逐页翻版。第一轮代码盘点确认至少存在以下六个跨表管理聚合：
 
-| 聚合工作台 | 核心关联 | 主要管理模式 |
-| --- | --- | --- |
-| Channel Operations | Channel、ChannelModel、Ability、Model Mapping、Probe、Usage、Purchase Price | EntityPage + Tabs + Health Context + Impact Preview |
-| Model Commercialization | Model、Routing Target、ChannelModel、Ability、Official/Purchase/Sales Price | Checklist + EntityPage + 价格血缘与版本 diff |
-| User 360 | User、Token、安全凭据、Subscription、Price Book Assignment、资金和 Log | EntityPage + 关联表 + 审计时间线 |
-| Request Trace | Log、User、Token、Channel、Task、RequestPricingSnapshot | Mail 式 Master–Detail + 只读诊断 Tabs |
-| Pricing Governance | Official/Purchase Price Version、Price Book/Version/Item、Change Batch、Audit | Workflow + Version/Diff + 发布影响预览 |
-| Finance Case | TopUp/Subscription Order、User、Callback Event、额度入账和 Audit | 案件详情 + Timeline + 受控人工命令 |
+| 聚合工作台              | 核心关联                                                                      | 主要管理模式                                        |
+| ----------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| Channel Operations      | Channel、ChannelModel、Ability、Model Mapping、Probe、Usage、Purchase Price   | EntityPage + Tabs + Health Context + Impact Preview |
+| Model Commercialization | Model、Routing Target、ChannelModel、Ability、Official/Purchase/Sales Price   | Checklist + EntityPage + 价格血缘与版本 diff        |
+| User 360                | User、Token、安全凭据、Subscription、Price Book Assignment、资金和 Log        | EntityPage + 关联表 + 审计时间线                    |
+| Request Trace           | Log、User、Token、Channel、Task、RequestPricingSnapshot                       | Mail 式 Master–Detail + 只读诊断 Tabs               |
+| Pricing Governance      | Official/Purchase Price Version、Price Book/Version/Item、Change Batch、Audit | Workflow + Version/Diff + 发布影响预览              |
+| Finance Case            | TopUp/Subscription Order、User、Callback Event、额度入账和 Audit              | 案件详情 + Timeline + 受控人工命令                  |
 
 关系盘点必须区分稳定 ID 的直接关联、业务键的逻辑关联、不可变历史快照和主库/日志库跨库引用。界面只展示对当前任务有帮助的关系，不把数据库 ER 图直接当作产品导航。
 
@@ -1532,3 +1826,417 @@ V2 的右侧业务页面最终按“Shell + 业务聚合工作台”组织，而
 ---
 
 《Frontend V2 Phase 0：领域关系与关联管理盘点》已建立第一版。下一步必须补齐可逐项验收的 route/permission/API/action matrix，列出每个旧路由、页面、接口、权限、模块开关、关联实体、写入副作用、迁移目标和删除条件。没有完成并评审该矩阵前，不应开始批量编写新页面。
+
+## 31. User Console Shell 当前落地状态
+
+截至 2026-08-28，`frontend/apps/console` 已按 `next-shadcn-admin-dashboard` 的 Dashboard Shell 结构完成第一版落地。这里采用的是模板的信息架构、布局和交互模式，并按 Base UI API 二次开发，不是把模板业务页面和依赖整仓复制进来。
+
+当前已完成：
+
+- Shell 已从页面手写侧栏和遮罩切换为 shadcn Sidebar + Sheet，保留 Sidebar/Floating/Inset、Icon/Offcanvas、桌面折叠、移动端抽屉和快捷键；顶部搜索切换为 shadcn Command，并按首次打开异步加载；
+- 左侧栏、折叠导航、移动端抽屉、顶部搜索、动态明暗主题、数据源状态和响应式内容区；
+- 侧栏底部登录信息区直接读取同一份 Session，展示头像、显示名、邮箱和账户分组，并提供账户、主题设置和退出登录入口；顶栏右侧同步保留响应式账户入口，共用同一账户菜单和 Session；
+- 不再在顶栏或侧栏提供独立 Preferences 菜单；完整设置整合到 Account 的“主题设置”标签，提供 Theme Mode、Theme Preset、18 项字体 Registry、语言、Content Layout、Navbar Behavior、Sidebar Style、Sidebar Collapse Mode、当前侧栏状态、信息密度和减少动效；修改即时作用于 Shared Shell 并自动保存，旧 `/console/preferences` 地址兼容重定向到该标签；
+- 偏好使用白名单校验的 `console_layout_preferences_v3`，能迁移 `v2` 的布局/动效值和 `v1` 的侧栏状态，非法或未知值回退默认值；
+- 默认语言改为简体中文，只允许用户在简体中文和英文之间主动切换并持久化；其余五种资源、运行时注册和入口已删除；
+- 当批 User Console V2 仍只在 `frontend/`、`/console/*` 和独立开发端口运行；该阶段性隔离已由第 54 节的联合发布链路取代。隔离 Compose 仍只用于明确的回归测试。
+
+模板右侧 Dashboard 示例仍不作为 Token Boat 业务页面直接迁入；全部业务页面继续使用 Token Boat 自身领域模型与 API 契约。当前 Demo Repository 用于完整 UI 评审，Live Repository 只复用已确认接口；缺失的团队、告警和价格字段必须在隔离环境完成后端契约后才能切换生产。
+
+## 32. ToB API 商户用户中台产品审计与调整结论
+
+### 32.1 用户真正要完成的工作
+
+用户中台的主线不是“浏览后台菜单”，而是持续完成五个闭环：找到合适模型和真实价格、完成安全接入、确认生产流量健康、控制成本与余额、让团队按职责协作。页面按这些任务聚合，不按数据库表逐页映射。
+
+| 用户任务     | 用户核心问题                                             | 页面与关键交互                                                                                                                               |
+| ------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 选择模型     | 能否使用、支持什么能力、上下文多大、按当前账户到底多少钱 | Models & Pricing：搜索、类型/可用性筛选、上下文、输入/输出价、能力标签、复制 Model ID、进入 Playground                                       |
+| 完成接入     | Base URL、认证方式、SDK 示例、端点、生产检查是什么       | Integration Center：环境信息、代码示例、端点表、密钥安全、重试与 Request ID 检查清单                                                         |
+| 管理凭证     | 哪个应用、哪个环境、能用哪些模型、哪些 IP、额度和有效期  | API Keys：环境标识、模型白名单、IP/CIDR、账户分组、额度、过期、停用、撤销、Secret 一次性展示                                                 |
+| 观测调用     | 哪些请求失败、慢在哪里、花了多少钱、如何关联自己的日志   | Usage + Request Logs：趋势聚合、模型维度、状态筛选、Request ID 主从详情、Token、延迟、价格和错误上下文                                       |
+| 管理异步任务 | 图片/音频/视频任务是否完成、失败和费用如何               | Tasks：图片/视频/音频独立 Tabs、桌面四列卡片、状态与日期筛选、12/24/48 分页、进度、平台、动作、费用/额度、耗时、结果、失败原因和类型专属详情 |
+| 控制成本     | 当前余额、选定周期花费、交易、套餐和预警如何             | Billing + Alerts：余额、周期消费、交易、套餐、余额/消费/错误率/延迟规则与通知渠道                                                            |
+| 团队协作     | 谁能开发、看账单、改密钥或管理成员                       | Team & Access：成员、邀请、角色、状态、最后活跃和最小权限说明                                                                                |
+| 保障账户     | 资料、2FA/Passkey、会话和通知偏好是否安全                | Account：资料、通知、安全能力、活跃会话和撤销操作                                                                                            |
+
+### 32.2 页面级体验标准
+
+- 所有统计、日志、任务和交易的时间筛选统一使用共享 Date Range Picker；它由 shadcn `Popover + Calendar(mode="range") + ToggleGroup + Separator` 组成，桌面端采用“左侧快捷范围、右侧自定义日历”的分栏布局，移动端自动切换为上下布局。组件必须同时提供今天、最近 7 天、最近 30 天、最近 90 天和日历自定义范围；自定义范围必须校验完整性和先后顺序，后端请求统一传开始与结束时间戳。
+- 概览只显示能促成下一步行动的指标；余额、成功率、请求量均可跳转到对应工作台，不把静态装饰图表当作信息。
+- 所有错误必须带 Request ID、状态码、模型、端点、Token、延迟、成本和可读错误原因；Request ID 是用户日志与平台支持之间的主关联键。
+- 价格页面必须展示“当前用户分组/当前销售价格表”的结果，不能向用户暴露采购价、渠道成本或管理员定价血缘。
+- API Key 默认按应用和环境隔离；生产 Key 不鼓励无限额度，撤销必须二次确认，完整 Secret 只展示一次。
+- 空状态必须告诉用户为什么为空以及下一步动作；加载、错误、无权限和功能未开通不能共用同一种空白页。
+- 图表无数据时保留 Card 标题、说明和日期范围，但不渲染没有信息价值的空坐标轴；图表区域使用统一 `ChartEmptyState` 保持稳定高度，并区分“所选周期确实无请求”“已有汇总但接口缺少每日序列”和“数据加载失败”。前两类分别引导扩大时间范围、进入 Playground 或查看请求日志，加载失败提供原范围重试。
+- 所有表格必须保留表头并在 `TableBody` 内展示统一的 `TableEmptyState`；筛选无结果与尚无数据使用不同文案，可执行场景提供创建、充值、邀请或进入 Playground 等下一步操作，服务端分页表格在 0 条数据时仍展示分页信息。
+- 所有表格列遵循“主视图摘要、完整值可达”：长文本单行截断并保留完整标题提示，详情型数据进入 Dialog/Sheet；长 ID 使用前后片段，时间使用紧凑格式，数值右对齐并使用等宽数字，重复单位使用 `/1M`、`/次`、`/秒` 等短记法，多标签只展示前两项和 `+N`。除名称、状态和主操作外，不允许任一低频列无限撑宽表格。
+- 桌面表格在窄屏允许横向滚动，移动端优先保留状态、名称和主操作；复杂筛选进入 Popover/Sheet，不压缩成不可点击的小控件。
+- 顶栏保留搜索、帮助/接入、告警、外观和账户；侧栏按“工作台、接入开发、运营监控、管理”分组，普通用户不出现 Admin 入口。
+
+### 32.3 当前实现与后端契约边界
+
+新增的 Integration、Models、Request Logs、Alerts 和 Team 页面已经具备完整 Demo UI 与 Repository 契约。现有后端可以直接支撑模型列表、公开价格、请求日志和部分账户告警偏好；团队成员/角色、统一告警规则、事件历史、价格上下文窗口与能力元数据仍需专用接口。Live Adapter 不在浏览器下载全量数据推算，也不把字段缺失转换成具体业务事实；关键契约缺失时整块数据进入错误态，可选观测字段缺失时只显示“— / 未记录 / 暂不可用”。详细规则见第 37 节。
+
+### 32.4 shadcn 组件优先审计结论（2026-08-28）
+
+User Console 已完成一次逐页组件审计，执行规则是“官方组件负责交互语义，业务组件负责领域组合”，不再用页面级 CSS 重写已有 Primitive：
+
+| 场景               | 统一实现                                     | 已替换范围                                                                 |
+| ------------------ | -------------------------------------------- | -------------------------------------------------------------------------- |
+| 应用外框与移动导航 | Sidebar + Sheet + Tooltip                    | 桌面侧栏、Icon/Offcanvas、Floating/Inset、移动抽屉、导航 Tooltip           |
+| 全局搜索           | Command + Dialog + Kbd                       | 页面筛选、键盘选择、无结果状态、`⌘/Ctrl + K` 提示；搜索包按需加载          |
+| 用量趋势           | ChartContainer + Recharts AreaChart          | Usage 请求量趋势、主题色、日期坐标、Tooltip、键盘/读屏可访问层             |
+| 可滚动交互区       | ScrollArea                                   | Playground 会话区                                                          |
+| 重复信息行         | Item                                         | 概览步骤与快捷动作、告警规则与事件、活跃会话、请求详情、环境信息、角色说明 |
+| 参数滑杆           | Slider                                       | Playground Temperature                                                     |
+| 空状态与通知       | Empty + Alert                                | 图表、表格、Playground、告警历史、API Key、任务空状态和登录 Demo 提示      |
+| Secret 复制        | InputGroup                                   | API Key 一次性 Secret 展示与复制动作                                       |
+| 登录安全验证       | InputOTP + Field + Separator                 | 密码登录后的 2FA 验证码/备用码切换，以及能力驱动的 Passkey 登录入口        |
+| 账户访问表单       | Field + InputGroup + Alert                   | 注册、邮箱验证码、Turnstile、密码找回、防账户枚举提示与一次性新密码复制    |
+| 数据集合           | Table                                        | Models、Usage、Logs、Team、Billing 等表格继续由 Table 自带横向滚动         |
+| 日期范围           | Popover + Calendar + ToggleGroup + Separator | 所有统计、日志、任务和交易筛选                                             |
+
+以下保留为业务布局，不视为重复造组件：代码示例的 `pre/code` 滚动容器、登录页品牌分栏、表格外层边框和 Card/Grid 页面编排。它们不承担 Dialog、Menu、Select、Tabs、Slider 等交互语义，强行包装成新的 Primitive 反而会降低可读性。后续新增交互组件必须先检查 shadcn registry；CLI 添加前执行 `--dry-run`，已有本地组件默认不覆盖。
+
+## 33. User Console 本地 Live 联调环境
+
+截至 2026-08-30，本地开发统一复用一套 Go 后端：`127.0.0.1:3000` 连接本地 PostgreSQL 数据库。旧版和新版前端不再各自启动后端，也不在日常开发中使用 `3001` 快照 API。
+
+共享入口与边界：
+
+- `http://localhost:5173/console/` 访问 User Console V2；
+- `http://localhost:5173/` 及其他非 `/console` 路由访问旧版前端；
+- V2 Vite 作为共享入口运行在 `5173`，旧版前端开发服务器只在内部 `5174` 提供页面资源；
+- 两个前端的 `/api`、`/mj`、`/pg` 和 `/v1` 请求都发送到同一个 `3000` 后端，因此登录态、用户、密钥、日志、账单和任务数据来自同一个本地 PostgreSQL；
+- `5174` 只是第二个前端构建服务，不是第二套后端；
+- 新版账户菜单不增加“返回旧版”入口，新旧版本通过明确 URL 区分；
+- 该模式会直接读写本地开发数据库，真实模型调用也可能产生供应商成本，执行充值、支付和真实调用时仍需遵守本地测试边界。
+
+启动方式：
+
+```bash
+cd /Users/kakui/projects/token-boat/frontend
+bun run dev
+```
+
+`bun run dev` 等价于 `bun run dev:dual`，只启动两套前端开发服务器，不启动任何后端。运行前确认本地 `3000` Go 服务已经连接 PostgreSQL。
+
+只开发其中一个前端时仍复用同一个后端：
+
+```bash
+bun run dev:new       # 仅启动 V2，入口为 localhost:5173/console/
+bun run dev:legacy    # 仅启动旧版，入口为 localhost:5173/
+```
+
+Demo 模式继续使用 `bun run dev:demo`，它不连接后端。`frontend/docker-compose.live.yml` 和快照脚本只保留给明确的隔离回归测试，不属于日常新旧前端开发启动链路。
+
+变更报告规则：V2 后续开发如修改任何 Go 后端代码，交付说明必须单独列出 Go 文件、修改原因、接口或数据影响、兼容性与回归结果；纯前端改动也必须明确写明“本次未修改 Go 后端”，不能只在综合 diff 中隐含呈现。
+
+## 34. API Key 详情与更新闭环
+
+截至 2026-08-29，User Console 的 API Key 页面已从“列表、创建、启停、撤销”补齐为可管理的凭证工作台：
+
+- 密钥名称作为详情入口，使用 shadcn `Sheet` 展示状态、脱敏密钥、分组、创建/最后使用时间、剩余与已用额度、有效期、额度使用率、模型白名单和 IP/CIDR 限制；完整 Secret 仍只在创建成功后展示一次；
+- 详情中的“编辑设置”使用 shadcn `Dialog + Field + Select + Switch + Input`，可更新名称、分组、有效期、剩余额度、是否不限额度、模型白名单和 IP/CIDR；列表保留启停与不可恢复的撤销动作；
+- 列表操作列新增带 Tooltip 的直接编辑入口，不再要求先打开详情；Integration Center 所选 API Key 下方同步提供“编辑设置”，保存后立即更新共享 Query 缓存并重新加载密钥、模型权限、概览和接入状态；
+- Live Repository 直接复用现有 `PUT /api/token/`，保持 `model_limits_enabled`、`model_limits`、`allow_ips`、`group`、`auto_groups` 和 `cross_group_retry` 的既有契约，没有新增接口、数据库字段或 Go 后端改动；
+- Demo Repository 同步实现相同更新契约；列表、详情和更新交互均有组件测试，Live Adapter 有精确请求体契约测试；
+- 本地 Live 环境已完成只读视觉验收，确认真实 PostgreSQL 快照数据能打开详情与编辑弹窗，验收过程未提交修改、未触发上游调用。
+
+当前后端 Token 模型没有独立的“环境”持久化字段；V2 Live 模式将其标记为“未分类”且不在列表中展示 Development/Staging/Production。若需要让环境成为可持久化、可筛选和可审计的正式属性，应作为后端契约与表结构扩展放到后续阶段统一实施，不能在前端伪造持久化结果。
+
+## 35. 账户登录会话安全管理
+
+截至 2026-08-29，账户设置的“会话”标签已从基础设备列表补齐为可操作的安全工作台：
+
+- 登录会话展示友好的浏览器与设备摘要，并保留登录方式、IP、最后活跃时间和“当前会话”标识；列表超过 10 项后使用统一分页，避免历史设备撑高整个设置页面；
+- 点击“查看详情”使用 shadcn `Sheet` 展示完整 User Agent、登录时间、最后活跃、过期时间和 Session ID；详情抽屉和所有关闭动作均支持中英文与无障碍名称；
+- 单个非当前会话可以在 shadcn `AlertDialog` 二次确认后退出；页面同时提供“一键退出其他会话”，确认窗口明确受影响数量并保证当前会话继续有效；
+- Live Repository 复用现有 `GET /api/user/sessions`、`DELETE /api/user/sessions/:sid` 和 `POST /api/user/sessions/revoke-others`，Demo Repository 提供相同行为；没有新增 Go 接口或表结构；
+- 个人资料页在 Live 模式下将邮箱明确设为只读，因为现有 `PUT /api/user/self` 只更新显示名称；邮箱绑定继续由既有验证流程管理，前端不再产生“编辑已保存”的假象；
+- 会话详情和批量退出有组件测试，Live Adapter 有接口契约测试；本地真实 PostgreSQL 快照环境已完成只读验收，确认 18 个真实快照会话可分页、查看详情并打开批量退出确认，验收中未执行任何退出操作。
+
+该模块按账户页签异步加载，生产构建会将会话管理拆成独立 chunk，避免安全管理组件进入用户中台首屏主包。
+
+## 36. 接入中心动态首请求生成器
+
+截至 2026-08-29，Integration Center 已从静态示例页升级为基于真实账户权限的接入工作台：
+
+- 首请求生成器读取当前环境返回的 Base URL、账户已启用的 API Key、密钥分组和模型白名单；模型列表继续复用 Playground 的权限查询，同一分组只请求一次并共享 TanStack Query 缓存；
+- cURL、TypeScript 和 Python 示例使用所选 Key 真正可用的模型 ID，并自动清理 Base URL 末尾斜杠；代码只引用 `TOKEN_BOAT_API_KEY` 环境变量，不把完整 Secret 写入页面、日志或生成内容；
+- 无有效 Key、模型加载失败、无可用模型和复制失败均有独立状态；未满足条件时复制按钮保持禁用，并引导用户进入 API Key 管理，而不是生成看似可用的假代码；
+- Live Repository 会先访问现有公开 `GET /api/status`，成功后才返回当前环境并标记可访问；页面按 `operational / degraded / outage` 映射状态，连接就绪卡片再结合有效 Key 和端点目录实时判断，不再把生产建议伪装成已完成检查；
+- 核心端点表补充逐行复制操作，继续保留统一表头、空状态和紧凑列规则；环境加载错误提供原地重试。
+
+本轮复用现有 `getIntegration`、API Key 列表和按分组获取可用模型的接口，没有修改 Go 后端、接口契约或数据库表结构。后续如果要提供 SDK 包管理器安装命令、API Key 级连通性探测或在线执行首请求，应在后端契约阶段统一设计，并按“涉及接口与表结构的新增功能最后实施”处理。
+
+## 37. Live 数据真实性与禁止兜底规则
+
+User Console V2 将“页面可显示”与“数据事实正确”分开处理。Live 模式默认连接真实 API；只有明确设置 `VITE_CONSOLE_DATA_MODE=demo` 或执行 `bun run dev:demo` 才允许加载演示数据。环境变量缺失时不得自动进入 Demo，也不得在接口失败后回退到 Demo Repository。
+
+### 37.1 禁止生成具体值的字段
+
+以下字段会影响用户的路由、计费、安全、排障或自动化决策，缺失时禁止使用 `0`、`false`、`default`、`USD`、`/v1/chat/completions`、任意模型名、历史累计值或前端推断值补齐：
+
+- 请求事实：日志类型、请求 ID、端点、模型、API Key、来源 IP、状态、状态码、Token、缓存 Token、延迟、首 Token 延迟、流式状态、费用和服务追踪 ID；
+- 金融事实：余额、价格、币种、计价单位、额度换算因子、充值最低金额、折扣、套餐总额、购买上限、待处理金额和告警阈值；
+- 权限与安全事实：账户分组、Key 状态/有效期/额度/模型/IP 限制、登录会话、认证能力、2FA/Passkey 状态和通知目标；
+- 模型与任务事实：模型可用性、供应商、类型、上下文、输入/输出各自的计价单位、任务类型、状态、进度、更新时间和结果；
+- 统计事实：所选周期请求量、成功率、模型明细、日趋势和平均延迟。周期内请求数为 0 时必须保留真实 0，不能替换为历史累计值；分母为 0 的成功率必须显示未知，不能显示 0%。
+
+### 37.2 缺失值的三种处理
+
+| 数据级别                 | 缺失处理                                     | 页面表现                                                   |
+| ------------------------ | -------------------------------------------- | ---------------------------------------------------------- |
+| 关键契约                 | 抛出 `LiveDataContractError`，终止当前 Query | 独立错误态、保留重试，不渲染部分真假混合数据               |
+| 可选观测字段             | 映射为 `null`                                | 显示“— / 未记录 / 暂不可用”，不参与求和、平均和筛选判断    |
+| 明确枚举但服务端返回新值 | 映射为 `unknown`                             | 展示“未知”，不得归入启用、成功、排队、图片、对话等已有分类 |
+
+只有展示与交互层默认值可以保留，例如默认语言、主题、页面布局、日期筛选初始范围、表单草稿、空搜索词、分页页码以及服务端明确规定的稀疏折扣“未配置即无折扣”。这些默认值不得写回成后端事实。
+
+### 37.3 已落实的关键修正
+
+- 请求日志只接受消费/错误两类请求日志，并携带 `scope=request`；登录、管理等日志不再伪装成 `/v1/chat/completions`。端点、模型、IP、缓存 Token、流信息缺失时显示未知，不制造默认值。
+- 请求活动类型只按真实 `request_path` 分类，不再根据模型名称猜测图片、对话或向量请求；状态码和错误码读取日志中的真实观测字段。模型名称包含 `image` 等词时也不能覆盖端点事实。
+- 模型价格要求币种、计费模式、价格结构、组件、金额、单位和单位大小满足完整契约；输入价与输出价分别保存自己的单位，不能用输出单位替代输入单位。账户报价只接受当前账户分组的销售价格，不能用最低价或官方参考价冒充；没有价格目录时只展示“价格不可用”，不附加 USD 或 `/1M`。
+- 充值和套餐要求真实最低金额、启用的支付渠道、折扣、币种、价格、额度和购买上限；不完整的金融响应直接进入错误态。
+- 账户余额告警阈值为服务端默认时映射为 `null`，页面提示用户填写明确金额后再保存，而不是假设 1 USD；现有账户设置接口没有返回告警规则启停状态，因此 Live 页面显示“状态暂不可用”，不能把通知目标存在误判为规则已启用；团队目录和平台事件历史在现有接口未提供时明确标记不可用。模型用量拆分、日趋势和精确平均延迟现已由账户范围聚合接口提供，历史日志没有精确延迟事实时继续显示“—”，不使用秒级 `use_time` 或 0 兜底。
+- 登录、注册和密码找回在认证能力接口加载失败时必须阻断表单并展示错误，不能假设“密码登录可用 / Turnstile 关闭”；创建 API Key 的初始分组来自当前 Session，未取得分组时禁止提交，不能默认写入 `default`。
+- 任务缺失模型、平台或动作时统一显示“—”；终态任务缺少完成时间时耗时为未知，不能用当前时间继续累计。任务类型只允许根据任务平台/动作分类，模型名称不能作为类型兜底。
+- 过滤、分页和日期范围变化时不复用旧 Query 数据冒充新条件结果；加载期间使用 Skeleton 或“—”，成功返回后才展示 0、false 等真实值。
+
+后续新增接口必须先在 Repository 契约中标注每个字段属于“必需 / 可选 / 枚举未知”哪一类，再开发页面。任何为了让 UI 看起来有数据而新增的业务兜底，都应视为数据正确性缺陷。
+
+## 38. 概览与用量工作台闭环
+
+截至 2026-08-30，用户中台概览和用量页完成了一轮面向商户决策的边界重构：
+
+- 概览日期范围进入 URL 搜索参数，快捷范围与自定义范围均可刷新恢复、复制分享和前进后退；不再仅保存在页面组件状态中；
+- 概览统计和入门进度拆分为独立 Query 错误边界。统计失败时仍保留快捷操作与入门流程，入门失败时仍展示已经成功返回的真实统计，避免一个次要接口让整个工作台消失；
+- 余额、请求量、有效 API Key 和成功率指标均成为可键盘访问的业务入口，分别进入账单、用量、密钥和请求日志；最近活动直接携带真实 Request ID 进入日志精确搜索；
+- 入门清单的完成数分母改为服务端返回步骤数，不再硬编码 `3`；每一步直接进入对应页面，错误态支持原范围重试；
+- 用量页对单一聚合数据源采用页面级错误边界，接口失败时不再留下空指标、空表头或看似为 0 的数据；请求、Token、费用、平均延迟和成功率同时展示，其中缺失的平均延迟或成功率只显示“—”；
+- 用量指标可直接进入日志或账单，请求列表的 Request ID 可进入日志精确搜索；模型明细和请求列表在加载时使用统一表格 Skeleton，成功空数据继续使用统一空状态；
+- 用量趋势继续使用 shadcn `ChartContainer` 与 Recharts AreaChart；“周期内无请求”和“已有汇总但没有每日序列”保持不同解释与下一步动作，网络错误统一由页面级重试承接。
+
+本轮后续新增账户范围 `GET /api/log/self/usage` 聚合契约，由 Go 后端按当前用户、所选时间范围和浏览器时区返回请求/失败数、Token、额度、每日序列、模型明细与可选精确平均延迟。新日志会在公开 `other.response_time_ms` 中记录毫秒级耗时；历史日志缺少该字段时平均延迟返回 `null`，前端显示“—”。本次修改没有新增或修改数据库表结构。
+
+## 39. 模型目录真实性与可分享详情
+
+截至 2026-08-30，Models & Pricing 的目录摘要和详情交互完成第二轮收敛：
+
+- 删除“API 兼容 OpenAI”“请求前可见价格”等静态业务结论，避免把页面设计文案误展示为当前账户事实；顶部只统计当前模型目录真实返回的可用模型数、已配置账户价格的模型数和模型类型数；
+- 模型目录加载时保留筛选器、表头和统一表格 Skeleton，失败使用统一 `DataLoadError` 原地重试，成功且无数据继续区分“账户没有模型”和“筛选无结果”；
+- 模型名称仍打开完整能力与报价，但选中模型 ID 进入 `detail` URL 搜索参数；刷新、复制链接、浏览器前进后退均可恢复同一个详情弹窗，关闭弹窗会清理该参数；
+- URL 中的模型已经被移除或账户权限变化时，不静默失败，也不选择相似模型兜底；页面明确提示“所选模型不可用”并提供清除选择；
+- 搜索、模型类型和可用性筛选变化时同步关闭旧详情，避免筛选条件与弹窗实体不一致；价格单元仍使用紧凑两位小数主显示与 Tooltip 完整精度，完整弹窗继续展示接口返回的所有账户计费项和官方参考项。
+
+本轮复用现有模型目录与当前账户销售价格契约，仅调整前端展示、URL 状态和错误边界；没有修改 Go 后端、接口或数据库表结构。
+
+## 40. 请求详情深链接与可观测上下文
+
+截至 2026-08-30，请求日志从“列表内临时打开详情”升级为可恢复、可分享的诊断入口：
+
+- 请求详情使用 `detail` URL 参数保存 Request ID，详情中的概览、用量与计费、诊断三个页签使用 `detailTab` 保存；刷新、复制链接、浏览器前进后退均能恢复同一个请求和详情页签；
+- 请求日志表格点击 Request ID 直接更新 URL 并打开 shadcn `Sheet`，不通过 Effect 同步第二份选中状态，也不为打开当前行额外发送一次列表请求；
+- 概览最近活动和用量最近请求携带 Request ID、精确搜索字段以及原页面日期范围进入日志页，到达后直接打开对应详情，而不是只停留在搜索结果列表；
+- 日期、搜索字段、搜索词、状态、排序、分页或每页行数变化时清理旧详情与详情页签，避免筛选结果和抽屉实体不一致；
+- 共享链接中的请求已不存在、超出账户权限或不在日期范围时，页面明确提示“请求详情不可用”，不自动打开第一条或相似请求作为替代；
+- 请求列表加载时保留筛选器和完整表头，`TableBody` 使用统一 Skeleton；分页区域加载时也不显示虚假的 0 条统计。
+
+本轮后续新增账户范围 `GET /api/log/self/detail/:request_id` 精确详情接口。接口同时校验当前用户和 Request ID，只返回请求/错误日志，并复用用户日志清洗逻辑移除模型映射、渠道和 `admin_info` 等内部字段；前端详情不再依赖当前分页列表中的临时行。本次修改没有新增或修改数据库表结构。
+
+## 41. 任务中心可分享详情与独立错误边界
+
+截至 2026-08-31，任务中心从每张卡片各自挂载详情弹窗，收敛为单一、可恢复的任务诊断入口：
+
+- 任务详情使用 `detail` URL 参数保存 Task ID；刷新、复制链接、浏览器前进后退均可恢复同一任务，关闭详情会清理该参数；
+- 页面只挂载一个 shadcn `Sheet`，不再为当前页每张任务卡重复创建完整 Dialog DOM；详情集中展示状态、进度、模型、平台、动作、提交/开始/完成/更新时间、耗时、费用、计费单位、结果地址、类型专属元数据、输入和失败原因；
+- 日期、状态、顺序、任务类型、页码或每页数量变化时清理旧任务详情，避免筛选上下文与详情实体不一致；
+- 共享链接中的任务已不存在、超出账户权限、筛选范围或当前页时，页面明确提示“任务详情不可用”，不打开第一条或相似任务作为替代；
+- 图片、视频、音频和全部任务的数量加载期间使用 Skeleton，不再用 0 冒充尚未返回的统计；类型计数接口单独失败时只提示计数不可用，任务列表与详情仍可继续使用；
+- 任务页顶部使用统一提示明确说明图片、视频和音频生成结果可能过期或失效，引导用户在任务成功后立即下载并自行妥善保存，避免把临时结果地址误认为长期存储；
+- 任务列表主接口失败、成功空数据、加载中和类型统计失败保持四种独立状态；桌面端继续使用四列卡片及 12/24/48 的四倍数分页。
+
+本轮继续复用现有任务分页与类型统计接口，仅调整新前端的 URL 状态、组件结构和异常边界；没有修改 Go 后端、接口契约或数据库结构。
+
+## 42. 支付订单与余额账本可恢复详情
+
+截至 2026-08-31，账单页的支付订单和余额账本完成 URL 状态与表格边界收敛：
+
+- 支付订单详情使用 `detail` 保存订单号，余额事件详情使用 `ledgerDetail` 保存事件 ID；两个参数分别只在支付记录和余额活动页签有效，刷新、分享链接与浏览器前进后退均可恢复对应 Sheet；
+- 支付记录、余额活动与套餐页签继续使用 `tab` 参数；切换页签会清理不属于新页签的详情，避免隐藏的 Sheet 状态在页签之间串联；
+- 日期范围变化同时重置支付订单页码、余额账本页码和两类详情；搜索、类型、状态、排序、页码及每页数量变化时也会清理对应详情；
+- 订单或余额事件已不存在、超出账户权限、筛选范围或当前页时，页面明确提示详情不可用，不选择第一条或相似记录作为替代；
+- 两张表格加载期间保留完整表头，`TableBody` 使用统一 Skeleton，分页区域展示 Skeleton；成功空数据与请求失败继续保持独立状态；
+- Sheet 关闭按钮使用中英文可访问名称；支付订单缺少账户币种时金额继续显示“—”，余额事件缺少结构化金额时继续显示“未记录”，不从描述文本解析或推断金额。
+
+本轮继续复用现有账单摘要、支付订单分页和余额账本分页接口，仅调整新前端的 URL 搜索状态、shadcn 组合和错误边界；没有修改 Go 后端、接口契约或数据库结构。
+
+## 43. 账户活动、接入中心与入门流程边界收敛
+
+截至 2026-08-31，账户安全活动、接入中心和入门流程完成一轮可恢复交互与异常边界补强：
+
+- 账户活动详情使用 `detail` URL 参数保存事件 ID，刷新、复制链接和浏览器前进后退可以恢复同一事件；日期、类别、排序、页码和每页数量变化时清理旧详情；事件不在当前账户、筛选结果或页码中时明确提示不可用，不选择其他事件替代；
+- 账户活动表格加载时保留完整表头并在 `TableBody` 中展示统一 Skeleton，分页区域单独展示 Skeleton；成功空数据、加载、失败和共享详情失效保持四种独立状态；
+- 接入环境主契约失败时只展示可重试错误，不再同时渲染“无端点”、占位首请求代码或其他容易被误判为真实环境的数据；核心端点表加载时保留表头与统一 Skeleton；
+- API Key 查询失败与“查询成功但没有有效 Key”分开展示：前者标记“检查结果暂不可用”，后者才标记“需要处理”，避免把网络错误解释为账户配置事实；
+- 入门页首请求代码复制增加失败反馈，拒绝的 Clipboard Promise 不再形成未处理异常；账户分组没有可用模型时使用 shadcn `Empty` 明确展示原因，不保留无标题的占位区域；
+- 团队页在 Demo 数据加载期间不提前显示成员数 `0`，成员表继续保留表头和统一加载行；Live 模式仍严格保持个人工作区能力边界，不伪造成员目录或邀请成功。
+
+本轮复用现有账户管理日志、接入环境、API Key、模型与入门聚合契约，只调整新前端 URL 状态、shadcn 组合、加载和异常语义；没有修改 Go 后端、接口契约或数据库结构。
+
+## 44. API Key 管理状态与危险操作闭环
+
+截至 2026-08-31，API Key 管理在既有详情和编辑能力上补齐可恢复状态、列表加载与写操作反馈：
+
+- API Key 详情使用数值型 `detail` URL 参数保存密钥 ID；刷新、复制链接和浏览器前进后退可以恢复同一密钥详情，关闭详情会清理该参数；
+- 搜索词、状态、排序、页码或每页数量变化时清理旧详情，避免筛选上下文与详情实体不一致；共享链接中的密钥已不存在、超出账户权限、筛选范围或当前页时，页面明确提示“API 密钥详情不可用”，不选择第一条或其他密钥替代；
+- API Key 表格加载期间保留完整表头，`TableBody` 使用统一 Skeleton，分页区域单独展示 Skeleton；成功空数据、加载、失败和共享详情失效保持四种独立状态；
+- 创建、编辑、启停和撤销统一使用页面所属 `QueryClient` 更新当前分页缓存，再失效 API Key、概览与入门查询；写操作失败展示明确反馈，不再形成未处理 Promise 或无响应按钮；
+- 创建表单限制名称长度、必填分组和正数额度；完整 Secret 仍只展示一次，Clipboard 写入失败会明确提示且不会误报复制成功；
+- 撤销继续使用 shadcn `AlertDialog` 二次确认，提交期间确认与取消动作锁定并显示 Loading；成功后立即从当前页移除密钥并同步总数，若正在查看该密钥则同时关闭失效详情；
+- 启停 Loading 只锁定当前行，其他密钥仍可继续操作，避免一个请求阻塞整张表。
+
+本轮继续复用现有 API Key 列表、创建、更新、启停与撤销接口，仅调整新前端 URL 状态、TanStack Query 缓存、shadcn 组合和异常反馈；没有修改 Go 后端、接口契约或数据库结构。
+
+## 45. 告警中心与账户通知配置闭环
+
+截至 2026-08-31，告警中心和账户通知设置完成一轮数据依赖拆分、表单边界与错误恢复补强：
+
+- 告警中心不再为了读取余额通知设置而加载登录会话、Passkey 和两步验证状态；Live Repository 只并行读取通知设置、额度换算和公开状态监控，减少无关请求与故障耦合；
+- 平台状态接口不可用或响应契约异常时，已保存的余额告警规则仍可正常展示；平台状态明确标记为“暂不可用”，监控数和在线率不生成兜底值，并提供独立“重试状态检查”操作；
+- 账户设置主查询失败时使用统一 `DataLoadError`，可在保留当前页签的情况下原地重试，不再只显示无法操作的错误提示；
+- 账户资料、通知、安全与会话写操作统一更新当前 React 应用实际使用的 `QueryClient`，不再依赖模块级全局实例，避免测试、嵌入式页面或多 Provider 场景出现缓存分裂；
+- 通知邮箱在提交前校验完整邮箱格式；Webhook、Bark 和 Gotify 地址要求完整 HTTP/HTTPS URL；Gotify Token 在服务端尚未配置时保持必填，优先级必须是 0 到 10 的整数；
+- 所有无效字段同时设置 `data-invalid` 与 `aria-invalid`，展示具体错误原因并禁用提交；表单提交处理器再次校验状态，避免回车或程序化提交绕过按钮禁用；
+- 通知渠道继续使用 shadcn `ToggleGroup`，字段使用 `Field` 组合，提交 Loading 与错误 Toast 保持统一交互。
+
+本轮复用现有 `/api/user/setting`、额度换算和 `/api/uptime/status` 接口，只调整新前端请求编排、缓存归属、表单验证和部分失败状态；没有修改 Go 后端、接口契约或数据库结构。消费告警、错误率告警、延迟告警和历史触发事件仍需要后端告警服务与持久化契约，继续按计划放在后端依赖功能阶段实施，前端不伪造规则或事件。
+
+## 46. 认证与支付流程缓存一致性
+
+截至 2026-08-31，认证、账单、充值、订阅购买和支付回跳完成一轮 Query 缓存归属与金融交互边界收敛：
+
+- Session Provider、账单页、充值页、订阅购买弹窗和支付确认 Hook 全部改为使用当前 React Tree 所属的 `useQueryClient()`；功能模块不再直接导入应用级全局实例，避免测试、嵌入式页面或多 Provider 场景把登录态和余额写入错误缓存；
+- 充值、兑换码、订阅购买和支付确认成功后统一刷新账单摘要、余额账本、支付订单、概览和入门清单，避免余额已变化但订单、账本或“为账户充值”步骤仍保持旧状态；
+- 支付回跳所需订单在 Hook 初始化时读取，即使支付状态参数在组件挂载后才生效，也可以继续恢复并确认原订单；组件卸载继续通过 `AbortController` 终止轮询，临时接口故障不会被直接误判为支付失败；
+- 自定义充值金额低于当前支付方式最低金额、不是安全整数或超出安全整数范围时，输入框明确标记无效并禁用下一步；页面不会创建与展示金额规则不一致的支付订单；
+- 报价接口失败与“尚未输入金额”保持不同状态：失败时显示独立错误、解释当前不能创建订单并支持原金额重试，不再只显示“—”让用户误以为应付金额为空或为零；
+- 充值确认弹窗增加取消操作，支付订单提交期间锁定关闭和重复提交；兑换码提交前清理首尾空格，账单页提交期间同样锁定弹窗，避免用户重复兑换或误以为请求已经取消；
+- 支付回跳标题和说明改为明确状态映射，分别覆盖已取消、确认中、成功、失败、超时和已提交，不再使用多层嵌套条件导致错误文案分支。
+
+本轮继续复用现有认证、充值报价、创建支付订单、查询支付结果、兑换码和订阅购买接口，仅调整新前端 QueryClient 归属、缓存失效范围、表单与支付状态；没有修改 Go 后端、接口契约或数据库结构。
+
+## 47. 游乐场失败恢复与回复重新生成
+
+截至 2026-08-31，游乐场在现有 API Key、模型权限和完整上下文对话基础上补齐可恢复交互：
+
+- API Key 或模型目录加载失败时使用 shadcn `Alert` 原地解释并重试，不要求刷新整个页面；重试期间保留当前对话、输入内容和参数设置；
+- 对话请求失败时在消息流内展示明确错误和“重试”操作，不再只弹出瞬时 Toast；重试复用失败请求的完整 API Key、分组、模型、System Prompt、上下文和生成参数，避免用户设置已经变化后产生隐式不同的请求；
+- 最新一条模型回复支持“重新生成”；操作会移除旧回复并基于旧回复之前的完整上下文再次请求，不重复追加用户消息，也不会把被替换的模型回复继续发送；
+- 用户主动停止请求继续只显示“生成已停止”，不渲染成可重试的系统故障；页面卸载仍会中止在途请求，避免卸载后状态更新和无效网络占用；
+- 失败、重试、重新生成和配置恢复均有回归测试，覆盖请求上下文不丢失、不重复以及异常提示在成功后清理。
+
+本轮继续复用现有游乐场模型列表与非流式对话接口，只调整新前端的 shadcn 组合和请求状态管理；没有修改 Go 后端、接口契约或数据库结构。SSE 增量渲染、多模态附件、Reasoning/Tool/Source 和服务端会话持久化仍按独立能力包推进，不使用假数据或浏览器端推断替代后端契约。
+
+## 48. 认证入口恢复能力与重复请求防护
+
+截至 2026-08-31，登录、注册和密码找回入口补齐认证能力查询失败后的恢复操作，并收紧多种认证方式之间的并发边界：
+
+- 公开认证能力查询继续严格依赖真实 `/api/status` 契约；加载失败时仍不假设密码登录、注册、验证码、Turnstile、Passkey 或 OAuth 已启用，但错误态新增原地“重试”操作，不再要求用户手动刷新整个页面；
+- Session Context 分离会话恢复与认证能力恢复状态，`retryCapabilities` 只重新请求公开认证配置，不会清空当前 Session、表单草稿或其他 Query 缓存；重试期间按钮展示独立 Loading 并禁止重复点击；
+- 密码、Passkey 和 OAuth 登录共享一次性请求锁，一种登录方式进行中时其他入口同步禁用，避免快速点击产生并发认证流、重复 OAuth state 或多个 WebAuthn 弹窗；
+- 注册提交与邮件验证码发送共享请求锁；密码找回、密码重置和两步验证也增加同步锁，防止按钮状态尚未完成重绘时的连续点击绕过 Loading；
+- 锁在失败后可靠释放，允许用户修正输入或再次发起请求；OAuth 成功启动后保持锁定直至页面跳转，避免同一页面创建第二条授权流；
+- 新增中英文错误与重试文案，并增加 Session Provider、登录页和注册页回归测试，覆盖认证能力接口从失败到恢复的完整路径。
+
+本轮只调整新前端认证状态编排、shadcn `Alert + Button` 错误组合和交互防重，没有修改游乐场、Go 后端、接口契约或数据库结构。
+
+## 49. 全局命令菜单与退出登录闭环
+
+截至 2026-08-31，用户中台应用外框补齐命令菜单的加载反馈、可搜索快捷操作和跨入口退出防重：
+
+- 命令菜单继续按需拆包，搜索按钮在鼠标悬停、键盘聚焦时预加载，`⌘/Ctrl + K` 触发时也会立即启动加载；兼顾首屏包体和首次打开速度；
+- 慢网络或首次下载命令菜单代码期间使用 shadcn `Dialog + Skeleton` 展示可见、可关闭且带读屏状态的加载界面，不再以空白 Suspense fallback 让用户误以为点击无响应；
+- “搜索页面和操作”现在除完整页面导航外，增加可搜索的浅色、深色、跟随系统和“打开主题设置”快捷操作；当前主题在命令项中保持选中标识，操作后立即关闭菜单并生效；
+- 账户退出状态提升到 Session Context，页面头部与侧边栏两个账户入口共享同一个 `signingOut` 状态；任一入口退出期间两个触发器同步锁定并显示明确语义；
+- Session Provider 会合并同一时刻的重复退出调用，只向现有退出接口发送一次请求；失败后释放锁并保留当前 Session，成功后才清理账户 Query 缓存并进入登录页；
+- 新增命令搜索、快捷操作、退出请求合并和账户触发器 Loading 回归测试，并在本地 PostgreSQL Live 环境使用真实账户完成命令菜单视觉与键盘可访问结构验收。
+
+本轮复用现有布局偏好和退出登录接口，只调整新前端全局 Shell、Query 状态和 shadcn 组件组合；没有修改游乐场、Go 后端、接口契约或数据库结构。
+
+## 50. 认证路由与受保护深链接恢复
+
+截至 2026-08-31，用户中台补齐从受保护页面进入认证流程、完成多种登录方式后返回原工作上下文的路由闭环：
+
+- 未登录用户直接访问模型详情、请求日志筛选、账单页签等受保护深链接时，Session Boundary 会将完整 `/console` 路径、查询参数和锚点写入登录页 `redirect` 参数；登录成功后返回原页面，不再统一丢回概览；
+- 返回地址只接受规范化后的站内 `/console` 路径；外部绝对地址、协议相对地址、反斜杠路径、Console 之外页面以及登录/注册/找回页循环均会被拒绝，避免开放重定向和认证死循环；
+- 密码登录、两步验证和 Passkey 登录使用相同返回目标；OAuth 发起时按服务端签发的 flow token 将目标暂存于当前标签页 `sessionStorage`，回调消费一次后立即删除，既跨越外部授权跳转又不写入长期存储；
+- 注册页保留邀请代码与返回目标，注册成功进入登录页时继续携带目标；登录、注册和密码找回之间的互相跳转也不会丢失返回上下文；OAuth 失败返回登录页时同样保留已验证目标；
+- 登录、注册和密码找回成为访客边界页面：Session 查询完成前只展示 shadcn Skeleton，不提前渲染可提交表单；已有 Session 的用户访问这些页面会直接进入返回目标或概览；Session 检查失败时使用可重试错误态，不把错误解释成“未登录”；
+- 新增重定向安全、OAuth 一次性恢复、访客边界 Loading/错误/已登录跳转、受保护页面拦截和各认证方式恢复目标的回归测试；本地 Live 环境已验证已登录账户访问带返回参数的登录页会直接恢复到模型目录。
+
+本轮复用现有 Session、登录、注册、Passkey、OAuth 与密码找回接口，只调整新前端路由状态和认证编排；没有修改游乐场、Go 后端、接口契约或数据库结构。
+
+## 51. 全局页面恢复与浏览器复制能力收敛
+
+截至 2026-08-31，用户中台补齐路由级异常恢复、部署后旧 Chunk 失效处理和跨页面复制失败边界：
+
+- 路由错误继续按 401、403、404、5xx 和未知异常展示不同语义；401 的“前往登录”会保留当前受保护页面、查询参数和锚点，重新登录后可恢复原工作上下文；
+- 动态模块下载失败、旧版本 Chunk 已被部署替换或 CSS 预加载失败时，不再展示无效的普通“重试”；页面明确提示需要更新，并通过“重新加载页面”保留当前地址获取最新资源；
+- 服务异常返回支持参考编号时，错误页增加复制操作；复制成功和失败都有明确反馈，不再要求用户手动选中可能被截断的编号；
+- 非游乐场页面的模型 ID、请求 ID、任务 ID、订单号、账本事件 ID、API Key、接入代码、Base URL、密码重置结果、2FA 设置密钥和恢复代码统一使用同一浏览器复制工具；
+- 复制工具优先使用标准 Clipboard API；浏览器暴露接口但因安全上下文或权限失败时，会在当前用户手势内使用临时文本域降级，并在完成后清理节点、恢复原焦点；两种方式都失败时抛出明确错误，由页面展示失败反馈；
+- 修复模型目录、请求详情和两步验证原先复制失败形成未处理 Promise、无反馈或仍误报成功的问题；新增 Clipboard API 成功、降级成功、完全不可用和空值拒绝测试，以及动态模块失效恢复与登录深链接回归测试。
+
+本轮只调整新前端的全局路由状态、浏览器能力封装、中英文文案和错误反馈；遵循“游乐场先不动”的当前约束，没有修改游乐场、Go 后端、接口契约或数据库结构。
+
+## 52. 首批生产范围冻结与验收基线
+
+截至 2026-08-31，首批生产范围按当前产品决策冻结。以下能力保留现状，不进入本批生产收口：
+
+- 告警中心；
+- 团队与权限；
+- Playground；
+- 新版 Admin Console；
+- 新版公共站点。
+
+本批生产收口范围为其余 User Console V2 能力，包括认证入口、概览、API Key、模型与价格、请求日志与详情、用量分析、任务中心、账户充值与账单、账户活动、接入中心、账户设置、全局导航、主题和语言。收口规则如下：
+
+- Live 模式只连接本地真实 Go API 与同一 PostgreSQL 数据库；接口失败时进入错误态，不回退 Demo 或生成业务事实；
+- 请求日志的每日/模型聚合和精确详情使用账户范围专用接口，避免浏览器聚合、分页依赖和越权读取；
+- 所有关键写操作需要 Loading、防重复提交、明确成功/失败反馈；危险操作需要二次确认；
+- 表格、图表和卡片区分加载、真实空数据、接口失败和契约缺失；金额、价格、IP、端点、模型、状态、延迟等事实不使用误导性兜底；
+- 新前端必须通过完整单元/组件测试、Lint、Format、TypeScript 类型检查和生产构建；Go 模块必须通过 `go test ./...`；
+- 本地 PostgreSQL Live 验收至少验证登录服务、用量聚合、请求列表、来源 IP、账户范围详情以及内部字段清洗；
+- 本批不执行线上构建替换、域名切流、数据库迁移或生产部署。旧版与新版并行访问策略保持不变，待用户明确授权上线后再执行发布清单。
+
+当前代码验收结果：Frontend V2 共 60 个测试文件、292 个测试通过，Lint、Format、TypeScript 类型检查和生产构建通过；Go 全量测试通过；本地 PostgreSQL Live 接口已验证账户用量聚合、请求统计与请求列表使用同一筛选口径，请求列表包含真实来源 IP，精确详情可按 Request ID 返回且不会暴露 `admin_info`。历史请求没有毫秒级延迟时返回未知，符合“不能兜底”的数据规则。
+
+仍依赖生产外部配置、不能仅靠仓库代码宣告完成的项目包括 OAuth 回调注册、Passkey 的 RP/Origin 配置，以及支付渠道沙箱、回调地址和签名密钥联调。这些项目在正式上线前必须使用目标域名与真实供应商配置单独验收。
+
+## 53. 历史日志可选扩展字段兼容
+
+截至 2026-08-31，本地 PostgreSQL Live 巡检发现部分历史系统审计日志将未记录的 `other` 扩展字段保存为 JSON `null`。该字段只承载操作参数、User-Agent、流式诊断等可选观测信息，不应因为缺失而阻断整个页面：
+
+- Live Repository 新增可选对象解析边界，将数据库中的 `NULL`、空值和 JSON `null` 统一映射为空观测上下文；
+- 非法 JSON、数组、字符串或数字仍视为契约损坏并进入可重试错误态，避免静默吞掉真实数据异常；
+- 请求活动、请求详情和账户活动共用该规则，必需的类型、时间、Request ID、Token 与费用字段仍保持严格验证；
+- 使用本地真实账户对 16 个非暂缓只读能力完成 Repository 级巡检，概览、入门、API Key、用量、接入、模型、请求日志、账户活动、账本、任务、账单、充值和账户设置全部通过；
+- 新增可重复执行的 `bun run live:smoke`，通过环境变量接收本地验收账号，不在仓库或输出中保存密码；后续真实 API 契约漂移可以在页面评审前直接暴露；
+- 本次只修改 Frontend V2 契约适配器和回归测试，没有修改 Go 后端、接口或数据库结构。
+
+## 54. 新旧前端联合发布链路
+
+截至 2026-08-31，新旧前端已从“仅开发环境并行”推进为“同一产物并行发布”，但本批仍不执行线上部署：
+
+- `make build-all-web` 先构建旧版 `web/dist`，再构建 User Console V2，并将 V2 产物装配到 `web/dist/console`；
+- Go 二进制继续只嵌入一个 `web/dist`，旧版入口保持 `/`，新版入口固定为 `/console/`；`/console/*` 深链接使用 V2 的 SPA Index 回退，不会误落到旧版页面；
+- `/console` 统一以 `308` 跳转到 `/console/` 并保留查询参数；`/console/` 由显式 SPA 入口处理，避免嵌入式文件服务把目录反向规范化到 `/console` 形成重定向环路；
+- 标准 Dockerfile、ECR Dockerfile、Linux/macOS/Windows Release 与 Electron 构建均执行两套前端构建，因此以后修改旧版并走正常发布时，会同时带上当次提交中的新版；
+- CI 新增 Frontend V2 的测试、类型检查、Lint、格式检查和生产构建门槛；
+- 新旧前端仍共享同一个 Go API、登录会话和数据库，不复制后端服务，也不增加“返回旧版”账户菜单；
+- 联合 Docker 产物已完成本地验收：旧版 `/`、新版 `/console/`、新版深链接 `/console/logs` 和 `/console/assets/*` 均由同一容器正确返回；开发环境继续通过 `bun run dev:dual` 启动两个前端入口并共享端口 `3000` 的同一后端与 PostgreSQL；
+- 告警中心、团队与权限、Playground、新版 Admin Console、新版公共站点继续暂缓，不因联合发布而扩大首批生产功能范围。

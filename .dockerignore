@@ -11,6 +11,9 @@ docs
 .gocache
 /web/node_modules
 /web/dist
-/frontend
+/frontend/node_modules
+/frontend/**/node_modules
+/frontend/**/dist
+/frontend/coverage
 /.local-tests
 !THIRD-PARTY-LICENSES.md

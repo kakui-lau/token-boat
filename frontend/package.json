@@ -1,0 +1,33 @@
+{
+  "name": "token-boat-frontend-v2",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run dev:dual",
+    "dev:new": "bun run --cwd apps/console dev",
+    "dev:legacy": "VITE_REACT_APP_SERVER_URL=http://127.0.0.1:3000 bun run --cwd ../web dev -- --host 127.0.0.1 --port 5173 --strict-port",
+    "dev:dual": "bun scripts/dev-dual.mjs",
+    "dev:live": "bun run --cwd apps/console dev:live",
+    "dev:demo": "bun run --cwd apps/console dev:demo",
+    "live:snapshot": "bun scripts/live-backend.mjs snapshot",
+    "live:up": "bun scripts/live-backend.mjs up",
+    "live:down": "bun scripts/live-backend.mjs down",
+    "live:status": "bun scripts/live-backend.mjs status",
+    "live:smoke": "bun scripts/live-contract-smoke.mjs",
+    "build": "bun run --cwd apps/console build",
+    "typecheck": "bun run --cwd apps/console typecheck",
+    "test": "bun run --cwd apps/console test",
+    "i18n:sync": "bun scripts/update-console-locales.mjs",
+    "lint": "oxlint apps packages",
+    "format:check": "oxfmt --check . '!apps/console/src/routeTree.gen.ts'"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.65.0",
+    "oxlint": "^1.80.0",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "bun@1.3.14"
+}

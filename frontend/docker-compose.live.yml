@@ -1,0 +1,54 @@
+name: token-boat-frontend-v2-live
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.dev
+    image: token-boat-frontend-v2-live:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      PORT: "3000"
+      DATABASE_URL: ${FRONTEND_V2_SQL_DSN:?Use the Bun live scripts to provide the V2 PostgreSQL snapshot DSN}
+      SQL_DSN: ${FRONTEND_V2_SQL_DSN:?Use the Bun live scripts to provide the V2 PostgreSQL snapshot DSN}
+      LOG_SQL_DSN: ""
+      REDIS_CONN_STRING: redis://redis:6379
+      SESSION_SECRET: frontend-v2-local-session-secret-2026
+      CRYPTO_SECRET: frontend-v2-local-crypto-secret-2026
+      SESSION_COOKIE_SECURE: "false"
+      MEMORY_CACHE_ENABLED: "false"
+      BATCH_UPDATE_ENABLED: "false"
+      NODE_TYPE: master
+      GIN_MODE: debug
+      DEBUG: "true"
+      TZ: Asia/Shanghai
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--output-document=/dev/null",
+          "http://127.0.0.1:3000/api/status",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

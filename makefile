@@ -8,16 +8,24 @@ DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= data/one-api.db
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
+.PHONY: all build-web build-console build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
 
 all: build-all-web start-api
 
 build-web:
 	@echo "Building web frontend..."
 	@cd $(WEB_DIR) && bun install --frozen-lockfile
-	@cd $(WEB_DIR) && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$$(cat ../VERSION) bun run build
+	@cd $(WEB_DIR) && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$${VERSION:-$$(cat ../VERSION)} bun run build
 
-build-all-web: build-web
+build-console:
+	@echo "Building User Console V2..."
+	@cd frontend && bun install --frozen-lockfile
+	@cd frontend && bun run build
+	@rm -rf "$(CURDIR)/web/dist/console"
+	@mkdir -p "$(CURDIR)/web/dist/console"
+	@cp -R frontend/apps/console/dist/. "$(CURDIR)/web/dist/console/"
+
+build-all-web: build-web build-console
 
 start-api:
 	@echo "Starting api dev server..."

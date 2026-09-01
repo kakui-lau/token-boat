@@ -45,7 +45,7 @@ export function TaskCard(props: TaskCardProps) {
   const metadata = taskMetadataEntries(props.task, props.locale);
   const duration = formatTaskDuration(taskDurationSeconds(props.task));
   const cost = taskCostLabel(props.task, props.locale);
-  const costTitle = props.task.costUnit === "usd" ? t("Cost") : t("Quota used");
+  const costTitle = t("Cost");
   const prompt = props.task.prompt || t("Prompt unavailable");
 
   return (
@@ -66,7 +66,6 @@ export function TaskCard(props: TaskCardProps) {
 
       <CardContent className="flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap gap-1.5">
-          {props.task.platform && <Badge variant="secondary">{props.task.platform}</Badge>}
           {metadata.slice(0, 2).map((entry) => (
             <Badge key={entry.label} variant="outline">
               {t(entry.label)} {entry.value}

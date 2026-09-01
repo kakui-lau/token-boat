@@ -129,6 +129,20 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 
 ### Frontend Rules
 
+**Quota unit safety:** Backend fields such as `quota`, `used_quota`, `remain_quota`,
+task `quota`, and recharge product `quota` are raw quota units, where
+`quota_per_unit` raw units equal USD 1. The new frontend MUST NOT render raw quota
+values or accept them directly as user-facing currency.
+
+- Convert raw reads to USD at the live repository boundary and expose unit-explicit
+  names such as `remainingQuotaUsd`, `usedQuotaUsd`, `quotaUsd`, or `creditUsd`.
+- Convert user-entered USD back to raw units before mutations. Reject missing,
+  zero, negative, or otherwise invalid `quota_per_unit`; do not add a default,
+  infer it from account balance, or silently display raw values.
+- Token counts and quota units are different domains and MUST NOT be conflated.
+- Add regression tests for both read/display conversion and write/payload
+  conversion whenever a quota-bearing API contract is added or changed.
+
 - Use `bun` as the preferred package manager and script runner for the frontend (`web/`):
   - `bun install` for dependency installation
   - `bun run dev` for development server

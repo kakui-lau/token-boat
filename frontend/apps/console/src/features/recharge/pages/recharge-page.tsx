@@ -71,11 +71,12 @@ import { DataLoadError } from "@/components/data-load-error";
 import { PageHeader } from "@/components/page-header";
 import type { CreateRechargeCheckoutInput, RechargeConfiguration } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { invalidateBillingQueries } from "@/features/billing/lib/invalidate-billing-queries";
+import { useActionLock } from "@/hooks/use-action-lock";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { clearPendingPayment, continueToCheckout } from "@/lib/payment-checkout";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePaymentConfirmation } from "../hooks/use-payment-confirmation";
-import { invalidateBillingQueries } from "@/features/billing/lib/invalidate-billing-queries";
 
 type RechargePageProps = {
   paymentStatus?: "cancelled" | "pending" | "success";
@@ -132,6 +133,8 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [redeemCode, setRedeemCode] = useState("");
   const [checkoutIntent, setCheckoutIntent] = useState<CheckoutIntent | null>(null);
+  const checkoutLock = useActionLock();
+  const redemptionLock = useActionLock();
   const paymentConfirmation = usePaymentConfirmation(
     paymentStatus === "pending" || paymentStatus === "success",
   );
@@ -219,6 +222,7 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to create payment order")),
+    onSettled: checkoutLock.release,
   });
   const redeem = useMutation({
     mutationFn: repository.redeemCode,
@@ -230,6 +234,7 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to redeem code")),
+    onSettled: redemptionLock.release,
   });
 
   const balanceLabel =
@@ -255,6 +260,15 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
       paymentLabel: paymentMethod.name,
       payableLabel: formatCurrency(quote.amount, locale, quote.currency),
     });
+  };
+  const redeemCurrentCode = () => {
+    const normalizedCode = redeemCode.trim();
+    if (!normalizedCode || !redemptionLock.tryAcquire()) return;
+    redeem.mutate(normalizedCode);
+  };
+  const confirmCheckout = () => {
+    if (!checkoutIntent || !checkoutLock.tryAcquire()) return;
+    checkout.mutate(checkoutIntent.input);
   };
 
   return (
@@ -587,7 +601,7 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
                       <ItemDescription>
                         {t("Credits {{amount}}", {
                           amount: formatRechargeBalance(
-                            product.quota,
+                            product.creditUsd,
                             configuration,
                             locale,
                             t("Tokens"),
@@ -600,12 +614,12 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
                         onClick={() =>
                           setCheckoutIntent({
                             creditLabel: formatRechargeBalance(
-                              product.quota,
+                              product.creditUsd,
                               configuration,
                               locale,
                               t("Tokens"),
                             ),
-                            input: { amount: product.quota, product },
+                            input: { amount: product.creditUsd, product },
                             paymentLabel: "Creem",
                             payableLabel: formatCurrency(product.price, locale, product.currency),
                           })
@@ -689,7 +703,7 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
                   !redeemCode.trim() ||
                   redeem.isPending
                 }
-                onClick={() => redeem.mutate(redeemCode.trim())}
+                onClick={redeemCurrentCode}
                 variant="outline"
               >
                 {redeem.isPending ? (
@@ -760,10 +774,7 @@ export function RechargePage({ paymentStatus }: RechargePageProps) {
             >
               {t("Cancel")}
             </Button>
-            <Button
-              disabled={checkout.isPending}
-              onClick={() => checkoutIntent && checkout.mutate(checkoutIntent.input)}
-            >
+            <Button disabled={checkout.isPending} onClick={confirmCheckout}>
               {checkout.isPending && (
                 <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
               )}

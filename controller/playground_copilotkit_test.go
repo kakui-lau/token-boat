@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCopilotPlaygroundRunAdapterStreamsAGUIEvents(t *testing.T) {
+func TestCopilotPlaygroundRunAdapterStreamsAGUIEventsWithoutStoredThread(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST(
@@ -28,6 +28,7 @@ func TestCopilotPlaygroundRunAdapterStreamsAGUIEvents(t *testing.T) {
 			assert.Equal(t, "priority", request.Group)
 			assert.Equal(t, "anthropic/claude-sonnet", request.Model)
 			assert.True(t, request.Stream)
+			assert.True(t, request.StreamOptions.IncludeUsage)
 			require.Len(t, request.Messages, 2)
 			assert.Equal(t, "system", request.Messages[0].Role)
 			assert.Equal(t, "Answer precisely.", request.Messages[0].Content)
@@ -37,12 +38,13 @@ func TestCopilotPlaygroundRunAdapterStreamsAGUIEvents(t *testing.T) {
 			_, _ = c.Writer.WriteString("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n")
 			c.Writer.Flush()
 			_, _ = c.Writer.WriteString("data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n")
+			_, _ = c.Writer.WriteString("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":230}}\n\n")
 			_, _ = c.Writer.WriteString("data: [DONE]\n\n")
 		},
 	)
 
 	body := `{
-		"threadId":"thread-1",
+		"threadId":"browser-only-thread",
 		"runId":"run-1",
 		"messages":[{"id":"user-1","role":"user","content":"Hi"}],
 		"forwardedProps":{
@@ -74,9 +76,16 @@ func TestCopilotPlaygroundRunAdapterStreamsAGUIEvents(t *testing.T) {
 	assert.Equal(t, " world", events[3]["delta"])
 	assert.Equal(t, "TEXT_MESSAGE_END", events[4]["type"])
 	assert.Equal(t, "RUN_FINISHED", events[5]["type"])
+	result, ok := events[5]["result"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "run-1-assistant", result["messageId"])
+	assert.Equal(t, "anthropic/claude-sonnet", result["model"])
+	assert.EqualValues(t, 14, result["inputTokens"])
+	assert.EqualValues(t, 230, result["outputTokens"])
+	assert.GreaterOrEqual(t, result["latencyMs"], float64(0))
 }
 
-func TestCopilotPlaygroundRunAdapterConvertsRelayErrors(t *testing.T) {
+func TestCopilotPlaygroundRunAdapterConvertsRelayErrorsWithoutStoredThread(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST(
@@ -90,7 +99,7 @@ func TestCopilotPlaygroundRunAdapterConvertsRelayErrors(t *testing.T) {
 	)
 
 	body := `{
-		"threadId":"thread-2",
+		"threadId":"browser-only-thread",
 		"runId":"run-2",
 		"messages":[{"id":"user-2","role":"user","content":"Hi"}],
 		"forwardedProps":{"apiKeyId":42,"model":"gpt-5"}
@@ -139,6 +148,70 @@ func TestCopilotPlaygroundInfoAdvertisesStreamingAgent(t *testing.T) {
 	agent, exists := response.Agents[copilotPlaygroundAgentID]
 	require.True(t, exists)
 	assert.True(t, agent.Capabilities.Transport.Streaming)
+}
+
+func TestCopilotPlaygroundConnectRestoresClientProvidedMessages(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Params = gin.Params{{Key: "agent_id", Value: copilotPlaygroundAgentID}}
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/pg/copilotkit/agent/token-boat-playground/connect",
+		strings.NewReader(`{
+			"threadId":"browser-only-thread",
+			"runId":"connect-1",
+			"forwardedProps":{"localMessages":[
+				{"id":"user-history","role":"user","content":"Remember this"},
+				{"id":"assistant-history","role":"assistant","content":"Stored in the browser"}
+			]}
+		}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	CopilotPlaygroundConnect(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	events := decodeCopilotSSEEvents(t, recorder.Body.Bytes())
+	require.Len(t, events, 3)
+	assert.Equal(t, "MESSAGES_SNAPSHOT", events[1]["type"])
+	messages, ok := events[1]["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 2)
+	assert.Equal(t, "Remember this", messages[0].(map[string]any)["content"])
+	assert.Equal(t, "Stored in the browser", messages[1].(map[string]any)["content"])
+}
+
+func TestCopilotPlaygroundConnectRestoresInitializedAgentMessages(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Params = gin.Params{{Key: "agent_id", Value: copilotPlaygroundAgentID}}
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/pg/copilotkit/agent/token-boat-playground/connect",
+		strings.NewReader(`{
+			"threadId":"browser-only-thread",
+			"runId":"connect-2",
+			"forwardedProps":{"localMessages":[
+				{"id":"user-stale","role":"user","content":"Stale browser snapshot"}
+			]},
+			"messages":[
+				{"id":"user-history","role":"user","content":"Restore me"},
+				{"id":"assistant-history","role":"assistant","content":"Restored"}
+			]
+		}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	CopilotPlaygroundConnect(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	events := decodeCopilotSSEEvents(t, recorder.Body.Bytes())
+	require.Len(t, events, 3)
+	messages, ok := events[1]["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 2)
+	assert.Equal(t, "Restore me", messages[0].(map[string]any)["content"])
+	assert.Equal(t, "Restored", messages[1].(map[string]any)["content"])
 }
 
 func decodeCopilotSSEEvents(t *testing.T, body []byte) []map[string]any {

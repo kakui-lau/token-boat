@@ -121,6 +121,7 @@ export type RequestPricingSnapshot = {
   channel_name: string
   billing_mode: string
   purchase_price_version_id?: number
+  official_price_version_id?: number
   sales_price_book_id?: number
   sales_price_book_version_id?: number
   sales_price_book_item_id?: number
@@ -133,6 +134,8 @@ export type RequestPricingSnapshot = {
   token_id?: number
   settled_quota: number
   purchase_cost: string
+  estimated_official_amount?: string | null
+  official_amount?: string | null
   provider_reported_cost?: string
   provider_cost_known?: boolean
   provider_cost_scope?: 'full_provider_cost' | 'platform_fee_only'

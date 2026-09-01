@@ -272,15 +272,24 @@ export function UsageNotificationsForm(props: UsageNotificationsFormProps) {
 
         <FieldSeparator />
 
-        <Field orientation="horizontal">
+        <Field data-disabled={props.value.recordIpForced || undefined} orientation="horizontal">
           <FieldContent>
             <FieldLabel htmlFor="record-ip">{t("Record request IP")}</FieldLabel>
-            <FieldDescription>{t("Keep IP addresses in usage and error logs.")}</FieldDescription>
+            <FieldDescription>
+              {props.value.recordIpForced
+                ? t("Request IP retention is required by the platform policy.")
+                : t("Keep IP addresses in usage and error logs.")}
+            </FieldDescription>
           </FieldContent>
           <Switch
-            checked={props.value.recordIpLog}
+            checked={props.value.recordIpForced || props.value.recordIpLog}
+            disabled={props.value.recordIpForced}
             id="record-ip"
-            onCheckedChange={(checked) => props.onChange({ ...props.value, recordIpLog: checked })}
+            onCheckedChange={(checked) => {
+              if (!props.value.recordIpForced) {
+                props.onChange({ ...props.value, recordIpLog: checked });
+              }
+            }}
           />
         </Field>
 

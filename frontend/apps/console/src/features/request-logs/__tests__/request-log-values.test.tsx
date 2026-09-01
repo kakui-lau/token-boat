@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -299,6 +299,42 @@ describe("RequestLogsPage values", () => {
 
     resolveLogs({ items: [], page: 1, pageSize: 20, total: 0 });
     expect(await screen.findByText("No matching requests")).toBeVisible();
+  });
+
+  test("keeps the last usable statistics and logs visible when a background refresh fails", async () => {
+    const log = requestLogFixture({ id: "req-stale-but-usable" });
+    configureRequestLogs([log]);
+    getRequestLogAnalytics.mockResolvedValue(
+      requestAnalyticsFixture({ requestCount: 1, totalTokens: 15 }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RequestLogsPage />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "req-stale-but-usable" })).toBeVisible();
+    expect(screen.getAllByText("15").length).toBeGreaterThan(0);
+    getRequestLogsPage.mockRejectedValue(new Error("temporary log refresh failure"));
+    getRequestLogAnalytics.mockRejectedValue(new Error("temporary analytics refresh failure"));
+
+    await act(async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["request-logs"] }),
+        queryClient.invalidateQueries({ queryKey: ["request-log-analytics"] }),
+      ]);
+    });
+    await waitFor(() => expect(getRequestLogsPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getRequestLogAnalytics).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByRole("button", { name: "req-stale-but-usable" })).toBeVisible();
+    expect(screen.getAllByText("15").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Unable to load request statistics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unable to load request logs")).not.toBeInTheDocument();
   });
 
   test("does not substitute another request when a shared detail is unavailable", async () => {

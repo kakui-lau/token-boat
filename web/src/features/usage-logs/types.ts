@@ -142,6 +142,9 @@ export interface LogOtherData {
       clamped: number
     }
     provider_cost_usd?: number
+    official_price_version_id?: number
+    estimated_official_amount_usd?: number | string
+    official_amount_usd?: number | string
     provider_cost_known?: boolean
     provider_is_byok?: boolean
     provider_cost_scope?: 'platform_fee_only' | string

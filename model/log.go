@@ -313,17 +313,21 @@ func RecordLogWithIP(userId int, logType int, content string, ip string) {
 }
 
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
-func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
+func RecordLogWithAdminInfo(userId int, logType int, content string, ip string, adminInfo map[string]interface{}) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
 	username, _ := GetUsernameById(userId, false)
+	if !shouldRecordIp(userId) {
+		ip = ""
+	}
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
+		Ip:        ip,
 	}
 	if len(adminInfo) > 0 {
 		other := map[string]interface{}{
@@ -1058,7 +1062,7 @@ type UserUsageSeriesPoint struct {
 	CompletionTokens int64    `json:"completion_tokens"`
 	TotalTokens      int64    `json:"total_tokens"`
 	CacheHitTokens   int64    `json:"cache_hit_tokens"`
-	CacheHitRate     float64  `json:"cache_hit_rate"`
+	CacheHitRate     *float64 `json:"cache_hit_rate"`
 	Quota            int64    `json:"quota"`
 	AverageLatencyMs *float64 `json:"average_latency_ms"`
 }
@@ -1097,7 +1101,7 @@ type UserUsageAnalytics struct {
 	CompletionTokens int64                  `json:"completion_tokens"`
 	TotalTokens      int64                  `json:"total_tokens"`
 	CacheHitTokens   int64                  `json:"cache_hit_tokens"`
-	CacheHitRate     float64                `json:"cache_hit_rate"`
+	CacheHitRate     *float64               `json:"cache_hit_rate"`
 	AverageLatencyMs *float64               `json:"average_latency_ms"`
 	Series           []UserUsageSeriesPoint `json:"series"`
 	Models           []UserUsageModel       `json:"models"`
@@ -1191,14 +1195,19 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 	}
 
 	type aggregateRow struct {
-		Quota            int64
-		RequestCount     int64
-		FailureCount     int64
-		PromptTokens     int64
-		CompletionTokens int64
-		CacheHitTokens   int64
-		AverageLatencyMs sql.NullFloat64
+		Quota                      int64
+		RequestCount               int64
+		FailureCount               int64
+		PromptTokens               int64
+		CompletionTokens           int64
+		CacheHitTokens             int64
+		CacheRateHitTokens         int64
+		CacheRateInputTokens       int64
+		CacheTokenObservationCount int64
+		CacheRateObservationCount  int64
+		AverageLatencyMs           sql.NullFloat64
 	}
+	cacheUsage := cacheUsageSQLExpressions()
 	selectAggregate := fmt.Sprintf(`
 		COUNT(CASE WHEN type = ? THEN 1 END) AS request_count,
 		COUNT(CASE WHEN type = ? THEN 1 END) AS failure_count,
@@ -1206,7 +1215,18 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 		COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(completion_tokens, 0) ELSE 0 END), 0) AS completion_tokens,
 		COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(quota, 0) ELSE 0 END), 0) AS quota,
 		%s AS cache_hit_tokens,
-		AVG(CASE WHEN type = ? THEN %s ELSE NULL END) AS average_latency_ms`, cacheExpr, latencyExpr)
+		%s AS cache_rate_hit_tokens,
+		%s AS cache_rate_input_tokens,
+		%s AS cache_token_observation_count,
+		%s AS cache_rate_observation_count,
+		AVG(CASE WHEN type = ? THEN %s ELSE NULL END) AS average_latency_ms`,
+		cacheExpr,
+		cacheUsage.RateHitTokens,
+		cacheUsage.RateInputTokens,
+		cacheUsage.CacheObservationCount,
+		cacheUsage.RateObservationCount,
+		latencyExpr,
+	)
 
 	var summary aggregateRow
 	if err := base.Session(&gorm.Session{}).Select(
@@ -1231,8 +1251,11 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 	if totalRequests > 0 {
 		analytics.FailureRate = float64(summary.FailureCount) / float64(totalRequests)
 	}
-	if analytics.TotalTokens > 0 {
-		analytics.CacheHitRate = float64(summary.CacheHitTokens) / float64(analytics.TotalTokens)
+	if summary.CacheTokenObservationCount > 0 &&
+		summary.CacheTokenObservationCount == summary.CacheRateObservationCount &&
+		summary.CacheRateInputTokens > 0 {
+		cacheHitRate := float64(summary.CacheRateHitTokens) / float64(summary.CacheRateInputTokens)
+		analytics.CacheHitRate = &cacheHitRate
 	}
 	if summary.AverageLatencyMs.Valid {
 		averageLatencyMs := summary.AverageLatencyMs.Float64
@@ -1240,14 +1263,18 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 	}
 
 	type seriesRow struct {
-		DayStart         int64
-		Quota            int64
-		RequestCount     int64
-		FailureCount     int64
-		PromptTokens     int64
-		CompletionTokens int64
-		CacheHitTokens   int64
-		AverageLatencyMs sql.NullFloat64
+		DayStart                   int64
+		Quota                      int64
+		RequestCount               int64
+		FailureCount               int64
+		PromptTokens               int64
+		CompletionTokens           int64
+		CacheHitTokens             int64
+		CacheRateHitTokens         int64
+		CacheRateInputTokens       int64
+		CacheTokenObservationCount int64
+		CacheRateObservationCount  int64
+		AverageLatencyMs           sql.NullFloat64
 	}
 	bucketExpr := usageTimeBucketExpr(int64(query.TimezoneOffsetMinutes)*60, query.BucketSeconds)
 	var seriesRows []seriesRow
@@ -1274,8 +1301,11 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 			CacheHitTokens:   row.CacheHitTokens,
 			Quota:            row.Quota,
 		}
-		if point.TotalTokens > 0 {
-			point.CacheHitRate = float64(point.CacheHitTokens) / float64(point.TotalTokens)
+		if row.CacheTokenObservationCount > 0 &&
+			row.CacheTokenObservationCount == row.CacheRateObservationCount &&
+			row.CacheRateInputTokens > 0 {
+			cacheHitRate := float64(row.CacheRateHitTokens) / float64(row.CacheRateInputTokens)
+			point.CacheHitRate = &cacheHitRate
 		}
 		if row.AverageLatencyMs.Valid {
 			averageLatencyMs := row.AverageLatencyMs.Float64
@@ -1373,8 +1403,9 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 
 	bucketExpr = peakTimeBucketExpr()
 	peakSub := base.Session(&gorm.Session{}).Select(
-		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) AS tpm",
-	).Where("type = ?", LogTypeConsume).Group(bucketExpr)
+		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0) ELSE 0 END), 0) AS tpm",
+		LogTypeConsume,
+	).Group(bucketExpr)
 	peak := struct {
 		PeakRpm int64 `gorm:"column:peak_rpm"`
 		PeakTpm int64 `gorm:"column:peak_tpm"`
@@ -1391,23 +1422,59 @@ func GetUserUsageAnalyticsWithQuery(userId int, query UserUsageAnalyticsQuery) (
 }
 
 func cacheTokensSQLExpr() string {
-	// 从日志 other JSON 字段里提取 cache_tokens（OpenAI 风格的缓存命中 token 数）。
-	// 不同数据库 JSON 语法不同；不支持的库返回空字符串，由调用方回退为 0。
-	switch {
-	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
-		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$.cache_tokens')) AS SIGNED) ELSE 0 END), 0)"
-	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
-		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN COALESCE((other::jsonb ->> 'cache_tokens')::bigint, 0) ELSE 0 END), 0)"
-	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
-		return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) + " AND other IS NOT NULL AND other <> '' THEN COALESCE(CAST(json_extract(other, '$.cache_tokens') AS INTEGER), 0) ELSE 0 END), 0)"
-	default:
+	cacheValue := logOtherIntegerSQLExpr("cache_tokens")
+	if cacheValue == "NULL" {
 		return ""
+	}
+	return "COALESCE(SUM(CASE WHEN type = " + strconv.Itoa(LogTypeConsume) +
+		" AND (" + cacheValue + ") IS NOT NULL THEN " + cacheValue + " ELSE 0 END), 0)"
+}
+
+type cacheUsageSQL struct {
+	RateHitTokens         string
+	RateInputTokens       string
+	CacheObservationCount string
+	RateObservationCount  string
+}
+
+// cacheUsageSQLExpressions only includes an input-token denominator when the
+// provider-reported complete input count was persisted. Historical logs that
+// lack input_tokens_total remain unknown instead of being reconstructed from
+// prompt_tokens, whose cache semantics differ between OpenAI and Anthropic.
+func cacheUsageSQLExpressions() cacheUsageSQL {
+	cacheValue := logOtherIntegerSQLExpr("cache_tokens")
+	inputValue := logOtherIntegerSQLExpr("input_tokens_total")
+	cacheObserved := "type = " + strconv.Itoa(LogTypeConsume) + " AND (" + cacheValue + ") IS NOT NULL"
+	rateObserved := cacheObserved + " AND (" + inputValue + ") IS NOT NULL"
+	return cacheUsageSQL{
+		RateHitTokens:         "COALESCE(SUM(CASE WHEN " + rateObserved + " THEN " + cacheValue + " ELSE 0 END), 0)",
+		RateInputTokens:       "COALESCE(SUM(CASE WHEN " + rateObserved + " THEN " + inputValue + " ELSE 0 END), 0)",
+		CacheObservationCount: "COUNT(CASE WHEN " + cacheObserved + " THEN 1 END)",
+		RateObservationCount:  "COUNT(CASE WHEN " + rateObserved + " THEN 1 END)",
+	}
+}
+
+func logOtherIntegerSQLExpr(field string) string {
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return "CASE WHEN isValidJSON(other) AND JSONHas(other, '" + field + "') THEN JSONExtractInt(other, '" + field + "') ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "CASE WHEN JSON_VALID(other) AND JSON_EXTRACT(other, '$." + field + "') IS NOT NULL THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$." + field + "')) AS SIGNED) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return "CASE WHEN other IS NOT NULL AND other <> '' AND jsonb_typeof(other::jsonb) = 'object' AND jsonb_exists(other::jsonb, '" + field + "') THEN CAST(other::jsonb ->> '" + field + "' AS BIGINT) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		return "CASE WHEN json_valid(other) AND json_type(other, '$." + field + "') IS NOT NULL THEN CAST(json_extract(other, '$." + field + "') AS INTEGER) ELSE NULL END"
+	default:
+		return "NULL"
 	}
 }
 
 func peakTimeBucketExpr() string {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return "intDiv(created_at, 60)"
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
+		return "FLOOR(created_at / 60)"
 	}
 	return "created_at / 60"
 }
@@ -1496,8 +1563,9 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	//    这在 PostgreSQL 上会报 SQLSTATE 42703。
 	bucketExpr := peakTimeBucketExpr()
 	peakSub := base.Session(&gorm.Session{}).Select(
-		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) AS tpm",
-	).Where("type = ?", LogTypeConsume).Group(bucketExpr)
+		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0) ELSE 0 END), 0) AS tpm",
+		LogTypeConsume,
+	).Group(bucketExpr)
 	peak := struct {
 		PeakRpm int64 `gorm:"column:peak_rpm"`
 		PeakTpm int64 `gorm:"column:peak_tpm"`
@@ -1516,8 +1584,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if totalRequests > 0 {
 		stat.FailureRate = float64(stat.FailureCount) / float64(totalRequests)
 	}
-	if stat.TotalTokens > 0 {
-		stat.CacheHitRate = float64(stat.CacheHitTokens) / float64(stat.TotalTokens)
+	if stat.PromptTokens > 0 {
+		stat.CacheHitRate = float64(stat.CacheHitTokens) / float64(stat.PromptTokens)
 	}
 
 	return stat, nil

@@ -169,3 +169,12 @@ func TestAppendTextUsageLogInfoRecordsObservedZeroCacheRead(t *testing.T) {
 	assert.NotContains(t, other, "input_tokens_total")
 	assert.NotContains(t, other, "cache_write_tokens")
 }
+
+func TestAppendTextUsageLogInfoRecordsCompleteInputWithoutUsageSource(t *testing.T) {
+	other := map[string]interface{}{}
+
+	appendTextUsageLogInfo(other, textQuotaSummary{}, &dto.Usage{InputTokens: 42})
+
+	assert.Equal(t, 0, other["cache_tokens"])
+	assert.Equal(t, 42, other["input_tokens_total"])
+}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownUpIcon,
+  CheckIcon,
   CircleAlertIcon,
   ClipboardIcon,
   LoaderCircleIcon,
@@ -92,10 +93,12 @@ import type {
   CreateApiKeyInput,
   CreatedApiKey,
   PaginatedResult,
+  UpdateApiKeyInput,
 } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { useActionLock, useKeyedActionLock } from "@/hooks/use-action-lock";
 import { copyText } from "@/lib/clipboard";
-import { formatNumber } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { type ApiKeySearch, type SearchPatch, useControllableSearch } from "@/lib/list-search";
 import { ApiKeyDetailsSheet, ApiKeyStatusBadge } from "../components/api-key-details-sheet";
 import { ApiKeyEditDialog } from "../components/api-key-edit-dialog";
@@ -114,7 +117,7 @@ function createInitialForm(group = ""): CreateApiKeyInput {
     name: "",
     expiresAt: Math.floor(defaultExpiry.getTime() / 1000),
     unlimitedQuota: false,
-    quota: 10000,
+    quotaUsd: 10,
     group,
     environment: "production",
     allowedModels: [],
@@ -134,7 +137,13 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(() => createInitialForm(props.defaultGroup));
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
+  const [createdSecretCopied, setCreatedSecretCopied] = useState(false);
   const [editingKey, setEditingKey] = useState<ApiKeyRecord | null>(null);
+  const [togglingKeyIds, setTogglingKeyIds] = useState(() => new Set<number>());
+  const createLock = useActionLock();
+  const toggleLock = useKeyedActionLock<number>();
+  const updateLock = useActionLock();
+  const revokeLock = useActionLock();
   const showEnvironment = repository.mode === "demo";
   const groupOptions = useApiKeyGroupOptions(createOpen);
   const modelOptions = useApiKeyModelOptions(form.group, createOpen && groupOptions.isSuccess);
@@ -158,7 +167,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
     form.name.trim().length <= 50 &&
     groupOptions.data?.some((option) => option.value === form.group) === true &&
     modelOptions.isSuccess &&
-    (form.unlimitedQuota || (Number.isFinite(form.quota) && form.quota >= 1));
+    (form.unlimitedQuota || (Number.isFinite(form.quotaUsd) && form.quotaUsd > 0));
   const hasListFilters = Boolean(keyword) || status !== "all";
   const refresh = () =>
     Promise.all([
@@ -169,6 +178,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
   const createKey = useMutation({
     mutationFn: () => repository.createApiKey(form),
     onSuccess: (result) => {
+      setCreatedSecretCopied(false);
       setCreated(result);
       setCreateOpen(false);
       setForm(createInitialForm(props.defaultGroup));
@@ -176,10 +186,14 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to create API key")),
+    onSettled: createLock.release,
   });
   const toggleKey = useMutation({
     mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
       repository.setApiKeyEnabled(id, enabled),
+    onMutate: (variables) => {
+      setTogglingKeyIds((current) => new Set(current).add(variables.id));
+    },
     onSuccess: (result) => {
       queryClient.setQueryData<PaginatedResult<ApiKeyRecord>>(keyQueryKey, (current) =>
         current
@@ -194,6 +208,14 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to update API key")),
+    onSettled: (_data, _error, variables) => {
+      toggleLock.release(variables.id);
+      setTogglingKeyIds((current) => {
+        const next = new Set(current);
+        next.delete(variables.id);
+        return next;
+      });
+    },
   });
   const updateKey = useMutation({
     mutationFn: repository.updateApiKey,
@@ -212,6 +234,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to update API key")),
+    onSettled: updateLock.release,
   });
   const revokeKey = useMutation({
     mutationFn: (id: number) => repository.revokeApiKey(id),
@@ -231,6 +254,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to revoke API key")),
+    onSettled: revokeLock.release,
   });
   const locale = i18n.resolvedLanguage ?? "en";
 
@@ -238,10 +262,31 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
     if (!created?.secret) return;
     try {
       await copyText(created.secret);
+      setCreatedSecretCopied(true);
       toast.success(t("API key copied"));
     } catch {
       toast.error(t("Unable to copy API key"));
     }
+  };
+
+  const createCurrentKey = () => {
+    if (!createFormValid || !createLock.tryAcquire()) return;
+    createKey.mutate();
+  };
+
+  const toggleCurrentKey = (id: number, enabled: boolean) => {
+    if (!toggleLock.tryAcquire(id)) return;
+    toggleKey.mutate({ id, enabled });
+  };
+
+  const updateCurrentKey = (input: UpdateApiKeyInput) => {
+    if (!updateLock.tryAcquire()) return;
+    updateKey.mutate(input);
+  };
+
+  const revokeCurrentKey = (id: number) => {
+    if (!revokeLock.tryAcquire()) return;
+    revokeKey.mutate(id);
   };
 
   return (
@@ -250,12 +295,22 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
         title={t("API keys")}
         description={t("Create and manage credentials for your applications.")}
         action={
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog
+            open={createOpen}
+            onOpenChange={(open) => {
+              if (!open && createKey.isPending) return;
+              setCreateOpen(open);
+            }}
+          >
             <DialogTrigger render={<Button />}>
               <PlusIcon data-icon="inline-start" />
               {t("Create key")}
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl" closeLabel={t("Close")}>
+            <DialogContent
+              className="sm:max-w-2xl"
+              closeLabel={t("Close")}
+              showCloseButton={!createKey.isPending}
+            >
               <DialogHeader>
                 <DialogTitle>{t("Create API key")}</DialogTitle>
                 <DialogDescription>
@@ -384,15 +439,20 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
                   />
                 </Field>
                 {!form.unlimitedQuota && (
-                  <Field data-invalid={!form.unlimitedQuota && form.quota < 1 ? true : undefined}>
-                    <FieldLabel htmlFor="key-quota">{t("Key quota")}</FieldLabel>
+                  <Field
+                    data-invalid={!form.unlimitedQuota && form.quotaUsd <= 0 ? true : undefined}
+                  >
+                    <FieldLabel htmlFor="key-quota">{t("Key quota (USD)")}</FieldLabel>
                     <Input
-                      aria-invalid={!form.unlimitedQuota && form.quota < 1 ? true : undefined}
+                      aria-invalid={!form.unlimitedQuota && form.quotaUsd <= 0 ? true : undefined}
                       id="key-quota"
                       type="number"
-                      min={1}
-                      value={form.quota}
-                      onChange={(event) => setForm({ ...form, quota: Number(event.target.value) })}
+                      min={0}
+                      step="any"
+                      value={form.quotaUsd}
+                      onChange={(event) =>
+                        setForm({ ...form, quotaUsd: Number(event.target.value) })
+                      }
                     />
                   </Field>
                 )}
@@ -400,7 +460,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
               <DialogFooter>
                 <Button
                   disabled={!createFormValid || createKey.isPending}
-                  onClick={() => createKey.mutate()}
+                  onClick={createCurrentKey}
                 >
                   {createKey.isPending && (
                     <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
@@ -592,7 +652,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
                         <TableCell className="text-right tabular-nums">
                           {apiKey.unlimitedQuota
                             ? t("Unlimited")
-                            : formatNumber(apiKey.remainingQuota, locale)}
+                            : formatCurrency(apiKey.remainingQuotaUsd, locale, "USD")}
                         </TableCell>
                         <TableCell>
                           {apiKey.status === "active" || apiKey.status === "disabled" ? (
@@ -605,15 +665,11 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
                                         ? "Disable API key"
                                         : "Enable API key",
                                     )}
-                                    aria-busy={
-                                      toggleKey.isPending && toggleKey.variables?.id === apiKey.id
-                                    }
+                                    aria-busy={togglingKeyIds.has(apiKey.id)}
                                     checked={apiKey.status === "active"}
-                                    disabled={
-                                      toggleKey.isPending && toggleKey.variables?.id === apiKey.id
-                                    }
+                                    disabled={togglingKeyIds.has(apiKey.id)}
                                     onCheckedChange={(checked) =>
-                                      toggleKey.mutate({ id: apiKey.id, enabled: checked })
+                                      toggleCurrentKey(apiKey.id, checked)
                                     }
                                   />
                                 }
@@ -687,7 +743,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
                                     disabled={
                                       revokeKey.isPending && revokeKey.variables === apiKey.id
                                     }
-                                    onClick={() => revokeKey.mutate(apiKey.id)}
+                                    onClick={() => revokeCurrentKey(apiKey.id)}
                                     variant="destructive"
                                   >
                                     {revokeKey.isPending && revokeKey.variables === apiKey.id ? (
@@ -735,13 +791,8 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
           )}
         </CardContent>
       </Card>
-      <Dialog
-        open={Boolean(created)}
-        onOpenChange={(open) => {
-          if (!open) setCreated(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-lg" closeLabel={t("Close")}>
+      <Dialog open={Boolean(created)}>
+        <DialogContent className="sm:max-w-lg" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>{t("Copy your API key")}</DialogTitle>
             <DialogDescription>
@@ -757,17 +808,28 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
             />
             <InputGroupAddon align="inline-end">
               <Button
-                aria-label={t("Copy API key")}
+                aria-label={t(createdSecretCopied ? "API key copied" : "Copy API key")}
                 onClick={() => void copyCreatedSecret()}
                 size="icon-xs"
                 variant="ghost"
               >
-                <ClipboardIcon data-icon="inline-start" />
+                {createdSecretCopied ? (
+                  <CheckIcon data-icon="inline-start" />
+                ) : (
+                  <ClipboardIcon data-icon="inline-start" />
+                )}
               </Button>
             </InputGroupAddon>
           </InputGroup>
           <DialogFooter>
-            <Button onClick={() => setCreated(null)}>{t("I have saved it")}</Button>
+            <Button
+              onClick={() => {
+                setCreated(null);
+                setCreatedSecretCopied(false);
+              }}
+            >
+              {t("I have saved it")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -791,7 +853,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
             if (open) return;
             setEditingKey(null);
           }}
-          onSubmit={(input) => updateKey.mutate(input)}
+          onSubmit={updateCurrentKey}
           pending={updateKey.isPending}
           showEnvironment={showEnvironment}
         />

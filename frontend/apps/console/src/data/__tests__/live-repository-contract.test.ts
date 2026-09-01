@@ -69,6 +69,29 @@ describe("live repository contracts", () => {
     } satisfies Partial<ApiClientError>);
   });
 
+  test("can refresh a session from a newer cross-tab cookie without sending a stale session ID", async () => {
+    const sessionHeaders: Array<string | null> = [];
+    server.use(
+      http.post("*/api/user/auth/refresh", ({ request }) => {
+        sessionHeaders.push(request.headers.get("X-Auth-Session"));
+        const sessionId = sessionHeaders.length === 1 ? "session-a" : "session-b";
+        return HttpResponse.json({
+          success: true,
+          data: {
+            ...authBundle("merchant"),
+            session: { sid: sessionId },
+          },
+        });
+      }),
+    );
+
+    await liveRepository.getSession({ ignoreCurrentSession: true });
+    await liveRepository.getSession();
+    await liveRepository.getSession({ ignoreCurrentSession: true });
+
+    expect(sessionHeaders).toEqual([null, "session-a", null]);
+  });
+
   test("maps the backend usage summary and converts quota to USD", async () => {
     server.use(
       http.get("*/api/log/self/usage", ({ request }) => {
@@ -250,7 +273,9 @@ describe("live repository contracts", () => {
           data: [
             {
               model_name: "anthropic/claude-fable-5",
-              owner_by: "Anthropic",
+              vendor_id: 2,
+              owner_by: "",
+              context_length: 200_000,
               description: "Production reasoning model",
               tags: "文本,推理,代码",
               supported_endpoint_types: ["openai", "anthropic"],
@@ -338,7 +363,8 @@ describe("live repository contracts", () => {
             },
             {
               model_name: "bytedance/seedance-2.0",
-              owner_by: "ByteDance",
+              vendor_id: 16,
+              owner_by: "",
               tags: "视频,文生视频",
               available: true,
               sales_prices_by_group: {
@@ -366,6 +392,10 @@ describe("live repository contracts", () => {
               },
             },
           ],
+          vendors: [
+            { id: 2, name: "Anthropic", icon: "Claude.Color" },
+            { id: 16, name: "ByteDance", icon: "ByteDance" },
+          ],
         }),
       ),
     );
@@ -374,6 +404,7 @@ describe("live repository contracts", () => {
       expect.objectContaining({
         id: "anthropic/claude-fable-5",
         provider: "Anthropic",
+        contextWindow: 200_000,
         description: "Production reasoning model",
         family: "reasoning",
         inputPrice: 9.95233,
@@ -783,6 +814,9 @@ describe("live repository contracts", () => {
           },
         }),
       ),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     await expect(liveRepository.listApiKeys()).resolves.toEqual([
@@ -790,6 +824,8 @@ describe("live repository contracts", () => {
         id: 7,
         name: "Production app",
         maskedKey: "sk-prod••••••••cdef",
+        remainingQuotaUsd: 1,
+        usedQuotaUsd: 0.2,
         allowedModels: ["gpt-5", "text-embedding-3-large"],
         allowedIps: ["192.0.2.1", "2001:db8::/32"],
       }),
@@ -825,6 +861,9 @@ describe("live repository contracts", () => {
           },
         }),
       ),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     await expect(liveRepository.listApiKeys()).resolves.toEqual([
@@ -846,6 +885,9 @@ describe("live repository contracts", () => {
           data: { page: 2, page_size: 20, total: 44, items: [] },
         });
       }),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     await expect(
@@ -913,7 +955,7 @@ describe("live repository contracts", () => {
             peak_tpm: 1_250,
             total_tokens: 3_000,
             cache_hit_tokens: 300,
-            cache_hit_rate: 0.1,
+            cache_hit_rate: 0.125,
             series: [
               {
                 day_start: 1_785_513_600,
@@ -922,6 +964,7 @@ describe("live repository contracts", () => {
                 failure_count: 2,
                 total_tokens: 3_000,
                 cache_hit_tokens: 300,
+                cache_hit_rate: 0.125,
                 quota: 125_000,
               },
             ],
@@ -951,7 +994,7 @@ describe("live repository contracts", () => {
       totalTokens: 3_000,
       totalCost: 0.25,
       cacheHitTokens: 300,
-      cacheHitRate: 10,
+      cacheHitRate: 12.5,
     });
     expect(analytics.series[0]).toMatchObject({
       bucketStart: 1_785_513_600,
@@ -960,7 +1003,7 @@ describe("live repository contracts", () => {
       rpm: 10 / 60,
       tpm: 50,
       cost: 0.25,
-      cacheHitRate: 10,
+      cacheHitRate: 12.5,
     });
   });
 
@@ -1498,6 +1541,9 @@ describe("live repository contracts", () => {
           data: { page: 1, page_size: 12, total: 8, items: [] },
         });
       }),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     await expect(
@@ -1601,13 +1647,16 @@ describe("live repository contracts", () => {
           },
         });
       }),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     const created = await liveRepository.createApiKey({
       name: "Staging worker",
       expiresAt: 1_800_000_000,
       unlimitedQuota: false,
-      quota: 750_000,
+      quotaUsd: 1.5,
       group: "default",
       environment: "staging",
       allowedModels: ["gpt-5"],
@@ -1618,6 +1667,7 @@ describe("live repository contracts", () => {
     expect(created.record).toMatchObject({
       id: 9,
       name: "Staging worker",
+      remainingQuotaUsd: 1.5,
       status: "active",
     });
   });
@@ -1658,6 +1708,9 @@ describe("live repository contracts", () => {
           },
         });
       }),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     await expect(
@@ -1666,7 +1719,7 @@ describe("live repository contracts", () => {
         name: "Production gateway",
         expiresAt: 1_764_000_000,
         unlimitedQuota: false,
-        remainingQuota: 7500,
+        remainingQuotaUsd: 0.015,
         group: "default",
         environment: "production",
         allowedModels: ["gpt-5", "claude-sonnet-4"],
@@ -1676,8 +1729,85 @@ describe("live repository contracts", () => {
       id: 9,
       name: "Production gateway",
       maskedKey: "sk-full••••••••alue",
-      remainingQuota: 7500,
-      usedQuota: 2500,
+      remainingQuotaUsd: 0.015,
+      usedQuotaUsd: 0.005,
+    });
+  });
+
+  test("rejects a positive API key quota that is smaller than one raw quota unit", async () => {
+    let createRequests = 0;
+    server.use(
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
+      http.post("*/api/token/", () => {
+        createRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+
+    await expect(
+      liveRepository.createApiKey({
+        name: "Too small",
+        expiresAt: null,
+        unlimitedQuota: false,
+        quotaUsd: 0.000_000_1,
+        group: "default",
+        environment: "development",
+        allowedModels: [],
+        allowedIps: [],
+      }),
+    ).rejects.toThrow("api_key.quota_usd");
+    expect(createRequests).toBe(0);
+  });
+
+  test("converts fixed recharge package quota units into credited USD", async () => {
+    server.use(
+      http.get("*/api/user/topup/info", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            min_topup: 1,
+            stripe_min_topup: 1,
+            waffo_min_topup: 1,
+            waffo_pancake_min_topup: 1,
+            enable_online_topup: false,
+            enable_stripe_topup: false,
+            enable_waffo_topup: false,
+            enable_waffo_pancake_topup: false,
+            enable_creem_topup: true,
+            pay_methods: [],
+            waffo_pay_methods: [],
+            creem_products: [
+              {
+                name: "Starter pack",
+                productId: "starter-pack",
+                price: 10,
+                quota: 500_000,
+                currency: "USD",
+              },
+            ],
+            discount: {},
+            amount_options: [10],
+            payment_compliance_confirmed: true,
+            enable_redemption: true,
+          },
+        }),
+      ),
+      http.get("*/api/status", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            quota_display_type: "USD",
+            quota_per_unit: 500_000,
+            usd_exchange_rate: 7,
+          },
+        }),
+      ),
+    );
+
+    await expect(liveRepository.getRechargeConfiguration()).resolves.toMatchObject({
+      products: [{ creditUsd: 1, id: "starter-pack" }],
     });
   });
 
@@ -1700,6 +1830,7 @@ describe("live repository contracts", () => {
             gotify_priority: 5,
             gotify_token_configured: false,
             notification_email: "owner@example.com",
+            record_ip_forced: false,
             record_ip_log: false,
           },
         }),
@@ -1744,6 +1875,7 @@ describe("live repository contracts", () => {
       balanceWarningThresholdUsd: 2,
       notificationEmail: "owner@example.com",
       notifyType: "webhook",
+      recordIpForced: false,
       recordIpLog: false,
       webhookSecret: "",
       webhookSecretConfigured: true,
@@ -1794,6 +1926,7 @@ describe("live repository contracts", () => {
             gotify_priority: 5,
             gotify_token_configured: false,
             webhook_secret_configured: false,
+            record_ip_forced: false,
             record_ip_log: false,
           },
         }),
@@ -1817,6 +1950,7 @@ describe("live repository contracts", () => {
             gotify_priority: 0,
             gotify_token_configured: false,
             webhook_secret_configured: false,
+            record_ip_forced: false,
             record_ip_log: false,
           },
         }),
@@ -1965,6 +2099,7 @@ describe("live repository contracts", () => {
             gotify_priority: 5,
             gotify_token_configured: false,
             notification_email: "alerts@example.com",
+            record_ip_forced: true,
             record_ip_log: true,
           },
         }),
@@ -1990,7 +2125,8 @@ describe("live repository contracts", () => {
       gotifyUrl: "",
       notificationEmail: "alerts@example.com",
       notifyType: "webhook",
-      recordIpLog: true,
+      recordIpForced: true,
+      recordIpLog: false,
       webhookSecret: "replacement-secret",
       webhookSecretConfigured: true,
       webhookUrl: "https://merchant.example.com/hooks/quota",
@@ -2220,7 +2356,7 @@ describe("live repository contracts", () => {
       http.get("*/api/user/self", () =>
         HttpResponse.json({
           success: true,
-          data: accountUser({ quota: 50_000_000 }),
+          data: accountUser({ quota: 50_000_000, used_quota: 12_500_000 }),
         }),
       ),
       http.get("*/api/user/topup/self", () =>
@@ -2286,12 +2422,13 @@ describe("live repository contracts", () => {
     const billing = await liveRepository.getBilling();
 
     expect(billing.balance).toBe(100);
+    expect(billing.totalUsage).toBe(25);
     expect(billing.plans[0]).toMatchObject({
       current: true,
       durationValue: 3,
       purchaseCount: 2,
       purchaseLimit: 3,
-      quota: 400,
+      quotaUsd: 400,
       unlimitedQuota: false,
     });
     expect(billing.plans[0]?.paymentMethods.map((method) => method.type)).toEqual([
@@ -2503,6 +2640,9 @@ describe("live repository contracts", () => {
           },
         }),
       ),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
     );
 
     await expect(liveRepository.listApiKeys()).rejects.toThrow("api_key.key");
@@ -2593,6 +2733,7 @@ function useDefaultAccountHandlers(options: {
           gotify_priority: 5,
           gotify_token_configured: false,
           webhook_secret_configured: false,
+          record_ip_forced: false,
           record_ip_log: false,
         },
       }),

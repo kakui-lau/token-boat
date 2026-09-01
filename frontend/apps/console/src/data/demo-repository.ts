@@ -75,18 +75,18 @@ const demoRechargeConfiguration: RechargeConfiguration = {
       id: "starter-pack",
       name: "Starter pack",
       price: 19,
-      quota: 25,
+      creditUsd: 25,
       currency: "USD",
     },
     {
       id: "growth-pack",
       name: "Growth pack",
       price: 69,
-      quota: 100,
+      creditUsd: 100,
       currency: "USD",
     },
   ],
-  quotaPerUnit: 1,
+  quotaPerUnit: 100,
   redemptionEnabled: true,
   usdExchangeRate: 1,
 };
@@ -99,8 +99,8 @@ let demoSession: ConsoleSession | null = {
     email: "demo@token-boat.local",
     group: "default",
     role: 1,
-    quota: 12840,
-    usedQuota: 4820,
+    quotaUnits: 12840,
+    usedQuotaUnits: 4820,
     requestCount: 12842,
     createdAt: now - 86400 * 90,
   },
@@ -117,8 +117,8 @@ let apiKeys: ApiKeyRecord[] = [
     lastUsedAt: now - 3600 * 4,
     expiresAt: now + 86400 * 120,
     unlimitedQuota: false,
-    remainingQuota: 7500,
-    usedQuota: 2500,
+    remainingQuotaUsd: 75,
+    usedQuotaUsd: 25,
     group: "default",
     environment: "production",
     allowedModels: ["gpt-5", "claude-sonnet-4"],
@@ -133,8 +133,8 @@ let apiKeys: ApiKeyRecord[] = [
     lastUsedAt: null,
     expiresAt: null,
     unlimitedQuota: true,
-    remainingQuota: 0,
-    usedQuota: 420,
+    remainingQuotaUsd: 0,
+    usedQuotaUsd: 4.2,
     group: "auto",
     environment: "development",
     allowedModels: [],
@@ -149,8 +149,8 @@ let apiKeys: ApiKeyRecord[] = [
     lastUsedAt: now - 86400 * 9,
     expiresAt: now + 86400 * 4,
     unlimitedQuota: false,
-    remainingQuota: 120,
-    usedQuota: 9880,
+    remainingQuotaUsd: 1.2,
+    usedQuotaUsd: 98.8,
     group: "default",
     environment: "production",
     allowedModels: ["gpt-4o"],
@@ -809,6 +809,7 @@ let account: AccountData = {
     gotifyTokenConfigured: false,
     gotifyUrl: "",
     notificationEmail: "demo@token-boat.local",
+    recordIpForced: true,
     recordIpLog: true,
     notifyType: "email",
     webhookSecret: "",
@@ -855,6 +856,9 @@ function demoSecurityResult() {
 function buildBilling(): BillingData {
   return {
     balance: demoBalance,
+    totalUsage: demoSession
+      ? demoSession.user.usedQuotaUnits / demoRechargeConfiguration.quotaPerUnit
+      : 0,
     monthSpend: 48.2,
     pendingAmount: 0,
     currency: "USD",
@@ -893,7 +897,7 @@ function buildBilling(): BillingData {
         interval: "month",
         durationUnit: "month",
         durationValue: 1,
-        quota: 0,
+        quotaUsd: 0,
         unlimitedQuota: true,
         quotaResetPeriod: "never",
         features: ["Usage-based billing", "All public models", "Community support"],
@@ -910,7 +914,7 @@ function buildBilling(): BillingData {
         interval: "month",
         durationUnit: "month",
         durationValue: 1,
-        quota: 200,
+        quotaUsd: 200,
         unlimitedQuota: false,
         quotaResetPeriod: "monthly",
         features: ["$200.00000 monthly quota", "Priority routing", "Email support"],
@@ -930,7 +934,7 @@ function buildBilling(): BillingData {
         interval: "month",
         durationUnit: "month",
         durationValue: 1,
-        quota: 800,
+        quotaUsd: 800,
         unlimitedQuota: false,
         quotaResetPeriod: "monthly",
         features: ["$800.00000 monthly quota", "Shared workspace", "Priority support"],
@@ -1108,6 +1112,9 @@ export const demoRepository: ConsoleRepository = {
   async signInWithPasskey() {
     return demoSession;
   },
+  clearLocalSession() {
+    demoSession = null;
+  },
   async signOut() {
     demoSession = null;
   },
@@ -1168,8 +1175,8 @@ export const demoRepository: ConsoleRepository = {
       lastUsedAt: null,
       expiresAt: input.expiresAt,
       unlimitedQuota: input.unlimitedQuota,
-      remainingQuota: input.unlimitedQuota ? 0 : input.quota,
-      usedQuota: 0,
+      remainingQuotaUsd: input.unlimitedQuota ? 0 : input.quotaUsd,
+      usedQuotaUsd: 0,
       group: input.group,
       environment: input.environment,
       allowedModels: input.allowedModels,
@@ -1186,7 +1193,7 @@ export const demoRepository: ConsoleRepository = {
       name: input.name,
       expiresAt: input.expiresAt,
       unlimitedQuota: input.unlimitedQuota,
-      remainingQuota: input.unlimitedQuota ? 0 : input.remainingQuota,
+      remainingQuotaUsd: input.unlimitedQuota ? 0 : input.remainingQuotaUsd,
       group: input.group,
       environment: input.environment,
       allowedModels: input.allowedModels,
@@ -1272,24 +1279,38 @@ export const demoRepository: ConsoleRepository = {
         Math.floor((log.createdAt + timezoneOffsetSeconds) / bucketSeconds) * bucketSeconds -
         timezoneOffsetSeconds;
       buckets.set(bucketStart, [...(buckets.get(bucketStart) ?? []), log]);
+      const minute = Math.floor(log.createdAt / 60);
+      const minuteTotal = minuteTotals.get(minute) ?? {
+        requests: 0,
+        tokens: 0,
+      };
+      minuteTotal.requests += 1;
       if (log.status === "succeeded") {
-        const minute = Math.floor(log.createdAt / 60);
-        const minuteTotal = minuteTotals.get(minute) ?? {
-          requests: 0,
-          tokens: 0,
-        };
-        minuteTotal.requests += 1;
         minuteTotal.tokens += log.inputTokens + log.outputTokens;
-        minuteTotals.set(minute, minuteTotal);
       }
+      minuteTotals.set(minute, minuteTotal);
     }
     const series: RequestLogAnalytics["series"] = [];
     for (let bucketStart = firstBucket; bucketStart <= lastBucket; bucketStart += bucketSeconds) {
       const logs = buckets.get(bucketStart) ?? [];
       const succeeded = logs.filter((log) => log.status === "succeeded").length;
       const failed = logs.length - succeeded;
-      const tokens = logs.reduce((total, log) => total + log.inputTokens + log.outputTokens, 0);
-      const cacheHitTokens = logs.reduce((total, log) => total + (log.cacheReadTokens ?? 0), 0);
+      let tokens = 0;
+      let cost = 0;
+      let cacheHitTokens = 0;
+      let cacheRateInputTokens = 0;
+      let cacheObservations = 0;
+      let completeCacheObservations = 0;
+      for (const log of logs) {
+        if (log.status === "succeeded") tokens += log.inputTokens + log.outputTokens;
+        cost += log.cost;
+        if (log.cacheReadTokens == null) continue;
+        cacheObservations += 1;
+        cacheHitTokens += log.cacheReadTokens;
+        if (log.inputTokensTotal == null) continue;
+        completeCacheObservations += 1;
+        cacheRateInputTokens += log.inputTokensTotal;
+      }
       const bucketMinutes = bucketSeconds / 60;
       series.push({
         bucketStart,
@@ -1299,17 +1320,31 @@ export const demoRepository: ConsoleRepository = {
         rpm: logs.length / bucketMinutes,
         tpm: tokens / bucketMinutes,
         tokens,
-        cost: logs.reduce((total, log) => total + log.cost, 0),
+        cost,
         cacheHitTokens,
-        cacheHitRate: tokens > 0 ? (cacheHitTokens / tokens) * 100 : null,
+        cacheHitRate:
+          cacheObservations > 0 &&
+          cacheObservations === completeCacheObservations &&
+          cacheRateInputTokens > 0
+            ? (cacheHitTokens / cacheRateInputTokens) * 100
+            : null,
       });
     }
     const failureCount = filtered.filter((log) => log.status === "failed").length;
-    const totalTokens = filtered.reduce(
-      (total, log) => total + log.inputTokens + log.outputTokens,
-      0,
-    );
-    const cacheHitTokens = filtered.reduce((total, log) => total + (log.cacheReadTokens ?? 0), 0);
+    let totalTokens = 0;
+    let cacheHitTokens = 0;
+    let cacheRateInputTokens = 0;
+    let cacheObservations = 0;
+    let completeCacheObservations = 0;
+    for (const log of filtered) {
+      if (log.status === "succeeded") totalTokens += log.inputTokens + log.outputTokens;
+      if (log.cacheReadTokens == null) continue;
+      cacheObservations += 1;
+      cacheHitTokens += log.cacheReadTokens;
+      if (log.inputTokensTotal == null) continue;
+      completeCacheObservations += 1;
+      cacheRateInputTokens += log.inputTokensTotal;
+    }
     return {
       requestCount: filtered.length,
       failureCount,
@@ -1319,7 +1354,12 @@ export const demoRepository: ConsoleRepository = {
       totalTokens,
       totalCost: filtered.reduce((total, log) => total + log.cost, 0),
       cacheHitTokens,
-      cacheHitRate: totalTokens > 0 ? (cacheHitTokens / totalTokens) * 100 : null,
+      cacheHitRate:
+        cacheObservations > 0 &&
+        cacheObservations === completeCacheObservations &&
+        cacheRateInputTokens > 0
+          ? (cacheHitTokens / cacheRateInputTokens) * 100
+          : null,
       series,
     };
   },
@@ -1418,7 +1458,7 @@ export const demoRepository: ConsoleRepository = {
     };
   },
   async createRechargeCheckout(input: CreateRechargeCheckoutInput) {
-    demoBalance += input.product?.quota ?? input.amount;
+    demoBalance += input.product?.creditUsd ?? input.amount;
     return { kind: "demo" as const };
   },
   async purchaseSubscription(input) {

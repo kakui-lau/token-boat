@@ -16,4 +16,6 @@ docs
 /frontend/**/dist
 /frontend/coverage
 /.local-tests
+/.playwright-cli
+/output
 !THIRD-PARTY-LICENSES.md

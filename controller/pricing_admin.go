@@ -794,6 +794,7 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 	_ = writer.Write([]string{
 		"request_id", "upstream_request_id", "model", "channel", "billing_mode", "currency",
 		"reserved_quota", "settled_quota", "purchase_cost",
+		"official_price_version_id", "estimated_official_amount", "official_amount",
 		"provider_cost_mode", "provider_cost_status", "provider_cost_source",
 		"provider_reported_cost", "provider_cost_scope", "cost_variance",
 		"gross_margin", "gross_margin_known", "base_sales_amount",
@@ -802,6 +803,10 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 		"status", "created_at", "updated_at",
 	})
 	for _, row := range rows {
+		officialPriceVersionId := ""
+		if row.OfficialPriceVersionId != nil {
+			officialPriceVersionId = strconv.Itoa(*row.OfficialPriceVersionId)
+		}
 		_ = writer.Write([]string{
 			spreadsheetSafeCSVCell(row.RequestId),
 			spreadsheetSafeCSVCell(row.UpstreamRequestId),
@@ -812,6 +817,9 @@ func AdminExportRequestPricingSnapshots(c *gin.Context) {
 			strconv.FormatInt(row.ReservedQuota, 10),
 			strconv.FormatInt(row.SettledQuota, 10),
 			row.PurchaseCost,
+			officialPriceVersionId,
+			nullablePricingString(row.EstimatedOfficialAmount),
+			nullablePricingString(row.OfficialAmount),
 			row.ProviderCostMode,
 			row.ProviderCostStatus,
 			row.ProviderCostSource,

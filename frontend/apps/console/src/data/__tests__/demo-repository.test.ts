@@ -8,7 +8,7 @@ describe("demoRepository", () => {
       name: "Vitest integration",
       expiresAt,
       unlimitedQuota: false,
-      quota: 500,
+      quotaUsd: 500,
       group: "default",
       environment: "development",
       allowedModels: ["gpt-5"],
@@ -58,5 +58,24 @@ describe("demoRepository", () => {
       kind: "authenticated",
       session: { user: { username: "console-tester" } },
     });
+  });
+
+  test("uses complete input tokens for cache rate and counts failed requests in peak RPM", async () => {
+    const allRequests = await demoRepository.getRequestLogAnalytics({
+      keyword: "",
+      range: { preset: "custom", from: "2020-01-01", to: "2100-01-01" },
+      searchField: "request",
+      status: "all",
+    });
+    expect(allRequests.cacheHitRate).toBeCloseTo((300 / 2142) * 100);
+
+    const failedRequests = await demoRepository.getRequestLogAnalytics({
+      keyword: "",
+      range: { preset: "custom", from: "2020-01-01", to: "2100-01-01" },
+      searchField: "request",
+      status: "failed",
+    });
+    expect(failedRequests.peakRpm).toBe(1);
+    expect(failedRequests.peakTpm).toBe(0);
   });
 });

@@ -41,6 +41,27 @@ func TestRecordConsumeLogAlwaysRecordsSourceIP(t *testing.T) {
 	assert.Equal(t, "203.0.113.46", recorded.Ip)
 }
 
+func TestRecordLogWithAdminInfoRecordsSourceIP(t *testing.T) {
+	truncateTables(t)
+	previousAlwaysRecordIP := constant.AlwaysRecordIp
+	constant.AlwaysRecordIp = true
+	t.Cleanup(func() { constant.AlwaysRecordIp = previousAlwaysRecordIP })
+	user := &User{Username: "activity-ip-user", Password: "password", Status: common.UserStatusEnabled}
+	require.NoError(t, DB.Create(user).Error)
+
+	RecordLogWithAdminInfo(
+		user.Id,
+		LogTypeManage,
+		"subscription reset",
+		"203.0.113.48",
+		map[string]interface{}{"admin_id": 1},
+	)
+
+	var recorded Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeManage).First(&recorded).Error)
+	assert.Equal(t, "203.0.113.48", recorded.Ip)
+}
+
 func TestRecordTaskBillingLogKeepsOriginatingRequestIP(t *testing.T) {
 	truncateTables(t)
 	previousAlwaysRecordIP := constant.AlwaysRecordIp
@@ -285,6 +306,47 @@ func TestSumUsedQuotaSubtractsRefunds(t *testing.T) {
 	require.Equal(t, int64(60), stat.Quota)
 }
 
+func TestSumUsedQuotaUsesRequestPeakAndInputCacheRate(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, createLog(&Log{
+		UserId:           7,
+		Username:         "usage-user",
+		Type:             LogTypeConsume,
+		PromptTokens:     20,
+		CompletionTokens: 30,
+		CreatedAt:        3_601,
+		Other:            common.MapToJsonStr(map[string]interface{}{"cache_tokens": 5}),
+	}))
+	require.NoError(t, createLog(&Log{
+		UserId:    7,
+		Username:  "usage-user",
+		Type:      LogTypeError,
+		CreatedAt: 3_620,
+	}))
+
+	stat, err := SumUsedQuota(
+		LogTypeUnknown,
+		3_600,
+		3_659,
+		"",
+		"usage-user",
+		"",
+		0,
+		"",
+		"",
+		"",
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stat.RequestCount)
+	assert.Equal(t, int64(1), stat.FailureCount)
+	assert.Equal(t, int64(2), stat.PeakRpm)
+	assert.Equal(t, int64(50), stat.PeakTpm)
+	assert.Equal(t, int64(50), stat.TotalTokens)
+	assert.Equal(t, int64(5), stat.CacheHitTokens)
+	assert.Equal(t, 0.25, stat.CacheHitRate)
+}
+
 func TestGetUserUsageAnalyticsReturnsDailyAndModelFacts(t *testing.T) {
 	truncateTables(t)
 	const day = int64(86_400)
@@ -292,15 +354,15 @@ func TestGetUserUsageAnalyticsReturnsDailyAndModelFacts(t *testing.T) {
 		{
 			UserId: 88, Type: LogTypeConsume, ModelName: "model-a", TokenId: 11, TokenName: "Production", Quota: 100,
 			PromptTokens: 10, CompletionTokens: 5, CreatedAt: day + 60, RequestId: "request-a",
-			Other: common.MapToJsonStr(map[string]interface{}{"response_time_ms": 250, "cache_tokens": 4}),
+			Other: common.MapToJsonStr(map[string]interface{}{"response_time_ms": 250, "cache_tokens": 4, "input_tokens_total": 10}),
 		},
 		{
-			UserId: 88, Type: LogTypeError, ModelName: "model-a", TokenId: 11, TokenName: "Production", CreatedAt: day + 120,
+			UserId: 88, Type: LogTypeError, ModelName: "model-a", TokenId: 11, TokenName: "Production", CreatedAt: day + 80,
 		},
 		{
 			UserId: 88, Type: LogTypeConsume, ModelName: "model-b", TokenId: 12, TokenName: "Batch", Quota: 200,
 			PromptTokens: 20, CompletionTokens: 10, CreatedAt: 2*day + 60, RequestId: "request-b",
-			Other: common.MapToJsonStr(map[string]interface{}{"response_time_ms": 750, "cache_tokens": 8}),
+			Other: common.MapToJsonStr(map[string]interface{}{"response_time_ms": 750, "cache_tokens": 8, "input_tokens_total": 20}),
 		},
 		{
 			UserId: 99, Type: LogTypeConsume, ModelName: "other-user", Quota: 999,
@@ -319,8 +381,9 @@ func TestGetUserUsageAnalyticsReturnsDailyAndModelFacts(t *testing.T) {
 	assert.Equal(t, int64(1), analytics.FailureCount)
 	assert.Equal(t, int64(45), analytics.TotalTokens)
 	assert.Equal(t, int64(12), analytics.CacheHitTokens)
-	assert.InDelta(t, float64(12)/45, analytics.CacheHitRate, 0.000_001)
-	assert.Equal(t, int64(1), analytics.PeakRpm)
+	require.NotNil(t, analytics.CacheHitRate)
+	assert.InDelta(t, float64(12)/30, *analytics.CacheHitRate, 0.000_001)
+	assert.Equal(t, int64(2), analytics.PeakRpm)
 	assert.Equal(t, int64(30), analytics.PeakTpm)
 	require.NotNil(t, analytics.AverageLatencyMs)
 	assert.Equal(t, float64(500), *analytics.AverageLatencyMs)
@@ -352,11 +415,11 @@ func TestGetUserUsageAnalyticsAppliesRequestFiltersAndCustomBucket(t *testing.T)
 			UserId: 101, Type: LogTypeConsume, ModelName: "model-a", TokenName: "Production",
 			RequestId: "request-a", UpstreamRequestId: "trace-a", Quota: 100,
 			PromptTokens: 10, CompletionTokens: 5, CreatedAt: day + 60,
-			Other: common.MapToJsonStr(map[string]interface{}{"cache_tokens": 4}),
+			Other: common.MapToJsonStr(map[string]interface{}{"cache_tokens": 4, "input_tokens_total": 10}),
 		},
 		{
 			UserId: 101, Type: LogTypeError, ModelName: "model-a", TokenName: "Production",
-			RequestId: "request-a", UpstreamRequestId: "trace-a", CreatedAt: day + 120,
+			RequestId: "request-a", UpstreamRequestId: "trace-a", CreatedAt: day + 80,
 		},
 		{
 			UserId: 101, Type: LogTypeConsume, ModelName: "model-b", TokenName: "Batch",
@@ -384,11 +447,88 @@ func TestGetUserUsageAnalyticsAppliesRequestFiltersAndCustomBucket(t *testing.T)
 	assert.Equal(t, 0.5, analytics.FailureRate)
 	assert.Equal(t, int64(15), analytics.TotalTokens)
 	assert.Equal(t, int64(4), analytics.CacheHitTokens)
-	assert.Equal(t, int64(1), analytics.PeakRpm)
+	require.NotNil(t, analytics.CacheHitRate)
+	assert.Equal(t, 0.4, *analytics.CacheHitRate)
+	assert.Equal(t, int64(2), analytics.PeakRpm)
 	assert.Equal(t, int64(15), analytics.PeakTpm)
 	require.Len(t, analytics.Series, 1)
 	assert.Equal(t, day, analytics.Series[0].DayStart)
 	assert.Equal(t, int64(300), analytics.Series[0].BucketSeconds)
+}
+
+func TestGetUserUsageAnalyticsLeavesHistoricalCacheRateUnknown(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, createLog(&Log{
+		UserId:       102,
+		Type:         LogTypeConsume,
+		PromptTokens: 20,
+		CreatedAt:    100,
+		Other:        common.MapToJsonStr(map[string]interface{}{"cache_tokens": 5}),
+	}))
+
+	analytics, err := GetUserUsageAnalytics(102, 1, 200, 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), analytics.CacheHitTokens)
+	assert.Nil(t, analytics.CacheHitRate)
+	require.Len(t, analytics.Series, 1)
+	assert.Nil(t, analytics.Series[0].CacheHitRate)
+}
+
+func TestPeakUsageBucketsGroupWholeMinutesAcrossDatabases(t *testing.T) {
+	originalLogDatabaseType := common.LogDatabaseType()
+	t.Cleanup(func() {
+		common.SetLogDatabaseType(originalLogDatabaseType)
+	})
+
+	testCases := []struct {
+		name         string
+		databaseType common.DatabaseType
+		expression   string
+	}{
+		{name: "SQLite", databaseType: common.DatabaseTypeSQLite, expression: "created_at / 60"},
+		{name: "PostgreSQL", databaseType: common.DatabaseTypePostgreSQL, expression: "created_at / 60"},
+		{name: "MySQL", databaseType: common.DatabaseTypeMySQL, expression: "FLOOR(created_at / 60)"},
+		{name: "ClickHouse", databaseType: common.DatabaseTypeClickHouse, expression: "intDiv(created_at, 60)"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			common.SetLogDatabaseType(testCase.databaseType)
+			assert.Equal(t, testCase.expression, peakTimeBucketExpr())
+		})
+	}
+}
+
+func TestCacheUsageExpressionsSupportEveryLogDatabase(t *testing.T) {
+	originalLogDatabaseType := common.LogDatabaseType()
+	t.Cleanup(func() {
+		common.SetLogDatabaseType(originalLogDatabaseType)
+	})
+
+	testCases := []struct {
+		name         string
+		databaseType common.DatabaseType
+		dialectToken string
+	}{
+		{name: "SQLite", databaseType: common.DatabaseTypeSQLite, dialectToken: "json_extract"},
+		{name: "PostgreSQL", databaseType: common.DatabaseTypePostgreSQL, dialectToken: "jsonb_exists"},
+		{name: "MySQL", databaseType: common.DatabaseTypeMySQL, dialectToken: "JSON_EXTRACT"},
+		{name: "ClickHouse", databaseType: common.DatabaseTypeClickHouse, dialectToken: "JSONExtractInt"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			common.SetLogDatabaseType(testCase.databaseType)
+			cacheTotal := cacheTokensSQLExpr()
+			cacheRate := cacheUsageSQLExpressions()
+
+			assert.Contains(t, cacheTotal, testCase.dialectToken)
+			assert.Contains(t, cacheTotal, "cache_tokens")
+			assert.Contains(t, cacheRate.RateHitTokens, "input_tokens_total")
+			assert.Contains(t, cacheRate.RateInputTokens, testCase.dialectToken)
+		})
+	}
 }
 
 func TestGetUserRequestLogEnforcesOwnershipAndRequestScope(t *testing.T) {

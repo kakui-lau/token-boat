@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { SubscriptionPlan } from "@/data/contracts";
@@ -31,7 +31,7 @@ const plan: SubscriptionPlan = {
   interval: "month",
   durationUnit: "month",
   durationValue: 1,
-  quota: 400,
+  quotaUsd: 400,
   unlimitedQuota: false,
   quotaResetPeriod: "monthly",
   features: ["Priority capacity"],
@@ -70,6 +70,27 @@ describe("subscription purchase", () => {
 
     expect(screen.getByText("Insufficient account balance")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm purchase" })).toBeDisabled();
+  });
+
+  test("purchases once on rapid confirmation and unlocks after failure", async () => {
+    purchaseSubscription
+      .mockRejectedValueOnce(new Error("purchase unavailable"))
+      .mockResolvedValueOnce({ kind: "completed" });
+    const onOpenChange = vi.fn();
+    renderDialog(100, onOpenChange);
+    const purchaseButton = screen.getByRole("button", { name: "Confirm purchase" });
+
+    act(() => {
+      purchaseButton.click();
+      purchaseButton.click();
+    });
+    await waitFor(() => expect(purchaseSubscription).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(purchaseButton).toBeEnabled());
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    fireEvent.click(purchaseButton);
+    await waitFor(() => expect(purchaseSubscription).toHaveBeenCalledTimes(2));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
 

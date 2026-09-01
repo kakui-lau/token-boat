@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { RequestLogsPage } from "@/features/request-logs/pages/request-logs-page";
-import { parseRequestLogSearch } from "@/lib/list-search";
+import { parseRequestLogSearch, searchPatchShouldResetScroll } from "@/lib/list-search";
 
 export const Route = createFileRoute("/logs")({
   validateSearch: parseRequestLogSearch,
@@ -15,7 +15,10 @@ function RequestLogsRoute() {
     <RequestLogsPage
       search={search}
       onSearchChange={(patch) =>
-        void navigate({ search: (previous) => ({ ...previous, ...patch }) })
+        void navigate({
+          resetScroll: searchPatchShouldResetScroll(patch, ["detail", "detailTab"]),
+          search: (previous) => ({ ...previous, ...patch }),
+        })
       }
     />
   );

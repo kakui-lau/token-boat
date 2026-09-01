@@ -57,6 +57,7 @@ import { Input } from "@token-boat/ui/components/ui/input";
 import { Skeleton } from "@token-boat/ui/components/ui/skeleton";
 import type { AccountData, AccountSecurityResult, TwoFactorSetup } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { useActionLock } from "@/hooks/use-action-lock";
 import { copyText } from "@/lib/clipboard";
 
 type TwoFactorSettingsCardProps = {
@@ -75,11 +76,16 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
   const [backupOpen, setBackupOpen] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [regeneratedCodes, setRegeneratedCodes] = useState<string[] | null>(null);
+  const setupLock = useActionLock();
+  const enableLock = useActionLock();
+  const disableLock = useActionLock();
+  const backupLock = useActionLock();
 
   const setupMutation = useMutation({
     mutationFn: repository.setupTwoFactor,
     onSuccess: setSetup,
     onError: (error) => toast.error(error.message || t("Unable to start 2FA setup")),
+    onSettled: setupLock.release,
   });
   const enableMutation = useMutation({
     mutationFn: repository.enableTwoFactor,
@@ -89,6 +95,7 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
       toast.success(t("Two-factor authentication enabled"));
     },
     onError: (error) => toast.error(error.message || t("Unable to enable 2FA")),
+    onSettled: enableLock.release,
   });
   const disableMutation = useMutation({
     mutationFn: repository.disableTwoFactor,
@@ -99,6 +106,7 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
       toast.success(t("Two-factor authentication disabled"));
     },
     onError: (error) => toast.error(error.message || t("Unable to disable 2FA")),
+    onSettled: disableLock.release,
   });
   const backupMutation = useMutation({
     mutationFn: repository.regenerateTwoFactorBackupCodes,
@@ -109,9 +117,11 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
       toast.success(t("Backup codes regenerated"));
     },
     onError: (error) => toast.error(error.message || t("Unable to regenerate backup codes")),
+    onSettled: backupLock.release,
   });
 
   function closeSetup() {
+    if (setupMutation.isPending || enableMutation.isPending) return;
     setSetupOpen(false);
     setSetup(null);
     setSetupCode("");
@@ -120,6 +130,7 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
   }
 
   function openSetup() {
+    if (!setupLock.tryAcquire()) return;
     setSetupOpen(true);
     setSetup(null);
     setSetupComplete(false);
@@ -127,9 +138,30 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
   }
 
   function closeBackup() {
+    if (backupMutation.isPending) return;
     setBackupOpen(false);
     setBackupCode("");
     setRegeneratedCodes(null);
+  }
+
+  function retrySetup() {
+    if (!setupLock.tryAcquire()) return;
+    setupMutation.mutate();
+  }
+
+  function enableCurrentSetup() {
+    if (!setup || !setupCode.trim() || !enableLock.tryAcquire()) return;
+    enableMutation.mutate(setupCode);
+  }
+
+  function regenerateBackupCodes() {
+    if (!backupCode.trim() || !backupLock.tryAcquire()) return;
+    backupMutation.mutate(backupCode);
+  }
+
+  function disableCurrentTwoFactor() {
+    if (!disableCode.trim() || !disableLock.tryAcquire()) return;
+    disableMutation.mutate(disableCode);
   }
 
   return (
@@ -206,6 +238,27 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
           </DialogHeader>
 
           {setupMutation.isPending && <Skeleton className="h-80" />}
+          {setupMutation.isError && !setup ? (
+            <Alert variant="destructive">
+              <ShieldOffIcon />
+              <AlertTitle>{t("Unable to load two-factor setup")}</AlertTitle>
+              <AlertDescription className="flex flex-col gap-3">
+                <span>{t("Retry setup without closing this dialog.")}</span>
+                <Button
+                  className="w-fit"
+                  disabled={setupMutation.isPending}
+                  onClick={retrySetup}
+                  size="sm"
+                  variant="outline"
+                >
+                  {setupMutation.isPending && (
+                    <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+                  )}
+                  {t("Retry setup")}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {setup && (
             <FieldGroup>
               <div className="mx-auto rounded-xl border bg-white p-3">
@@ -271,12 +324,16 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
               <Button onClick={closeSetup}>{t("I have saved the recovery codes")}</Button>
             ) : (
               <>
-                <Button onClick={closeSetup} variant="outline">
+                <Button
+                  disabled={setupMutation.isPending || enableMutation.isPending}
+                  onClick={closeSetup}
+                  variant="outline"
+                >
                   {t("Cancel")}
                 </Button>
                 <Button
                   disabled={!setup || !setupCode.trim() || enableMutation.isPending}
-                  onClick={() => enableMutation.mutate(setupCode)}
+                  onClick={enableCurrentSetup}
                 >
                   {enableMutation.isPending && (
                     <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
@@ -289,8 +346,18 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={backupOpen} onOpenChange={(open) => !open && closeBackup()}>
-        <DialogContent className="sm:max-w-lg" closeLabel={t("Close")}>
+      <Dialog
+        open={backupOpen}
+        onOpenChange={(open) => {
+          if (!open && (backupMutation.isPending || regeneratedCodes)) return;
+          if (!open) closeBackup();
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-lg"
+          closeLabel={t("Close")}
+          showCloseButton={!backupMutation.isPending && !regeneratedCodes}
+        >
           <DialogHeader>
             <DialogTitle>{t("Regenerate recovery codes")}</DialogTitle>
             <DialogDescription>
@@ -322,7 +389,7 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
             ) : (
               <Button
                 disabled={!backupCode.trim() || backupMutation.isPending}
-                onClick={() => backupMutation.mutate(backupCode)}
+                onClick={regenerateBackupCodes}
               >
                 {backupMutation.isPending && (
                   <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
@@ -334,7 +401,14 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={disableOpen} onOpenChange={setDisableOpen}>
+      <AlertDialog
+        open={disableOpen}
+        onOpenChange={(open) => {
+          if (!open && disableMutation.isPending) return;
+          setDisableOpen(open);
+          if (!open) setDisableCode("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -357,12 +431,14 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
             />
           </Field>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={disableMutation.isPending}>
+              {t("Cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={!disableCode.trim() || disableMutation.isPending}
               onClick={(event) => {
                 event.preventDefault();
-                disableMutation.mutate(disableCode);
+                disableCurrentTwoFactor();
               }}
               variant="destructive"
             >

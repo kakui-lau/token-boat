@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ModelsPage } from "@/features/models/pages/models-page";
-import { parseModelSearch } from "@/lib/list-search";
+import { parseModelSearch, searchPatchShouldResetScroll } from "@/lib/list-search";
 
 export const Route = createFileRoute("/models")({
   validateSearch: parseModelSearch,
@@ -15,7 +15,10 @@ function ModelsRoute() {
     <ModelsPage
       search={search}
       onSearchChange={(patch) =>
-        void navigate({ search: (previous) => ({ ...previous, ...patch }) })
+        void navigate({
+          resetScroll: searchPatchShouldResetScroll(patch, ["detail"]),
+          search: (previous) => ({ ...previous, ...patch }),
+        })
       }
     />
   );

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 
@@ -28,6 +29,10 @@ func performUpdateUserSettingRequest(t *testing.T, userID int, body string) *htt
 }
 
 func TestGetUserSettingReturnsConfigurationFlagsWithoutNotificationSecrets(t *testing.T) {
+	previousAlwaysRecordIP := constant.AlwaysRecordIp
+	constant.AlwaysRecordIp = true
+	t.Cleanup(func() { constant.AlwaysRecordIp = previousAlwaysRecordIP })
+
 	db := setupManageUserTestDB(t)
 	user := model.User{
 		Username: "safe-setting-user",
@@ -56,8 +61,41 @@ func TestGetUserSettingReturnsConfigurationFlagsWithoutNotificationSecrets(t *te
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), `"webhook_secret_configured":true`)
 	assert.Contains(t, recorder.Body.String(), `"gotify_token_configured":true`)
+	assert.Contains(t, recorder.Body.String(), `"record_ip_forced":true`)
+	assert.Contains(t, recorder.Body.String(), `"record_ip_log":true`)
 	assert.NotContains(t, recorder.Body.String(), "do-not-return-webhook-secret")
 	assert.NotContains(t, recorder.Body.String(), "do-not-return-gotify-token")
+}
+
+func TestUpdateUserSettingKeepsRequestIPRecordingEnabledWhenPolicyRequiresIt(t *testing.T) {
+	previousAlwaysRecordIP := constant.AlwaysRecordIp
+	constant.AlwaysRecordIp = true
+	t.Cleanup(func() { constant.AlwaysRecordIp = previousAlwaysRecordIP })
+
+	db := setupManageUserTestDB(t)
+	user := model.User{
+		Username: "forced-ip-setting-user",
+		Password: "password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	user.SetSetting(dto.UserSetting{
+		NotifyType:            dto.NotifyTypeEmail,
+		QuotaWarningThreshold: 500000,
+	})
+	require.NoError(t, db.Create(&user).Error)
+
+	recorder := performUpdateUserSettingRequest(t, user.Id, `{
+		"notify_type":"email",
+		"quota_warning_threshold":500000,
+		"record_ip_log":false
+	}`)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var updated model.User
+	require.NoError(t, db.First(&updated, user.Id).Error)
+	assert.True(t, updated.GetSetting().RecordIpLog)
 }
 
 func TestUpdateUserSettingPreservesUnrelatedPreferencesAndExistingSecrets(t *testing.T) {

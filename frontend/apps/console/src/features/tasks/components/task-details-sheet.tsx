@@ -127,7 +127,6 @@ export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
                   </h3>
                   <ItemGroup className="grid gap-2 sm:grid-cols-2">
                     <TaskDetailItem label={t("Model")} value={task.model} />
-                    <TaskDetailItem label={t("Task platform")} value={task.platform} />
                     <TaskDetailItem label={t("Task action")} value={task.action} />
                     <TaskDetailItem
                       label={t("Submitted")}
@@ -151,14 +150,8 @@ export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
                       label={t("Last updated")}
                       value={task.updatedAt ? formatDateTime(task.updatedAt, props.locale) : "—"}
                     />
-                    <TaskDetailItem
-                      label={task.costUnit === "usd" ? t("Cost") : t("Quota used")}
-                      value={taskCostLabel(task, props.locale)}
-                    />
-                    <TaskDetailItem
-                      label={t("Billing unit")}
-                      value={task.costUnit === "usd" ? "USD" : t("Quota")}
-                    />
+                    <TaskDetailItem label={t("Cost")} value={taskCostLabel(task, props.locale)} />
+                    <TaskDetailItem label={t("Billing unit")} value="USD" />
                     <TaskDetailItem label={t("Result URL")} value={task.resultUrl} />
                   </ItemGroup>
                 </section>

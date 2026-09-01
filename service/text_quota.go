@@ -71,9 +71,10 @@ func appendTextUsageLogInfo(other map[string]interface{}, summary textQuotaSumma
 	if usage == nil {
 		return
 	}
-	if usage.UsageSource != "" {
-		other["input_tokens_total"] = usage.InputTokens
-	}
+	// usage != nil means the normalized provider usage was observed. Persist the
+	// complete input count even when it is zero so analytics can distinguish a
+	// real zero from historical logs where this field was never recorded.
+	other["input_tokens_total"] = usage.InputTokens
 	if usage.PromptTokensDetails.TextTokens > 0 {
 		other["text_input"] = usage.PromptTokensDetails.TextTokens
 	}

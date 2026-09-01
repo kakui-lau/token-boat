@@ -4,6 +4,7 @@ import {
   CalendarClockIcon,
   Clock3Icon,
   LaptopIcon,
+  LoaderCircleIcon,
   LogOutIcon,
   NetworkIcon,
   ShieldCheckIcon,
@@ -66,7 +67,8 @@ type SessionManagementCardProps = {
   locale: string;
   onRevoke(id: string): void;
   onRevokeOthers(): void;
-  pending: boolean;
+  pendingSessionId: string | null;
+  revokeOthersPending: boolean;
   sessions: LoginSessionRecord[];
 };
 
@@ -77,6 +79,7 @@ export function SessionManagementCard(props: SessionManagementCardProps) {
   const [pageSize, setPageSize] = useState(10);
   const selectedSession = props.sessions.find((session) => session.id === selectedId) ?? null;
   const otherSessionCount = props.sessions.filter((session) => !session.current).length;
+  const busy = props.pendingSessionId !== null || props.revokeOthersPending;
   const totalPages = Math.max(1, Math.ceil(props.sessions.length / pageSize));
   const page = Math.min(requestedPage, totalPages);
   const visibleSessions = props.sessions.slice((page - 1) * pageSize, page * pageSize);
@@ -93,8 +96,9 @@ export function SessionManagementCard(props: SessionManagementCardProps) {
             <CardAction>
               <RevokeOtherSessionsDialog
                 count={otherSessionCount}
-                disabled={props.pending}
+                disabled={busy}
                 onConfirm={props.onRevokeOthers}
+                pending={props.revokeOthersPending}
               />
             </CardAction>
           )}
@@ -145,8 +149,9 @@ export function SessionManagementCard(props: SessionManagementCardProps) {
                       {!session.current && (
                         <RevokeSessionDialog
                           device={device}
-                          disabled={props.pending}
+                          disabled={busy}
                           onConfirm={() => props.onRevoke(session.id)}
+                          pending={props.pendingSessionId === session.id}
                         />
                       )}
                     </ItemActions>
@@ -155,7 +160,7 @@ export function SessionManagementCard(props: SessionManagementCardProps) {
               })}
               {props.sessions.length > pageSize && (
                 <DataPagination
-                  disabled={props.pending}
+                  disabled={busy}
                   onPageChange={setRequestedPage}
                   onPageSizeChange={(value) => {
                     setPageSize(value);
@@ -179,9 +184,9 @@ export function SessionManagementCard(props: SessionManagementCardProps) {
         }}
         onRevoke={(id) => {
           props.onRevoke(id);
-          setSelectedId(null);
         }}
-        pending={props.pending}
+        pendingSessionId={props.pendingSessionId}
+        revokeOthersPending={props.revokeOthersPending}
         session={selectedSession}
       />
     </>
@@ -192,7 +197,8 @@ function SessionDetailsSheet(props: {
   locale: string;
   onOpenChange(open: boolean): void;
   onRevoke(id: string): void;
-  pending: boolean;
+  pendingSessionId: string | null;
+  revokeOthersPending: boolean;
   session: LoginSessionRecord | null;
 }) {
   const { t } = useTranslation();
@@ -285,9 +291,10 @@ function SessionDetailsSheet(props: {
           <SheetFooter>
             <RevokeSessionDialog
               device={device}
-              disabled={props.pending}
+              disabled={props.pendingSessionId !== null || props.revokeOthersPending}
               fullWidth
               onConfirm={() => props.onRevoke(session.id)}
+              pending={props.pendingSessionId === session.id}
             />
           </SheetFooter>
         )}
@@ -323,6 +330,7 @@ function RevokeSessionDialog(props: {
   disabled: boolean;
   fullWidth?: boolean;
   onConfirm(): void;
+  pending: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -354,8 +362,15 @@ function RevokeSessionDialog(props: {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
-          <AlertDialogAction onClick={props.onConfirm} variant="destructive">
+          <AlertDialogCancel disabled={props.pending}>{t("Cancel")}</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={props.pending}
+            onClick={props.onConfirm}
+            variant="destructive"
+          >
+            {props.pending && (
+              <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+            )}
             {t("Sign out")}
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -364,7 +379,12 @@ function RevokeSessionDialog(props: {
   );
 }
 
-function RevokeOtherSessionsDialog(props: { count: number; disabled: boolean; onConfirm(): void }) {
+function RevokeOtherSessionsDialog(props: {
+  count: number;
+  disabled: boolean;
+  onConfirm(): void;
+  pending: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <AlertDialog>
@@ -385,8 +405,15 @@ function RevokeOtherSessionsDialog(props: { count: number; disabled: boolean; on
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
-          <AlertDialogAction onClick={props.onConfirm} variant="destructive">
+          <AlertDialogCancel disabled={props.pending}>{t("Cancel")}</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={props.pending}
+            onClick={props.onConfirm}
+            variant="destructive"
+          >
+            {props.pending && (
+              <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+            )}
             {t("Sign out other sessions")}
           </AlertDialogAction>
         </AlertDialogFooter>

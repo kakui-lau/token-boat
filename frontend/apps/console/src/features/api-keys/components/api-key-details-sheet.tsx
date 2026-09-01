@@ -33,7 +33,7 @@ import {
   SheetTitle,
 } from "@token-boat/ui/components/ui/sheet";
 import type { ApiKeyRecord, ApiKeyStatus } from "@/data/contracts";
-import { formatDateTime, formatNumber } from "@/lib/format";
+import { formatCurrency, formatDateTime } from "@/lib/format";
 
 type ApiKeyDetailsSheetProps = {
   apiKey: ApiKeyRecord | null;
@@ -46,10 +46,10 @@ type ApiKeyDetailsSheetProps = {
 export function ApiKeyDetailsSheet(props: ApiKeyDetailsSheetProps) {
   const { t } = useTranslation();
   const apiKey = props.apiKey;
-  const totalQuota = apiKey ? apiKey.remainingQuota + apiKey.usedQuota : 0;
+  const totalQuotaUsd = apiKey ? apiKey.remainingQuotaUsd + apiKey.usedQuotaUsd : 0;
   const usedPercentage =
-    apiKey && !apiKey.unlimitedQuota && totalQuota > 0
-      ? Math.min((apiKey.usedQuota / totalQuota) * 100, 100)
+    apiKey && !apiKey.unlimitedQuota && totalQuotaUsd > 0
+      ? Math.min((apiKey.usedQuotaUsd / totalQuotaUsd) * 100, 100)
       : 0;
   const identityRows: DetailRow[] = [];
   if (apiKey) {
@@ -124,13 +124,13 @@ export function ApiKeyDetailsSheet(props: ApiKeyDetailsSheetProps) {
                   value={
                     apiKey.unlimitedQuota
                       ? t("Unlimited")
-                      : formatNumber(apiKey.remainingQuota, props.locale)
+                      : formatCurrency(apiKey.remainingQuotaUsd, props.locale, "USD")
                   }
                 />
                 <MetricCard
                   icon={<GaugeIcon aria-hidden="true" />}
                   label={t("Used quota")}
-                  value={formatNumber(apiKey.usedQuota, props.locale)}
+                  value={formatCurrency(apiKey.usedQuotaUsd, props.locale, "USD")}
                 />
                 <MetricCard
                   icon={<CalendarClockIcon aria-hidden="true" />}
@@ -149,8 +149,8 @@ export function ApiKeyDetailsSheet(props: ApiKeyDetailsSheetProps) {
                     <CardTitle>{t("Quota utilization")}</CardTitle>
                     <CardDescription>
                       {t("{{used}} of {{total}} quota used", {
-                        used: formatNumber(apiKey.usedQuota, props.locale),
-                        total: formatNumber(totalQuota, props.locale),
+                        used: formatCurrency(apiKey.usedQuotaUsd, props.locale, "USD"),
+                        total: formatCurrency(totalQuotaUsd, props.locale, "USD"),
                       })}
                     </CardDescription>
                   </CardHeader>

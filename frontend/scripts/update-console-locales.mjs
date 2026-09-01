@@ -11,6 +11,40 @@ const zhAdditions = {
   "Account balance only": "仅账户余额",
   "AI responses may contain errors. Verify important information.":
     "AI 回答可能存在错误，请核实重要信息。",
+  "Choose the API key and model above. Messages are stored only in this browser and restored when you return.":
+    "请在上方选择 API 密钥和模型。消息仅保存在当前浏览器中，并在下次访问时恢复。",
+  "Compare permitted models in browser-local conversations using your existing API access.":
+    "使用现有 API 权限，在浏览器本地会话中对比可用模型。",
+  Conversations: "会话",
+  "Conversation history": "会话历史",
+  History: "历史记录",
+  "Compare its reasoning, speed, and best-fit workloads.":
+    "比较模型的推理能力、响应速度和适用场景。",
+  "Turn a product idea into clear implementation steps.": "将产品想法整理成清晰的实施步骤。",
+  "Check correctness, security, and maintainability.": "检查正确性、安全性和可维护性。",
+  "What would you like to explore?": "你想探索什么？",
+  "Start from a prompt below or open the live console to run the selected model with browser-local history.":
+    "可从下方提示开始；在实时控制台中可使用浏览器本地历史记录运行所选模型。",
+  "Demo mode previews the interface without sending an AI request.":
+    "演示模式仅预览界面，不会发送 AI 请求。",
+  "Delete {{title}}": "删除 {{title}}",
+  "Delete this conversation?": "删除此会话？",
+  "Its messages will be permanently removed from this browser.":
+    "此会话中的消息将从当前浏览器中永久删除。",
+  "No conversations yet": "暂无会话",
+  "Open or remove conversations stored in this browser.": "打开或删除保存在当前浏览器中的会话。",
+  "Retry without changing the selected conversation or its settings.":
+    "保留当前所选会话和设置并重试。",
+  "Saved in this browser": "已保存到当前浏览器",
+  "Select an API key and model first.": "请先选择 API 密钥和模型。",
+  "Start a chat and its history will appear here.": "开始对话后，历史记录会显示在这里。",
+  "Start a conversation": "开始新会话",
+  "Unable to create a conversation.": "无法创建会话。",
+  "Unable to delete the conversation.": "无法删除会话。",
+  "Unable to access local conversation history.": "无法访问浏览器本地会话历史。",
+  "Unable to load Playground": "无法加载游乐场",
+  "Untitled conversation": "未命名会话",
+  "{{quota}} remaining": "剩余 {{quota}}",
   Applied: "已应用",
   "Anthropic usage semantics": "Anthropic 用量语义",
   "Billing preference": "扣费偏好",
@@ -28,6 +62,7 @@ const zhAdditions = {
   "Funding source": "扣费方式",
   "Gemini usage semantics": "Gemini 用量语义",
   "Image tokens": "图像 Token",
+  "Key quota (USD)": "密钥额度（USD）",
   Helpful: "有帮助",
   "Loading AI chat": "正在加载 AI 对话",
   "Locally counted": "本地计数",
@@ -44,19 +79,45 @@ const zhAdditions = {
   "Refunded amount": "退款金额",
   "Request policy": "请求策略",
   "Request statistics": "请求统计",
+  "Request statistics explained": "请求统计指标说明",
   "Request statistics metric": "请求统计指标",
+  "Explain request statistics": "查看请求统计指标说明",
   "Request count over time": "请求量趋势",
+  "Show request count": "显示请求数",
+  "The selected chart could not be rendered. Choose another statistic or try again.":
+    "所选统计图表无法渲染，请切换其他指标或重试。",
   "{{metric}} over time": "{{metric}} 趋势",
+  "Unable to display this statistic": "无法显示此统计指标",
   "Usage and reliability for the selected filters.": "当前筛选条件下的用量与可靠性统计。",
+  "All values use the current time range and filters. Summary totals cover the full range; peak RPM and peak TPM are one-minute maxima.":
+    "所有数据均基于当前时间范围和筛选条件。汇总中的请求数、Token 数与费用是范围总计；峰值 RPM 和峰值 TPM 是单分钟最大值。",
   "Failure rate": "失败率",
+  "Failed requests divided by all requests.": "失败请求数除以全部请求数。",
   "Peak RPM": "峰值 RPM",
+  "The highest number of requests recorded in any one-minute interval.":
+    "任意一分钟内记录的最大请求数。",
   "Peak TPM": "峰值 TPM",
+  "The highest total of input and output tokens recorded in any one-minute interval.":
+    "任意一分钟内记录的输入与输出 Token 总量峰值。",
   "Cache hit rate": "缓存命中率",
+  "Cache-read tokens divided by provider-reported total input tokens. Shown as unavailable when complete input-token data is missing.":
+    "缓存读取 Token 除以提供商返回的完整输入 Token。缺少完整输入 Token 数据时显示为不可用。",
+  "Total successful and failed requests matching the current filters.":
+    "符合当前筛选条件的成功请求与失败请求总数。",
+  "Total input and output tokens from successful requests.": "成功请求的输入与输出 Token 总数。",
+  "Total billed usage cost from successful requests, shown in USD.":
+    "成功请求产生的已计费用量费用总额，以美元显示。",
+  "RPM and TPM charts": "RPM 与 TPM 图表",
+  "Chart RPM and TPM points are per-minute averages within each displayed time bucket, not one-minute peaks. The bucket size adjusts to the selected date range.":
+    "图表中的 RPM 和 TPM 是各显示时间桶内折算的每分钟平均值，并非单分钟峰值。时间桶大小会随所选日期范围自动调整。",
+  "RPM equals requests in the bucket divided by bucket minutes. TPM equals input and output tokens in the bucket divided by bucket minutes.":
+    "RPM = 时间桶内请求数 ÷ 时间桶分钟数；TPM = 时间桶内输入与输出 Token 数 ÷ 时间桶分钟数。",
   "Unable to load request statistics": "无法加载请求统计",
   "Retry without changing the current filters.": "保留当前筛选条件并重试。",
   "Statistics appear after matching API requests are recorded.":
     "记录到符合筛选条件的 API 请求后，此处将显示统计数据。",
   "No matching request statistics": "暂无匹配的请求统计",
+  "No recorded data for this statistic": "此统计指标暂无记录数据",
   "Review a code snippet for correctness, security, and maintainability.":
     "从正确性、安全性和可维护性方面审查一段代码。",
   "Review code quality": "审查代码质量",
@@ -76,6 +137,8 @@ const zhAdditions = {
   "Text input tokens": "文本输入 Token",
   "Text output tokens": "文本输出 Token",
   "Total input tokens": "输入 Token 合计",
+  "Total usage": "总用量",
+  "Total consumed quota": "总消耗额度",
   Tool: "工具",
   "Tool call charges": "工具调用费用",
   "Unsettled amount": "未结金额",
@@ -110,6 +173,8 @@ const zhAdditions = {
     "无法从当前账户加载该请求，请检查请求 ID 或重试连接。",
   "The selected API key was not found in the current account, filters, or page. No substitute key was opened.":
     "当前账户、筛选条件或页面中未找到所选 API 密钥，系统没有打开其他密钥作为替代。",
+  "The selected statistic was not recorded for this range. No value has been inferred.":
+    "当前时间范围未记录所选统计指标，系统不会推算或补全该值。",
   "Unable to copy API key": "无法复制 API 密钥",
   "Unable to connect to the AI chat runtime.": "无法连接 AI 对话服务。",
   "Unable to calculate payment amount": "无法计算应付金额",
@@ -237,6 +302,8 @@ const zhAdditions = {
   "Regenerate codes": "重新生成",
   "Regenerate recovery codes": "重新生成恢复码",
   "Register Passkey": "注册 Passkey",
+  "Retry setup": "重试设置",
+  "Retry setup without closing this dialog.": "无需关闭此窗口即可重试设置。",
   "Remove Passkey": "移除 Passkey",
   "Remove this Passkey?": "移除此 Passkey？",
   "Replace Passkey": "更换 Passkey",
@@ -251,6 +318,7 @@ const zhAdditions = {
   "Two-factor authentication enabled": "两步验证已启用",
   "Unable to disable 2FA": "无法停用两步验证",
   "Unable to enable 2FA": "无法启用两步验证",
+  "Unable to load two-factor setup": "无法加载两步验证设置",
   "Unable to regenerate backup codes": "无法重新生成恢复码",
   "Unable to register Passkey": "无法注册 Passkey",
   "Unable to remove Passkey": "无法移除 Passkey",
@@ -296,6 +364,7 @@ const zhAdditions = {
   "Network access": "网络访问",
   "Quota utilization": "额度使用率",
   "Remaining quota": "剩余额度",
+  "Remaining quota (USD)": "剩余额度（USD）",
   "Review credential identity, quota, model access, and network restrictions.":
     "查看凭证身份、额度、模型权限和网络限制。",
   "Save changes": "保存更改",
@@ -424,6 +493,13 @@ const zhAdditions = {
   "Message priority": "消息优先级",
   "Notify me when the account balance falls below this amount.": "当账户余额低于该金额时通知我。",
   "Record request IP": "记录请求 IP",
+  "Request IP retention is required by the platform policy.":
+    "平台策略要求保留请求 IP，当前设置无法关闭。",
+  "Discard unsaved changes?": "放弃未保存的更改？",
+  "You have unsaved account settings. Leaving this page or switching tabs will discard them.":
+    "账户设置尚未保存。离开当前页面或切换页签将丢失这些更改。",
+  "Keep editing": "继续编辑",
+  "Discard changes": "放弃更改",
   "Saving…": "正在保存…",
   "Use a priority from 0 (lowest) to 10 (highest).": "优先级范围为 0（最低）到 10（最高）。",
   "Webhook secret": "Webhook 密钥",

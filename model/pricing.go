@@ -21,6 +21,7 @@ type Pricing struct {
 	Icon                   string                         `json:"icon,omitempty"`
 	Tags                   string                         `json:"tags,omitempty"`
 	VendorID               int                            `json:"vendor_id,omitempty"`
+	ContextLength          int                            `json:"context_length,omitempty"`
 	OwnerBy                string                         `json:"owner_by"`
 	EnableGroup            []string                       `json:"enable_groups"`
 	SupportedEndpointTypes []constant.EndpointType        `json:"supported_endpoint_types"`
@@ -413,6 +414,7 @@ func updatePricing() {
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
+			pricing.ContextLength = meta.ContextLength
 			if meta.NameRule == NameRuleExact && meta.ModelName == model {
 				pricing.ID = meta.Id
 			}
@@ -455,6 +457,7 @@ func updatePricing() {
 			Icon:                   meta.Icon,
 			Tags:                   meta.Tags,
 			VendorID:               meta.VendorID,
+			ContextLength:          meta.ContextLength,
 			EnableGroup:            make([]string, 0),
 			SupportedEndpointTypes: modelSupportEndpointTypes[meta.ModelName],
 		}

@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service/pricingengine"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -202,6 +203,17 @@ func TestPlanSalesPriceBookRouteUsesPurchaseOnlyCatalog(t *testing.T) {
 func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 891)
+	officialExpression := `v2:tier("base", p * 3 / 1000000)`
+	official := model.OfficialModelPriceVersion{
+		Id: 1891, ModelId: 891, BillingMode: "token", PriceStructure: "flat",
+		BillingExpr: officialExpression, ExprHash: billingexpr.ExprHashString(officialExpression),
+		ExpressionSource: "manual", ExpressionSchemaVersion: "v2",
+		Currency: "USD", Source: "official", Version: 1,
+		Status: model.PricingVersionStatusActive,
+	}
+	require.NoError(t, model.DB.Create(&official).Error)
+	require.NoError(t, model.DB.Model(&model.ChannelModelPurchasePriceVersion{}).
+		Where("id = ?", 891).Update("official_price_version_id", official.Id).Error)
 	require.NoError(t, model.DB.Model(&model.Model{}).Where("id = ?", 891).
 		Update("status", 1).Error)
 	book, version, item := createResolvedPriceFixture(t, "snapshot-default", 891, 1)
@@ -235,6 +247,9 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 	require.NotNil(t, info.DynamicPricingSnapshot.Selected)
 	selected := info.DynamicPricingSnapshot.Selected
 	assert.Equal(t, 891, selected.PurchasePriceVersion)
+	assert.Equal(t, official.Id, selected.OfficialPriceVersion)
+	assert.Equal(t, officialExpression, selected.OfficialExpression)
+	assert.Equal(t, "3", selected.EstimatedOfficialAmountUSD)
 	assert.Equal(t, book.Id, selected.SalesPriceBookId)
 	assert.Equal(t, version.Id, selected.SalesPriceBookVersionId)
 	assert.Equal(t, item.Id, selected.SalesPriceBookItemId)
@@ -244,6 +259,12 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 	var snapshot model.RequestPricingSnapshot
 	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
 	assert.Equal(t, 891, snapshot.PurchasePriceVersionId)
+	require.NotNil(t, snapshot.OfficialPriceVersionId)
+	assert.Equal(t, official.Id, *snapshot.OfficialPriceVersionId)
+	assert.Equal(t, officialExpression, snapshot.OfficialBillingExpr)
+	require.NotNil(t, snapshot.EstimatedOfficialAmount)
+	assert.Equal(t, "3", *snapshot.EstimatedOfficialAmount)
+	assert.Nil(t, snapshot.OfficialAmount)
 	assert.Equal(t, book.Id, snapshot.SalesPriceBookId)
 	assert.Equal(t, version.Id, snapshot.SalesPriceBookVersionId)
 	assert.Equal(t, item.Id, snapshot.SalesPriceBookItemId)
@@ -255,6 +276,17 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 	assert.True(t, snapshot.PreConsumeCaptured)
 	assert.Zero(t, snapshot.ActualPreConsumedQuota)
 	assert.Equal(t, "none", snapshot.BillingSource)
+
+	require.NoError(t, SettleRequestPricingSnapshot(
+		info,
+		&dto.Usage{PromptTokens: 1_000_000, TotalTokens: 1_000_000},
+		info.PriceData.Quota,
+	))
+	require.NoError(t, model.DB.Where("request_id = ?", info.RequestId).First(&snapshot).Error)
+	require.NotNil(t, snapshot.OfficialAmount)
+	assert.Equal(t, "3", *snapshot.OfficialAmount)
+	assert.Equal(t, "3", selected.OfficialAmountUSD)
+	assert.Equal(t, PricingSnapshotStatusSettled, snapshot.Status)
 }
 
 func TestUncapturedPreConsumeIntentStaysPendingForFinancialReview(t *testing.T) {

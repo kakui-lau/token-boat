@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@token-boat/ui/compone
 import type { ApiKeyRecord } from "@/data/contracts";
 import { repository } from "@/data/repository";
 import { ApiKeyEditDialog } from "@/features/api-keys/components/api-key-edit-dialog";
+import { useActionLock } from "@/hooks/use-action-lock";
 import { copyText } from "@/lib/clipboard";
 
 type CodeLanguage = "curl" | "typescript" | "python";
@@ -45,6 +46,7 @@ export function FirstRequestCard(props: { baseUrl: string | null }) {
   const [requestedKeyId, setRequestedKeyId] = useState<number | null>(null);
   const [requestedModel, setRequestedModel] = useState("");
   const [editingKeyId, setEditingKeyId] = useState<number | null>(null);
+  const updateKeyLock = useActionLock();
   const keys = useQuery({ queryKey: ["api-keys"], queryFn: () => repository.listApiKeys() });
   const keysUnavailable = keys.isError && keys.data === undefined;
   const activeKeys = (keys.data ?? []).filter((apiKey) => apiKey.status === "active");
@@ -83,7 +85,13 @@ export function FirstRequestCard(props: { baseUrl: string | null }) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to update API key")),
+    onSettled: updateKeyLock.release,
   });
+
+  function submitKeyUpdate(input: Parameters<typeof repository.updateApiKey>[0]) {
+    if (!updateKeyLock.tryAcquire()) return;
+    updateKey.mutate(input);
+  }
 
   const copyCode = async () => {
     if (!canCopy) return;
@@ -242,7 +250,7 @@ export function FirstRequestCard(props: { baseUrl: string | null }) {
             onOpenChange={(open) => {
               if (!open) setEditingKeyId(null);
             }}
-            onSubmit={(input) => updateKey.mutate(input)}
+            onSubmit={submitKeyUpdate}
             pending={updateKey.isPending}
             showEnvironment={repository.mode === "demo"}
           />

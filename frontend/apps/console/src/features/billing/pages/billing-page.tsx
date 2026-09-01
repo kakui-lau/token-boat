@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,
+  ChartNoAxesCombinedIcon,
   CheckIcon,
   CircleAlertIcon,
   GiftIcon,
@@ -80,8 +81,9 @@ import { DataPagination } from "@/components/data-pagination";
 import { TableEmptyState } from "@/components/table-empty-state";
 import { TableLoadingState } from "@/components/table-loading-state";
 import { TableDateTime, TableIdentifier, TableText } from "@/components/table-value";
-import { repository } from "@/data/repository";
 import type { BillingTransactionListInput, SubscriptionPlan } from "@/data/contracts";
+import { repository } from "@/data/repository";
+import { useActionLock } from "@/hooks/use-action-lock";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@token-boat/ui/lib/utils";
 import {
@@ -124,6 +126,7 @@ export function BillingPage(props: BillingPageProps) {
   const pageSize = search.pageSize ?? 20;
   const tab = search.tab ?? "history";
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const redemptionLock = useActionLock();
   const query = useQuery({ queryKey: ["billing"], queryFn: () => repository.getBilling() });
   const transactionsQuery = useQuery({
     queryKey: [
@@ -152,7 +155,13 @@ export function BillingPage(props: BillingPageProps) {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to redeem code")),
+    onSettled: redemptionLock.release,
   });
+  const redeemCurrentCode = () => {
+    const normalizedCode = code.trim();
+    if (!normalizedCode || !redemptionLock.tryAcquire()) return;
+    redeem.mutate(normalizedCode);
+  };
   const locale = i18n.resolvedLanguage ?? "en";
   const currency = query.data?.currency ?? null;
   const plans = query.data?.plans ?? [];
@@ -245,7 +254,7 @@ export function BillingPage(props: BillingPageProps) {
                 {plan.unlimitedQuota
                   ? t("Unlimited usage quota")
                   : t("{{amount}} usage quota", {
-                      amount: formatCurrency(plan.quota, locale, "USD"),
+                      amount: formatCurrency(plan.quotaUsd, locale, "USD"),
                     })}
               </div>
               {plan.features.map((feature) => (
@@ -327,10 +336,7 @@ export function BillingPage(props: BillingPageProps) {
                   </FieldDescription>
                 </Field>
                 <DialogFooter>
-                  <Button
-                    disabled={!code.trim() || redeem.isPending}
-                    onClick={() => redeem.mutate(code.trim())}
-                  >
+                  <Button disabled={!code.trim() || redeem.isPending} onClick={redeemCurrentCode}>
                     {redeem.isPending && (
                       <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
                     )}
@@ -342,12 +348,12 @@ export function BillingPage(props: BillingPageProps) {
           </div>
         }
       />
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {query.isPending ? (
-          Array.from({ length: 3 }).map((_, index) => <Skeleton className="h-32" key={index} />)
+          Array.from({ length: 4 }).map((_, index) => <Skeleton className="h-32" key={index} />)
         ) : query.isError ? (
           <DataLoadError
-            className="min-h-32 sm:col-span-3"
+            className="min-h-32 sm:col-span-2 xl:col-span-4"
             description={t("Try refreshing the page or check the API connection.")}
             onRetry={() => void query.refetch()}
             retrying={query.isFetching}
@@ -355,7 +361,7 @@ export function BillingPage(props: BillingPageProps) {
           />
         ) : (
           <>
-            <Card className="sm:col-span-1">
+            <Card>
               <CardHeader>
                 <CardDescription>{t("Available balance")}</CardDescription>
                 <CardTitle className="text-3xl">
@@ -365,6 +371,18 @@ export function BillingPage(props: BillingPageProps) {
               <CardContent className="flex items-center gap-2 text-xs text-muted-foreground">
                 <WalletCardsIcon className="size-4" />
                 {t("Ready for API usage")}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardDescription>{t("Total usage")}</CardDescription>
+                <CardTitle className="text-3xl">
+                  {formatCurrency(query.data.totalUsage, locale, query.data.currency)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex items-center gap-2 text-xs text-muted-foreground">
+                <ChartNoAxesCombinedIcon aria-hidden="true" className="size-4" />
+                {t("Total consumed quota")}
               </CardContent>
             </Card>
             <Card>

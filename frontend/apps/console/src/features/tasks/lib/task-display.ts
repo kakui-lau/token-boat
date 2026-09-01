@@ -40,9 +40,7 @@ export function taskStatusLabel(status: "all" | TaskStatus): string {
 }
 
 export function taskCostLabel(task: TaskRecord, locale: string): string {
-  return task.costUnit === "usd"
-    ? formatCurrency(task.cost, locale)
-    : formatNumber(task.cost, locale);
+  return formatCurrency(task.cost, locale, "USD");
 }
 
 export function taskDurationSeconds(task: TaskRecord): number | null {

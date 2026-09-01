@@ -8,12 +8,17 @@ type DynamicPriceCandidate struct {
 	PurchasePriceVersion       int
 	PurchaseExpression         string
 	PurchaseExpressionHash     string
+	OfficialPriceVersion       int
+	OfficialExpression         string
+	OfficialExpressionHash     string
 	SalesExpression            string
 	SalesExpressionHash        string
 	PricingRevision            string
 	Currency                   string
 	ProviderCostMode           string
 	EstimatedPurchaseUSD       string
+	EstimatedOfficialAmountUSD string
+	OfficialAmountUSD          string
 	EstimatedSalesUSD          string
 	EstimatedCustomerChargeUSD string
 	TotalVariableCostRate      string

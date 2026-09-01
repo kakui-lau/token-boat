@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 
@@ -22,27 +23,44 @@ type copilotPlaygroundRunInput struct {
 }
 
 type copilotPlaygroundMessage struct {
+	ID      string `json:"id"`
 	Role    string `json:"role"`
 	Content any    `json:"content"`
 }
 
+type copilotPlaygroundOpenAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type copilotPlaygroundForwardedProps struct {
-	APIKeyID     int      `json:"apiKeyId"`
-	Group        string   `json:"group"`
-	Model        string   `json:"model"`
-	SystemPrompt string   `json:"systemPrompt"`
-	Temperature  *float64 `json:"temperature"`
-	MaxTokens    *uint    `json:"maxTokens"`
+	APIKeyID      int                        `json:"apiKeyId"`
+	Group         string                     `json:"group"`
+	Model         string                     `json:"model"`
+	SystemPrompt  string                     `json:"systemPrompt"`
+	Temperature   *float64                   `json:"temperature"`
+	MaxTokens     *uint                      `json:"maxTokens"`
+	LocalMessages []copilotPlaygroundMessage `json:"localMessages"`
 }
 
 type copilotPlaygroundOpenAIRequest struct {
-	APIKeyID    int                        `json:"api_key_id"`
-	Group       string                     `json:"group,omitempty"`
-	Model       string                     `json:"model"`
-	Messages    []copilotPlaygroundMessage `json:"messages"`
-	Stream      bool                       `json:"stream"`
-	Temperature *float64                   `json:"temperature,omitempty"`
-	MaxTokens   *uint                      `json:"max_tokens,omitempty"`
+	APIKeyID      int                              `json:"api_key_id"`
+	Group         string                           `json:"group,omitempty"`
+	Model         string                           `json:"model"`
+	Messages      []copilotPlaygroundOpenAIMessage `json:"messages"`
+	Stream        bool                             `json:"stream"`
+	StreamOptions copilotPlaygroundStreamOptions   `json:"stream_options"`
+	Temperature   *float64                         `json:"temperature,omitempty"`
+	MaxTokens     *uint                            `json:"max_tokens,omitempty"`
+}
+
+type copilotPlaygroundStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
+type copilotPlaygroundUsage struct {
+	PromptTokens     *int `json:"prompt_tokens"`
+	CompletionTokens *int `json:"completion_tokens"`
 }
 
 type copilotOpenAIStreamChunk struct {
@@ -54,6 +72,7 @@ type copilotOpenAIStreamChunk struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage *copilotPlaygroundUsage `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 		Code    any    `json:"code"`
@@ -122,9 +141,9 @@ func CopilotPlaygroundRunAdapter() gin.HandlerFunc {
 			return
 		}
 
-		messages := make([]copilotPlaygroundMessage, 0, len(input.Messages)+1)
+		messages := make([]copilotPlaygroundOpenAIMessage, 0, len(input.Messages)+1)
 		if systemPrompt := strings.TrimSpace(input.ForwardedProps.SystemPrompt); systemPrompt != "" {
-			messages = append(messages, copilotPlaygroundMessage{Role: "system", Content: systemPrompt})
+			messages = append(messages, copilotPlaygroundOpenAIMessage{Role: "system", Content: systemPrompt})
 		}
 		for _, message := range input.Messages {
 			if message.Role != "user" && message.Role != "assistant" && message.Role != "system" && message.Role != "developer" {
@@ -135,17 +154,18 @@ func CopilotPlaygroundRunAdapter() gin.HandlerFunc {
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "multimodal Playground messages are not enabled"})
 				return
 			}
-			messages = append(messages, copilotPlaygroundMessage{Role: message.Role, Content: content})
+			messages = append(messages, copilotPlaygroundOpenAIMessage{Role: message.Role, Content: content})
 		}
 
 		requestBody, err := common.Marshal(copilotPlaygroundOpenAIRequest{
-			APIKeyID:    input.ForwardedProps.APIKeyID,
-			Group:       input.ForwardedProps.Group,
-			Model:       input.ForwardedProps.Model,
-			Messages:    messages,
-			Stream:      true,
-			Temperature: input.ForwardedProps.Temperature,
-			MaxTokens:   input.ForwardedProps.MaxTokens,
+			APIKeyID:      input.ForwardedProps.APIKeyID,
+			Group:         input.ForwardedProps.Group,
+			Model:         input.ForwardedProps.Model,
+			Messages:      messages,
+			Stream:        true,
+			StreamOptions: copilotPlaygroundStreamOptions{IncludeUsage: true},
+			Temperature:   input.ForwardedProps.Temperature,
+			MaxTokens:     input.ForwardedProps.MaxTokens,
 		})
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "unable to prepare Playground request"})
@@ -169,7 +189,9 @@ func CopilotPlaygroundRunAdapter() gin.HandlerFunc {
 			threadID:       input.ThreadID,
 			runID:          input.RunID,
 			messageID:      input.RunID + "-assistant",
+			model:          input.ForwardedProps.Model,
 			upstreamStatus: http.StatusOK,
+			startedAt:      time.Now(),
 		}
 		c.Writer = eventWriter
 		c.Next()
@@ -188,11 +210,34 @@ func CopilotPlaygroundConnect(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid AG-UI connect request"})
 		return
 	}
+	localMessages := input.Messages
+	if len(localMessages) == 0 {
+		localMessages = input.ForwardedProps.LocalMessages
+	}
+	messages := make([]copilotPlaygroundMessage, 0, len(localMessages))
+	for _, message := range localMessages {
+		if message.Role != "user" && message.Role != "assistant" {
+			continue
+		}
+		content, ok := message.Content.(string)
+		if !ok || strings.TrimSpace(message.ID) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid local Playground history"})
+			return
+		}
+		messages = append(messages, copilotPlaygroundMessage{
+			ID:      message.ID,
+			Role:    message.Role,
+			Content: content,
+		})
+	}
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache, no-transform")
 	c.Header("X-Accel-Buffering", "no")
 	writeCopilotEvent(c.Writer, gin.H{
 		"type": "RUN_STARTED", "threadId": input.ThreadID, "runId": input.RunID,
+	})
+	writeCopilotEvent(c.Writer, gin.H{
+		"type": "MESSAGES_SNAPSHOT", "messages": messages,
 	})
 	writeCopilotEvent(c.Writer, gin.H{
 		"type": "RUN_FINISHED", "threadId": input.ThreadID, "runId": input.RunID,
@@ -214,7 +259,10 @@ type copilotPlaygroundEventWriter struct {
 	threadID       string
 	runID          string
 	messageID      string
+	model          string
+	usage          *copilotPlaygroundUsage
 	upstreamStatus int
+	startedAt      time.Time
 	buffer         bytes.Buffer
 	started        bool
 	messageStarted bool
@@ -283,6 +331,9 @@ func (w *copilotPlaygroundEventWriter) consumeOpenAIData(data string) {
 		w.finishError(chunk.Error.Message, fmt.Sprint(chunk.Error.Code))
 		return
 	}
+	if chunk.Usage != nil {
+		w.usage = chunk.Usage
+	}
 	for _, choice := range chunk.Choices {
 		if choice.Delta.Content != "" {
 			w.writeContent(choice.Delta.Content)
@@ -342,6 +393,9 @@ func (w *copilotPlaygroundEventWriter) finish() {
 					w.finishError(response.Error.Message, fmt.Sprint(response.Error.Code))
 					return
 				}
+				if response.Usage != nil {
+					w.usage = response.Usage
+				}
 				for _, choice := range response.Choices {
 					w.writeContent(choice.Message.Content)
 				}
@@ -366,9 +420,22 @@ func (w *copilotPlaygroundEventWriter) finishSuccess() {
 	writeCopilotEvent(w.ResponseWriter, gin.H{
 		"type": "TEXT_MESSAGE_END", "messageId": w.messageID,
 	})
+	result := gin.H{
+		"messageId": w.messageID,
+		"model":     w.model,
+		"latencyMs": max(int64(0), time.Since(w.startedAt).Milliseconds()),
+	}
+	if w.usage != nil {
+		if w.usage.PromptTokens != nil {
+			result["inputTokens"] = *w.usage.PromptTokens
+		}
+		if w.usage.CompletionTokens != nil {
+			result["outputTokens"] = *w.usage.CompletionTokens
+		}
+	}
 	writeCopilotEvent(w.ResponseWriter, gin.H{
 		"type": "RUN_FINISHED", "threadId": w.threadID, "runId": w.runID,
-		"outcome": gin.H{"type": "success"},
+		"outcome": gin.H{"type": "success"}, "result": result,
 	})
 	w.finished = true
 	w.ResponseWriter.Flush()

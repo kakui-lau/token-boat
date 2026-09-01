@@ -89,6 +89,7 @@ const extendedModelFormSchema = z
     icon: z.string(),
     tags: z.array(z.string()),
     vendor_id: z.number().optional(),
+    context_length: z.number().int().min(0),
     endpoints: z.string(),
     name_rule: z.number(),
     status: z.boolean(),
@@ -167,6 +168,7 @@ export function ModelMutateDrawer({
       icon: '',
       tags: [],
       vendor_id: undefined,
+      context_length: 0,
       endpoints: '',
       name_rule: 0,
       status: true,
@@ -188,6 +190,7 @@ export function ModelMutateDrawer({
         icon: model.icon || '',
         tags: parseModelTags(model.tags),
         vendor_id: model.vendor_id,
+        context_length: model.context_length || 0,
         endpoints: model.endpoints || '',
         name_rule: model.name_rule || 0,
         status: model.status === 1,
@@ -204,6 +207,7 @@ export function ModelMutateDrawer({
         icon: '',
         tags: [],
         vendor_id: undefined,
+        context_length: 0,
         endpoints: '',
         name_rule: 0,
         status: true,
@@ -387,6 +391,41 @@ export function ModelMutateDrawer({
                         </SelectGroup>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='context_length'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Context')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        placeholder='200000'
+                        value={field.value || ''}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                        onChange={(event) =>
+                          field.onChange(
+                            event.target.value === ''
+                              ? 0
+                              : event.target.valueAsNumber
+                          )
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Maximum number of tokens supported by the model; use 0 if unknown.'
+                      )}
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -11,6 +11,8 @@ import {
   parseRequestLogSearch,
   parseTaskSearch,
   resolveDateRange,
+  searchPatchShouldResetScroll,
+  type RequestLogSearch,
 } from "../list-search";
 
 const referenceDate = new Date(2026, 7, 28, 12);
@@ -197,5 +199,19 @@ describe("list search parameters", () => {
     expect(parsePlaygroundSearch({ model: "  anthropic/claude-sonnet-4-6  " })).toEqual({
       model: "anthropic/claude-sonnet-4-6",
     });
+  });
+
+  it("preserves page position for overlay-only URL changes", () => {
+    expect(searchPatchShouldResetScroll({ detail: "model-42" }, ["detail"])).toBe(false);
+    expect(searchPatchShouldResetScroll({ detail: undefined }, ["detail"])).toBe(false);
+    expect(
+      searchPatchShouldResetScroll<RequestLogSearch>({ detailTab: "usage" }, [
+        "detail",
+        "detailTab",
+      ]),
+    ).toBe(false);
+    expect(searchPatchShouldResetScroll({ detail: undefined, q: "updated" }, ["detail"])).toBe(
+      true,
+    );
   });
 });

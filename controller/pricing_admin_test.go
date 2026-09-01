@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"encoding/csv"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,44 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestAdminExportRequestPricingSnapshotsIncludesOfficialListPriceAmounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupPricingAdminControllerTestDB(t)
+	officialVersionId := 31
+	estimatedOfficialAmount := "1.25"
+	officialAmount := "1.1"
+	require.NoError(t, model.DB.Create(&model.RequestPricingSnapshot{
+		RequestId: "official-amount-export", UserId: 1, ModelId: 1,
+		ChannelModelId: 1, PurchasePriceVersionId: 2,
+		OfficialPriceVersionId:  &officialVersionId,
+		EstimatedOfficialAmount: &estimatedOfficialAmount,
+		OfficialAmount:          &officialAmount,
+		BillingMode:             "token", PurchaseCost: "0.5", SalesAmount: "0.8",
+		Currency: "USD", Status: "settled",
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/api/pricing-admin/request-pricing-snapshots/export",
+		nil,
+	)
+	AdminExportRequestPricingSnapshots(context)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	records, err := csv.NewReader(strings.NewReader(recorder.Body.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+
+	columns := make(map[string]int, len(records[0]))
+	for index, column := range records[0] {
+		columns[column] = index
+	}
+	assert.Equal(t, "31", records[1][columns["official_price_version_id"]])
+	assert.Equal(t, "1.25", records[1][columns["estimated_official_amount"]])
+	assert.Equal(t, "1.1", records[1][columns["official_amount"]])
+}
 
 func setupPricingAdminControllerTestDB(t *testing.T) {
 	t.Helper()

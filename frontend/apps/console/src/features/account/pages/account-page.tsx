@@ -1,9 +1,21 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRoundIcon, LoaderCircleIcon, MailCheckIcon } from "lucide-react";
+import { useBlocker } from "@tanstack/react-router";
+import { KeyRoundIcon, LoaderCircleIcon, MailCheckIcon, TriangleAlertIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@token-boat/ui/components/ui/alert-dialog";
 import { Badge } from "@token-boat/ui/components/ui/badge";
 import { Button } from "@token-boat/ui/components/ui/button";
 import {
@@ -31,6 +43,7 @@ import type {
   UpdateProfileInput,
 } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { useActionLock } from "@/hooks/use-action-lock";
 import { PasskeySettingsCard } from "../components/passkey-settings-card";
 import { TwoFactorSettingsCard } from "../components/two-factor-settings-card";
 import { UsageNotificationsForm } from "../components/usage-notifications-form";
@@ -67,46 +80,96 @@ export function AccountPage(props: AccountPageProps) {
     gotifyTokenConfigured: false,
     gotifyUrl: "",
     notificationEmail: "",
+    recordIpForced: false,
     recordIpLog: false,
     notifyType: null,
     webhookSecret: "",
     webhookSecretConfigured: false,
     webhookUrl: "",
   });
+  const profileRef = useRef(profile);
+  const preferencesRef = useRef(preferences);
+  const profileLock = useActionLock();
+  const preferencesLock = useActionLock();
+  const sessionOperationLock = useActionLock();
   const hydratedUserIdRef = useRef<number | null>(null);
-  const profileDirtyRef = useRef(false);
-  const preferencesDirtyRef = useRef(false);
+  const discardingChangesRef = useRef(false);
+  const [profileDirty, setProfileDirty] = useState(false);
+  const [preferencesDirty, setPreferencesDirty] = useState(false);
+  const hasUnsavedChanges = profileDirty || preferencesDirty;
+  const shouldBlockNavigation = useCallback(() => hasUnsavedChanges, [hasUnsavedChanges]);
+  const blocker = useBlocker({
+    disabled: !hasUnsavedChanges,
+    enableBeforeUnload: hasUnsavedChanges,
+    shouldBlockFn: shouldBlockNavigation,
+    withResolver: true,
+  });
   useEffect(() => {
     if (!query.data) return;
     const userChanged = hydratedUserIdRef.current !== query.data.user.id;
-    if (userChanged || !profileDirtyRef.current) {
-      setProfile({ displayName: query.data.user.displayName, email: query.data.user.email });
+    if (userChanged || !profileDirty) {
+      const nextProfile = {
+        displayName: query.data.user.displayName,
+        email: query.data.user.email,
+      };
+      profileRef.current = nextProfile;
+      setProfile(nextProfile);
     }
-    if (userChanged || !preferencesDirtyRef.current) {
+    if (userChanged || !preferencesDirty) {
+      preferencesRef.current = query.data.preferences;
       setPreferences(query.data.preferences);
     }
+    if (userChanged) {
+      setProfileDirty(false);
+      setPreferencesDirty(false);
+    }
     hydratedUserIdRef.current = query.data.user.id;
-  }, [query.data]);
+  }, [preferencesDirty, profileDirty, query.data]);
   const updateProfile = useMutation({
     mutationFn: repository.updateProfile,
-    onSuccess: (account) => {
-      profileDirtyRef.current = false;
-      setProfile({ displayName: account.user.displayName, email: account.user.email });
+    onSuccess: (account, submittedProfile) => {
+      const savedProfile = {
+        displayName: account.user.displayName,
+        email: account.user.email,
+      };
+      const currentProfile = profileRef.current;
+      const changedSinceSubmit =
+        currentProfile.displayName !== submittedProfile.displayName ||
+        currentProfile.email !== submittedProfile.email;
+      if (changedSinceSubmit) {
+        setProfileDirty(
+          currentProfile.displayName !== savedProfile.displayName ||
+            currentProfile.email !== savedProfile.email,
+        );
+      } else {
+        profileRef.current = savedProfile;
+        setProfile(savedProfile);
+        setProfileDirty(false);
+      }
       queryClient.setQueryData(["account"], account);
       if (session) queryClient.setQueryData(["session"], { ...session, user: account.user });
       toast.success(t("Profile updated"));
     },
     onError: () => toast.error(t("Unable to update profile")),
+    onSettled: profileLock.release,
   });
   const updatePreferences = useMutation({
     mutationFn: repository.updatePreferences,
-    onSuccess: (account) => {
-      preferencesDirtyRef.current = false;
-      setPreferences(account.preferences);
+    onSuccess: (account, submittedPreferences) => {
+      const currentPreferences = preferencesRef.current;
+      const currentPreferencesJson = JSON.stringify(currentPreferences);
+      if (currentPreferencesJson === JSON.stringify(submittedPreferences)) {
+        preferencesRef.current = account.preferences;
+        setPreferences(account.preferences);
+        setPreferencesDirty(false);
+      } else {
+        setPreferencesDirty(currentPreferencesJson !== JSON.stringify(account.preferences));
+      }
       queryClient.setQueryData(["account"], account);
       toast.success(t("Preferences updated"));
     },
     onError: () => toast.error(t("Unable to update preferences")),
+    onSettled: preferencesLock.release,
   });
   const revokeSession = useMutation({
     mutationFn: repository.revokeSession,
@@ -115,6 +178,7 @@ export function AccountPage(props: AccountPageProps) {
       toast.success(t("Session revoked"));
     },
     onError: () => toast.error(t("Unable to sign out session")),
+    onSettled: sessionOperationLock.release,
   });
   const revokeOtherSessions = useMutation({
     mutationFn: repository.revokeOtherSessions,
@@ -123,11 +187,44 @@ export function AccountPage(props: AccountPageProps) {
       toast.success(t("Signed out {{count}} other sessions", { count: result.revokedCount }));
     },
     onError: () => toast.error(t("Unable to sign out other sessions")),
+    onSettled: sessionOperationLock.release,
   });
   const locale = i18n.resolvedLanguage ?? "en";
   function handleSecurityUpdated(result: AccountSecurityResult) {
     queryClient.setQueryData(["account"], result.account);
     queryClient.setQueryData(["session"], result.session);
+  }
+  function saveProfile() {
+    if (!profileRef.current.displayName.trim() || !profileLock.tryAcquire()) return;
+    updateProfile.mutate({ ...profileRef.current });
+  }
+  function savePreferences() {
+    if (!preferencesLock.tryAcquire()) return;
+    updatePreferences.mutate({ ...preferencesRef.current });
+  }
+  function signOutSession(id: string) {
+    if (!sessionOperationLock.tryAcquire()) return;
+    revokeSession.mutate(id);
+  }
+  function signOutOtherSessions() {
+    if (!sessionOperationLock.tryAcquire()) return;
+    revokeOtherSessions.mutate();
+  }
+  function discardChangesAndProceed() {
+    discardingChangesRef.current = true;
+    if (query.data) {
+      const nextProfile = {
+        displayName: query.data.user.displayName,
+        email: query.data.user.email,
+      };
+      profileRef.current = nextProfile;
+      preferencesRef.current = query.data.preferences;
+      setProfile(nextProfile);
+      setPreferences(query.data.preferences);
+    }
+    setProfileDirty(false);
+    setPreferencesDirty(false);
+    blocker.proceed?.();
   }
 
   return (
@@ -172,7 +269,7 @@ export function AccountPage(props: AccountPageProps) {
                   className="max-w-xl"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    updateProfile.mutate(profile);
+                    saveProfile();
                   }}
                 >
                   <FieldGroup>
@@ -182,8 +279,17 @@ export function AccountPage(props: AccountPageProps) {
                         id="display-name"
                         value={profile.displayName}
                         onChange={(event) => {
-                          profileDirtyRef.current = true;
-                          setProfile({ ...profile, displayName: event.target.value });
+                          const nextProfile = {
+                            ...profileRef.current,
+                            displayName: event.target.value,
+                          };
+                          profileRef.current = nextProfile;
+                          setProfile(nextProfile);
+                          setProfileDirty(
+                            !query.data ||
+                              nextProfile.displayName !== query.data.user.displayName ||
+                              nextProfile.email !== query.data.user.email,
+                          );
                         }}
                       />
                     </Field>
@@ -195,8 +301,14 @@ export function AccountPage(props: AccountPageProps) {
                         type="email"
                         value={profile.email}
                         onChange={(event) => {
-                          profileDirtyRef.current = true;
-                          setProfile({ ...profile, email: event.target.value });
+                          const nextProfile = { ...profileRef.current, email: event.target.value };
+                          profileRef.current = nextProfile;
+                          setProfile(nextProfile);
+                          setProfileDirty(
+                            !query.data ||
+                              nextProfile.displayName !== query.data.user.displayName ||
+                              nextProfile.email !== query.data.user.email,
+                          );
                         }}
                       />
                       <FieldDescription>
@@ -230,10 +342,14 @@ export function AccountPage(props: AccountPageProps) {
               <CardContent>
                 <UsageNotificationsForm
                   onChange={(value) => {
-                    preferencesDirtyRef.current = true;
+                    preferencesRef.current = value;
                     setPreferences(value);
+                    setPreferencesDirty(
+                      !query.data ||
+                        JSON.stringify(value) !== JSON.stringify(query.data.preferences),
+                    );
                   }}
-                  onSubmit={() => updatePreferences.mutate(preferences)}
+                  onSubmit={savePreferences}
                   pending={updatePreferences.isPending}
                   value={preferences}
                 />
@@ -267,9 +383,10 @@ export function AccountPage(props: AccountPageProps) {
               <Suspense fallback={<Skeleton className="h-64" />}>
                 <SessionManagementCard
                   locale={locale}
-                  onRevoke={(id) => revokeSession.mutate(id)}
-                  onRevokeOthers={() => revokeOtherSessions.mutate()}
-                  pending={revokeSession.isPending || revokeOtherSessions.isPending}
+                  onRevoke={signOutSession}
+                  onRevokeOthers={signOutOtherSessions}
+                  pendingSessionId={revokeSession.isPending ? revokeSession.variables : null}
+                  revokeOthersPending={revokeOtherSessions.isPending}
                   sessions={query.data?.sessions ?? []}
                 />
               </Suspense>
@@ -284,6 +401,37 @@ export function AccountPage(props: AccountPageProps) {
           </TabsContent>
         </Tabs>
       )}
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (open || blocker.status !== "blocked") return;
+          if (discardingChangesRef.current) {
+            discardingChangesRef.current = false;
+            return;
+          }
+          blocker.reset();
+        }}
+        open={blocker.status === "blocked"}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <TriangleAlertIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>{t("Discard unsaved changes?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "You have unsaved account settings. Leaving this page or switching tabs will discard them.",
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("Keep editing")}</AlertDialogCancel>
+            <AlertDialogAction onClick={discardChangesAndProceed} variant="destructive">
+              {t("Discard changes")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

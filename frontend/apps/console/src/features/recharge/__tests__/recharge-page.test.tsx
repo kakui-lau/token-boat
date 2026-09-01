@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -73,6 +73,7 @@ const configuration: RechargeConfiguration = {
 
 const billing: BillingData = {
   balance: 128.4,
+  totalUsage: 48.2,
   currency: "USD",
   monthSpend: 10,
   pendingAmount: 0,
@@ -182,6 +183,52 @@ describe("RechargePage", () => {
       expect(screen.queryByRole("dialog", { name: "Confirm recharge" })).not.toBeInTheDocument(),
     );
     expect(createRechargeCheckout).not.toHaveBeenCalled();
+  });
+
+  test("creates one payment order for rapid confirmation and unlocks after failure", async () => {
+    createRechargeCheckout
+      .mockRejectedValueOnce(new Error("checkout unavailable"))
+      .mockResolvedValueOnce({ kind: "demo" });
+    renderRecharge();
+
+    const continueButton = await screen.findByRole("button", { name: "Continue to payment" });
+    await waitFor(() => expect(continueButton).toBeEnabled());
+    fireEvent.click(continueButton);
+    const confirmButton = within(
+      await screen.findByRole("dialog", { name: "Confirm recharge" }),
+    ).getByRole("button", { name: "Confirm and pay" });
+
+    act(() => {
+      confirmButton.click();
+      confirmButton.click();
+    });
+    await waitFor(() => expect(createRechargeCheckout).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(confirmButton).toBeEnabled());
+
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(createRechargeCheckout).toHaveBeenCalledTimes(2));
+  });
+
+  test("redeems one code for rapid submission and unlocks after failure", async () => {
+    redeemCode
+      .mockRejectedValueOnce(new Error("redemption unavailable"))
+      .mockResolvedValueOnce(billing);
+    renderRecharge();
+
+    fireEvent.change(await screen.findByRole("textbox", { name: "Redemption code" }), {
+      target: { value: "  ONE-TIME-CREDIT  " },
+    });
+    const redeemButton = screen.getByRole("button", { name: "Redeem" });
+    act(() => {
+      redeemButton.click();
+      redeemButton.click();
+    });
+    await waitFor(() => expect(redeemCode).toHaveBeenCalledTimes(1));
+    expect(redeemCode.mock.calls[0]?.[0]).toBe("ONE-TIME-CREDIT");
+    await waitFor(() => expect(redeemButton).toBeEnabled());
+
+    fireEvent.click(redeemButton);
+    await waitFor(() => expect(redeemCode).toHaveBeenCalledTimes(2));
   });
 });
 

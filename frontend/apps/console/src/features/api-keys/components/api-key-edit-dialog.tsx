@@ -53,7 +53,7 @@ type EditForm = {
   expiresAt: number | null;
   group: string;
   name: string;
-  remainingQuota: number;
+  remainingQuotaUsd: number;
   unlimitedQuota: boolean;
 };
 
@@ -66,7 +66,7 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
     expiresAt: props.apiKey.expiresAt,
     group: props.apiKey.group,
     name: props.apiKey.name,
-    remainingQuota: props.apiKey.remainingQuota,
+    remainingQuotaUsd: props.apiKey.remainingQuotaUsd,
     unlimitedQuota: props.apiKey.unlimitedQuota,
   }));
   const groupOptions = useApiKeyGroupOptions(true);
@@ -76,7 +76,8 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
     form.name.trim().length <= 50 &&
     groupOptions.data?.some((option) => option.value === form.group) === true &&
     modelOptions.isSuccess &&
-    (form.unlimitedQuota || (Number.isFinite(form.remainingQuota) && form.remainingQuota >= 0));
+    (form.unlimitedQuota ||
+      (Number.isFinite(form.remainingQuotaUsd) && form.remainingQuotaUsd >= 0));
 
   const submit = () => {
     if (!formValid || props.pending) return;
@@ -85,7 +86,7 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
       name: form.name.trim(),
       expiresAt: form.expiresAt,
       unlimitedQuota: form.unlimitedQuota,
-      remainingQuota: form.unlimitedQuota ? 0 : form.remainingQuota,
+      remainingQuotaUsd: form.unlimitedQuota ? 0 : form.remainingQuotaUsd,
       group: form.group.trim(),
       environment: form.environment,
       allowedModels: form.allowedModels,
@@ -94,8 +95,18 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
   };
 
   return (
-    <Dialog open onOpenChange={props.onOpenChange}>
-      <DialogContent className="sm:max-w-2xl" closeLabel={t("Close")}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && props.pending) return;
+        props.onOpenChange(open);
+      }}
+    >
+      <DialogContent
+        className="sm:max-w-2xl"
+        closeLabel={t("Close")}
+        showCloseButton={!props.pending}
+      >
         <DialogHeader>
           <DialogTitle>{t("Edit API key")}</DialogTitle>
           <DialogDescription>
@@ -241,20 +252,21 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
           </Field>
 
           {!form.unlimitedQuota && (
-            <Field data-invalid={form.remainingQuota < 0 || undefined}>
-              <FieldLabel htmlFor="edit-key-quota">{t("Remaining quota")}</FieldLabel>
+            <Field data-invalid={form.remainingQuotaUsd < 0 || undefined}>
+              <FieldLabel htmlFor="edit-key-quota">{t("Remaining quota (USD)")}</FieldLabel>
               <Input
-                aria-invalid={form.remainingQuota < 0 || undefined}
+                aria-invalid={form.remainingQuotaUsd < 0 || undefined}
                 id="edit-key-quota"
                 min={0}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    remainingQuota: Number(event.target.value),
+                    remainingQuotaUsd: Number(event.target.value),
                   }))
                 }
+                step="any"
                 type="number"
-                value={form.remainingQuota}
+                value={form.remainingQuotaUsd}
               />
               <FieldDescription>
                 {t("Changing this value replaces the current remaining key quota.")}
@@ -264,7 +276,11 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
         </FieldGroup>
 
         <DialogFooter>
-          <Button onClick={() => props.onOpenChange(false)} variant="outline">
+          <Button
+            disabled={props.pending}
+            onClick={() => props.onOpenChange(false)}
+            variant="outline"
+          >
             {t("Cancel")}
           </Button>
           <Button disabled={!formValid || props.pending} onClick={submit}>

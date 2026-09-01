@@ -63,6 +63,10 @@ beforeEach(() => {
   updateApiKey.mockReset();
   toast.error.mockReset();
   toast.success.mockReset();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
   listApiKeyGroups.mockResolvedValue([
     { value: "default", description: "Default routing", ratio: 1 },
     { value: "priority", description: "Priority routing", ratio: 2 },
@@ -88,8 +92,8 @@ describe("API key details and editing", () => {
 
     expect(sheet).toHaveAttribute("data-slot", "sheet-content");
     expect(sheet).toHaveTextContent("sk-prod••••••••a82f");
-    expect(sheet).toHaveTextContent("7,500");
-    expect(sheet).toHaveTextContent("2,500");
+    expect(sheet).toHaveTextContent("$75.00");
+    expect(sheet).toHaveTextContent("$25.00");
     expect(sheet).toHaveTextContent("gpt-5");
     expect(sheet).toHaveTextContent("claude-sonnet-4");
     expect(sheet).toHaveTextContent("203.0.113.0/24");
@@ -141,7 +145,7 @@ describe("API key details and editing", () => {
       serverRecord = {
         ...apiKey,
         name: input.name,
-        remainingQuota: input.remainingQuota,
+        remainingQuotaUsd: input.remainingQuotaUsd,
       };
       return serverRecord;
     });
@@ -162,7 +166,7 @@ describe("API key details and editing", () => {
         expect.objectContaining({
           id: 1,
           name: "Production gateway",
-          remainingQuota: 7500,
+          remainingQuotaUsd: 75,
           group: "default",
           allowedModels: ["gpt-5", "claude-sonnet-4"],
           allowedIps: ["203.0.113.0/24"],
@@ -170,6 +174,53 @@ describe("API key details and editing", () => {
       ),
     );
     expect((await screen.findAllByText("Production gateway")).length).toBeGreaterThan(0);
+  });
+
+  test("submits one key update for rapid clicks and unlocks the editor after failure", async () => {
+    const apiKey = apiKeyFixture();
+    let rejectUpdate!: (reason: Error) => void;
+    getApiKeysPage.mockResolvedValue({ items: [apiKey], page: 1, pageSize: 20, total: 1 });
+    updateApiKey
+      .mockImplementationOnce(
+        () =>
+          new Promise<ApiKeyRecord>((_resolve, reject) => {
+            rejectUpdate = reject;
+          }),
+      )
+      .mockResolvedValueOnce({ ...apiKey, name: "Recovered app" });
+
+    renderApiKeysPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Production app" }));
+    const editDialog = await screen.findByRole("dialog", { name: "Edit API key" });
+    fireEvent.change(within(editDialog).getByLabelText("Name"), {
+      target: { value: "Recovered app" },
+    });
+    const saveButton = within(editDialog).getByRole("button", { name: "Save changes" });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    act(() => {
+      saveButton.click();
+      saveButton.click();
+    });
+
+    await waitFor(() => expect(updateApiKey).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(saveButton).toBeDisabled();
+      expect(within(editDialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+      expect(within(editDialog).queryByRole("button", { name: "Close" })).toBeNull();
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(editDialog).toBeVisible();
+    await act(async () => rejectUpdate(new Error("offline")));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("offline"));
+    expect(editDialog).toBeVisible();
+    expect(saveButton).toBeEnabled();
+
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(updateApiKey).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Edit API key" })).not.toBeInTheDocument(),
+    );
   });
 
   test("opens the editor directly from the table action without requiring the details sheet", async () => {
@@ -188,7 +239,7 @@ describe("API key details and editing", () => {
     expect(screen.queryByRole("dialog", { name: "API key details" })).not.toBeInTheDocument();
   });
 
-  test("keeps unrelated key switches interactive while one row is updating", async () => {
+  test("deduplicates one key toggle while keeping unrelated key switches interactive", async () => {
     getApiKeysPage.mockResolvedValue({
       items: [apiKeyFixture(), { ...apiKeyFixture(), id: 2, name: "Staging app" }],
       page: 1,
@@ -200,10 +251,20 @@ describe("API key details and editing", () => {
     renderApiKeysPage();
 
     const switches = await screen.findAllByRole("switch", { name: "Disable API key" });
-    fireEvent.click(switches[0]!);
+    act(() => {
+      switches[0]!.click();
+      switches[0]!.click();
+    });
 
+    await waitFor(() => expect(setApiKeyEnabled).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(switches[0]).toHaveAttribute("aria-disabled", "true"));
     expect(switches[1]).not.toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(switches[1]!);
+    await waitFor(() => {
+      expect(setApiKeyEnabled).toHaveBeenNthCalledWith(2, 2, false);
+      expect(switches[0]).toHaveAttribute("aria-disabled", "true");
+      expect(switches[1]).toHaveAttribute("aria-disabled", "true");
+    });
   });
 
   test("locks the revoke confirmation until the key is removed", async () => {
@@ -229,9 +290,14 @@ describe("API key details and editing", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Revoke API key" }));
     const confirmation = await screen.findByRole("alertdialog");
-    fireEvent.click(within(confirmation).getByRole("button", { name: "Revoke" }));
+    const revokeButton = within(confirmation).getByRole("button", { name: "Revoke" });
+    act(() => {
+      revokeButton.click();
+      revokeButton.click();
+    });
 
     await waitFor(() => {
+      expect(revokeApiKey).toHaveBeenCalledTimes(1);
       expect(within(confirmation).getByRole("button", { name: "Revoke" })).toBeDisabled();
       expect(within(confirmation).getByRole("button", { name: "Cancel" })).toBeDisabled();
     });
@@ -239,6 +305,36 @@ describe("API key details and editing", () => {
     await act(async () => resolveRevoke());
     await waitFor(() => expect(screen.queryByText("Production app")).not.toBeInTheDocument());
     expect(toast.success).toHaveBeenCalledWith("API key revoked");
+  });
+
+  test("keeps a failed revoke confirmation open and allows a retry", async () => {
+    let records = [apiKeyFixture()];
+    getApiKeysPage.mockImplementation(async () => ({
+      items: records,
+      page: 1,
+      pageSize: 20,
+      total: records.length,
+    }));
+    revokeApiKey
+      .mockRejectedValueOnce(new Error("revoke failed"))
+      .mockImplementationOnce(async () => {
+        records = [];
+      });
+
+    renderApiKeysPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke API key" }));
+    const confirmation = await screen.findByRole("alertdialog");
+    const revokeButton = within(confirmation).getByRole("button", { name: "Revoke" });
+    fireEvent.click(revokeButton);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("revoke failed"));
+    expect(confirmation).toBeVisible();
+    expect(revokeButton).toBeEnabled();
+
+    fireEvent.click(revokeButton);
+    await waitFor(() => expect(revokeApiKey).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
   test("distinguishes an API failure from an empty key list", async () => {
@@ -301,6 +397,91 @@ describe("API key details and editing", () => {
     expect(toast.success).not.toHaveBeenCalledWith("API key copied");
   });
 
+  test("creates one key for rapid clicks and unlocks the form after failure", async () => {
+    const apiKey = apiKeyFixture();
+    let rejectCreate!: (reason: Error) => void;
+    getApiKeysPage.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    createApiKey
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectCreate = reject;
+          }),
+      )
+      .mockResolvedValueOnce({ record: apiKey, secret: "sk-created-secret" });
+
+    renderApiKeysPage(<ApiKeysPage defaultGroup="default" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create key" }));
+    const createDialog = await screen.findByRole("dialog", { name: "Create API key" });
+    fireEvent.change(within(createDialog).getByLabelText("Name"), {
+      target: { value: "New app" },
+    });
+    const createButton = within(createDialog).getByRole("button", { name: "Create key" });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    act(() => {
+      createButton.click();
+      createButton.click();
+    });
+
+    await waitFor(() => expect(createApiKey).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(createButton).toBeDisabled();
+      expect(within(createDialog).queryByRole("button", { name: "Close" })).toBeNull();
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(createDialog).toBeVisible();
+    await act(async () => rejectCreate(new Error("create failed")));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("create failed"));
+    expect(createDialog).toBeVisible();
+    expect(createButton).toBeEnabled();
+
+    fireEvent.click(createButton);
+    await waitFor(() => expect(createApiKey).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("dialog", { name: "Copy your API key" })).toBeVisible();
+  });
+
+  test("keeps the one-time secret visible until the user confirms it is saved", async () => {
+    const apiKey = apiKeyFixture();
+    getApiKeysPage.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    createApiKey.mockResolvedValue({ record: apiKey, secret: "sk-created-secret" });
+
+    renderApiKeysPage(<ApiKeysPage defaultGroup="default" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create key" }));
+    const createDialog = await screen.findByRole("dialog", { name: "Create API key" });
+    fireEvent.change(within(createDialog).getByLabelText("Name"), {
+      target: { value: "New app" },
+    });
+    const createButton = within(createDialog).getByRole("button", { name: "Create key" });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    fireEvent.click(createButton);
+
+    const secretDialog = await screen.findByRole("dialog", { name: "Copy your API key" });
+    expect(within(secretDialog).queryByRole("button", { name: "Close" })).toBeNull();
+    expect(within(secretDialog).getByDisplayValue("sk-created-secret")).toBeVisible();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(secretDialog).toBeVisible();
+
+    const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"][data-open]');
+    expect(overlay).not.toBeNull();
+    fireEvent.pointerDown(overlay!);
+    fireEvent.pointerUp(overlay!);
+    fireEvent.click(overlay!);
+    expect(secretDialog).toBeVisible();
+
+    fireEvent.click(within(secretDialog).getByRole("button", { name: "Copy API key" }));
+    await waitFor(() =>
+      expect(within(secretDialog).getByRole("button", { name: "API key copied" })).toBeVisible(),
+    );
+
+    fireEvent.click(within(secretDialog).getByRole("button", { name: "I have saved it" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Copy your API key" })).toBeNull(),
+    );
+  });
+
   test("selects an allowed group and searchable model instead of accepting arbitrary text", async () => {
     const apiKey = apiKeyFixture();
     getApiKeysPage.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
@@ -355,8 +536,8 @@ function apiKeyFixture(): ApiKeyRecord {
     lastUsedAt: 1_754_086_400,
     expiresAt: 1_764_000_000,
     unlimitedQuota: false,
-    remainingQuota: 7500,
-    usedQuota: 2500,
+    remainingQuotaUsd: 75,
+    usedQuotaUsd: 25,
     group: "default",
     environment: "production",
     allowedModels: ["gpt-5", "claude-sonnet-4"],

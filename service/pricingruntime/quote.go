@@ -15,8 +15,10 @@ type Quote struct {
 	ChannelModelId         int    `json:"channel_model_id"`
 	ChannelId              int    `json:"channel_id"`
 	PurchasePriceVersion   int    `json:"purchase_price_version_id"`
+	OfficialPriceVersion   int    `json:"official_price_version_id,omitempty"`
 	PricingRevision        string `json:"pricing_revision"`
 	PurchaseCost           string `json:"purchase_cost"`
+	OfficialAmount         string `json:"official_amount,omitempty"`
 	SalesAmount            string `json:"sales_amount"`
 	CustomerCharge         string `json:"customer_charge"`
 	Currency               string `json:"currency"`
@@ -120,6 +122,25 @@ func QuoteCandidates(
 				err,
 			)
 		}
+		officialPriceVersion := 0
+		officialAmount := ""
+		if bundle.Official != nil {
+			official, evaluateErr := pricingengine.EvaluateWithRequest(
+				bundle.Official.BillingExpr,
+				bundle.Official.ExprHash,
+				usage,
+				requestInput,
+			)
+			if evaluateErr != nil {
+				return nil, fmt.Errorf(
+					"evaluate official price for channel model %d: %w",
+					bundle.ChannelModel.Id,
+					evaluateErr,
+				)
+			}
+			officialPriceVersion = bundle.Official.Id
+			officialAmount = official.Amount.String()
+		}
 		var override *model.SalesPriceBookChannelModelOverride
 		if configured, exists := overridesByChannelModel[bundle.ChannelModel.Id]; exists {
 			override = &configured
@@ -155,8 +176,10 @@ func QuoteCandidates(
 			ChannelModelId:         bundle.ChannelModel.Id,
 			ChannelId:              bundle.ChannelModel.ChannelId,
 			PurchasePriceVersion:   bundle.Purchase.Id,
+			OfficialPriceVersion:   officialPriceVersion,
 			PricingRevision:        resolved.Version.ContentHash,
 			PurchaseCost:           purchase.Amount.String(),
+			OfficialAmount:         officialAmount,
 			SalesAmount:            sales.Amount.String(),
 			CustomerCharge:         sales.Amount.String(),
 			Currency:               resolved.Book.Currency,

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { Component, type ErrorInfo, type ReactNode, useState } from "react";
+import { CircleHelpIcon } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
 
@@ -16,6 +17,14 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@token-boat/ui/components/ui/chart";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@token-boat/ui/components/ui/dialog";
 import { Skeleton } from "@token-boat/ui/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@token-boat/ui/components/ui/tabs";
 import { ChartEmptyState } from "@/components/chart-empty-state";
@@ -23,6 +32,39 @@ import type { RequestLogAnalytics } from "@/data/contracts";
 import { formatNumber, formatPreciseCurrency } from "@/lib/format";
 
 type RequestMetric = "requests" | "rpm" | "tpm" | "tokens" | "cost" | "cache";
+
+const requestStatisticDefinitions = [
+  {
+    description: "Total successful and failed requests matching the current filters.",
+    label: "Requests",
+  },
+  {
+    description: "Failed requests divided by all requests.",
+    label: "Failure rate",
+  },
+  {
+    description: "The highest number of requests recorded in any one-minute interval.",
+    label: "Peak RPM",
+  },
+  {
+    description:
+      "The highest total of input and output tokens recorded in any one-minute interval.",
+    label: "Peak TPM",
+  },
+  {
+    description: "Total input and output tokens from successful requests.",
+    label: "Tokens",
+  },
+  {
+    description: "Total billed usage cost from successful requests, shown in USD.",
+    label: "Cost",
+  },
+  {
+    description:
+      "Cache-read tokens divided by provider-reported total input tokens. Shown as unavailable when complete input-token data is missing.",
+    label: "Cache hit rate",
+  },
+] as const;
 
 type RequestLogAnalyticsCardProps = {
   data: RequestLogAnalytics | undefined;
@@ -66,7 +108,60 @@ export function RequestLogAnalyticsCard(props: RequestLogAnalyticsCardProps) {
     <Card>
       <CardHeader className="gap-4">
         <div className="flex flex-col gap-1">
-          <CardTitle>{t("Request statistics")}</CardTitle>
+          <div className="flex items-center gap-1">
+            <CardTitle>{t("Request statistics")}</CardTitle>
+            <Dialog>
+              <DialogTrigger
+                render={
+                  <Button
+                    aria-label={t("Explain request statistics")}
+                    className="text-muted-foreground"
+                    size="icon-xs"
+                    title={t("Explain request statistics")}
+                    variant="ghost"
+                  />
+                }
+              >
+                <CircleHelpIcon />
+              </DialogTrigger>
+              <DialogContent
+                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
+                closeLabel={t("Close")}
+              >
+                <DialogHeader>
+                  <DialogTitle>{t("Request statistics explained")}</DialogTitle>
+                  <DialogDescription>
+                    {t(
+                      "All values use the current time range and filters. Summary totals cover the full range; peak RPM and peak TPM are one-minute maxima.",
+                    )}
+                  </DialogDescription>
+                </DialogHeader>
+                <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                  {requestStatisticDefinitions.map((item) => (
+                    <div className="grid gap-1" key={item.label}>
+                      <dt className="font-medium">{t(item.label)}</dt>
+                      <dd className="text-sm leading-relaxed text-muted-foreground">
+                        {t(item.description)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="grid gap-1 rounded-lg bg-muted/50 p-3">
+                  <h3 className="font-medium">{t("RPM and TPM charts")}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {t(
+                      "Chart RPM and TPM points are per-minute averages within each displayed time bucket, not one-minute peaks. The bucket size adjusts to the selected date range.",
+                    )}
+                  </p>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {t(
+                      "RPM equals requests in the bucket divided by bucket minutes. TPM equals input and output tokens in the bucket divided by bucket minutes.",
+                    )}
+                  </p>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
           <CardDescription>{t("Usage and reliability for the selected filters.")}</CardDescription>
         </div>
         {props.loading ? (
@@ -132,7 +227,26 @@ export function RequestLogAnalyticsCard(props: RequestLogAnalyticsCardProps) {
               <TabsTrigger value="cost">{t("Cost")}</TabsTrigger>
               <TabsTrigger value="cache">{t("Cache hit rate")}</TabsTrigger>
             </TabsList>
-            <RequestMetricChart data={data} locale={locale} metric={metric} />
+            <RequestMetricChartBoundary
+              fallback={
+                <ChartEmptyState
+                  action={
+                    <Button onClick={() => setMetric("requests")} size="sm" variant="outline">
+                      {t("Show request count")}
+                    </Button>
+                  }
+                  className="mt-4 min-h-64"
+                  description={t(
+                    "The selected chart could not be rendered. Choose another statistic or try again.",
+                  )}
+                  title={t("Unable to display this statistic")}
+                  variant="error"
+                />
+              }
+              key={metric}
+            >
+              <RequestMetricChart data={data} locale={locale} metric={metric} />
+            </RequestMetricChartBoundary>
           </Tabs>
         )}
       </CardContent>
@@ -192,7 +306,12 @@ function RequestMetricChart(props: {
           <ChartTooltip
             content={
               <ChartTooltipContent
-                labelFormatter={(value) => formatBucketDateTime(Number(value), props.locale)}
+                labelFormatter={(_, payload) => {
+                  const bucketStart = payload[0]?.payload?.bucketStart;
+                  return typeof bucketStart === "number"
+                    ? formatBucketDateTime(bucketStart, props.locale)
+                    : "";
+                }}
               />
             }
             cursor={{ fill: "var(--muted)", opacity: 0.45 }}
@@ -200,17 +319,34 @@ function RequestMetricChart(props: {
           <Bar
             dataKey="succeeded"
             fill="var(--color-succeeded)"
+            isAnimationActive={false}
             radius={[3, 3, 0, 0]}
             stackId="requests"
           />
           <Bar
             dataKey="failed"
             fill="var(--color-failed)"
+            isAnimationActive={false}
             radius={[3, 3, 0, 0]}
             stackId="requests"
           />
         </BarChart>
       </ChartContainer>
+    );
+  }
+
+  const hasRecordedValue = chartData.some(
+    (point) => typeof point.value === "number" && Number.isFinite(point.value),
+  );
+  if (!hasRecordedValue) {
+    return (
+      <ChartEmptyState
+        className="mt-4 min-h-64"
+        description={t(
+          "The selected statistic was not recorded for this range. No value has been inferred.",
+        )}
+        title={t("No recorded data for this statistic")}
+      />
     );
   }
 
@@ -250,7 +386,12 @@ function RequestMetricChart(props: {
                   {formatValue(Number(value))}
                 </span>
               )}
-              labelFormatter={(value) => formatBucketDateTime(Number(value), props.locale)}
+              labelFormatter={(_, payload) => {
+                const bucketStart = payload[0]?.payload?.bucketStart;
+                return typeof bucketStart === "number"
+                  ? formatBucketDateTime(bucketStart, props.locale)
+                  : "";
+              }}
             />
           }
         />
@@ -258,6 +399,7 @@ function RequestMetricChart(props: {
           dataKey="value"
           fill="var(--color-value)"
           fillOpacity={0.16}
+          isAnimationActive={false}
           stroke="var(--color-value)"
           strokeWidth={2}
           type="monotone"
@@ -265,6 +407,35 @@ function RequestMetricChart(props: {
       </AreaChart>
     </ChartContainer>
   );
+}
+
+type RequestMetricChartBoundaryProps = {
+  children: ReactNode;
+  fallback: ReactNode;
+};
+
+type RequestMetricChartBoundaryState = {
+  failed: boolean;
+};
+
+class RequestMetricChartBoundary extends Component<
+  RequestMetricChartBoundaryProps,
+  RequestMetricChartBoundaryState
+> {
+  state: RequestMetricChartBoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): RequestMetricChartBoundaryState {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Request metric chart failed to render", error, info);
+  }
+
+  render() {
+    if (this.state.failed) return this.props.fallback;
+    return this.props.children;
+  }
 }
 
 function metricLabel(metric: RequestMetric): string {

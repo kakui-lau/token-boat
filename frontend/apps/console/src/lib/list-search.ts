@@ -90,6 +90,14 @@ export type PlaygroundSearch = {
 
 export type SearchPatch<T extends object> = Partial<{ [Key in keyof T]: T[Key] | undefined }>;
 
+export function searchPatchShouldResetScroll<T extends object>(
+  patch: SearchPatch<T>,
+  overlayKeys: readonly (keyof T)[],
+): boolean {
+  const changedKeys = Object.keys(patch) as (keyof T)[];
+  return changedKeys.length === 0 || changedKeys.some((key) => !overlayKeys.includes(key));
+}
+
 export function useControllableSearch<T extends object>(
   value: T | undefined,
   onChange: ((patch: SearchPatch<T>) => void) | undefined,

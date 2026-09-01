@@ -286,6 +286,19 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
       enableSorting: false,
     },
 
+    // Context length column
+    {
+      accessorKey: 'context_length',
+      header: t('Context'),
+      meta: { mobileHidden: true },
+      cell: ({ row }) => {
+        const contextLength = row.getValue('context_length') as number
+        return contextLength > 0 ? contextLength.toLocaleString() : '-'
+      },
+      size: 110,
+      enableSorting: false,
+    },
+
     // Description column
     {
       accessorKey: 'description',

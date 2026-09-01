@@ -96,7 +96,11 @@ describe("BillingPage plan states", () => {
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Redemption code" }), {
       target: { value: "  MERCHANT-CREDIT  " },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Redeem" }));
+    const redeemButton = within(dialog).getByRole("button", { name: "Redeem" });
+    act(() => {
+      redeemButton.click();
+      redeemButton.click();
+    });
 
     await waitFor(() =>
       expect(within(dialog).getByRole("button", { name: "Redeem" })).toBeDisabled(),
@@ -104,6 +108,7 @@ describe("BillingPage plan states", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(dialog).toBeVisible();
     expect(redeemCode.mock.calls[0]?.[0]).toBe("MERCHANT-CREDIT");
+    expect(redeemCode).toHaveBeenCalledTimes(1);
 
     await act(async () => resolveRedemption(billing));
     await waitFor(() =>
@@ -126,6 +131,7 @@ function renderBillingPage() {
 function billingFixture(): BillingData {
   return {
     balance: 0,
+    totalUsage: 0,
     currency: "USD",
     monthSpend: 0,
     pendingAmount: 0,

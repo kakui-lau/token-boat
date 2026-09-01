@@ -74,6 +74,24 @@ beforeEach(() => {
 });
 
 describe("BillingPage transaction boundaries", () => {
+  test("shows the authoritative total consumed quota beside the available balance", async () => {
+    getBilling.mockResolvedValue({
+      ...billingFixture(),
+      totalUsage: 246.8,
+    } as BillingData & { totalUsage: number });
+    getBillingTransactionsPage.mockResolvedValue(transactionPage());
+
+    renderBillingPage();
+
+    const usageCard = (await screen.findByText("Total usage")).closest<HTMLElement>(
+      '[data-slot="card"]',
+    );
+    expect(usageCard).not.toBeNull();
+    expect(within(usageCard!).getByText("$246.80")).toBeVisible();
+    expect(within(usageCard!).getByText("Total consumed quota")).toBeVisible();
+    expect(screen.getByText("Available balance")).toBeVisible();
+  });
+
   test("keeps a transaction failure distinct from zero spend and an empty history", async () => {
     getBillingTransactionsPage
       .mockRejectedValueOnce(new Error("offline"))
@@ -206,6 +224,7 @@ function renderBillingPage(page: ReactNode = <BillingPage />) {
 function billingFixture(): BillingData {
   return {
     balance: 100,
+    totalUsage: 0,
     currency: "USD",
     monthSpend: null,
     pendingAmount: null,

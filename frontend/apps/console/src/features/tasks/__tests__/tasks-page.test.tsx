@@ -114,7 +114,7 @@ describe("TasksPage", () => {
     expect(dialog).toHaveAttribute("tabindex", "-1");
     expect(dialog).toHaveTextContent("Type-specific details");
     expect(dialog).toHaveTextContent("1536×1024");
-    expect(dialog).toHaveTextContent("Task platform");
+    expect(dialog).not.toHaveTextContent("image-platform");
     expect(dialog).toHaveTextContent("Billing unit");
     expect(dialog).toHaveTextContent("https://cdn.example.com/image-failed.png");
     expect(dialog).toHaveTextContent("Unsupported aspect ratio");

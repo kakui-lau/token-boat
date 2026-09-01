@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { TasksPage } from "@/features/tasks/pages/tasks-page";
-import { parseTaskSearch } from "@/lib/list-search";
+import { parseTaskSearch, searchPatchShouldResetScroll } from "@/lib/list-search";
 
 export const Route = createFileRoute("/tasks")({
   validateSearch: parseTaskSearch,
@@ -14,7 +14,10 @@ function TasksRoute() {
     <TasksPage
       search={search}
       onSearchChange={(patch) =>
-        void navigate({ search: (previous) => ({ ...previous, ...patch }) })
+        void navigate({
+          resetScroll: searchPatchShouldResetScroll(patch, ["detail"]),
+          search: (previous) => ({ ...previous, ...patch }),
+        })
       }
     />
   );

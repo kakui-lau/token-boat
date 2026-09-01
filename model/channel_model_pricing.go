@@ -170,6 +170,11 @@ type RequestPricingSnapshot struct {
 	PurchasePriceVersionId  int     `json:"purchase_price_version_id" gorm:"not null"`
 	PurchaseBillingExpr     string  `json:"purchase_billing_expr" gorm:"type:text"`
 	PurchaseExprHash        string  `json:"purchase_expr_hash" gorm:"type:varchar(64)"`
+	OfficialPriceVersionId  *int    `json:"official_price_version_id" gorm:"index"`
+	OfficialBillingExpr     string  `json:"official_billing_expr" gorm:"type:text"`
+	OfficialExprHash        string  `json:"official_expr_hash" gorm:"type:varchar(64)"`
+	EstimatedOfficialAmount *string `json:"estimated_official_amount" gorm:"type:decimal(36,18)"`
+	OfficialAmount          *string `json:"official_amount" gorm:"type:decimal(36,18)"`
 	SalesPriceBookId        int     `json:"sales_price_book_id" gorm:"index"`
 	SalesPriceBookVersionId int     `json:"sales_price_book_version_id" gorm:"index"`
 	SalesPriceBookItemId    int     `json:"sales_price_book_item_id" gorm:"index"`

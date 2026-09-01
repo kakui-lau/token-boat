@@ -102,6 +102,9 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["channel_model_id"] = snapshot.Selected.ChannelModelId
 		adminInfo["pricing_billing_mode"] = snapshot.Selected.BillingMode
 		adminInfo["purchase_price_version_id"] = snapshot.Selected.PurchasePriceVersion
+		if snapshot.Selected.OfficialPriceVersion > 0 {
+			adminInfo["official_price_version_id"] = snapshot.Selected.OfficialPriceVersion
+		}
 		adminInfo["sales_price_book_id"] = snapshot.Selected.SalesPriceBookId
 		adminInfo["sales_price_book_version_id"] = snapshot.Selected.SalesPriceBookVersionId
 		adminInfo["sales_price_book_item_id"] = snapshot.Selected.SalesPriceBookItemId
@@ -109,6 +112,12 @@ func InjectGeneralBillingAudit(other map[string]interface{}, relayInfo *relaycom
 		adminInfo["sales_pricing_source"] = snapshot.Selected.SalesPricingSource
 		adminInfo["pricing_revision"] = snapshot.Selected.PricingRevision
 		adminInfo["estimated_purchase_usd"] = snapshot.Selected.EstimatedPurchaseUSD
+		if snapshot.Selected.EstimatedOfficialAmountUSD != "" {
+			adminInfo["estimated_official_amount_usd"] = snapshot.Selected.EstimatedOfficialAmountUSD
+		}
+		if snapshot.Selected.OfficialAmountUSD != "" {
+			adminInfo["official_amount_usd"] = snapshot.Selected.OfficialAmountUSD
+		}
 		adminInfo["estimated_sales_usd"] = snapshot.Selected.EstimatedSalesUSD
 		adminInfo["estimated_customer_charge_usd"] = snapshot.Selected.EstimatedCustomerChargeUSD
 		adminInfo["provider_cost_mode"] = snapshot.Selected.ProviderCostMode

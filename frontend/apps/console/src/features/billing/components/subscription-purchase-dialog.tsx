@@ -25,6 +25,7 @@ import { Separator } from "@token-boat/ui/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@token-boat/ui/components/ui/toggle-group";
 import type { SubscriptionPlan } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { useActionLock } from "@/hooks/use-action-lock";
 import { formatCurrency } from "@/lib/format";
 import { continueToCheckout } from "@/lib/payment-checkout";
 import { invalidateBillingQueries } from "../lib/invalidate-billing-queries";
@@ -47,6 +48,7 @@ export function SubscriptionPurchaseDialog({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [selectedMethodId, setSelectedMethodId] = useState("");
+  const purchaseLock = useActionLock();
   const selectedMethod =
     plan?.paymentMethods.find((method) => method.id === selectedMethodId) ??
     plan?.paymentMethods[0];
@@ -69,10 +71,18 @@ export function SubscriptionPurchaseDialog({
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : t("Unable to purchase subscription")),
+    onSettled: purchaseLock.release,
   });
 
   const submit = () => {
-    if (!plan || !selectedMethod || limitReached || balanceInsufficient) return;
+    if (
+      !plan ||
+      !selectedMethod ||
+      limitReached ||
+      balanceInsufficient ||
+      !purchaseLock.tryAcquire()
+    )
+      return;
     purchase.mutate({ method: selectedMethod, planId: plan.id });
   };
 
@@ -135,7 +145,7 @@ export function SubscriptionPurchaseDialog({
                     <dd>
                       {plan.unlimitedQuota
                         ? t("Unlimited")
-                        : formatCurrency(plan.quota, locale, "USD")}
+                        : formatCurrency(plan.quotaUsd, locale, "USD")}
                     </dd>
                   </div>
                 </div>

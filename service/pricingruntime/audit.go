@@ -53,6 +53,16 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 	if err != nil {
 		return fmt.Errorf("sanitize estimated pricing usage: %w", err)
 	}
+	var officialPriceVersionId *int
+	if selected.OfficialPriceVersion > 0 {
+		value := selected.OfficialPriceVersion
+		officialPriceVersionId = &value
+	}
+	var estimatedOfficialAmount *string
+	if strings.TrimSpace(selected.EstimatedOfficialAmountUSD) != "" {
+		value := selected.EstimatedOfficialAmountUSD
+		estimatedOfficialAmount = &value
+	}
 	snapshot := model.RequestPricingSnapshot{
 		RequestId:               info.RequestId,
 		UserId:                  info.UserId,
@@ -62,6 +72,10 @@ func CreateRequestPricingSnapshot(info *relaycommon.RelayInfo) error {
 		PurchasePriceVersionId:  selected.PurchasePriceVersion,
 		PurchaseBillingExpr:     selected.PurchaseExpression,
 		PurchaseExprHash:        selected.PurchaseExpressionHash,
+		OfficialPriceVersionId:  officialPriceVersionId,
+		OfficialBillingExpr:     selected.OfficialExpression,
+		OfficialExprHash:        selected.OfficialExpressionHash,
+		EstimatedOfficialAmount: estimatedOfficialAmount,
 		SalesPriceBookId:        selected.SalesPriceBookId,
 		SalesPriceBookVersionId: selected.SalesPriceBookVersionId,
 		SalesPriceBookItemId:    selected.SalesPriceBookItemId,
@@ -215,6 +229,26 @@ func SettleRequestPricingSnapshot(
 		markPricingSnapshotPending(info.RequestId, "sales_evaluation_failed", err.Error())
 		return fmt.Errorf("evaluate settled sales price: %w", err)
 	}
+	var officialAmount *string
+	if strings.TrimSpace(selected.OfficialExpression) != "" {
+		official, evaluateErr := pricingengine.EvaluateWithRequest(
+			selected.OfficialExpression,
+			selected.OfficialExpressionHash,
+			actualUsage,
+			requestInput,
+		)
+		if evaluateErr != nil {
+			markPricingSnapshotPending(
+				info.RequestId,
+				"official_evaluation_failed",
+				evaluateErr.Error(),
+			)
+			return fmt.Errorf("evaluate settled official price: %w", evaluateErr)
+		}
+		value := official.Amount.String()
+		officialAmount = &value
+		selected.OfficialAmountUSD = value
+	}
 	if settledQuota < 0 {
 		err = errors.New("settled quota cannot be negative")
 		markPricingSnapshotPending(info.RequestId, "negative_settled_quota", err.Error())
@@ -255,32 +289,36 @@ func SettleRequestPricingSnapshot(
 		markPricingSnapshotPending(info.RequestId, "actual_usage_encode_failed", err.Error())
 		return err
 	}
+	updates := map[string]any{
+		"channel_model_id":          selected.ChannelModelId,
+		"purchase_price_version_id": selected.PurchasePriceVersion,
+		"billing_mode":              selected.BillingMode,
+		"actual_usage":              string(usageJSON),
+		"settled_quota":             int64(settledQuota),
+		"purchase_cost":             purchase.Amount.String(),
+		"sales_amount":              sales.Amount.String(),
+		"base_sales_amount":         sales.Amount.String(),
+		"customer_charge":           customerCharge.String(),
+		"applied_group":             info.DynamicPricingSnapshot.Group,
+		"quota_per_unit":            quotaPerUnit.String(),
+		"total_variable_cost_rate":  variableCostRate.String(),
+		"effective_tax_rate":        taxRate.String(),
+		"minimum_margin_rate":       minimumMargin.String(),
+		"net_margin_rate":           netMargin.String(),
+		"margin_compliant":          marginCompliant,
+		"currency":                  selected.Currency,
+		"status":                    PricingSnapshotStatusSettled,
+		"updated_at":                common.GetTimestamp(),
+	}
+	if officialAmount != nil {
+		updates["official_amount"] = *officialAmount
+	}
 	result := model.DB.Model(&model.RequestPricingSnapshot{}).
 		Where("request_id = ? AND status IN ?", info.RequestId, []string{
 			PricingSnapshotStatusReserved,
 			PricingSnapshotStatusPending,
 		}).
-		Updates(map[string]any{
-			"channel_model_id":          selected.ChannelModelId,
-			"purchase_price_version_id": selected.PurchasePriceVersion,
-			"billing_mode":              selected.BillingMode,
-			"actual_usage":              string(usageJSON),
-			"settled_quota":             int64(settledQuota),
-			"purchase_cost":             purchase.Amount.String(),
-			"sales_amount":              sales.Amount.String(),
-			"base_sales_amount":         sales.Amount.String(),
-			"customer_charge":           customerCharge.String(),
-			"applied_group":             info.DynamicPricingSnapshot.Group,
-			"quota_per_unit":            quotaPerUnit.String(),
-			"total_variable_cost_rate":  variableCostRate.String(),
-			"effective_tax_rate":        taxRate.String(),
-			"minimum_margin_rate":       minimumMargin.String(),
-			"net_margin_rate":           netMargin.String(),
-			"margin_compliant":          marginCompliant,
-			"currency":                  selected.Currency,
-			"status":                    PricingSnapshotStatusSettled,
-			"updated_at":                common.GetTimestamp(),
-		})
+		Updates(updates)
 	if result.Error != nil {
 		markPricingSnapshotPending(info.RequestId, "snapshot_update_failed", result.Error.Error())
 		return result.Error

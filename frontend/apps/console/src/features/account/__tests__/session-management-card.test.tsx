@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { LoginSessionRecord } from "@/data/contracts";
@@ -21,7 +21,8 @@ describe("session management", () => {
         locale="en"
         onRevoke={vi.fn()}
         onRevokeOthers={vi.fn()}
-        pending={false}
+        pendingSessionId={null}
+        revokeOthersPending={false}
         sessions={sessionFixtures()}
       />,
     );
@@ -38,12 +39,13 @@ describe("session management", () => {
 
   test("confirms signing out every other device while preserving the current session", async () => {
     const onRevokeOthers = vi.fn();
-    render(
+    const view = render(
       <SessionManagementCard
         locale="en"
         onRevoke={vi.fn()}
         onRevokeOthers={onRevokeOthers}
-        pending={false}
+        pendingSessionId={null}
+        revokeOthersPending={false}
         sessions={sessionFixtures()}
       />,
     );
@@ -57,6 +59,86 @@ describe("session management", () => {
     );
     fireEvent.click(within(confirmation).getByRole("button", { name: "Sign out other sessions" }));
     expect(onRevokeOthers).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <SessionManagementCard
+        locale="en"
+        onRevoke={vi.fn()}
+        onRevokeOthers={onRevokeOthers}
+        pendingSessionId={null}
+        revokeOthersPending
+        sessions={sessionFixtures()}
+      />,
+    );
+    expect(within(confirmation).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(
+      within(confirmation).getByRole("button", { name: "Sign out other sessions" }),
+    ).toBeDisabled();
+  });
+
+  test("keeps session details available until revocation succeeds", async () => {
+    const onRevoke = vi.fn();
+    const view = render(
+      <SessionManagementCard
+        locale="en"
+        onRevoke={onRevoke}
+        onRevokeOthers={vi.fn()}
+        pendingSessionId={null}
+        revokeOthersPending={false}
+        sessions={sessionFixtures()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View Safari on iPhone session details" }));
+    const sheet = await screen.findByRole("dialog", { name: "Session details" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Sign out Safari on iPhone" }));
+
+    const confirmation = await screen.findByRole("alertdialog", {
+      name: "Sign out this session?",
+    });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Sign out" }));
+    expect(onRevoke).toHaveBeenCalledWith("session-mobile-1234567890");
+    expect(sheet).toBeVisible();
+
+    view.rerender(
+      <SessionManagementCard
+        locale="en"
+        onRevoke={onRevoke}
+        onRevokeOthers={vi.fn()}
+        pendingSessionId="session-mobile-1234567890"
+        revokeOthersPending={false}
+        sessions={sessionFixtures()}
+      />,
+    );
+    expect(within(confirmation).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(within(confirmation).getByRole("button", { name: "Sign out" })).toBeDisabled();
+
+    view.rerender(
+      <SessionManagementCard
+        locale="en"
+        onRevoke={onRevoke}
+        onRevokeOthers={vi.fn()}
+        pendingSessionId={null}
+        revokeOthersPending={false}
+        sessions={sessionFixtures()}
+      />,
+    );
+    expect(sheet).toBeVisible();
+    expect(within(confirmation).getByRole("button", { name: "Sign out" })).toBeEnabled();
+
+    view.rerender(
+      <SessionManagementCard
+        locale="en"
+        onRevoke={onRevoke}
+        onRevokeOthers={vi.fn()}
+        pendingSessionId={null}
+        revokeOthersPending={false}
+        sessions={sessionFixtures().filter((session) => session.current)}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull(),
+    );
   });
 
   test("keeps already-friendly device descriptions unchanged", () => {

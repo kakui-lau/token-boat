@@ -18,6 +18,7 @@ const initialPreferences: AccountPreferences = {
   gotifyUrl: "https://gotify.example.com",
   notificationEmail: "alerts@example.com",
   notifyType: "email",
+  recordIpForced: false,
   recordIpLog: true,
   webhookSecret: "",
   webhookSecretConfigured: true,
@@ -109,6 +110,19 @@ describe("usage notification settings", () => {
     );
     expect(screen.getByRole("button", { name: "Save preferences" })).toBeDisabled();
     expect(screen.getByText("Enter a whole-number priority from 0 to 10.")).toBeVisible();
+  });
+
+  test("shows the effective request IP policy without offering a non-functional switch", () => {
+    renderForm({ ...initialPreferences, recordIpForced: true, recordIpLog: false });
+
+    expect(screen.getByRole("switch", { name: "Record request IP" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Record request IP" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(
+      screen.getByText("Request IP retention is required by the platform policy."),
+    ).toBeVisible();
   });
 });
 

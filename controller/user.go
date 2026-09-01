@@ -1414,6 +1414,7 @@ func GetUserSetting(c *gin.Context) {
 		return
 	}
 	settings := user.GetSetting()
+	recordIpLog := settings.RecordIpLog || constant.AlwaysRecordIp
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -1428,7 +1429,8 @@ func GetUserSetting(c *gin.Context) {
 			"gotify_token_configured":              settings.GotifyToken != "",
 			"gotify_priority":                      settings.GotifyPriority,
 			"upstream_model_update_notify_enabled": settings.UpstreamModelUpdateNotifyEnabled,
-			"record_ip_log":                        settings.RecordIpLog,
+			"record_ip_forced":                     constant.AlwaysRecordIp,
+			"record_ip_log":                        recordIpLog,
 		},
 	})
 }
@@ -1538,7 +1540,7 @@ func UpdateUserSetting(c *gin.Context) {
 	settings := existingSettings
 	settings.NotifyType = req.QuotaWarningType
 	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
-	settings.RecordIpLog = req.RecordIpLog
+	settings.RecordIpLog = req.RecordIpLog || constant.AlwaysRecordIp
 
 	// 如果是webhook类型,添加webhook相关设置
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {

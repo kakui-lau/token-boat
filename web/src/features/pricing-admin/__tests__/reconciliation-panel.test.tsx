@@ -109,6 +109,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           channel_name: 'video-provider',
           billing_mode: 'video_duration',
           purchase_price_version_id: 12,
+          official_price_version_id: 14,
           sales_price_book_version_id: 13,
           estimated_usage: '{"video_seconds":3}',
           actual_usage: '',
@@ -121,6 +122,7 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
           pre_consume_captured: true,
           settled_quota: 0,
           purchase_cost: '0.4',
+          estimated_official_amount: '1.2',
           provider_cost_mode: 'invoice',
           provider_cost_status: 'pending',
           sales_amount: '0.8',
@@ -148,13 +150,15 @@ test('shows pending pricing snapshots with reconciliation context', async () => 
     expect(screen.getByText('request-pending')).toBeInTheDocument()
   )
   expect(screen.getByText('seedance-2.0')).toBeInTheDocument()
+  expect(screen.getByText('Official list price amount')).toBeInTheDocument()
+  expect(screen.getByText('1.2 USD')).toBeInTheDocument()
   expect(screen.getByText('video-provider')).toBeInTheDocument()
   expect(screen.getAllByText('video_duration')).toHaveLength(2)
   expect(
     screen.getByRole('button', { name: 'Confirm Refunded' })
   ).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'View details' }))
-  expect(screen.getByText('P#12 · PB#13')).toBeInTheDocument()
+  expect(screen.getByText('P#12 · O#14 · PB#13')).toBeInTheDocument()
   expect(screen.getByText(/"video_seconds": 3/)).toBeInTheDocument()
   expect(screen.getByText('#7')).toBeInTheDocument()
   expect(screen.getByText('0.4 USD')).toBeInTheDocument()

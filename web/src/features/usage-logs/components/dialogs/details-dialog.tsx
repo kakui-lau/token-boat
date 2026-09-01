@@ -356,6 +356,19 @@ function BillingBreakdown(props: {
         value: formatLogQuota(other.customer_final_quota),
       })
     }
+    const officialAmount =
+      other.admin_info?.official_amount_usd ??
+      other.admin_info?.estimated_official_amount_usd
+    const officialAmountNumber = Number(officialAmount)
+    if (officialAmount != null && Number.isFinite(officialAmountNumber)) {
+      rows.push({
+        label:
+          other.admin_info?.official_amount_usd != null
+            ? t('Official list price amount')
+            : t('Estimated official list price amount'),
+        value: fmtPrice(officialAmountNumber),
+      })
+    }
     if (other.adjustment_quota != null && other.adjustment_quota !== 0) {
       rows.push({
         label: t('Billing Adjustment'),

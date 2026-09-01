@@ -244,7 +244,10 @@ function mapUsageAnalytics(
       date: localDateToKey(new Date(dayStart * 1_000)),
       requests: succeeded + failed,
       tokens: requireNumber(point, "total_tokens", `usage.series[${index}].total_tokens`),
-      cost: quotaToUsd(requireNumber(point, "quota", `usage.series[${index}].quota`), quotaPerUnit),
+      cost: quotaUnitsToUsd(
+        requireNumber(point, "quota", `usage.series[${index}].quota`),
+        quotaPerUnit,
+      ),
     };
   });
   if (summary.requestCount > 0 && series.length === 0) {
@@ -262,7 +265,10 @@ function mapUsageAnalytics(
       model: requireString(model, "model_name", `usage.models[${index}].model_name`),
       requests: totalRequests,
       tokens: requireNumber(model, "total_tokens", `usage.models[${index}].total_tokens`),
-      cost: quotaToUsd(requireNumber(model, "quota", `usage.models[${index}].quota`), quotaPerUnit),
+      cost: quotaUnitsToUsd(
+        requireNumber(model, "quota", `usage.models[${index}].quota`),
+        quotaPerUnit,
+      ),
       successRate: totalRequests > 0 ? (succeeded / totalRequests) * 100 : null,
     };
   });
@@ -284,7 +290,7 @@ function mapUsageAnalytics(
       apiKeyName: readString(apiKey, "token_name") || null,
       requests: totalRequests,
       tokens: requireNumber(apiKey, "total_tokens", `usage.api_keys[${index}].total_tokens`),
-      cost: quotaToUsd(
+      cost: quotaUnitsToUsd(
         requireNumber(apiKey, "quota", `usage.api_keys[${index}].quota`),
         quotaPerUnit,
       ),
@@ -295,7 +301,7 @@ function mapUsageAnalytics(
     range,
     totalRequests: summary.requestCount,
     totalTokens: summary.totalTokens,
-    totalCost: quotaToUsd(summary.costQuota, quotaPerUnit),
+    totalCost: quotaUnitsToUsd(summary.costQuota, quotaPerUnit),
     averageLatencyMs,
     successRate: summary.successRate,
     series,
@@ -305,11 +311,23 @@ function mapUsageAnalytics(
   };
 }
 
-function quotaToUsd(quota: number, quotaPerUnit: number): number {
+function quotaUnitsToUsd(quota: number, quotaPerUnit: number): number {
   if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
     throw new LiveDataContractError("status.quota_per_unit");
   }
   return quota / quotaPerUnit;
+}
+
+function usdToQuotaUnits(amountUsd: number, quotaPerUnit: number, field: string): number {
+  if (!Number.isFinite(amountUsd) || amountUsd < 0) throw new LiveDataContractError(field);
+  if (!Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+    throw new LiveDataContractError("status.quota_per_unit");
+  }
+  const quota = Math.round(amountUsd * quotaPerUnit);
+  if (!Number.isSafeInteger(quota) || (amountUsd > 0 && quota === 0)) {
+    throw new LiveDataContractError(field);
+  }
+  return quota;
 }
 
 function publicApiBaseUrl(): string {
@@ -429,8 +447,12 @@ function mapTaskStatus(value: string): TaskStatus {
   }
 }
 
-function inferTaskType(platform: string | null, action: string | null): TaskType {
-  const descriptor = `${platform ?? ""} ${action ?? ""}`.toLowerCase();
+function inferTaskType(
+  platform: string | null,
+  action: string | null,
+  model: string | null,
+): TaskType {
+  const descriptor = `${platform ?? ""} ${action ?? ""} ${model ?? ""}`.toLowerCase();
   if (/(suno|audio|speech|tts|music|lyrics)/.test(descriptor)) return "audio";
   if (/(video|veo|kling|sora|runway|luma|hailuo|vidu|seedance)/.test(descriptor)) {
     return "video";
@@ -463,7 +485,7 @@ function readTaskNumber(sources: Array<Record<string, unknown>>, keys: string[])
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-export function mapLiveTaskRecord(value: unknown): TaskRecord {
+export function mapLiveTaskRecord(value: unknown, quotaPerUnit: number): TaskRecord {
   const record = asRecord(value);
   const properties = asRecord(record.properties);
   const data = parseRecord(record.data);
@@ -484,6 +506,12 @@ export function mapLiveTaskRecord(value: unknown): TaskRecord {
   const prompt =
     readTaskString(sources, ["prompt", "input", "text", "description"]) ??
     (rawInput && Object.keys(input).length === 0 ? rawInput : "");
+  const rawFailureReason = readString(record, "fail_reason") || null;
+  const failurePayload = parseRecord(rawFailureReason);
+  const nestedFailure = asRecord(failurePayload.error);
+  const failureReason =
+    readTaskString([failurePayload, nestedFailure], ["message", "reason", "detail"]) ??
+    rawFailureReason;
   const completedAt = readNumber(record, "finish_time");
   const startedAt = readNumber(record, "start_time");
   const rawId = readString(record, "task_id");
@@ -496,7 +524,7 @@ export function mapLiveTaskRecord(value: unknown): TaskRecord {
 
   return {
     id: rawId || String(numericId),
-    type: inferTaskType(platform, action),
+    type: inferTaskType(platform, action, model),
     model,
     prompt,
     platform,
@@ -507,10 +535,10 @@ export function mapLiveTaskRecord(value: unknown): TaskRecord {
     startedAt: startedAt > 0 ? startedAt : null,
     updatedAt,
     completedAt: completedAt > 0 ? completedAt : null,
-    failureReason: readString(record, "fail_reason") || null,
+    failureReason,
     resultUrl: readString(record, "result_url") || null,
-    cost: requireNumber(record, "quota", "task.quota"),
-    costUnit: "quota",
+    cost: quotaUnitsToUsd(requireNumber(record, "quota", "task.quota"), quotaPerUnit),
+    costUnit: "usd",
     metadata: {
       durationSeconds: readTaskNumber(sources, ["duration_seconds", "duration", "seconds"]),
       resolution: readTaskString(sources, ["resolution", "size", "dimensions"]),
@@ -533,8 +561,8 @@ function mapUser(value: unknown): ConsoleUser {
     email: readString(user, "email"),
     group: requireString(user, "group", "user.group"),
     role: requireNumber(user, "role", "user.role"),
-    quota: requireNumber(user, "quota", "user.quota"),
-    usedQuota: requireNumber(user, "used_quota", "user.used_quota"),
+    quotaUnits: requireNumber(user, "quota", "user.quota"),
+    usedQuotaUnits: requireNumber(user, "used_quota", "user.used_quota"),
     requestCount: requireNumber(user, "request_count", "user.request_count"),
     createdAt: readUnixTime(user, "created_time"),
   };
@@ -637,7 +665,7 @@ function mapApiKeyStatus(status: number): ApiKeyStatus {
   return "unknown";
 }
 
-function mapApiKey(value: unknown): ApiKeyRecord {
+function mapApiKey(value: unknown, quotaPerUnit: number): ApiKeyRecord {
   const record = asRecord(value);
   const key = requireString(record, "key", "api_key.key");
   const normalizedKey = key.startsWith("sk-") ? key.slice(3) : key;
@@ -658,8 +686,14 @@ function mapApiKey(value: unknown): ApiKeyRecord {
     lastUsedAt: lastUsedAt > 0 ? lastUsedAt : null,
     expiresAt: expiresAt > 0 ? expiresAt : null,
     unlimitedQuota: requireBoolean(record, "unlimited_quota", "api_key.unlimited_quota"),
-    remainingQuota: requireNumber(record, "remain_quota", "api_key.remain_quota"),
-    usedQuota: requireNumber(record, "used_quota", "api_key.used_quota"),
+    remainingQuotaUsd: quotaUnitsToUsd(
+      requireNumber(record, "remain_quota", "api_key.remain_quota"),
+      quotaPerUnit,
+    ),
+    usedQuotaUsd: quotaUnitsToUsd(
+      requireNumber(record, "used_quota", "api_key.used_quota"),
+      quotaPerUnit,
+    ),
     group: requireString(record, "group", "api_key.group"),
     environment: "unclassified",
     allowedModels: modelLimits
@@ -851,28 +885,33 @@ function mapPricedRequestLog(value: unknown, quotaPerUnit: number): RequestLogRe
   const requestQuotaPerUnit = record.quotaPerUnit ?? quotaPerUnit;
   return {
     ...record,
-    cost: quotaToUsd(record.cost, requestQuotaPerUnit),
+    cost: quotaUnitsToUsd(record.cost, requestQuotaPerUnit),
     estimatedCost:
-      record.estimatedCost == null ? null : quotaToUsd(record.estimatedCost, requestQuotaPerUnit),
+      record.estimatedCost == null
+        ? null
+        : quotaUnitsToUsd(record.estimatedCost, requestQuotaPerUnit),
     preConsumedCost:
       record.preConsumedCost == null
         ? null
-        : quotaToUsd(record.preConsumedCost, requestQuotaPerUnit),
-    finalCost: record.finalCost == null ? null : quotaToUsd(record.finalCost, requestQuotaPerUnit),
+        : quotaUnitsToUsd(record.preConsumedCost, requestQuotaPerUnit),
+    finalCost:
+      record.finalCost == null ? null : quotaUnitsToUsd(record.finalCost, requestQuotaPerUnit),
     adjustmentCost:
-      record.adjustmentCost == null ? null : quotaToUsd(record.adjustmentCost, requestQuotaPerUnit),
+      record.adjustmentCost == null
+        ? null
+        : quotaUnitsToUsd(record.adjustmentCost, requestQuotaPerUnit),
     outstandingCost:
       record.outstandingCost == null
         ? null
-        : quotaToUsd(record.outstandingCost, requestQuotaPerUnit),
+        : quotaUnitsToUsd(record.outstandingCost, requestQuotaPerUnit),
     subscriptionConsumedCost:
       record.subscriptionConsumedCost == null
         ? null
-        : quotaToUsd(record.subscriptionConsumedCost, requestQuotaPerUnit),
+        : quotaUnitsToUsd(record.subscriptionConsumedCost, requestQuotaPerUnit),
     subscriptionRemainingCost:
       record.subscriptionRemainingCost == null
         ? null
-        : quotaToUsd(record.subscriptionRemainingCost, requestQuotaPerUnit),
+        : quotaUnitsToUsd(record.subscriptionRemainingCost, requestQuotaPerUnit),
     task:
       record.task == null
         ? null
@@ -881,7 +920,7 @@ function mapPricedRequestLog(value: unknown, quotaPerUnit: number): RequestLogRe
             refundedCost:
               record.task.refundedCost == null
                 ? null
-                : quotaToUsd(record.task.refundedCost, requestQuotaPerUnit),
+                : quotaUnitsToUsd(record.task.refundedCost, requestQuotaPerUnit),
           },
   };
 }
@@ -1092,9 +1131,18 @@ function catalogPriceUnit(unit: string): ModelCatalogItem["inputPriceUnit"] {
   return null;
 }
 
-function mapCatalogModel(value: unknown, group: string): ModelCatalogItem {
+function mapCatalogModel(
+  value: unknown,
+  group: string,
+  vendorNamesById: ReadonlyMap<number, string>,
+): ModelCatalogItem {
   const record = asRecord(value);
   const id = requireString(record, "model_name", "pricing.model_name");
+  const vendorId = readNumber(record, "vendor_id", Number.NaN);
+  const provider =
+    (Number.isInteger(vendorId) ? vendorNamesById.get(vendorId) : undefined) ||
+    readString(record, "provider", readString(record, "owner_by")) ||
+    null;
   const priceSelection = selectCatalogPriceSummary(record, group);
   const selectedPriceSummary = priceSelection?.summary ?? null;
   const accountPrice = mapCatalogPriceSummary(selectedPriceSummary, `pricing.${id}.account_price`);
@@ -1134,7 +1182,7 @@ function mapCatalogModel(value: unknown, group: string): ModelCatalogItem {
   const billingMode = priceSummary ? readString(priceSummary, "billing_mode") : "";
   return {
     id,
-    provider: readString(record, "provider", readString(record, "owner_by")) || null,
+    provider,
     description: readString(record, "description") || null,
     family: catalogModelFamily(billingMode, tags),
     contextWindow: Number.isFinite(contextWindow) ? contextWindow : null,
@@ -1257,9 +1305,14 @@ function mapAccountPreferences(value: unknown, quotaPerUnit: number): AccountPre
     "quota_warning_threshold",
     "user_setting.quota_warning_threshold",
   );
+  const recordIpForced = requireBoolean(
+    settings,
+    "record_ip_forced",
+    "user_setting.record_ip_forced",
+  );
   return {
     balanceWarningThresholdUsd:
-      configuredThreshold > 0 ? quotaToUsd(configuredThreshold, quotaPerUnit) : null,
+      configuredThreshold > 0 ? quotaUnitsToUsd(configuredThreshold, quotaPerUnit) : null,
     barkUrl: readString(settings, "bark_url"),
     gotifyPriority: requireNumber(settings, "gotify_priority", "user_setting.gotify_priority"),
     gotifyToken: "",
@@ -1271,7 +1324,9 @@ function mapAccountPreferences(value: unknown, quotaPerUnit: number): AccountPre
     gotifyUrl: readString(settings, "gotify_url"),
     notificationEmail: readString(settings, "notification_email"),
     notifyType: mapNotificationType(readString(settings, "notify_type")),
-    recordIpLog: requireBoolean(settings, "record_ip_log", "user_setting.record_ip_log"),
+    recordIpForced,
+    recordIpLog:
+      recordIpForced || requireBoolean(settings, "record_ip_log", "user_setting.record_ip_log"),
     webhookSecret: "",
     webhookSecretConfigured: requireBoolean(
       settings,
@@ -1317,10 +1372,11 @@ async function getApiKeysPage(input: ApiKeyListInput): Promise<PaginatedResult<A
     );
   }
   const path = keyword ? "/api/token/search" : "/api/token/";
-  const response = await client.request<unknown>({
-    path: `${path}?${search.toString()}`,
-  });
-  return mapPaginatedResult(response.data, input, mapApiKey);
+  const [response, quotaPerUnit] = await Promise.all([
+    client.request<unknown>({ path: `${path}?${search.toString()}` }),
+    getQuotaPerUnit(),
+  ]);
+  return mapPaginatedResult(response.data, input, (value) => mapApiKey(value, quotaPerUnit));
 }
 
 async function listApiKeys(): Promise<ApiKeyRecord[]> {
@@ -1384,7 +1440,8 @@ async function getBillingData(): Promise<BillingData> {
   }
   const topup = asRecord(topupResponse.data);
   return {
-    balance: quotaToUsd(user.quota, quotaPerUnit),
+    balance: quotaUnitsToUsd(user.quotaUnits, quotaPerUnit),
+    totalUsage: quotaUnitsToUsd(user.usedQuotaUnits, quotaPerUnit),
     monthSpend: null,
     pendingAmount: null,
     currency: "USD",
@@ -1404,6 +1461,8 @@ async function getRechargeConfiguration(): Promise<RechargeConfiguration> {
   ]);
   const topup = asRecord(topupResponse.data);
   const status = asRecord(statusResponse.data);
+  const quotaPerUnit = requireNumber(status, "quota_per_unit", "status.quota_per_unit");
+  if (quotaPerUnit <= 0) throw new LiveDataContractError("status.quota_per_unit");
   const globalMinAmount = requireNumber(topup, "min_topup", "topup.min_topup");
   const stripeMinAmount = requireNumber(topup, "stripe_min_topup", "topup.stripe_min_topup");
   const waffoMinAmount = requireNumber(topup, "waffo_min_topup", "topup.waffo_min_topup");
@@ -1486,14 +1545,14 @@ async function getRechargeConfiguration(): Promise<RechargeConfiguration> {
       throw new LiveDataContractError(`recharge_product.${id}.currency`);
     }
     const price = requireNumber(product, "price", `recharge_product.${id}.price`);
-    const quota = requireNumber(product, "quota", `recharge_product.${id}.quota`);
+    const quotaUnits = requireNumber(product, "quota", `recharge_product.${id}.quota`);
     if (price <= 0) throw new LiveDataContractError(`recharge_product.${id}.price`);
-    if (quota <= 0) throw new LiveDataContractError(`recharge_product.${id}.quota`);
+    if (quotaUnits <= 0) throw new LiveDataContractError(`recharge_product.${id}.quota`);
     return {
       id,
       name,
       price,
-      quota,
+      creditUsd: quotaUnitsToUsd(quotaUnits, quotaPerUnit),
       currency: currency as RechargeProduct["currency"],
     };
   });
@@ -1533,9 +1592,7 @@ async function getRechargeConfiguration(): Promise<RechargeConfiguration> {
     throw new LiveDataContractError("status.quota_display_type");
   }
   const displayType = rawDisplayType as RechargeDisplayType;
-  const quotaPerUnit = requireNumber(status, "quota_per_unit", "status.quota_per_unit");
   const usdExchangeRate = requireNumber(status, "usd_exchange_rate", "status.usd_exchange_rate");
-  if (quotaPerUnit <= 0) throw new LiveDataContractError("status.quota_per_unit");
   if (usdExchangeRate <= 0) throw new LiveDataContractError("status.usd_exchange_rate");
   const customCurrencySymbol = readString(status, "custom_currency_symbol");
 
@@ -1937,7 +1994,7 @@ function mapSubscriptionPlan(
     interval: durationUnit,
     durationUnit,
     durationValue,
-    quota: totalAmount > 0 ? quotaToUsd(totalAmount, quotaPerUnit) : 0,
+    quotaUsd: totalAmount > 0 ? quotaUnitsToUsd(totalAmount, quotaPerUnit) : 0,
     unlimitedQuota: totalAmount === 0,
     quotaResetPeriod: requireString(
       plan,
@@ -2057,6 +2114,7 @@ async function getRequestLogAnalytics(
         "cache_hit_tokens",
         `request_log_analytics.series[${index}].cache_hit_tokens`,
       );
+      const pointCacheHitRate = readOptionalNumber(point, "cache_hit_rate");
       const quota = requireNumber(point, "quota", `request_log_analytics.series[${index}].quota`);
       if (
         bucketStart <= 0 ||
@@ -2065,6 +2123,7 @@ async function getRequestLogAnalytics(
         pointFailed < 0 ||
         tokens < 0 ||
         pointCacheHitTokens < 0 ||
+        (pointCacheHitRate !== null && (pointCacheHitRate < 0 || pointCacheHitRate > 1)) ||
         quota < 0
       ) {
         throw new LiveDataContractError(`request_log_analytics.series[${index}]`);
@@ -2078,9 +2137,9 @@ async function getRequestLogAnalytics(
         rpm: (pointSucceeded + pointFailed) / bucketMinutes,
         tpm: tokens / bucketMinutes,
         tokens,
-        cost: quotaToUsd(quota, quotaPerUnit),
+        cost: quotaUnitsToUsd(quota, quotaPerUnit),
         cacheHitTokens: pointCacheHitTokens,
-        cacheHitRate: tokens > 0 ? (pointCacheHitTokens / tokens) * 100 : null,
+        cacheHitRate: pointCacheHitRate === null ? null : pointCacheHitRate * 100,
       };
     },
   );
@@ -2117,16 +2176,14 @@ async function getRequestLogAnalytics(
     requestCount > 0
       ? requireNumber(stats, "failure_rate", "request_log_analytics.failure_rate") * 100
       : null;
-  const cacheHitRate =
-    totalTokens > 0
-      ? requireNumber(stats, "cache_hit_rate", "request_log_analytics.cache_hit_rate") * 100
-      : null;
+  const rawCacheHitRate = readOptionalNumber(stats, "cache_hit_rate");
+  const cacheHitRate = rawCacheHitRate === null ? null : rawCacheHitRate * 100;
   const peakRpm = requireNumber(stats, "peak_rpm", "request_log_analytics.peak_rpm");
   const peakTpm = requireNumber(stats, "peak_tpm", "request_log_analytics.peak_tpm");
   const quota = requireNumber(stats, "quota", "request_log_analytics.quota");
   if (
     (failureRate !== null && (failureRate < 0 || failureRate > 100)) ||
-    (cacheHitRate !== null && cacheHitRate < 0) ||
+    (cacheHitRate !== null && (cacheHitRate < 0 || cacheHitRate > 100)) ||
     peakRpm < 0 ||
     peakTpm < 0 ||
     quota < 0
@@ -2141,7 +2198,7 @@ async function getRequestLogAnalytics(
     peakRpm,
     peakTpm,
     totalTokens,
-    totalCost: quotaToUsd(quota, quotaPerUnit),
+    totalCost: quotaUnitsToUsd(quota, quotaPerUnit),
     cacheHitTokens,
     cacheHitRate,
     series,
@@ -2202,7 +2259,7 @@ async function getBillingLedgerPage(
       const { amountQuota, ...publicEntry } = entry;
       return {
         ...publicEntry,
-        amountUsd: amountQuota === null ? null : quotaToUsd(amountQuota, quotaPerUnit),
+        amountUsd: amountQuota === null ? null : quotaUnitsToUsd(amountQuota, quotaPerUnit),
       };
     }),
     page: requireNumber(page, "page", "pagination.page"),
@@ -2220,10 +2277,13 @@ async function getTasksPage(input: TaskListInput): Promise<PaginatedResult<TaskR
   appendPagination(search, input);
   if (input.status !== "all") search.set("status_group", input.status);
   if (input.type !== "all") search.set("task_type", input.type);
-  const response = await client.request<unknown>({
-    path: `/api/task/self?${search.toString()}`,
-  });
-  return mapPaginatedResult(response.data, input, mapLiveTaskRecord);
+  const [response, quotaPerUnit] = await Promise.all([
+    client.request<unknown>({ path: `/api/task/self?${search.toString()}` }),
+    getQuotaPerUnit(),
+  ]);
+  return mapPaginatedResult(response.data, input, (value) =>
+    mapLiveTaskRecord(value, quotaPerUnit),
+  );
 }
 
 async function getTaskTypeCounts(
@@ -2385,15 +2445,17 @@ export const liveRepository: ConsoleRepository = {
     }
     return response.data;
   },
-  async getSession() {
+  async getSession(options) {
     try {
       const response = await client.request<unknown>({
         path: "/api/user/auth/refresh",
         method: "POST",
         authenticated: false,
-        headers: currentSession?.sessionId
-          ? { "X-Auth-Session": currentSession.sessionId }
-          : undefined,
+        signal: options?.signal,
+        headers:
+          !options?.ignoreCurrentSession && currentSession?.sessionId
+            ? { "X-Auth-Session": currentSession.sessionId }
+            : undefined,
       });
       return mapSessionBundle(response.data);
     } catch (error) {
@@ -2463,6 +2525,10 @@ export const liveRepository: ConsoleRepository = {
     });
     return mapSessionBundle(finish.data);
   },
+  clearLocalSession() {
+    currentSession = null;
+    client.clearAccessToken();
+  },
   async signOut(session) {
     await client.request({
       path: "/api/user/auth/logout",
@@ -2485,7 +2551,7 @@ export const liveRepository: ConsoleRepository = {
     ]);
     const summary = mapUsageSummary(statsResponse.data);
     return {
-      availableBalance: quotaToUsd(user.quota, quotaPerUnit),
+      availableBalance: quotaUnitsToUsd(user.quotaUnits, quotaPerUnit),
       requestCount: summary.requestCount,
       activeApiKeys: keys.filter((item) => item.status === "active").length,
       successRate: summary.successRate,
@@ -2498,7 +2564,7 @@ export const liveRepository: ConsoleRepository = {
     return {
       steps: [
         { id: "create-key", complete: keys.length > 0 },
-        { id: "fund-account", complete: user.quota > 0 },
+        { id: "fund-account", complete: user.quotaUnits > 0 },
         { id: "first-request", complete: user.requestCount > 0 },
       ],
       exampleModel: models[0]?.id ?? null,
@@ -2534,12 +2600,15 @@ export const liveRepository: ConsoleRepository = {
       });
   },
   async createApiKey(input: CreateApiKeyInput): Promise<CreatedApiKey> {
+    const quotaPerUnit = await getQuotaPerUnit();
     const response = await client.request<unknown>({
       path: "/api/token/",
       method: "POST",
       body: {
         name: input.name,
-        remain_quota: input.quota,
+        remain_quota: input.unlimitedQuota
+          ? 0
+          : usdToQuotaUnits(input.quotaUsd, quotaPerUnit, "api_key.quota_usd"),
         expired_time: input.expiresAt ?? -1,
         unlimited_quota: input.unlimitedQuota,
         model_limits_enabled: input.allowedModels.length > 0,
@@ -2550,12 +2619,13 @@ export const liveRepository: ConsoleRepository = {
         cross_group_retry: false,
       },
     });
-    const record = mapApiKey(response.data);
+    const record = mapApiKey(response.data, quotaPerUnit);
     const rawSecret = requireString(asRecord(response.data), "key", "api_key.secret");
     const secret = rawSecret && !rawSecret.startsWith("sk-") ? `sk-${rawSecret}` : rawSecret;
     return { record, secret };
   },
   async updateApiKey(input: UpdateApiKeyInput) {
+    const quotaPerUnit = await getQuotaPerUnit();
     const response = await client.request<unknown>({
       path: "/api/token/",
       method: "PUT",
@@ -2563,7 +2633,9 @@ export const liveRepository: ConsoleRepository = {
         id: input.id,
         name: input.name,
         expired_time: input.expiresAt ?? -1,
-        remain_quota: input.remainingQuota,
+        remain_quota: input.unlimitedQuota
+          ? 0
+          : usdToQuotaUnits(input.remainingQuotaUsd, quotaPerUnit, "api_key.remaining_quota_usd"),
         unlimited_quota: input.unlimitedQuota,
         model_limits_enabled: input.allowedModels.length > 0,
         model_limits: input.allowedModels.join(","),
@@ -2573,15 +2645,18 @@ export const liveRepository: ConsoleRepository = {
         cross_group_retry: false,
       },
     });
-    return mapApiKey(response.data);
+    return mapApiKey(response.data, quotaPerUnit);
   },
   async setApiKeyEnabled(id: number, enabled: boolean) {
-    const response = await client.request<unknown>({
-      path: "/api/token/?status_only=true",
-      method: "PUT",
-      body: { id, status: enabled ? 1 : 2 },
-    });
-    return mapApiKey(response.data);
+    const [response, quotaPerUnit] = await Promise.all([
+      client.request<unknown>({
+        path: "/api/token/?status_only=true",
+        method: "PUT",
+        body: { id, status: enabled ? 1 : 2 },
+      }),
+      getQuotaPerUnit(),
+    ]);
+    return mapApiKey(response.data, quotaPerUnit);
   },
   async revokeApiKey(id: number) {
     await client.request({ path: `/api/token/${id}`, method: "DELETE" });
@@ -2690,8 +2765,16 @@ export const liveRepository: ConsoleRepository = {
       }),
       client.request<unknown>({ path: "/api/pricing" }),
     ]);
+    const pricingEnvelope = asRecord(pricingResponse);
+    const vendorNamesById = new Map<number, string>();
+    for (const value of readItems(pricingEnvelope.vendors)) {
+      const vendor = asRecord(value);
+      const id = readNumber(vendor, "id", Number.NaN);
+      const name = readString(vendor, "name").trim();
+      if (Number.isInteger(id) && id > 0 && name) vendorNamesById.set(id, name);
+    }
     const pricedModels = requireItems(pricingResponse.data, "pricing.models").map((model) =>
-      mapCatalogModel(model, group),
+      mapCatalogModel(model, group, vendorNamesById),
     );
     if (pricedModels.length > 0) return pricedModels;
     return requireItems(modelsResponse.data, "user.models").map((model, index) => {
@@ -2808,11 +2891,12 @@ export const liveRepository: ConsoleRepository = {
         gotify_url: input.gotifyUrl,
         notify_type: input.notifyType,
         notification_email: input.notificationEmail,
-        quota_warning_threshold: Math.max(
-          1,
-          Math.round(input.balanceWarningThresholdUsd * quotaPerUnit),
+        quota_warning_threshold: usdToQuotaUnits(
+          input.balanceWarningThresholdUsd,
+          quotaPerUnit,
+          "account.balance_warning_threshold_usd",
         ),
-        record_ip_log: input.recordIpLog,
+        record_ip_log: input.recordIpForced || input.recordIpLog,
         webhook_secret: input.webhookSecret,
         webhook_url: input.webhookUrl,
       },

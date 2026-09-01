@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useRef, type PropsWithChildren } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  type PropsWithChildren,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
@@ -15,6 +22,7 @@ import type {
   VerifyTwoFactorLoginInput,
 } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { createSessionSync } from "./session-sync";
 
 type SessionContextValue = {
   capabilities: AuthCapabilities | null;
@@ -43,12 +51,38 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+const sessionRefreshLeadTimeMs = 60_000;
+const sessionRefreshRetryIntervalMs = 30_000;
+const maximumBrowserTimerDelayMs = 2_147_483_647;
+
+export function resolveSessionRefreshInterval(
+  session: ConsoleSession | null | undefined,
+  refreshFailed: boolean,
+  now = Date.now(),
+): number | false {
+  if (!session?.accessExpiresAt) return false;
+  if (refreshFailed) return sessionRefreshRetryIntervalMs;
+  return Math.min(
+    maximumBrowserTimerDelayMs,
+    Math.max(
+      sessionRefreshRetryIntervalMs,
+      session.accessExpiresAt * 1_000 - now - sessionRefreshLeadTimeMs,
+    ),
+  );
+}
+
 export function SessionProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
   const signOutRequestRef = useRef<Promise<void> | null>(null);
+  const sessionSyncRef = useRef<ReturnType<typeof createSessionSync> | null>(null);
+  const sessionSyncRevisionRef = useRef(0);
+  const previousAccessTokenRef = useRef<string | null>(null);
   const sessionQuery = useQuery({
     queryKey: ["session"],
-    queryFn: () => repository.getSession(),
+    queryFn: ({ signal }) => repository.getSession({ signal }),
+    refetchInterval: (query) =>
+      resolveSessionRefreshInterval(query.state.data, query.state.status === "error"),
+    refetchIntervalInBackground: true,
     retry: false,
     staleTime: 5 * 60_000,
   });
@@ -58,11 +92,70 @@ export function SessionProvider({ children }: PropsWithChildren) {
     retry: false,
     staleTime: 5 * 60_000,
   });
+  const clearAuthenticatedQueryData = useCallback(() => {
+    void queryClient.cancelQueries({ queryKey: ["session"] });
+    queryClient.removeQueries({
+      predicate: (query) =>
+        query.queryKey[0] !== "session" && query.queryKey[0] !== "auth-capabilities",
+    });
+    queryClient.setQueryData(["session"], null);
+  }, [queryClient]);
+  useEffect(() => {
+    const sync = createSessionSync((event) => {
+      const revision = ++sessionSyncRevisionRef.current;
+      if (event === "signed-out") {
+        repository.clearLocalSession();
+        clearAuthenticatedQueryData();
+        return;
+      }
+
+      void queryClient.cancelQueries({ queryKey: ["session"] });
+      void repository
+        .getSession({ ignoreCurrentSession: true })
+        .then((session) => {
+          if (revision !== sessionSyncRevisionRef.current) return;
+          if (session) {
+            queryClient.setQueryData(["session"], session);
+            return;
+          }
+          clearAuthenticatedQueryData();
+        })
+        .catch(() => {
+          // Preserve the current state when another tab signs in but refresh is temporarily offline.
+        });
+    });
+    sessionSyncRef.current = sync;
+    return () => {
+      sync.close();
+      if (sessionSyncRef.current === sync) sessionSyncRef.current = null;
+    };
+  }, [clearAuthenticatedQueryData, queryClient]);
+  useEffect(() => {
+    const accessToken = sessionQuery.data?.accessToken ?? null;
+    const previousAccessToken = previousAccessTokenRef.current;
+    previousAccessTokenRef.current = accessToken;
+    if (!previousAccessToken || !accessToken || previousAccessToken === accessToken) return;
+
+    void queryClient.refetchQueries({
+      type: "active",
+      predicate: (query) =>
+        query.queryKey[0] !== "session" &&
+        query.queryKey[0] !== "auth-capabilities" &&
+        query.state.status === "error",
+    });
+  }, [queryClient, sessionQuery.data?.accessToken]);
+  const applyAuthenticatedSession = useCallback(
+    (session: ConsoleSession) => {
+      queryClient.setQueryData(["session"], session);
+      sessionSyncRef.current?.publish("authenticated");
+    },
+    [queryClient],
+  );
   const signInMutation = useMutation({
     mutationFn: (input: SignInInput) => repository.signIn(input),
     onSuccess: (result) => {
       if (result.kind === "authenticated") {
-        queryClient.setQueryData(["session"], result.session);
+        applyAuthenticatedSession(result.session);
       }
     },
   });
@@ -71,7 +164,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   });
   const oauthCallbackMutation = useMutation({
     mutationFn: (input: OAuthCallbackInput) => repository.completeOAuthLogin(input),
-    onSuccess: (session) => queryClient.setQueryData(["session"], session),
+    onSuccess: applyAuthenticatedSession,
   });
   const registerMutation = useMutation({
     mutationFn: (input: RegisterInput) => repository.register(input),
@@ -87,19 +180,19 @@ export function SessionProvider({ children }: PropsWithChildren) {
   });
   const verifyTwoFactorMutation = useMutation({
     mutationFn: (input: VerifyTwoFactorLoginInput) => repository.verifyTwoFactorLogin(input),
-    onSuccess: (session) => queryClient.setQueryData(["session"], session),
+    onSuccess: applyAuthenticatedSession,
   });
   const passkeyMutation = useMutation({
     mutationFn: () => repository.signInWithPasskey(),
     onSuccess: (session) => {
-      if (session) queryClient.setQueryData(["session"], session);
+      if (session) applyAuthenticatedSession(session);
     },
   });
   const { isPending: signingOut, mutateAsync: mutateSignOut } = useMutation({
     mutationFn: () => repository.signOut(sessionQuery.data ?? null),
     onSuccess: () => {
-      queryClient.clear();
-      queryClient.setQueryData(["session"], null);
+      clearAuthenticatedQueryData();
+      sessionSyncRef.current?.publish("signed-out");
     },
   });
   const signOut = useCallback(() => {

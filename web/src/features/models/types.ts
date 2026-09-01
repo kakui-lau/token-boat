@@ -40,6 +40,7 @@ export interface Model {
   icon?: string
   tags?: string
   vendor_id?: number
+  context_length?: number
   endpoints?: string
   status: number
   sync_official: number
@@ -248,6 +249,7 @@ export const modelFormSchema = z.object({
   icon: z.string().default(''),
   tags: z.array(z.string()).default([]),
   vendor_id: z.number().optional(),
+  context_length: z.number().int().min(0).default(0),
   endpoints: z.string().default(''),
   name_rule: z.number().min(0).max(3).default(0),
   status: z.boolean().default(true),

@@ -580,6 +580,7 @@ export function PricingReconciliationPanel() {
               <TableHead>{t('Base sales amount')}</TableHead>
               <TableHead>{t('Estimated charge')}</TableHead>
               <TableHead>{t('Billed Amount')}</TableHead>
+              <TableHead>{t('Official list price amount')}</TableHead>
               <TableHead>{t('Effective group')}</TableHead>
               <TableHead>{t('Net Margin')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
@@ -590,6 +591,8 @@ export function PricingReconciliationPanel() {
           </TableHeader>
           <TableBody>
             {rows.map((row) => {
+              const officialAmount =
+                row.official_amount ?? row.estimated_official_amount
               let providerCostDisplay = '—'
               if (row.provider_cost_known) {
                 providerCostDisplay = `${row.provider_reported_cost} ${row.currency}`
@@ -648,6 +651,9 @@ export function PricingReconciliationPanel() {
                     {row.customer_charge
                       ? `${row.customer_charge} ${row.currency}`
                       : '—'}
+                  </TableCell>
+                  <TableCell className='font-mono whitespace-nowrap tabular-nums'>
+                    {officialAmount ? `${officialAmount} ${row.currency}` : '—'}
                   </TableCell>
                   <TableCell className='whitespace-nowrap'>
                     {row.applied_group || '—'}
@@ -720,7 +726,7 @@ export function PricingReconciliationPanel() {
             {!snapshotsQuery.isLoading && rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={20}
+                  colSpan={21}
                   className='text-muted-foreground h-20 text-center'
                 >
                   {t('No billing anomalies')}
@@ -755,7 +761,8 @@ export function PricingReconciliationPanel() {
                   {t('Price versions')}
                 </div>
                 <div className='font-mono text-xs'>
-                  P#{selectedSnapshot.purchase_price_version_id ?? '—'} · PB#
+                  P#{selectedSnapshot.purchase_price_version_id ?? '—'} · O#
+                  {selectedSnapshot.official_price_version_id ?? '—'} · PB#
                   {selectedSnapshot.sales_price_book_version_id ?? '—'}
                 </div>
               </div>

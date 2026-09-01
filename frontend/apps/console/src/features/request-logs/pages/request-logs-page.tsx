@@ -137,13 +137,13 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
 
       <RequestLogAnalyticsCard
         data={analyticsQuery.data}
-        error={analyticsQuery.isError}
+        error={analyticsQuery.isError && analyticsQuery.data === undefined}
         loading={analyticsQuery.isPending}
         onRetry={() => void analyticsQuery.refetch()}
         retrying={analyticsQuery.isFetching}
       />
 
-      {query.isError ? (
+      {query.isError && query.data === undefined ? (
         <DataLoadError
           description={t("Try refreshing the page or check the API connection.")}
           onRetry={() => void query.refetch()}

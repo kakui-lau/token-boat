@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,7 @@ type Model struct {
 	Icon                 string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
 	Tags                 string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
 	VendorID             int            `json:"vendor_id,omitempty" gorm:"index"`
+	ContextLength        int            `json:"context_length,omitempty"`
 	Endpoints            string         `json:"endpoints,omitempty" gorm:"type:text"`
 	Status               int            `json:"status" gorm:"default:1"`
 	SyncOfficial         int            `json:"sync_official" gorm:"default:1"`
@@ -48,6 +50,9 @@ type Model struct {
 }
 
 func (mi *Model) Insert() error {
+	if err := mi.validateMetadata(); err != nil {
+		return err
+	}
 	mi.NormalizeRoutingConfiguration()
 	now := common.GetTimestamp()
 	mi.CreatedTime = now
@@ -91,6 +96,9 @@ func IsModelNameDuplicated(id int, name string) (bool, error) {
 }
 
 func (mi *Model) Update() error {
+	if err := mi.validateMetadata(); err != nil {
+		return err
+	}
 	mi.NormalizeRoutingConfiguration()
 	mi.UpdatedTime = common.GetTimestamp()
 	err := DB.Transaction(func(tx *gorm.DB) error {
@@ -103,7 +111,7 @@ func (mi *Model) Update() error {
 		}
 		// 使用 Select 强制更新所有字段，包括零值
 		return tx.Model(&Model{}).Where("id = ?", mi.Id).
-			Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "visibility", "model_purpose", "routing_target_model_id", "name_rule", "updated_time").
+			Select("model_name", "description", "icon", "tags", "vendor_id", "context_length", "endpoints", "status", "sync_official", "visibility", "model_purpose", "routing_target_model_id", "name_rule", "updated_time").
 			Updates(mi).Error
 	})
 	if err == nil {
@@ -111,6 +119,13 @@ func (mi *Model) Update() error {
 		InvalidateModelRoutingCache()
 	}
 	return err
+}
+
+func (mi *Model) validateMetadata() error {
+	if mi.ContextLength < 0 {
+		return errors.New("context_length must be non-negative")
+	}
+	return nil
 }
 
 func (mi *Model) Delete() error {

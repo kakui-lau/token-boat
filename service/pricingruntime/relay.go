@@ -24,6 +24,13 @@ func usedPricingVars(bundles []ActivePriceBundle) map[string]bool {
 				usedVars[name] = true
 			}
 		}
+		if bundle.Official != nil {
+			for name, used := range billingexpr.UsedVars(bundle.Official.BillingExpr) {
+				if used {
+					usedVars[name] = true
+				}
+			}
+		}
 	}
 	return usedVars
 }
@@ -178,6 +185,9 @@ func PrepareRelayPricing(
 		expressions := make([]string, 0, len(bundles)+1)
 		for _, bundle := range bundles {
 			expressions = append(expressions, bundle.Purchase.PurchaseBillingExpr)
+			if bundle.Official != nil {
+				expressions = append(expressions, bundle.Official.BillingExpr)
+			}
 		}
 		expressions = append(expressions, resolvedSales.Item.SalesBillingExpr)
 		if err := validateVideoPricingRequest(expressions, requestInput); err != nil {
@@ -234,6 +244,12 @@ func PrepareRelayPricing(
 		if customerCharge.GreaterThan(maximumCustomerCharge) {
 			maximumCustomerCharge = customerCharge
 		}
+		officialExpression := ""
+		officialExpressionHash := ""
+		if bundle.Official != nil {
+			officialExpression = bundle.Official.BillingExpr
+			officialExpressionHash = bundle.Official.ExprHash
+		}
 		candidates[bundle.ChannelModel.ChannelId] = hosttypes.DynamicPriceCandidate{
 			ChannelModelId:             bundle.ChannelModel.Id,
 			ChannelId:                  bundle.ChannelModel.ChannelId,
@@ -242,12 +258,16 @@ func PrepareRelayPricing(
 			PurchasePriceVersion:       bundle.Purchase.Id,
 			PurchaseExpression:         bundle.Purchase.PurchaseBillingExpr,
 			PurchaseExpressionHash:     bundle.Purchase.PurchaseExprHash,
+			OfficialPriceVersion:       quote.OfficialPriceVersion,
+			OfficialExpression:         officialExpression,
+			OfficialExpressionHash:     officialExpressionHash,
 			SalesExpression:            resolvedSales.Item.SalesBillingExpr,
 			SalesExpressionHash:        resolvedSales.Item.SalesExprHash,
 			PricingRevision:            bundle.Revision,
 			Currency:                   resolvedSales.Book.Currency,
 			ProviderCostMode:           bundle.ProviderCostMode,
 			EstimatedPurchaseUSD:       purchaseAmount.String(),
+			EstimatedOfficialAmountUSD: quote.OfficialAmount,
 			EstimatedSalesUSD:          salesAmount.String(),
 			EstimatedCustomerChargeUSD: customerCharge.String(),
 			TotalVariableCostRate:      quote.TotalVariableCostRate,

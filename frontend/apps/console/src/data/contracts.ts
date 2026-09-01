@@ -7,8 +7,10 @@ export type ConsoleUser = {
   email: string;
   group: string;
   role: number;
-  quota: number;
-  usedQuota: number;
+  /** Raw backend quota units. Convert with quotaPerUnit before display. */
+  quotaUnits: number;
+  /** Raw backend quota units. Convert with quotaPerUnit before display. */
+  usedQuotaUnits: number;
   requestCount: number;
   createdAt: number | null;
 };
@@ -172,8 +174,8 @@ export type ApiKeyRecord = {
   lastUsedAt: number | null;
   expiresAt: number | null;
   unlimitedQuota: boolean;
-  remainingQuota: number;
-  usedQuota: number;
+  remainingQuotaUsd: number;
+  usedQuotaUsd: number;
   group: string;
   environment: "development" | "staging" | "production" | "unclassified";
   allowedModels: string[];
@@ -189,7 +191,7 @@ export type CreateApiKeyInput = {
   name: string;
   expiresAt: number | null;
   unlimitedQuota: boolean;
-  quota: number;
+  quotaUsd: number;
   group: string;
   environment: ApiKeyRecord["environment"];
   allowedModels: string[];
@@ -206,7 +208,7 @@ export type UpdateApiKeyInput = {
   name: string;
   expiresAt: number | null;
   unlimitedQuota: boolean;
-  remainingQuota: number;
+  remainingQuotaUsd: number;
   group: string;
   environment: ApiKeyRecord["environment"];
   allowedModels: string[];
@@ -217,6 +219,37 @@ export type PlaygroundModel = {
   id: string;
   label: string;
   group: string;
+};
+
+export type PlaygroundConversation = {
+  id: string;
+  title: string;
+  apiKeyId: number;
+  group: string;
+  model: string;
+  messages: PlaygroundStoredMessage[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type CreatePlaygroundConversationInput = {
+  apiKeyId: number;
+  group: string;
+  model: string;
+};
+
+export type PlaygroundStoredMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  metrics?: PlaygroundMessageMetrics;
+};
+
+export type PlaygroundMessageMetrics = {
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  latencyMs: number;
 };
 
 export type PlaygroundConversationMessage = {
@@ -564,7 +597,7 @@ export type TaskRecord = {
   failureReason: string | null;
   resultUrl: string | null;
   cost: number;
-  costUnit: "usd" | "quota";
+  costUnit: "usd";
   metadata: TaskMetadata;
 };
 
@@ -620,7 +653,7 @@ export type SubscriptionPlan = {
   interval: "custom" | "day" | "hour" | "month" | "year";
   durationUnit: "custom" | "day" | "hour" | "month" | "year";
   durationValue: number;
-  quota: number;
+  quotaUsd: number;
   unlimitedQuota: boolean;
   quotaResetPeriod: string;
   features: string[];
@@ -639,6 +672,7 @@ export type SubscriptionPaymentMethod = {
 
 export type BillingData = {
   balance: number;
+  totalUsage: number;
   monthSpend: number | null;
   pendingAmount: number | null;
   currency: string;
@@ -661,7 +695,7 @@ export type RechargeProduct = {
   id: string;
   name: string;
   price: number;
-  quota: number;
+  creditUsd: number;
   currency: "USD" | "EUR";
 };
 
@@ -733,6 +767,7 @@ export type AccountPreferences = {
   gotifyTokenConfigured: boolean;
   gotifyUrl: string;
   notificationEmail: string;
+  recordIpForced: boolean;
   recordIpLog: boolean;
   notifyType: NotificationChannel | null;
   webhookSecret: string;
@@ -799,10 +834,14 @@ export type ConsoleRepository = {
   sendEmailVerification(input: EmailVerificationInput): Promise<void>;
   requestPasswordReset(input: PasswordResetRequestInput): Promise<void>;
   confirmPasswordReset(input: PasswordResetConfirmInput): Promise<string>;
-  getSession(): Promise<ConsoleSession | null>;
+  getSession(options?: {
+    ignoreCurrentSession?: boolean;
+    signal?: AbortSignal;
+  }): Promise<ConsoleSession | null>;
   signIn(input: SignInInput): Promise<SignInResult>;
   verifyTwoFactorLogin(input: VerifyTwoFactorLoginInput): Promise<ConsoleSession>;
   signInWithPasskey(): Promise<ConsoleSession | null>;
+  clearLocalSession(): void;
   signOut(session: ConsoleSession | null): Promise<void>;
   getOverview(range: DateRangeValue): Promise<OverviewData>;
   getOnboarding(): Promise<OnboardingData>;

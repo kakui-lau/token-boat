@@ -51,3 +51,32 @@ func TestRequestPricingSnapshotPreConsumeColumnsHaveZeroDefaults(t *testing.T) {
 		assert.Equal(t, "0", field.DefaultValue)
 	}
 }
+
+func TestRequestPricingSnapshotOfficialAmountColumnsRemainNullableForLegacyRows(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&RequestPricingSnapshot{}))
+
+	statement := &gorm.Statement{DB: db}
+	require.NoError(t, statement.Parse(&RequestPricingSnapshot{}))
+	for _, fieldName := range []string{
+		"OfficialPriceVersionId",
+		"EstimatedOfficialAmount",
+		"OfficialAmount",
+	} {
+		field := statement.Schema.LookUpField(fieldName)
+		require.NotNil(t, field)
+		assert.False(t, field.NotNull)
+	}
+
+	require.NoError(t, db.Create(&RequestPricingSnapshot{
+		RequestId: "legacy-without-official-amount", UserId: 1, ModelId: 1,
+		ChannelModelId: 1, PurchasePriceVersionId: 1, BillingMode: "token",
+		PurchaseCost: "0", SalesAmount: "0", Currency: "USD", Status: "settled",
+	}).Error)
+	var snapshot RequestPricingSnapshot
+	require.NoError(t, db.Where("request_id = ?", "legacy-without-official-amount").First(&snapshot).Error)
+	assert.Nil(t, snapshot.OfficialPriceVersionId)
+	assert.Nil(t, snapshot.EstimatedOfficialAmount)
+	assert.Nil(t, snapshot.OfficialAmount)
+}

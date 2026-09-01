@@ -184,6 +184,38 @@ describe("IntegrationPage", () => {
       ),
     );
   });
+
+  test("deduplicates key updates and releases the lock after a failed save", async () => {
+    let rejectUpdate!: (reason: Error) => void;
+    updateApiKey
+      .mockImplementationOnce(
+        () =>
+          new Promise<ApiKeyRecord>((_resolve, reject) => {
+            rejectUpdate = reject;
+          }),
+      )
+      .mockImplementationOnce(async (input: UpdateApiKeyInput) => ({ ...activeKey, ...input }));
+    renderIntegrationPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit settings" }));
+    const editDialog = await screen.findByRole("dialog", { name: "Edit API key" });
+    fireEvent.change(within(editDialog).getByLabelText("Name"), {
+      target: { value: "Production gateway" },
+    });
+    const saveButton = within(editDialog).getByRole("button", { name: "Save changes" });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    act(() => {
+      saveButton.click();
+      saveButton.click();
+    });
+
+    await waitFor(() => expect(updateApiKey).toHaveBeenCalledTimes(1));
+    await act(async () => rejectUpdate(new Error("offline")));
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(updateApiKey).toHaveBeenCalledTimes(2));
+  });
 });
 
 function renderIntegrationPage(configure?: (queryClient: QueryClient) => void) {
@@ -207,8 +239,8 @@ const activeKey: ApiKeyRecord = {
   lastUsedAt: null,
   expiresAt: null,
   unlimitedQuota: false,
-  remainingQuota: 2_000,
-  usedQuota: 100,
+  remainingQuotaUsd: 20,
+  usedQuotaUsd: 1,
   group: "priority",
   environment: "production",
   allowedModels: ["xiaomi/mimo-v2.5-pro"],

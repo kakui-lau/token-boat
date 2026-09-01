@@ -44,6 +44,7 @@ import { Field, FieldDescription, FieldLabel } from "@token-boat/ui/components/u
 import { Input } from "@token-boat/ui/components/ui/input";
 import type { AccountData, AccountSecurityResult } from "@/data/contracts";
 import { repository } from "@/data/repository";
+import { useActionLock } from "@/hooks/use-action-lock";
 import { formatDateTime } from "@/lib/format";
 import { isWebAuthnSupported } from "@/lib/webauthn";
 
@@ -58,6 +59,8 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
   const [registerCode, setRegisterCode] = useState("");
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removeCode, setRemoveCode] = useState("");
+  const registerLock = useActionLock();
+  const removeLock = useActionLock();
   const supported = isWebAuthnSupported();
   const locale = i18n.resolvedLanguage ?? "en";
 
@@ -78,6 +81,7 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
           t("Passkey verification was cancelled or timed out."),
         ),
       ),
+    onSettled: registerLock.release,
   });
   const removeMutation = useMutation({
     mutationFn: () =>
@@ -96,9 +100,30 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
           t("Passkey verification was cancelled or timed out."),
         ),
       ),
+    onSettled: removeLock.release,
   });
 
   const verificationAvailable = props.security.twoFactorEnabled || supported;
+  const registerCurrentPasskey = () => {
+    if (
+      !supported ||
+      (props.security.twoFactorEnabled && !registerCode.trim()) ||
+      !registerLock.tryAcquire()
+    ) {
+      return;
+    }
+    registerMutation.mutate();
+  };
+  const removeCurrentPasskey = () => {
+    if (
+      !verificationAvailable ||
+      (props.security.twoFactorEnabled && !removeCode.trim()) ||
+      !removeLock.tryAcquire()
+    ) {
+      return;
+    }
+    removeMutation.mutate();
+  };
 
   return (
     <>
@@ -151,11 +176,12 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
       <Dialog
         open={registerOpen}
         onOpenChange={(open) => {
+          if (!open && registerMutation.isPending) return;
           setRegisterOpen(open);
           if (!open) setRegisterCode("");
         }}
       >
-        <DialogContent closeLabel={t("Close")}>
+        <DialogContent closeLabel={t("Close")} showCloseButton={!registerMutation.isPending}>
           <DialogHeader>
             <DialogTitle>
               {props.security.passkeyEnabled ? t("Replace Passkey") : t("Register Passkey")}
@@ -189,7 +215,11 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
             </Alert>
           )}
           <DialogFooter>
-            <Button onClick={() => setRegisterOpen(false)} variant="outline">
+            <Button
+              disabled={registerMutation.isPending}
+              onClick={() => setRegisterOpen(false)}
+              variant="outline"
+            >
               {t("Cancel")}
             </Button>
             <Button
@@ -197,7 +227,7 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
                 registerMutation.isPending ||
                 (props.security.twoFactorEnabled && !registerCode.trim())
               }
-              onClick={() => registerMutation.mutate()}
+              onClick={registerCurrentPasskey}
             >
               {registerMutation.isPending && (
                 <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
@@ -208,7 +238,14 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
+      <AlertDialog
+        open={removeOpen}
+        onOpenChange={(open) => {
+          if (!open && removeMutation.isPending) return;
+          setRemoveOpen(open);
+          if (!open) setRemoveCode("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -243,14 +280,14 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
             </Alert>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={removeMutation.isPending}>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={
                 removeMutation.isPending || (props.security.twoFactorEnabled && !removeCode.trim())
               }
               onClick={(event) => {
                 event.preventDefault();
-                removeMutation.mutate();
+                removeCurrentPasskey();
               }}
               variant="destructive"
             >

@@ -4278,6 +4278,10 @@ html:lang(zh-CN) .page-hero h1 {
   filter: drop-shadow(0 0 4px color-mix(in oklch, var(--route-signal) 55%, transparent));
 }
 
+.route-network__signal--green {
+  --route-signal: #238a4b;
+}
+
 .route-network__control {
   position: absolute;
   z-index: 5;

@@ -6,7 +6,7 @@ context_length: 1048576
 vendor: Google
 icon: "Gemini.Color"
 description: "Google Gemini 2.5 Pro，支持长上下文、复杂推理、代码与多模态理解"
-tags: []
+tags: [文本, 推理, 代码, 多模态, 长上下文, 工具调用, 结构化输出]
 endpoints:
   - openai
 official_source_url: https://ai.google.dev/gemini-api/docs/pricing

@@ -6,7 +6,7 @@ context_length: 1048576
 vendor: 智谱
 icon: ""
 description: "Z.ai flagship GLM-5.3 for long-horizon coding agents and million-token context work"
-tags: []
+tags: [文本, 推理, 代码, 智能体, 长上下文]
 endpoints:
   - openai
 official_source_url: https://docs.z.ai/guides/overview/pricing

@@ -6,7 +6,7 @@ context_length: 400000
 vendor: OpenAI
 icon: "OpenAI"
 description: "OpenAI GPT-5.4 Mini 轻量语言模型"
-tags: []
+tags: [文本, 推理, 代码, 视觉, 工具调用, 结构化输出, 轻量化]
 endpoints:
   - openai
 official_source_url: https://openai.com/api/pricing/

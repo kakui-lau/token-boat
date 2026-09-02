@@ -93,7 +93,10 @@ const jsonLd = props.jsonLd
     <header class="site-header">
       <div class="site-shell site-header__inner">
         <a class="brand-lockup" href={localizedPath(props.locale, "/")} aria-label="Token Boat" translate="no">
-          <img class="brand-lockup__logo" src="/brand/token-boat-logo.svg" alt="" width="512" height="512" />
+          <svg class="brand-lockup__logo" viewBox="0 0 512 512" aria-hidden="true" width="512" height="512">
+            <path class="brand-lockup__sail" d="M335 78V258H177Z" />
+            <path class="brand-lockup__hull" d="M54 286H458L372 414H144Z" />
+          </svg>
           <span class="brand-lockup__name">TOKEN<br />BOAT</span>
         </a>
 

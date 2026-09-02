@@ -1,0 +1,80 @@
+version: 1
+models:
+  - model_name: anthropic/claude-haiku-4-5-20251001
+    family: reasoning
+    expected_current_tags: [文本, 快速, 固定版本]
+    tags: [文本, 推理, 代码, 快速, 固定版本]
+    source_url: https://platform.claude.com/docs/en/models/haiku-4-5/migration-guide
+    source_checked_at: 2026-09-02
+  - model_name: deepseek/deepseek-v4-flash
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 智能体, 长上下文, 工具调用, 结构化输出, 高速]
+    source_url: https://api-docs.deepseek.com/quick_start/pricing/
+    source_checked_at: 2026-09-02
+  - model_name: deepseek/deepseek-v4-pro
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 智能体, 长上下文, 工具调用, 结构化输出]
+    source_url: https://api-docs.deepseek.com/quick_start/pricing/
+    source_checked_at: 2026-09-02
+  - model_name: google/gemini-2.5-pro
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 多模态, 长上下文, 工具调用, 结构化输出]
+    source_url: https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro
+    source_checked_at: 2026-09-02
+  - model_name: google/gemini-3-pro-image-preview
+    family: image
+    expected_current_tags: [图片, 生成, 多模态, 预览]
+    tags: [图像生成, 多模态, 预览]
+    source_url: https://ai.google.dev/gemini-api/docs/gemini-3
+    source_checked_at: 2026-09-02
+  - model_name: google/gemini-3.1-flash-image-preview
+    family: image
+    expected_current_tags: [图片, 生成, 多模态, 预览]
+    tags: [图像生成, 多模态, 预览]
+    source_url: https://ai.google.dev/gemini-api/docs/gemini-3
+    source_checked_at: 2026-09-02
+  - model_name: openai/gpt-5.4
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 视觉, 长上下文, 工具调用, 结构化输出]
+    source_url: https://developers.openai.com/api/docs/models/gpt-5.4
+    source_checked_at: 2026-09-02
+  - model_name: openai/gpt-5.4-mini
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 视觉, 工具调用, 结构化输出, 轻量化]
+    source_url: https://developers.openai.com/api/docs/models/gpt-5.4-mini
+    source_checked_at: 2026-09-02
+  - model_name: openai/gpt-5.4-nano
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 视觉, 工具调用, 结构化输出, 高速, 经济, 轻量化]
+    source_url: https://developers.openai.com/api/docs/models/gpt-5.4-nano
+    source_checked_at: 2026-09-02
+  - model_name: openai/gpt-5.6-luna
+    family: reasoning
+    expected_current_tags: [文本, 高性价比]
+    tags: [文本, 推理, 视觉, 长上下文, 工具调用, 结构化输出, 高性价比]
+    source_url: https://developers.openai.com/api/docs/models/gpt
+    source_checked_at: 2026-09-02
+  - model_name: openai/gpt-image-2
+    family: image
+    expected_current_tags: [图片, 生成]
+    tags: [图像生成, 图像编辑]
+    source_url: https://developers.openai.com/api/docs/models/gpt-image-2
+    source_checked_at: 2026-09-02
+  - model_name: z-ai/glm-5.2
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 智能体, 长上下文]
+    source_url: https://z.ai/blog/glm-5.2
+    source_checked_at: 2026-09-02
+  - model_name: z-ai/glm-5.3
+    family: reasoning
+    expected_current_tags: []
+    tags: [文本, 推理, 代码, 智能体, 长上下文]
+    source_url: https://huggingface.co/zai-org/GLM-5.3
+    source_checked_at: 2026-09-02

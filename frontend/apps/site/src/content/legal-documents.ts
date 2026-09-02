@@ -79,8 +79,6 @@ AI 模型具有概率性。除法律明确要求外，服务按当前可用状�
 
 **最后更新：2026 年 9 月 2 日**
 
-> 发布说明：本页面是公共站点初稿。正式上线前仍需补充运营主体名称、注册地址、个人信息保护联系方式、具体保存期限以及适用的跨境处理安排。后台发布的正式隐私政策将覆盖本初稿。
-
 ## 1. 适用范围
 
 本政策说明 Token Boat 在提供网站、账户、API 网关、计费、日志与支持服务时如何处理信息。你通过所选模型供应商处理的数据，还可能受到该供应商自身隐私政策和数据使用条款约束。
@@ -226,8 +224,6 @@ For account, billing, security, or terms questions, use the [Support Center](/en
     privacy: `# Token Boat Privacy Policy
 
 **Last updated: September 2, 2026**
-
-> Publication note: This is a public-site draft. Before formal launch it must be completed with the legal operator name, registered address, privacy contact, specific retention periods, and applicable cross-border arrangements. A formally published privacy policy will replace this draft.
 
 ## 1. Scope
 

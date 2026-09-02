@@ -39,6 +39,18 @@ func (quotaDataDimensionMigration) TableName() string {
 	return "quota_data"
 }
 
+type quotaDataDimensionBackfill struct {
+	Id           int    `gorm:"column:id;primaryKey"`
+	DimensionKey string `gorm:"column:dimension_key"`
+	TokenUsed    int    `gorm:"column:token_used"`
+	Count        int    `gorm:"column:count"`
+	Quota        int    `gorm:"column:quota"`
+}
+
+func (quotaDataDimensionBackfill) TableName() string {
+	return "quota_data"
+}
+
 func appendQuotaDataDimensionString(encoded []byte, value string) []byte {
 	encoded = binary.BigEndian.AppendUint64(encoded, uint64(len(value)))
 	return append(encoded, value...)
@@ -268,23 +280,34 @@ func prepareQuotaDataDimensionKey() error {
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
+		duplicateIDs := make([]int, 0)
+		backfills := make([]quotaDataDimensionBackfill, 0, len(keys))
 		for _, key := range keys {
 			group := groups[key]
-			if len(group.duplicateIDs) > 0 {
-				if err := tx.Where("id IN ?", group.duplicateIDs).Delete(&QuotaData{}).Error; err != nil {
-					return err
-				}
-			}
-			if err := tx.Table("quota_data").Where("id = ?", group.row.Id).Updates(map[string]any{
-				"dimension_key": key,
-				"count":         int(group.count),
-				"quota":         int(group.quota),
-				"token_used":    int(group.tokenUsed),
-			}).Error; err != nil {
+			duplicateIDs = append(duplicateIDs, group.duplicateIDs...)
+			backfills = append(backfills, quotaDataDimensionBackfill{
+				Id:           group.row.Id,
+				DimensionKey: key,
+				Count:        int(group.count),
+				Quota:        int(group.quota),
+				TokenUsed:    int(group.tokenUsed),
+			})
+		}
+		for start := 0; start < len(duplicateIDs); start += 500 {
+			end := min(start+500, len(duplicateIDs))
+			if err := tx.Where("id IN ?", duplicateIDs[start:end]).Delete(&QuotaData{}).Error; err != nil {
 				return err
 			}
 		}
-		return nil
+		if len(backfills) == 0 {
+			return nil
+		}
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"dimension_key", "count", "quota", "token_used",
+			}),
+		}).CreateInBatches(&backfills, 100).Error
 	})
 }
 

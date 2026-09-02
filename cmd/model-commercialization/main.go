@@ -73,7 +73,7 @@ type plan struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		exitWithError(errors.New("usage: model-commercialization <plan|inspect|apply|verify|onboard-production-channel|audit-model-contexts|sync-model-contexts> --config FILE"))
+		exitWithError(errors.New("usage: model-commercialization <plan|inspect|apply|verify|onboard-production-channel|audit-model-contexts|sync-model-contexts|audit-model-metadata|sync-model-metadata> --config FILE"))
 	}
 	command := os.Args[1]
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -119,6 +119,23 @@ func main() {
 			exitWithError(err)
 		}
 		exitWithError(reconcileModelContexts(catalog, command == "sync-model-contexts"))
+		return
+	}
+	if command == "audit-model-metadata" || command == "sync-model-metadata" {
+		if strings.TrimSpace(*configPath) == "" {
+			exitWithError(errors.New("--config is required"))
+		}
+		if command == "sync-model-metadata" && (!*yes || !*production) {
+			exitWithError(errors.New("sync-model-metadata requires --yes and --production"))
+		}
+		catalog, err := loadModelMetadataCatalog(*configPath)
+		if err != nil {
+			exitWithError(err)
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(reconcileModelMetadata(catalog, command == "sync-model-metadata"))
 		return
 	}
 	if command == "onboard-production-channel" {

@@ -157,6 +157,45 @@ func TestAuthenticationRecoveryRoutesDoNotShareGlobalAPILimit(t *testing.T) {
 	assert.Equal(t, "2", count)
 }
 
+func TestFrontendAssetsDoNotShareGlobalWebLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	redisServer, _ := useRateLimitMiniRedis(t)
+
+	previousEnabled := common.GlobalWebRateLimitEnable
+	previousMaximum := common.GlobalWebRateLimitNum
+	previousDuration := common.GlobalWebRateLimitDuration
+	common.GlobalWebRateLimitEnable = true
+	common.GlobalWebRateLimitNum = 1
+	common.GlobalWebRateLimitDuration = 60
+	t.Cleanup(func() {
+		common.GlobalWebRateLimitEnable = previousEnabled
+		common.GlobalWebRateLimitNum = previousMaximum
+		common.GlobalWebRateLimitDuration = previousDuration
+	})
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.Use(GlobalWebRateLimit())
+	router.GET("/console/", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	router.GET("/console/assets/app.js", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	router.HEAD("/assets/app.css", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+
+	remoteAddr := "192.0.2.27:12345"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/console/", remoteAddr).Code)
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/console/", remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/console/assets/app.js", remoteAddr).Code)
+
+	headRecorder := httptest.NewRecorder()
+	headRequest := httptest.NewRequest(http.MethodHead, "/assets/app.css", nil)
+	headRequest.RemoteAddr = remoteAddr
+	router.ServeHTTP(headRecorder, headRequest)
+	assert.Equal(t, http.StatusNoContent, headRecorder.Code)
+
+	count, err := redisServer.Get(redisIPRateLimitKey("GW", "192.0.2.27"))
+	require.NoError(t, err)
+	assert.Equal(t, "2", count)
+}
+
 func TestPaymentWebhooksDoNotShareGlobalAPILimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	redisServer, _ := useRateLimitMiniRedis(t)

@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -152,6 +153,37 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 	return make([]constant.EndpointType, 0)
 }
 
+// GetGroupsModelEndpointTypes returns the union of endpoints routed by the
+// requested groups for each logical model. Unlike the public pricing cache,
+// this keeps Playground capabilities scoped to the groups the current user
+// can actually select.
+func GetGroupsModelEndpointTypes(groups []string) (map[string][]constant.EndpointType, error) {
+	result := make(map[string][]constant.EndpointType)
+	if len(groups) == 0 {
+		return result, nil
+	}
+	groupSet := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		groupSet[group] = struct{}{}
+	}
+	abilities, err := GetAllEnableAbilityWithChannels()
+	if err != nil {
+		return nil, err
+	}
+	advancedCustomConfigs := loadPricingAdvancedCustomConfigs(abilities)
+	for _, ability := range abilities {
+		if _, ok := groupSet[ability.Group]; !ok {
+			continue
+		}
+		for _, endpointType := range getPricingEndpointTypesForAbility(ability, advancedCustomConfigs) {
+			if !slices.Contains(result[ability.Model], endpointType) {
+				result[ability.Model] = append(result[ability.Model], endpointType)
+			}
+		}
+	}
+	return result, nil
+}
+
 func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig) []constant.EndpointType {
 	if ability.ChannelType != constant.ChannelTypeAdvancedCustom {
 		return common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
@@ -162,11 +194,12 @@ func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCusto
 	return common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
 }
 
-// loadPricingAdvancedCustomConfigs runs inside updatePricing while
-// updatePricingLock is held, and nests channelSyncLock.RLock. This defines the
-// global lock order updatePricingLock -> channelSyncLock: any code path holding
-// channelSyncLock must release it before touching the pricing cache (see
-// InitChannelCache / CacheUpdateChannel), otherwise it deadlocks.
+// loadPricingAdvancedCustomConfigs is used both by updatePricing and scoped
+// capability reads. When called by updatePricing it nests channelSyncLock.RLock
+// under updatePricingLock. This defines the global lock order
+// updatePricingLock -> channelSyncLock: any code path holding channelSyncLock
+// must release it before touching the pricing cache (see InitChannelCache /
+// CacheUpdateChannel), otherwise it deadlocks.
 // The returned configs are pointers shared with the channel cache; they are
 // replaced wholesale on update and never mutated in place, so reading them after
 // RUnlock is safe.

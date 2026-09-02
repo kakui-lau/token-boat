@@ -8,6 +8,9 @@ import { getPlaygroundStorageKey } from "../playground-local-storage";
 
 const {
   listPlaygroundModels,
+  generatePlaygroundImages,
+  createPlaygroundVideo,
+  getPlaygroundVideo,
   copilotKitProps,
   copilotChatProps,
   copilotMountSequence,
@@ -15,6 +18,9 @@ const {
   suggestionConfigs,
 } = vi.hoisted(() => ({
   listPlaygroundModels: vi.fn(),
+  generatePlaygroundImages: vi.fn(),
+  createPlaygroundVideo: vi.fn(),
+  getPlaygroundVideo: vi.fn(),
   copilotKitProps: vi.fn(),
   copilotChatProps: vi.fn(),
   copilotMountSequence: { current: 0 },
@@ -45,6 +51,9 @@ vi.mock("@/data/repository", () => ({
   repository: {
     mode: "live",
     listPlaygroundModels,
+    generatePlaygroundImages,
+    createPlaygroundVideo,
+    getPlaygroundVideo,
   },
 }));
 
@@ -150,6 +159,9 @@ vi.mock("react-i18next", () => ({
 beforeEach(() => {
   window.localStorage.clear();
   listPlaygroundModels.mockReset();
+  generatePlaygroundImages.mockReset();
+  createPlaygroundVideo.mockReset();
+  getPlaygroundVideo.mockReset();
   copilotKitProps.mockReset();
   copilotChatProps.mockReset();
   copilotMountSequence.current = 0;
@@ -175,9 +187,104 @@ beforeEach(() => {
     { id: "gpt-5", label: "GPT-5", group: "default" },
     { id: "claude-sonnet", label: "Claude Sonnet", group: "default" },
   ]);
+  generatePlaygroundImages.mockResolvedValue({
+    createdAt: 1,
+    images: [
+      {
+        url: "https://cdn.example/generated.png",
+        revisedPrompt: null,
+        transient: false,
+      },
+    ],
+  });
+  createPlaygroundVideo.mockResolvedValue({
+    id: "video-task",
+    pollingUrl: "/v1/videos/video-task",
+    status: "completed",
+    unsignedUrls: ["https://cdn.example/generated.mp4"],
+    error: null,
+    estimatedCost: 0.4,
+  });
+  getPlaygroundVideo.mockResolvedValue({
+    id: "video-task",
+    pollingUrl: "/v1/videos/video-task",
+    status: "completed",
+    unsignedUrls: ["https://cdn.example/generated.mp4"],
+    error: null,
+    estimatedCost: 0.4,
+  });
 });
 
 describe("PlaygroundPage", () => {
+  test("switches to image generation using backend model capabilities", async () => {
+    listPlaygroundModels.mockResolvedValue([
+      {
+        id: "gpt-5",
+        label: "GPT-5",
+        group: "default",
+        supportedEndpointTypes: ["openai"],
+      },
+      {
+        id: "gpt-image-2",
+        label: "GPT Image 2",
+        group: "default",
+        supportedEndpointTypes: ["image-generation"],
+      },
+    ]);
+    renderPlayground();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Image" }));
+    const prompt = await screen.findByPlaceholderText("Describe the image you want to create…");
+    fireEvent.change(prompt, { target: { value: "A production dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(generatePlaygroundImages).toHaveBeenCalledWith(
+        expect.objectContaining({
+          group: "default",
+          model: "gpt-image-2",
+          prompt: "A production dashboard",
+        }),
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(await screen.findByRole("img", { name: "A production dashboard" })).toHaveAttribute(
+      "src",
+      "https://cdn.example/generated.png",
+    );
+    expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
+  });
+
+  test("submits supported video models and renders completed output", async () => {
+    listPlaygroundModels.mockResolvedValue([
+      {
+        id: "video-model",
+        label: "Video model",
+        group: "default",
+        supportedEndpointTypes: ["openai-video"],
+      },
+    ]);
+    renderPlayground();
+
+    const prompt = await screen.findByPlaceholderText(
+      "Describe the video scene, motion, and camera direction…",
+    );
+    fireEvent.change(prompt, { target: { value: "Ocean waves at sunrise" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(createPlaygroundVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          group: "default",
+          model: "video-model",
+          prompt: "Ocean waves at sunrise",
+        }),
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(await screen.findByText("Download video")).toBeInTheDocument();
+  });
+
   test("does not mount the Copilot runtime before a local conversation exists", async () => {
     window.localStorage.clear();
     renderPlayground();

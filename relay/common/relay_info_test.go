@@ -94,3 +94,17 @@ func TestGenBaseRelayInfoUsesSelectedAutoGroupForPricing(t *testing.T) {
 
 	assert.Equal(t, "business", info.UsingGroup)
 }
+
+func TestGenRelayInfoPreservesPlaygroundIdentityAfterRouteRewrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	context.Set("playground_request", true)
+
+	info := GenRelayInfoImage(context, nil)
+
+	require.NotNil(t, info)
+	assert.True(t, info.IsPlayground)
+	assert.Equal(t, "/v1/images/generations", info.RequestURLPath)
+}

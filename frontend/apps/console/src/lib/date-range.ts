@@ -43,12 +43,26 @@ export function createCustomDateRange(from: string, to: string): DateRangeValue 
 }
 
 export function dateRangeToUnix(range: DateRangeValue): { start: number; end: number } {
+  if (
+    range.startTimestamp !== undefined &&
+    range.endTimestamp !== undefined &&
+    range.startTimestamp <= range.endTimestamp
+  ) {
+    return { start: range.startTimestamp, end: range.endTimestamp };
+  }
   const start = new Date(`${range.from}T00:00:00`).getTime();
   const end = new Date(`${range.to}T23:59:59.999`).getTime();
   return { start: Math.floor(start / 1000), end: Math.floor(end / 1000) };
 }
 
 export function dateRangeDayCount(range: DateRangeValue): number {
+  if (
+    range.startTimestamp !== undefined &&
+    range.endTimestamp !== undefined &&
+    range.startTimestamp <= range.endTimestamp
+  ) {
+    return Math.max(1, Math.ceil((range.endTimestamp - range.startTimestamp + 1) / 86_400));
+  }
   const start = new Date(`${range.from}T00:00:00`).getTime();
   const end = new Date(`${range.to}T00:00:00`).getTime();
   return Math.max(1, Math.round((end - start) / dayInMilliseconds) + 1);

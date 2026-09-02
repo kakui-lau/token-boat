@@ -15,6 +15,14 @@ import (
 )
 
 func Playground(c *gin.Context) {
+	playgroundRelay(c, types.RelayFormatOpenAI, "playground-chat")
+}
+
+func PlaygroundImage(c *gin.Context) {
+	playgroundRelay(c, types.RelayFormatOpenAIImage, "playground-image")
+}
+
+func playgroundRelay(c *gin.Context, relayFormat types.RelayFormat, tokenName string) {
 	var newAPIError *types.NewAPIError
 
 	defer func() {
@@ -31,7 +39,7 @@ func Playground(c *gin.Context) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, nil, nil)
+	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, nil, nil)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 		return
@@ -49,7 +57,7 @@ func Playground(c *gin.Context) {
 
 	playgroundToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
+		Name:   fmt.Sprintf("%s-%s", tokenName, relayInfo.UsingGroup),
 		Group:  relayInfo.UsingGroup,
 	}
 	if selectedToken, ok := c.Get("playground_api_key"); ok {
@@ -59,7 +67,7 @@ func Playground(c *gin.Context) {
 	}
 	_ = middleware.SetupContextForToken(c, playgroundToken)
 
-	Relay(c, types.RelayFormatOpenAI)
+	Relay(c, relayFormat)
 }
 
 func PlaygroundTask(c *gin.Context) {

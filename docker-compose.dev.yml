@@ -34,6 +34,9 @@ services:
       - SQL_DSN=postgresql://postgres:123456@host.docker.internal:5433/token-boat
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
+      # Keep local dashboard access/refresh tokens valid across container
+      # rebuilds. Production must provide its own strong secret.
+      - SESSION_SECRET=token-boat-local-dev-session-secret-change-before-production
       - BATCH_UPDATE_ENABLED=true
       # Local acceptance uses the contracted pricing schema; minimum-margin
       # fields remain canonical and are not removed by this switch.

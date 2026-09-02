@@ -11,6 +11,8 @@ import {
   parseRequestLogSearch,
   parseTaskSearch,
   resolveDateRange,
+  resolveRequestLogRange,
+  requestLogRangeSearchPatch,
   searchPatchShouldResetScroll,
   type RequestLogSearch,
 } from "../list-search";
@@ -79,6 +81,40 @@ describe("list search parameters", () => {
     });
     expect(parseRequestLogSearch({ detailTab: "usage" })).toMatchObject({
       detailTab: undefined,
+    });
+  });
+
+  it("keeps an exact request-log range and time zone shareable", () => {
+    const search = parseRequestLogSearch({
+      start: "1788307200",
+      end: "1788310800",
+      tz: "Asia/Shanghai",
+    });
+
+    expect(resolveRequestLogRange(search, "today")).toMatchObject({
+      startTimestamp: 1_788_307_200,
+      endTimestamp: 1_788_310_800,
+      timeZone: "Asia/Shanghai",
+    });
+    expect(
+      requestLogRangeSearchPatch(
+        {
+          preset: "custom",
+          from: "2026-09-02",
+          to: "2026-09-02",
+          startTimestamp: 1_788_307_200,
+          endTimestamp: 1_788_310_800,
+          timeZone: "Asia/Shanghai",
+        },
+        "today",
+      ),
+    ).toEqual({
+      from: "2026-09-02",
+      to: "2026-09-02",
+      range: "custom",
+      start: 1_788_307_200,
+      end: 1_788_310_800,
+      tz: "Asia/Shanghai",
     });
   });
 

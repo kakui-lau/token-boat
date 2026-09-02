@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsImageGenerationModelRecognizesGeminiImageModels(t *testing.T) {
+func TestIsImageGenerationModelRecognizesSupportedImageModels(t *testing.T) {
 	tests := []struct {
 		model string
 		want  bool
@@ -14,6 +14,7 @@ func TestIsImageGenerationModelRecognizesGeminiImageModels(t *testing.T) {
 		{model: "google/gemini-3-pro-image-preview", want: true},
 		{model: "google/gemini-3.1-flash-image-preview", want: true},
 		{model: "google/gemini-2.5-flash-image", want: true},
+		{model: "openai/gpt-image-2", want: true},
 		{model: "google/gemini-3.1-pro-preview", want: false},
 		{model: "google/gemini-3-flash-preview", want: false},
 	}

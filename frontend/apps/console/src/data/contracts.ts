@@ -149,6 +149,9 @@ export type DateRangeValue = {
   preset: DateRangePreset;
   from: string;
   to: string;
+  endTimestamp?: number;
+  startTimestamp?: number;
+  timeZone?: string;
 };
 
 export type SortOrder = "asc" | "desc";
@@ -247,6 +250,56 @@ export type PlaygroundModel = {
   id: string;
   label: string;
   group: string;
+  supportedEndpointTypes?: string[];
+};
+
+export type PlaygroundMode = "chat" | "image" | "video";
+
+export type PlaygroundImageGenerationInput = {
+  group: string;
+  model: string;
+  prompt: string;
+  size: string;
+  quality: string;
+  count: number;
+};
+
+export type PlaygroundImageAsset = {
+  url: string;
+  revisedPrompt: string | null;
+  transient: boolean;
+};
+
+export type PlaygroundImageGeneration = {
+  createdAt: number | null;
+  images: PlaygroundImageAsset[];
+};
+
+export type PlaygroundVideoGenerationInput = {
+  group: string;
+  model: string;
+  prompt: string;
+  duration: number;
+  resolution: string;
+  aspectRatio: string;
+  generateAudio: boolean;
+};
+
+export type PlaygroundVideoStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export type PlaygroundVideoGeneration = {
+  id: string;
+  pollingUrl: string;
+  status: PlaygroundVideoStatus;
+  unsignedUrls: string[];
+  error: string | null;
+  estimatedCost: number | null;
 };
 
 export type PlaygroundConversation = {
@@ -900,6 +953,15 @@ export type ConsoleRepository = {
     input: PlaygroundMessageInput,
     signal?: AbortSignal,
   ): Promise<PlaygroundReply>;
+  generatePlaygroundImages(
+    input: PlaygroundImageGenerationInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundImageGeneration>;
+  createPlaygroundVideo(
+    input: PlaygroundVideoGenerationInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundVideoGeneration>;
+  getPlaygroundVideo(taskId: string, signal?: AbortSignal): Promise<PlaygroundVideoGeneration>;
   getUsage(range: DateRangeValue): Promise<UsageData>;
   getIntegration(): Promise<IntegrationData>;
   listModelCatalog(group: string): Promise<ModelCatalogItem[]>;

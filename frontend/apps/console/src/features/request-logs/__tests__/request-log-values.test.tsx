@@ -16,8 +16,8 @@ vi.mock("@/data/repository", () => ({
   repository: { getRequestLog, getRequestLogAnalytics, getRequestLogsPage },
 }));
 
-vi.mock("@/components/date-range-picker", () => ({
-  DateRangePicker: () => <button type="button">Date range</button>,
+vi.mock("../components/request-log-date-time-range-picker", () => ({
+  RequestLogDateTimeRangePicker: () => <button type="button">Date range</button>,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -49,13 +49,23 @@ describe("RequestLogsPage values", () => {
     await waitFor(() =>
       expect(getRequestLogsPage).toHaveBeenCalledWith(
         expect.objectContaining({
-          range: expect.objectContaining({ preset: "today" }),
+          range: expect.objectContaining({
+            preset: "today",
+            startTimestamp: expect.any(Number),
+            endTimestamp: expect.any(Number),
+            timeZone: expect.any(String),
+          }),
         }),
       ),
     );
     expect(getRequestLogAnalytics).toHaveBeenCalledWith(
       expect.objectContaining({
-        range: expect.objectContaining({ preset: "today" }),
+        range: expect.objectContaining({
+          preset: "today",
+          startTimestamp: expect.any(Number),
+          endTimestamp: expect.any(Number),
+          timeZone: expect.any(String),
+        }),
       }),
     );
   });

@@ -6,10 +6,12 @@ import {
   Code2Icon,
   HistoryIcon,
   LightbulbIcon,
+  ImageIcon,
   MessageSquareIcon,
   PlusIcon,
   SparklesIcon,
   TriangleAlertIcon,
+  VideoIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -41,13 +43,19 @@ import {
   SheetTrigger,
 } from "@token-boat/ui/components/ui/sheet";
 import { Skeleton } from "@token-boat/ui/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@token-boat/ui/components/ui/toggle-group";
 import { useSession } from "@/app/session/session-context";
 import { PageHeader } from "@/components/page-header";
-import type { PlaygroundConversation, PlaygroundStoredMessage } from "@/data/contracts";
+import type {
+  PlaygroundConversation,
+  PlaygroundMode,
+  PlaygroundStoredMessage,
+} from "@/data/contracts";
 import { repository } from "@/data/repository";
 import { PlaygroundConversationList } from "../components/playground-conversation-list";
 import { PlaygroundSettingsSheet } from "../components/playground-settings-sheet";
 import { createPlaygroundConversationSync } from "../playground-conversation-sync";
+import { getPlaygroundModelModes } from "../playground-model-capabilities";
 import {
   createLocalPlaygroundConversation,
   deleteLocalPlaygroundConversation,
@@ -61,6 +69,12 @@ const loadCopilotPlaygroundChat = () =>
   }));
 const CopilotPlaygroundChat = lazy(loadCopilotPlaygroundChat);
 const preloadCopilotPlaygroundChat = () => void loadCopilotPlaygroundChat();
+const loadPlaygroundMediaGenerator = () =>
+  import("../components/playground-media-generator").then((module) => ({
+    default: module.PlaygroundMediaGenerator,
+  }));
+const PlaygroundMediaGenerator = lazy(loadPlaygroundMediaGenerator);
+const preloadPlaygroundMediaGenerator = () => void loadPlaygroundMediaGenerator();
 
 export function PlaygroundPage({ initialModel = "" }: { initialModel?: string }) {
   const { t } = useTranslation();
@@ -69,6 +83,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
   const selectedGroup = session?.user.group.trim() || null;
   const syncRef = useRef<ReturnType<typeof createPlaygroundConversationSync> | null>(null);
   const [model, setModel] = useState(initialModel);
+  const [mode, setMode] = useState<PlaygroundMode>("chat");
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [chatRevision, setChatRevision] = useState(0);
   const [conversationItems, setConversationItems] = useState<PlaygroundConversation[]>([]);
@@ -133,8 +148,21 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
   });
   const permittedModels = models.data ?? [];
   const desiredModel = model || activeConversation?.model || initialModel;
+  const desiredModelRecord = permittedModels.find((item) => item.id === desiredModel);
+  const availableModes = (["chat", "image", "video"] as const).filter((candidate) =>
+    permittedModels.some((item) => getPlaygroundModelModes(item).includes(candidate)),
+  );
+  const activeMode =
+    desiredModelRecord && !getPlaygroundModelModes(desiredModelRecord).includes(mode)
+      ? (getPlaygroundModelModes(desiredModelRecord)[0] ?? mode)
+      : permittedModels.some((item) => getPlaygroundModelModes(item).includes(mode))
+        ? mode
+        : (availableModes[0] ?? mode);
+  const modelsForMode = permittedModels.filter((item) =>
+    getPlaygroundModelModes(item).includes(activeMode),
+  );
   const selectedModel =
-    permittedModels.find((item) => item.id === desiredModel)?.id ?? permittedModels[0]?.id ?? "";
+    modelsForMode.find((item) => item.id === desiredModel)?.id ?? modelsForMode[0]?.id ?? "";
 
   const createConversation = () => {
     if (!selectedModel) {
@@ -178,6 +206,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
   };
 
   const selectConversation = (conversation: PlaygroundConversation) => {
+    setMode("chat");
     setActiveThreadId(conversation.id);
     setModel(conversation.model);
     setHistoryOpen(false);
@@ -202,7 +231,9 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
     },
     [resolvedThreadId, selectedModel, storageUserId, t],
   );
-  const canCreate = Boolean(selectedGroup && selectedModel && !models.isPending);
+  const canCreate = Boolean(
+    activeMode === "chat" && selectedGroup && selectedModel && !models.isPending,
+  );
   const conversationList = (
     <PlaygroundConversationList
       activeId={resolvedThreadId}
@@ -218,53 +249,66 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
     />
   );
 
-  const modelItems = permittedModels.map((item) => ({ label: item.label, value: item.id }));
+  const modelItems = modelsForMode.map((item) => ({ label: item.label, value: item.id }));
+  const changeMode = (nextMode: PlaygroundMode) => {
+    setMode(nextMode);
+    const currentModel = permittedModels.find((item) => item.id === selectedModel);
+    if (!currentModel || !getPlaygroundModelModes(currentModel).includes(nextMode)) {
+      setModel(
+        permittedModels.find((item) => getPlaygroundModelModes(item).includes(nextMode))?.id ?? "",
+      );
+    }
+  };
 
   return (
     <div className="flex min-h-[800px] flex-col gap-4 lg:h-[calc(100svh-7rem)] lg:min-h-[720px]">
       <PageHeader
         action={
-          <div className="flex items-center gap-2">
-            <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
-              <SheetTrigger render={<Button className="xl:hidden" variant="outline" />}>
-                <HistoryIcon data-icon="inline-start" />
-                {t("History")}
-              </SheetTrigger>
-              <SheetContent className="w-[21rem] p-0" side="left">
-                <SheetHeader className="sr-only">
-                  <SheetTitle>{t("Conversation history")}</SheetTitle>
-                  <SheetDescription>
-                    {t("Open or remove conversations stored in this browser.")}
-                  </SheetDescription>
-                </SheetHeader>
-                {conversationList}
-              </SheetContent>
-            </Sheet>
-            <Button
-              className="xl:hidden"
-              disabled={!canCreate}
-              onClick={createConversation}
-              onFocus={preloadCopilotPlaygroundChat}
-              onPointerEnter={preloadCopilotPlaygroundChat}
-            >
-              <PlusIcon data-icon="inline-start" />
-              {t("New chat")}
-            </Button>
-          </div>
+          activeMode === "chat" ? (
+            <div className="flex items-center gap-2">
+              <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
+                <SheetTrigger render={<Button className="xl:hidden" variant="outline" />}>
+                  <HistoryIcon data-icon="inline-start" />
+                  {t("History")}
+                </SheetTrigger>
+                <SheetContent className="w-[21rem] p-0" side="left">
+                  <SheetHeader className="sr-only">
+                    <SheetTitle>{t("Conversation history")}</SheetTitle>
+                    <SheetDescription>
+                      {t("Open or remove conversations stored in this browser.")}
+                    </SheetDescription>
+                  </SheetHeader>
+                  {conversationList}
+                </SheetContent>
+              </Sheet>
+              <Button
+                className="xl:hidden"
+                disabled={!canCreate}
+                onClick={createConversation}
+                onFocus={preloadCopilotPlaygroundChat}
+                onPointerEnter={preloadCopilotPlaygroundChat}
+              >
+                <PlusIcon data-icon="inline-start" />
+                {t("New chat")}
+              </Button>
+            </div>
+          ) : null
         }
         description={t(
-          "Compare permitted models in browser-local conversations using your existing API access.",
+          "Test permitted chat, image, and video models with your current account pricing.",
         )}
         title={t("Playground")}
       />
 
       <section className="flex min-h-[700px] flex-1 overflow-hidden rounded-2xl border bg-card shadow-sm lg:min-h-[640px]">
-        <aside
-          aria-label={t("Conversation history")}
-          className="hidden w-64 shrink-0 border-r bg-muted/15 xl:flex"
-        >
-          {conversationList}
-        </aside>
+        {activeMode === "chat" ? (
+          <aside
+            aria-label={t("Conversation history")}
+            className="hidden w-64 shrink-0 border-r bg-muted/15 xl:flex"
+          >
+            {conversationList}
+          </aside>
+        ) : null}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div
@@ -272,6 +316,47 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
             className="flex flex-wrap items-end gap-3 border-b bg-background/85 p-3 backdrop-blur-xl sm:p-4"
             role="group"
           >
+            <Field className="gap-1.5">
+              <FieldLabel id="playground-mode">{t("Mode")}</FieldLabel>
+              <ToggleGroup
+                aria-labelledby="playground-mode"
+                onValueChange={(values) => {
+                  const nextMode = values[0] as PlaygroundMode | undefined;
+                  if (nextMode) changeMode(nextMode);
+                }}
+                spacing={0}
+                value={[activeMode]}
+                variant="outline"
+              >
+                {availableModes.includes("chat") ? (
+                  <ToggleGroupItem value="chat">
+                    <MessageSquareIcon data-icon="inline-start" />
+                    {t("Chat")}
+                  </ToggleGroupItem>
+                ) : null}
+                {availableModes.includes("image") ? (
+                  <ToggleGroupItem
+                    onFocus={preloadPlaygroundMediaGenerator}
+                    onPointerEnter={preloadPlaygroundMediaGenerator}
+                    value="image"
+                  >
+                    <ImageIcon data-icon="inline-start" />
+                    {t("Image")}
+                  </ToggleGroupItem>
+                ) : null}
+                {availableModes.includes("video") ? (
+                  <ToggleGroupItem
+                    onFocus={preloadPlaygroundMediaGenerator}
+                    onPointerEnter={preloadPlaygroundMediaGenerator}
+                    value="video"
+                  >
+                    <VideoIcon data-icon="inline-start" />
+                    {t("Video")}
+                  </ToggleGroupItem>
+                ) : null}
+              </ToggleGroup>
+            </Field>
+
             <Field className="min-w-48 flex-1 gap-1.5 sm:max-w-72">
               <FieldLabel className="text-xs" htmlFor="playground-model">
                 {t("Model")}
@@ -296,7 +381,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
                   <SelectContent align="start" alignItemWithTrigger={false}>
                     <SelectGroup>
                       <SelectLabel>{t("Available models")}</SelectLabel>
-                      {permittedModels.map((item) => (
+                      {modelsForMode.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
                           {item.label}
                         </SelectItem>
@@ -308,14 +393,16 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
             </Field>
 
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:justify-end">
-              <PlaygroundSettingsSheet
-                maxTokens={maxTokens}
-                onMaxTokensChange={setMaxTokens}
-                onSystemPromptChange={setSystemPrompt}
-                onTemperatureChange={setTemperature}
-                systemPrompt={systemPrompt}
-                temperature={temperature}
-              />
+              {activeMode === "chat" ? (
+                <PlaygroundSettingsSheet
+                  maxTokens={maxTokens}
+                  onMaxTokensChange={setMaxTokens}
+                  onSystemPromptChange={setSystemPrompt}
+                  onTemperatureChange={setTemperature}
+                  systemPrompt={systemPrompt}
+                  temperature={temperature}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -354,10 +441,21 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
                 <SparklesIcon aria-hidden="true" />
                 <AlertTitle>{t("No permitted models")}</AlertTitle>
                 <AlertDescription>
-                  {t("Your current group does not have a model available for Playground chat.")}
+                  {t(
+                    "Your current group does not have a model available for this Playground mode.",
+                  )}
                 </AlertDescription>
               </Alert>
             </div>
+          ) : activeMode !== "chat" ? (
+            <Suspense fallback={<PlaygroundMediaLoading />}>
+              <PlaygroundMediaGenerator
+                group={selectedGroup}
+                key={`${activeMode}:${selectedModel}`}
+                mode={activeMode}
+                model={selectedModel}
+              />
+            </Suspense>
           ) : repository.mode === "demo" && resolvedThreadId ? (
             <PlaygroundDemoPreview model={selectedModel} />
           ) : resolvedThreadId ? (
@@ -405,6 +503,17 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function PlaygroundMediaLoading() {
+  const { t } = useTranslation();
+  return (
+    <div className="grid flex-1 gap-5 p-6 lg:grid-cols-2" role="status">
+      <Skeleton className="h-[32rem] w-full" />
+      <Skeleton className="h-[32rem] w-full" />
+      <span className="sr-only">{t("Loading media generator")}</span>
     </div>
   );
 }

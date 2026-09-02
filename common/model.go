@@ -13,6 +13,7 @@ var (
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",
+		"gpt-image-2",
 		"gemini-2.0-flash-exp-image-generation",
 		"gemini-3-pro-image",
 		"gemini-2.5-flash-image",

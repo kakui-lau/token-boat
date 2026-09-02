@@ -25,6 +25,8 @@ import type {
   PlaygroundMessageInput,
   PlaygroundModel,
   PlaygroundReply,
+  PlaygroundImageGenerationInput,
+  PlaygroundVideoGenerationInput,
   RechargeConfiguration,
   RechargeQuoteInput,
   RequestLogAnalytics,
@@ -42,6 +44,7 @@ import type {
   UsageData,
 } from "./contracts";
 import { dateRangeDayCount, dateRangeToUnix, timestampMatchesDateRange } from "@/lib/date-range";
+import { timeZoneOffsetMinutesAt } from "@/lib/time-zone";
 
 function paginate<T>(
   items: T[],
@@ -1264,9 +1267,36 @@ export const demoRepository: ConsoleRepository = {
   },
   async listPlaygroundModels(group = "default"): Promise<PlaygroundModel[]> {
     return [
-      { id: "gpt-5", label: "GPT-5", group: "default" },
-      { id: "claude-sonnet-4", label: "Claude Sonnet 4", group: "default" },
-      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", group: "auto" },
+      {
+        id: "gpt-5",
+        label: "GPT-5",
+        group: "default",
+        supportedEndpointTypes: ["openai"],
+      },
+      {
+        id: "claude-sonnet-4",
+        label: "Claude Sonnet 4",
+        group: "default",
+        supportedEndpointTypes: ["openai"],
+      },
+      {
+        id: "gpt-image-2",
+        label: "GPT Image 2",
+        group: "default",
+        supportedEndpointTypes: ["image-generation"],
+      },
+      {
+        id: "seedance-2.0",
+        label: "Seedance 2.0",
+        group: "default",
+        supportedEndpointTypes: ["openai-video"],
+      },
+      {
+        id: "gemini-2.5-pro",
+        label: "Gemini 2.5 Pro",
+        group: "auto",
+        supportedEndpointTypes: ["openai"],
+      },
     ].filter((item) => item.group === group || group === "auto");
   },
   async sendPlaygroundMessage(
@@ -1291,6 +1321,41 @@ export const demoRepository: ConsoleRepository = {
       estimatedCost: 0.0038,
     };
   },
+  async generatePlaygroundImages(input: PlaygroundImageGenerationInput, signal?: AbortSignal) {
+    if (signal?.aborted) throw new DOMException("The request was aborted.", "AbortError");
+    return {
+      createdAt: Math.floor(Date.now() / 1000),
+      images: [
+        {
+          url: `https://picsum.photos/seed/${encodeURIComponent(input.model)}/1024/1024`,
+          revisedPrompt: input.prompt,
+          transient: false,
+        },
+      ],
+    };
+  },
+  async createPlaygroundVideo(input: PlaygroundVideoGenerationInput, signal?: AbortSignal) {
+    if (signal?.aborted) throw new DOMException("The request was aborted.", "AbortError");
+    return {
+      id: `demo-video-${Date.now()}`,
+      pollingUrl: "",
+      status: "completed" as const,
+      unsignedUrls: ["https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"],
+      error: null,
+      estimatedCost: null,
+    };
+  },
+  async getPlaygroundVideo(taskId: string, signal?: AbortSignal) {
+    if (signal?.aborted) throw new DOMException("The request was aborted.", "AbortError");
+    return {
+      id: taskId,
+      pollingUrl: "",
+      status: "completed" as const,
+      unsignedUrls: [],
+      error: null,
+      estimatedCost: null,
+    };
+  },
   async getUsage(range: DateRangeValue) {
     return buildUsage(range);
   },
@@ -1312,7 +1377,9 @@ export const demoRepository: ConsoleRepository = {
     const days = dateRangeDayCount(input.range);
     const bucketSeconds = days <= 1 ? 300 : days <= 7 ? 3_600 : days <= 31 ? 21_600 : 86_400;
     const unixRange = dateRangeToUnix(input.range);
-    const timezoneOffsetSeconds = -new Date().getTimezoneOffset() * 60;
+    const timezoneOffsetSeconds = input.range.timeZone
+      ? timeZoneOffsetMinutesAt(unixRange.start, input.range.timeZone) * 60
+      : -new Date(unixRange.start * 1_000).getTimezoneOffset() * 60;
     const firstBucket =
       Math.floor((unixRange.start + timezoneOffsetSeconds) / bucketSeconds) * bucketSeconds -
       timezoneOffsetSeconds;

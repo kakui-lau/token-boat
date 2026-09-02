@@ -80,6 +80,11 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.CopilotPlaygroundStop,
 		)
 		playgroundRouter.POST("/chat/completions", middleware.Distribute(), controller.Playground)
+		playgroundRouter.POST("/images/generations", func(c *gin.Context) {
+			c.Set("playground_request", true)
+			c.Request.URL.Path = "/v1/images/generations"
+			c.Next()
+		}, middleware.Distribute(), controller.PlaygroundImage)
 		playgroundRouter.POST("/videos", func(c *gin.Context) {
 			c.Set("playground_request", true)
 			c.Request.URL.Path = "/v1/videos"

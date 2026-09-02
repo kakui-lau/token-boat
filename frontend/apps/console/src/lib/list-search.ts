@@ -18,6 +18,13 @@ import {
   localDateFromKey,
   localDateToKey,
 } from "./date-range";
+import {
+  createZonedDateRange,
+  formatZonedDateTimeParts,
+  isValidTimeZone,
+  resolveBrowserTimeZone,
+  withExactTimeRange,
+} from "./time-zone";
 
 type PaginationSearch = {
   order?: SortOrder;
@@ -41,9 +48,12 @@ export type RequestLogSearch = DateRangeSearch &
   PaginationSearch & {
     detail?: string;
     detailTab?: "overview" | "usage" | "diagnostics";
+    end?: number;
     field?: RequestLogListInput["searchField"];
     q?: string;
+    start?: number;
     status?: Exclude<RequestLogListInput["status"], "processing">;
+    tz?: string;
   };
 
 export type AccountActivitySearch = DateRangeSearch &
@@ -138,6 +148,9 @@ export function parseApiKeySearch(search: Record<string, unknown>): ApiKeySearch
 
 export function parseRequestLogSearch(search: Record<string, unknown>): RequestLogSearch {
   const detail = parseKeyword(search.detail);
+  const start = parseUnixTimestamp(search.start);
+  const end = parseUnixTimestamp(search.end);
+  const exactRangeValid = start !== undefined && end !== undefined && start <= end;
   return {
     ...parseDateRangeSearch(search),
     detail,
@@ -145,11 +158,14 @@ export function parseRequestLogSearch(search: Record<string, unknown>): RequestL
       ? parseEnum(search.detailTab, ["overview", "usage", "diagnostics"])
       : undefined,
     field: parseEnum(search.field, ["request", "service_trace", "model", "api_key"]),
+    end: exactRangeValid ? end : undefined,
     order: parseEnum(search.order, ["asc", "desc"]),
     page: parsePositiveInteger(search.page),
     pageSize: parsePageSize(search.pageSize),
     q: parseKeyword(search.q),
+    start: exactRangeValid ? start : undefined,
     status: parseEnum(search.status, ["all", "succeeded", "failed"]),
+    tz: exactRangeValid ? parseTimeZone(search.tz) : undefined,
   };
 }
 
@@ -272,6 +288,50 @@ export function dateRangeSearchPatch(
   };
 }
 
+export function resolveRequestLogRange(
+  search: RequestLogSearch,
+  fallback: Exclude<DateRangePreset, "custom">,
+  referenceDate = new Date(),
+): DateRangeValue {
+  const timeZone = isValidTimeZone(search.tz) ? search.tz : resolveBrowserTimeZone();
+  if (search.start !== undefined && search.end !== undefined && search.start <= search.end) {
+    const startParts = formatZonedDateTimeParts(search.start, timeZone);
+    const endParts = formatZonedDateTimeParts(search.end, timeZone);
+    return {
+      preset: search.range ?? "custom",
+      from: startParts.date,
+      to: endParts.date,
+      startTimestamp: search.start,
+      endTimestamp: search.end,
+      timeZone,
+    };
+  }
+
+  if (search.range && search.range !== "custom") {
+    return createZonedDateRange(search.range, timeZone, referenceDate);
+  }
+  if (search.range === "custom" && search.from && search.to) {
+    const customRange = createCustomDateRange(search.from, search.to);
+    if (customRange) return withExactTimeRange(customRange, "00:00:00", "23:59:59", timeZone);
+  }
+  return createZonedDateRange(fallback, timeZone, referenceDate);
+}
+
+export function requestLogRangeSearchPatch(
+  range: DateRangeValue,
+  fallback: Exclude<DateRangePreset, "custom">,
+): SearchPatch<RequestLogSearch> {
+  const custom = range.preset === "custom";
+  return {
+    from: custom ? range.from : undefined,
+    to: custom ? range.to : undefined,
+    range: range.preset === fallback ? undefined : range.preset,
+    start: range.startTimestamp,
+    end: range.endTimestamp,
+    tz: range.timeZone,
+  };
+}
+
 function parseDateRangeSearch(search: Record<string, unknown>): DateRangeSearch {
   return {
     from: parseDateKey(search.from),
@@ -315,6 +375,15 @@ function parseKeyword(value: unknown): string | undefined {
 function parsePositiveInteger(value: unknown): number | undefined {
   const parsed = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 10_000 ? parsed : undefined;
+}
+
+function parseUnixTimestamp(value: unknown): number | undefined {
+  const parsed = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 253_402_300_799 ? parsed : undefined;
+}
+
+function parseTimeZone(value: unknown): string | undefined {
+  return typeof value === "string" && isValidTimeZone(value) ? value : undefined;
 }
 
 function parsePageSize(

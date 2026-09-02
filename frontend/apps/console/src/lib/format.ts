@@ -27,20 +27,23 @@ export function formatLatency(valueMs: number | null, locale: string) {
   return `${formatNumber(valueMs / 1_000, locale, { maximumFractionDigits: 1 })} s`;
 }
 
-export function formatDateTime(timestamp: number, locale: string) {
+export function formatDateTime(timestamp: number, locale: string, timeZone?: string) {
   if (!timestamp) return "—";
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(timestamp * 1000),
-  );
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(timestamp * 1000));
 }
 
-export function formatCompactDateTime(timestamp: number, locale: string) {
+export function formatCompactDateTime(timestamp: number, locale: string, timeZone?: string) {
   if (!timestamp) return "—";
   return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   }).format(new Date(timestamp * 1000));
 }
 

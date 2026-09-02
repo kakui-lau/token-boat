@@ -47,6 +47,7 @@ describe("DateRangePicker", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Select date range" }));
     expect(await screen.findByText("Custom date range")).toBeInTheDocument();
+    expect(screen.getAllByRole("grid")).toHaveLength(2);
     fireEvent.click(await screen.findByRole("button", { name: /August 1st, 2026/i }));
     fireEvent.click(screen.getByRole("button", { name: /August 15th, 2026/i }));
     fireEvent.click(screen.getByRole("button", { name: "Apply custom range" }));

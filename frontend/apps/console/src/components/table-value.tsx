@@ -21,6 +21,7 @@ type TableDateTimeProps = {
   className?: string;
   fallback?: ReactNode;
   locale: string;
+  timeZone?: string;
   timestamp: number | null | undefined;
 };
 
@@ -28,6 +29,7 @@ export function TableDateTime({
   className,
   fallback = "—",
   locale,
+  timeZone,
   timestamp,
 }: TableDateTimeProps) {
   if (!timestamp) return fallback;
@@ -36,9 +38,9 @@ export function TableDateTime({
     <time
       className={cn("tabular-nums", className)}
       dateTime={new Date(timestamp * 1000).toISOString()}
-      title={formatDateTime(timestamp, locale)}
+      title={formatDateTime(timestamp, locale, timeZone)}
     >
-      {formatCompactDateTime(timestamp, locale)}
+      {formatCompactDateTime(timestamp, locale, timeZone)}
     </time>
   );
 }

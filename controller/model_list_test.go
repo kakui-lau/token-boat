@@ -35,6 +35,14 @@ type userModelsResponse struct {
 	Data    []string `json:"data"`
 }
 
+type userModelDetailsResponse struct {
+	Success bool `json:"success"`
+	Data    []struct {
+		ID                     string                  `json:"id"`
+		SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
+	} `json:"data"`
+}
+
 func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -260,6 +268,57 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	GetUserModels(vipContext)
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
+}
+
+func TestGetUserModelsReturnsEndpointMetadataWhenDetailsRequested(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1012,
+		Username: "playground-model-details-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1012, Name: "playground-image-details-channel", Type: constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 1013, Name: "playground-video-details-channel", Type: constant.ChannelTypeOpenRouter,
+		Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "openai/gpt-image-2", ChannelId: 1012, Enabled: true,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group: "default", Model: "bytedance/seedance-test", ChannelId: 1013, Enabled: true,
+	}).Error)
+	model.InvalidatePricingCache()
+	t.Cleanup(model.InvalidatePricingCache)
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/api/user/models?group=default&details=true",
+		nil,
+	)
+	context.Set("id", 1012)
+
+	GetUserModels(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload userModelDetailsResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	require.Len(t, payload.Data, 2)
+	detailsByID := make(map[string][]constant.EndpointType, len(payload.Data))
+	for _, item := range payload.Data {
+		detailsByID[item.ID] = item.SupportedEndpointTypes
+	}
+	assert.Contains(t, detailsByID["openai/gpt-image-2"], constant.EndpointTypeImageGeneration)
+	assert.Contains(t, detailsByID["openai/gpt-image-2"], constant.EndpointTypeOpenAI)
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, detailsByID["bytedance/seedance-test"])
 }
 
 func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {

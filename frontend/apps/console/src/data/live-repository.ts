@@ -31,8 +31,13 @@ import type {
   PaymentConfirmationStatus,
   PaginatedResult,
   PlatformMonitor,
+  PlaygroundImageGeneration,
+  PlaygroundImageGenerationInput,
   PlaygroundMessageInput,
   PlaygroundReply,
+  PlaygroundVideoGeneration,
+  PlaygroundVideoGenerationInput,
+  PlaygroundVideoStatus,
   PurchaseSubscriptionInput,
   RechargeCheckout,
   RechargeConfiguration,
@@ -81,6 +86,7 @@ import {
 } from "./live-session-mappers";
 import { getLiveSession, liveApiClient as client, setLiveSession } from "./live-repository-runtime";
 import { dateRangeDayCount, dateRangeToUnix, localDateToKey } from "@/lib/date-range";
+import { timeZoneOffsetMinutesAt } from "@/lib/time-zone";
 import {
   buildAssertionCredential,
   buildRegistrationCredential,
@@ -130,6 +136,50 @@ type UsageSummary = {
   successRate: number | null;
   totalTokens: number;
 };
+
+const playgroundVideoStatuses = new Set<PlaygroundVideoStatus>([
+  "pending",
+  "in_progress",
+  "completed",
+  "failed",
+  "cancelled",
+  "expired",
+]);
+
+function mapPlaygroundVideo(value: unknown): PlaygroundVideoGeneration {
+  const video = asRecord(value);
+  const status = requireString(video, "status", "playground.video.status");
+  if (!playgroundVideoStatuses.has(status as PlaygroundVideoStatus)) {
+    throw new LiveDataContractError("playground.video.status");
+  }
+  const usage = asRecord(video.usage);
+  return {
+    id: requireString(video, "id", "playground.video.id"),
+    pollingUrl: readString(video, "polling_url"),
+    status: status as PlaygroundVideoStatus,
+    unsignedUrls: readOptionalItems(video.unsigned_urls, "playground.video.unsigned_urls").map(
+      (url, index) => {
+        if (typeof url !== "string" || !url.trim()) {
+          throw new LiveDataContractError(`playground.video.unsigned_urls[${index}]`);
+        }
+        return requirePlaygroundMediaUrl(url, `playground.video.unsigned_urls[${index}]`);
+      },
+    ),
+    error: readString(video, "error") || null,
+    estimatedCost: readOptionalNumber(usage, "cost"),
+  };
+}
+
+function requirePlaygroundMediaUrl(value: string, field: string): string {
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:" || url.protocol === "http:") return value;
+  } catch {
+    // The contract error below intentionally hides parser internals.
+  }
+  throw new LiveDataContractError(field);
+}
 
 function mapUsageSummary(value: unknown): UsageSummary {
   const stats = asRecord(value);
@@ -1907,7 +1957,10 @@ async function getRequestLogAnalytics(
 ): Promise<RequestLogAnalytics> {
   const days = dateRangeDayCount(input.range);
   const bucketSeconds = days <= 1 ? 300 : days <= 7 ? 3_600 : days <= 31 ? 21_600 : 86_400;
-  const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
+  const unixRange = dateRangeToUnix(input.range);
+  const timezoneOffsetMinutes = input.range.timeZone
+    ? timeZoneOffsetMinutesAt(unixRange.start, input.range.timeZone)
+    : -new Date(unixRange.start * 1_000).getTimezoneOffset();
   const search = requestLogSearchParams(input);
   search.set("bucket_seconds", String(bucketSeconds));
   search.set("timezone_offset_minutes", String(timezoneOffsetMinutes));
@@ -1997,7 +2050,6 @@ async function getRequestLogAnalytics(
     throw new LiveDataContractError("request_log_analytics.series");
   }
 
-  const unixRange = dateRangeToUnix(input.range);
   const offsetSeconds = timezoneOffsetMinutes * 60;
   const firstBucket =
     Math.floor((unixRange.start + offsetSeconds) / bucketSeconds) * bucketSeconds - offsetSeconds;
@@ -2313,13 +2365,23 @@ export const liveRepository: ConsoleRepository = {
   async listPlaygroundModels(group: string) {
     if (!group.trim()) throw new LiveDataContractError("user.group");
     const response = await client.request<unknown>({
-      path: `/api/user/models?group=${encodeURIComponent(group)}`,
+      path: `/api/user/models?group=${encodeURIComponent(group)}&details=true`,
     });
     return requireItems(response.data, "user.models").map((model, index) => {
-      if (typeof model !== "string" || !model.trim()) {
-        throw new LiveDataContractError(`user.models[${index}]`);
-      }
-      return { id: model, label: model, group };
+      const item = asRecord(model);
+      const id = requireString(item, "id", `user.models[${index}].id`);
+      const supportedEndpointTypes = readOptionalItems(
+        item.supported_endpoint_types,
+        `user.models[${index}].supported_endpoint_types`,
+      ).map((endpoint, endpointIndex) => {
+        if (typeof endpoint !== "string" || !endpoint.trim()) {
+          throw new LiveDataContractError(
+            `user.models[${index}].supported_endpoint_types[${endpointIndex}]`,
+          );
+        }
+        return endpoint;
+      });
+      return { id, label: id, group, supportedEndpointTypes };
     });
   },
   async sendPlaygroundMessage(
@@ -2360,6 +2422,75 @@ export const liveRepository: ConsoleRepository = {
       latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
       estimatedCost: readOptionalNumber(data, "cost"),
     };
+  },
+  async generatePlaygroundImages(
+    input: PlaygroundImageGenerationInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundImageGeneration> {
+    const payload = await client.requestRaw<unknown>({
+      path: "/pg/images/generations",
+      method: "POST",
+      signal,
+      body: {
+        group: input.group,
+        model: input.model,
+        prompt: input.prompt,
+        size: input.size,
+        quality: input.quality,
+        n: input.count,
+      },
+    });
+    const data = asRecord(payload);
+    const images = requireItems(data.data, "playground.images.data").map((value, index) => {
+      const image = asRecord(value);
+      const url = readString(image, "url");
+      const b64Json = readString(image, "b64_json");
+      if (!url && !b64Json) {
+        throw new LiveDataContractError(`playground.images.data[${index}]`);
+      }
+      return {
+        url: url
+          ? requirePlaygroundMediaUrl(url, `playground.images.data[${index}].url`)
+          : `data:image/png;base64,${b64Json}`,
+        revisedPrompt: readString(image, "revised_prompt") || null,
+        transient: !url,
+      };
+    });
+    return {
+      createdAt: readOptionalNumber(data, "created"),
+      images,
+    };
+  },
+  async createPlaygroundVideo(
+    input: PlaygroundVideoGenerationInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundVideoGeneration> {
+    const payload = await client.requestRaw<unknown>({
+      path: "/pg/videos",
+      method: "POST",
+      signal,
+      body: {
+        group: input.group,
+        model: input.model,
+        prompt: input.prompt,
+        duration: input.duration,
+        resolution: input.resolution,
+        aspect_ratio: input.aspectRatio,
+        generate_audio: input.generateAudio,
+      },
+    });
+    return mapPlaygroundVideo(payload);
+  },
+  async getPlaygroundVideo(
+    taskId: string,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundVideoGeneration> {
+    if (!taskId.trim()) throw new LiveDataContractError("playground.video.task_id");
+    const payload = await client.requestRaw<unknown>({
+      path: `/pg/videos/${encodeURIComponent(taskId)}`,
+      signal,
+    });
+    return mapPlaygroundVideo(payload);
   },
   async getUsage(range: DateRangeValue): Promise<UsageData> {
     const unixRange = dateRangeToUnix(range);

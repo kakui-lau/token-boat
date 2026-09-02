@@ -33,7 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from "@token-boat/ui/components/ui/table";
-import { DateRangePicker } from "@/components/date-range-picker";
 import { DataPagination } from "@/components/data-pagination";
 import { DataLoadError } from "@/components/data-load-error";
 import { PageHeader } from "@/components/page-header";
@@ -44,9 +43,9 @@ import type { RequestLogListInput } from "@/data/contracts";
 import { repository } from "@/data/repository";
 import { formatLatency, formatNumber, formatPreciseCurrency } from "@/lib/format";
 import {
-  dateRangeSearchPatch,
   type RequestLogSearch,
-  resolveDateRange,
+  requestLogRangeSearchPatch,
+  resolveRequestLogRange,
   type SearchPatch,
   useControllableSearch,
 } from "@/lib/list-search";
@@ -55,6 +54,7 @@ import {
   RequestStatusBadge,
   type RequestDetailsTab,
 } from "../components/request-details-sheet";
+import { RequestLogDateTimeRangePicker } from "../components/request-log-date-time-range-picker";
 import { RequestLogAnalyticsCard } from "../components/request-log-analytics-card";
 
 type StatusFilter = Exclude<RequestLogListInput["status"], "processing">;
@@ -68,8 +68,8 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
   const { t, i18n } = useTranslation();
   const [search, updateSearch] = useControllableSearch(props.search, props.onSearchChange);
   const range = useMemo(
-    () => resolveDateRange(search, "today"),
-    [search.from, search.range, search.to],
+    () => resolveRequestLogRange(search, "today"),
+    [search.end, search.from, search.range, search.start, search.to, search.tz],
   );
   const status: StatusFilter = search.status ?? "all";
   const searchField = search.field ?? "request";
@@ -119,10 +119,10 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
     <div className="flex flex-col gap-6">
       <PageHeader
         action={
-          <DateRangePicker
+          <RequestLogDateTimeRangePicker
             onChange={(value) => {
               updateSearch({
-                ...dateRangeSearchPatch(value, "today"),
+                ...requestLogRangeSearchPatch(value, "today"),
                 detail: undefined,
                 detailTab: undefined,
                 page: undefined,
@@ -141,6 +141,7 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
         loading={analyticsQuery.isPending}
         onRetry={() => void analyticsQuery.refetch()}
         retrying={analyticsQuery.isFetching}
+        timeZone={range.timeZone}
       />
 
       {query.isError && query.data === undefined ? (
@@ -309,7 +310,11 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
                           </Button>
                         </TableCell>
                         <TableCell>
-                          <TableDateTime locale={locale} timestamp={log.createdAt} />
+                          <TableDateTime
+                            locale={locale}
+                            timeZone={range.timeZone}
+                            timestamp={log.createdAt}
+                          />
                         </TableCell>
                         <TableCell>
                           <TableText className="max-w-48 font-mono text-xs" value={log.model} />

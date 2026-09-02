@@ -683,10 +683,27 @@ func GetUserModels(c *gin.Context) {
 			groupsToQuery = []string{group}
 		}
 	}
+	enabledModels := service.GetGroupsEnabledModels(groupsToQuery)
+	var data any = enabledModels
+	if c.Query("details") == "true" {
+		endpointTypes, err := model.GetGroupsModelEndpointTypes(groupsToQuery)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		details := make([]gin.H, 0, len(enabledModels))
+		for _, modelName := range enabledModels {
+			details = append(details, gin.H{
+				"id":                       modelName,
+				"supported_endpoint_types": endpointTypes[modelName],
+			})
+		}
+		data = details
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    service.GetGroupsEnabledModels(groupsToQuery),
+		"data":    data,
 	})
 }
 

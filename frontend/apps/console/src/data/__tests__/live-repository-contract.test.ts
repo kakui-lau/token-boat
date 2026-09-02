@@ -1129,7 +1129,12 @@ describe("live repository contracts", () => {
         order: "asc",
         page: 3,
         pageSize: 10,
-        range,
+        range: {
+          ...range,
+          startTimestamp: 1_785_513_600,
+          endTimestamp: 1_786_118_399,
+          timeZone: "Asia/Shanghai",
+        },
         searchField: "request",
         status: "failed",
       }),
@@ -1144,6 +1149,7 @@ describe("live repository contracts", () => {
         expect(search.get("bucket_seconds")).toBe("3600");
         expect(search.get("start_timestamp")).toBe("1785513600");
         expect(search.get("end_timestamp")).toBe("1786118399");
+        expect(search.get("timezone_offset_minutes")).toBe("480");
         return HttpResponse.json({
           success: true,
           data: {
@@ -1180,7 +1186,12 @@ describe("live repository contracts", () => {
 
     const analytics = await liveRepository.getRequestLogAnalytics({
       keyword: "gpt-5",
-      range,
+      range: {
+        ...range,
+        startTimestamp: 1_785_513_600,
+        endTimestamp: 1_786_118_399,
+        timeZone: "Asia/Shanghai",
+      },
       searchField: "model",
       status: "all",
     });

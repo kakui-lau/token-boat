@@ -72,6 +72,7 @@ type RequestLogAnalyticsCardProps = {
   loading: boolean;
   onRetry: () => void;
   retrying: boolean;
+  timeZone?: string;
 };
 
 export function RequestLogAnalyticsCard(props: RequestLogAnalyticsCardProps) {
@@ -245,7 +246,12 @@ export function RequestLogAnalyticsCard(props: RequestLogAnalyticsCardProps) {
               }
               key={metric}
             >
-              <RequestMetricChart data={data} locale={locale} metric={metric} />
+              <RequestMetricChart
+                data={data}
+                locale={locale}
+                metric={metric}
+                timeZone={props.timeZone}
+              />
             </RequestMetricChartBoundary>
           </Tabs>
         )}
@@ -258,6 +264,7 @@ function RequestMetricChart(props: {
   data: RequestLogAnalytics;
   locale: string;
   metric: RequestMetric;
+  timeZone?: string;
 }) {
   const { t } = useTranslation();
   const chartConfig = {
@@ -284,7 +291,8 @@ function RequestMetricChart(props: {
     if (props.metric === "cache") return formatPercent(value, props.locale);
     return formatNumber(value, props.locale, { maximumFractionDigits: 1 });
   };
-  const axisLabel = (value: number) => formatBucketLabel(value, bucketSeconds, props.locale);
+  const axisLabel = (value: number) =>
+    formatBucketLabel(value, bucketSeconds, props.locale, props.timeZone);
 
   if (props.metric === "requests") {
     return (
@@ -309,7 +317,7 @@ function RequestMetricChart(props: {
                 labelFormatter={(_, payload) => {
                   const bucketStart = payload[0]?.payload?.bucketStart;
                   return typeof bucketStart === "number"
-                    ? formatBucketDateTime(bucketStart, props.locale)
+                    ? formatBucketDateTime(bucketStart, props.locale, props.timeZone)
                     : "";
                 }}
               />
@@ -389,7 +397,7 @@ function RequestMetricChart(props: {
               labelFormatter={(_, payload) => {
                 const bucketStart = payload[0]?.payload?.bucketStart;
                 return typeof bucketStart === "number"
-                  ? formatBucketDateTime(bucketStart, props.locale)
+                  ? formatBucketDateTime(bucketStart, props.locale, props.timeZone)
                   : "";
               }}
             />
@@ -452,19 +460,27 @@ function formatPercent(value: number | null, locale: string): string {
   return `${formatNumber(value, locale, { maximumFractionDigits: 1 })}%`;
 }
 
-function formatBucketLabel(timestamp: number, bucketSeconds: number, locale: string): string {
+function formatBucketLabel(
+  timestamp: number,
+  bucketSeconds: number,
+  locale: string,
+  timeZone?: string,
+): string {
   const options: Intl.DateTimeFormatOptions =
     bucketSeconds >= 86_400
       ? { month: "2-digit", day: "2-digit" }
       : { hour: "2-digit", minute: "2-digit" };
-  return new Intl.DateTimeFormat(locale, options).format(new Date(timestamp * 1_000));
+  return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(
+    new Date(timestamp * 1_000),
+  );
 }
 
-function formatBucketDateTime(timestamp: number, locale: string): string {
+function formatBucketDateTime(timestamp: number, locale: string, timeZone?: string): string {
   return new Intl.DateTimeFormat(locale, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   }).format(new Date(timestamp * 1_000));
 }

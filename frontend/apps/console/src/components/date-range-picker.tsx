@@ -91,7 +91,7 @@ export function DateRangePicker(props: DateRangePickerProps) {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="max-h-[calc(100svh-2rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto p-0"
+        className="max-h-[calc(100svh-2rem)] w-[calc(100vw-2rem)] max-w-[52rem] overflow-y-auto p-0"
       >
         <div className="flex flex-col md:flex-row">
           <div className="flex flex-col gap-3 p-4 md:w-44 md:shrink-0">
@@ -140,12 +140,12 @@ export function DateRangePicker(props: DateRangePickerProps) {
             </PopoverHeader>
 
             <Calendar
-              captionLayout="dropdown"
-              className="self-center p-0 [--cell-size:--spacing(9)] sm:[--cell-size:--spacing(10)]"
+              className="self-center p-0 [--cell-size:--spacing(8)] sm:[--cell-size:--spacing(9)] lg:[--cell-size:--spacing(10)]"
               defaultMonth={draftRange.from}
               disabled={{ after: new Date() }}
               locale={calendarLocale}
               mode="range"
+              numberOfMonths={2}
               onSelect={(range) => setDraftRange(range ?? { from: undefined })}
               selected={draftRange}
             />

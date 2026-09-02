@@ -4137,7 +4137,7 @@ html:lang(zh-CN) .page-hero h1 {
 .route-network {
   --route-signal: #ff4f00;
   position: relative;
-  aspect-ratio: 1200 / 630;
+  aspect-ratio: 1200 / 520;
   overflow: hidden;
   margin: 0;
   border: 0;
@@ -4195,6 +4195,33 @@ html:lang(zh-CN) .page-hero h1 {
 
 .route-network__boat {
   fill: var(--site-ink);
+  transform-box: fill-box;
+  transform-origin: 50% 72%;
+  animation: route-boat-drift 7.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+}
+
+[data-route-network].is-paused .route-network__boat {
+  animation-play-state: paused;
+}
+
+@keyframes route-boat-drift {
+  0%,
+  100% {
+    transform: translate3d(-0.85rem, 0.1rem, 0) rotate(-0.45deg);
+  }
+
+  25% {
+    transform: translate3d(0, -0.36rem, 0) rotate(0.12deg);
+  }
+
+  50% {
+    transform: translate3d(0.95rem, 0, 0) rotate(0.45deg);
+  }
+
+  75% {
+    transform: translate3d(0, 0.32rem, 0) rotate(-0.12deg);
+  }
 }
 
 .route-network__nodes {

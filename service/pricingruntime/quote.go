@@ -69,13 +69,25 @@ func QuoteCandidates(
 	requestInput billingexpr.RequestInput,
 	resolved ResolvedSalesPrice,
 ) ([]Quote, error) {
+	bundles := GetCandidateBundles(group, modelName)
+	if len(bundles) == 0 {
+		return nil, errors.New("no complete purchase price is available for this model and group")
+	}
+	return quoteCandidateBundles(bundles, usage, requestInput, resolved)
+}
+
+func quoteCandidateBundles(
+	bundles []ActivePriceBundle,
+	usage pricingengine.Usage,
+	requestInput billingexpr.RequestInput,
+	resolved ResolvedSalesPrice,
+) ([]Quote, error) {
 	requestInput = billingexpr.FreezeRequestInput(requestInput)
 	if err := pricingengine.ValidateUsage(usage); err != nil {
 		return nil, err
 	}
-	bundles := GetCandidateBundles(group, modelName)
 	if len(bundles) == 0 {
-		return nil, errors.New("no complete purchase price is available for this model and group")
+		return nil, errors.New("at least one complete purchase price is required")
 	}
 	sales, err := pricingengine.EvaluateWithRequest(
 		resolved.Item.SalesBillingExpr,

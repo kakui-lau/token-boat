@@ -289,6 +289,46 @@ func TestPrepareRelayPricingFreezesSalesPriceBookAndPurchaseVersions(t *testing.
 	assert.Equal(t, PricingSnapshotStatusSettled, snapshot.Status)
 }
 
+func TestPrepareRelayPricingAllowsDisabledRouteOnlyForExplicitChannelTest(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	createRuntimeBundle(t, 893)
+	require.NoError(t, model.DB.Model(&model.Ability{}).
+		Where("channel_id = ?", 893).Update("enabled", false).Error)
+	book, _, item := createResolvedPriceFixture(t, "disabled-route-test", 893, 100)
+	salesExpression := `v2:tier("base", p * 2 / 1000000)`
+	require.NoError(t, model.DB.Model(&model.SalesPriceBookItem{}).Where("id = ?", item.Id).
+		Updates(map[string]any{
+			"sales_billing_expr": salesExpression,
+			"sales_expr_hash":    billingexpr.ExprHashString(salesExpression),
+		}).Error)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: 100,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+	assert.False(t, HasCompletePricing("default", "runtime-model"))
+
+	normal := &relaycommon.RelayInfo{OriginModelName: "runtime-model"}
+	_, err := PrepareRelayPricing(
+		normal, "default", 893, 1_000_000, 0,
+		billingexpr.RequestInput{}, pricingengine.Usage{},
+	)
+	require.ErrorContains(t, err, "no complete purchase and sales price")
+
+	channelTest := &relaycommon.RelayInfo{
+		OriginModelName: "runtime-model",
+		IsChannelTest:   true,
+	}
+	_, err = PrepareRelayPricing(
+		channelTest, "default", 893, 1_000_000, 0,
+		billingexpr.RequestInput{}, pricingengine.Usage{},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, channelTest.DynamicPricingSnapshot)
+	require.NotNil(t, channelTest.DynamicPricingSnapshot.Selected)
+	assert.Equal(t, 893, channelTest.DynamicPricingSnapshot.Selected.ChannelId)
+	assert.False(t, HasCompletePricing("default", "runtime-model"))
+}
+
 func TestUncapturedPreConsumeIntentStaysPendingForFinancialReview(t *testing.T) {
 	setupRuntimeCatalogTestDB(t)
 	createRuntimeBundle(t, 892)

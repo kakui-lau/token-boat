@@ -25,12 +25,13 @@ type ActivePriceBundle struct {
 }
 
 type CatalogSnapshot struct {
-	CreatedAt              time.Time
-	RevisionByChannelModel map[int]string
-	BundleByChannelModel   map[int]ActivePriceBundle
-	CandidatesByGroupModel map[string][]int
-	CompleteByGroupModel   map[string]bool
-	OfficialByModelName    map[string]model.OfficialModelPriceVersion
+	CreatedAt                  time.Time
+	RevisionByChannelModel     map[int]string
+	BundleByChannelModel       map[int]ActivePriceBundle
+	CandidatesByGroupModel     map[string][]int
+	TestCandidatesByGroupModel map[string][]int
+	CompleteByGroupModel       map[string]bool
+	OfficialByModelName        map[string]model.OfficialModelPriceVersion
 }
 
 type RuntimeReadiness struct {
@@ -222,12 +223,13 @@ func RefreshCatalog() error {
 		return err
 	}
 	next := &CatalogSnapshot{
-		CreatedAt:              time.Now(),
-		RevisionByChannelModel: make(map[int]string, len(channelModels)),
-		BundleByChannelModel:   make(map[int]ActivePriceBundle, len(channelModels)),
-		CandidatesByGroupModel: make(map[string][]int),
-		CompleteByGroupModel:   make(map[string]bool),
-		OfficialByModelName:    make(map[string]model.OfficialModelPriceVersion),
+		CreatedAt:                  time.Now(),
+		RevisionByChannelModel:     make(map[int]string, len(channelModels)),
+		BundleByChannelModel:       make(map[int]ActivePriceBundle, len(channelModels)),
+		CandidatesByGroupModel:     make(map[string][]int),
+		TestCandidatesByGroupModel: make(map[string][]int),
+		CompleteByGroupModel:       make(map[string]bool),
+		OfficialByModelName:        make(map[string]model.OfficialModelPriceVersion),
 	}
 	for _, channelModel := range channelModels {
 		providerCostMode, err := model.NormalizeProviderCostMode(
@@ -291,7 +293,7 @@ func RefreshCatalog() error {
 	if err := model.DB.Model(&model.Ability{}).
 		Select("abilities.*").
 		Joins("JOIN channels ON channels.id = abilities.channel_id").
-		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Where("channels.status = ?", common.ChannelStatusEnabled).
 		Find(&abilities).Error; err != nil {
 		return err
 	}
@@ -310,15 +312,24 @@ func RefreshCatalog() error {
 	enabledCount := make(map[string]int)
 	for _, ability := range abilities {
 		key := ability.Group + "\x00" + ability.Model
-		enabledCount[key]++
 		routeKey := fmt.Sprintf("%d\x00%s", ability.ChannelId, ability.Model)
 		for _, channelModelID := range channelModelsByRoute[routeKey] {
 			if _, valid := next.BundleByChannelModel[channelModelID]; valid {
+				next.TestCandidatesByGroupModel[key] = append(
+					next.TestCandidatesByGroupModel[key],
+					channelModelID,
+				)
+				if !ability.Enabled {
+					continue
+				}
 				next.CandidatesByGroupModel[key] = append(
 					next.CandidatesByGroupModel[key],
 					channelModelID,
 				)
 			}
+		}
+		if ability.Enabled {
+			enabledCount[key]++
 		}
 	}
 	for key, count := range enabledCount {
@@ -360,6 +371,40 @@ func GetCandidateBundles(group string, modelName string) []ActivePriceBundle {
 		}
 	}
 	return bundles
+}
+
+func getChannelTestBundle(group string, modelName string, channelID int) (ActivePriceBundle, error) {
+	snapshot, ok := getCatalogSnapshot()
+	if !ok {
+		return ActivePriceBundle{}, errors.New("pricing catalog is not initialized")
+	}
+	ids := snapshot.TestCandidatesByGroupModel[group+"\x00"+modelName]
+	var selected *ActivePriceBundle
+	for _, id := range ids {
+		bundle, exists := snapshot.BundleByChannelModel[id]
+		if !exists || bundle.ChannelModel.ChannelId != channelID {
+			continue
+		}
+		if selected != nil {
+			return ActivePriceBundle{}, fmt.Errorf(
+				"selected channel %d has multiple priced channel models for %s in group %s",
+				channelID,
+				modelName,
+				group,
+			)
+		}
+		candidate := bundle
+		selected = &candidate
+	}
+	if selected == nil {
+		return ActivePriceBundle{}, fmt.Errorf(
+			"selected channel %d has no complete purchase price for %s in group %s",
+			channelID,
+			modelName,
+			group,
+		)
+	}
+	return *selected, nil
 }
 
 func HasCompletePricing(group string, modelName string) bool {

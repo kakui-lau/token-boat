@@ -121,6 +121,22 @@ func PrepareRelayPricing(
 	businessUsage pricingengine.Usage,
 ) (hosttypes.PriceData, error) {
 	bundles := GetCandidateBundles(group, info.OriginModelName)
+	if info.IsChannelTest && selectedChannelId > 0 {
+		selected, err := getChannelTestBundle(group, info.OriginModelName, selectedChannelId)
+		if err != nil {
+			if refreshErr := RefreshCatalog(); refreshErr != nil {
+				return hosttypes.PriceData{}, fmt.Errorf(
+					"refresh pricing catalog for channel test: %w",
+					refreshErr,
+				)
+			}
+			selected, err = getChannelTestBundle(group, info.OriginModelName, selectedChannelId)
+			if err != nil {
+				return hosttypes.PriceData{}, err
+			}
+		}
+		bundles = []ActivePriceBundle{selected}
+	}
 	selectedHasCompletePricing := selectedChannelId == 0
 	for _, bundle := range bundles {
 		if bundle.ChannelModel.ChannelId == selectedChannelId {
@@ -207,9 +223,8 @@ func PrepareRelayPricing(
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
-	quotes, err := QuoteCandidates(
-		group,
-		info.OriginModelName,
+	quotes, err := quoteCandidateBundles(
+		bundles,
 		usage,
 		requestInput,
 		resolvedSales,

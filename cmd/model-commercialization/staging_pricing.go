@@ -70,7 +70,8 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 	groups := make(map[string]struct{})
 	seenChannelModels := make(map[int]struct{})
 	for _, route := range routes {
-		if route.AbilityEnabled && route.ChannelStatus == common.ChannelStatusEnabled {
+		if route.Group != "" && route.ChannelStatus == common.ChannelStatusEnabled &&
+			(route.AbilityEnabled || (selectedChannelID > 0 && route.ChannelID == selectedChannelID)) {
 			groups[route.Group] = struct{}{}
 		}
 		if _, seen := seenChannelModels[route.ChannelModelID]; seen {
@@ -110,7 +111,11 @@ func auditModelPricing(logicalModel string, selectedChannelID int) error {
 		if selectedChannelID <= 0 {
 			continue
 		}
-		info := &relaycommon.RelayInfo{OriginModelName: logicalModel, UsingGroup: group}
+		info := &relaycommon.RelayInfo{
+			OriginModelName: logicalModel,
+			UsingGroup:      group,
+			IsChannelTest:   true,
+		}
 		_, err := pricingruntime.PrepareRelayPricing(
 			info,
 			group,

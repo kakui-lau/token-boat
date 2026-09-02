@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func runOriginGuardRequest(t *testing.T, origin, referer string) *httptest.ResponseRecorder {
@@ -132,4 +133,46 @@ func TestSessionCookieOriginGuardDoesNotTrustForwardedProtoFromClient(t *testing
 	router.ServeHTTP(response, request)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestValidatedBrowserOriginAllowsOnlyLoopbackPortDifferencesInDevelopment(t *testing.T) {
+	previousSecure := common.SessionCookieSecure
+	previousTrustedURLs := common.SessionCookieTrustedURLs
+	common.SessionCookieSecure = false
+	common.SessionCookieTrustedURLs = nil
+	t.Cleanup(func() {
+		common.SessionCookieSecure = previousSecure
+		common.SessionCookieTrustedURLs = previousTrustedURLs
+	})
+
+	tests := []struct {
+		name        string
+		requestHost string
+		origin      string
+		wantOrigin  string
+		wantError   bool
+	}{
+		{name: "localhost ports", requestHost: "localhost:3000", origin: "http://localhost:5173", wantOrigin: "http://localhost:5173"},
+		{name: "ipv4 loopback ports", requestHost: "127.0.0.1:3000", origin: "http://127.0.0.1:5175", wantOrigin: "http://127.0.0.1:5175"},
+		{name: "loopback aliases", requestHost: "127.0.0.1:3000", origin: "http://localhost:5173", wantOrigin: "http://localhost:5173"},
+		{name: "non loopback origin", requestHost: "127.0.0.1:3000", origin: "http://attacker.example", wantError: true},
+		{name: "non loopback request host", requestHost: "api.example.com", origin: "http://localhost:5173", wantError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://"+test.requestHost+"/api/user/evm-wallet/login/begin", nil)
+			request.Host = test.requestHost
+			request.Header.Set("Origin", test.origin)
+
+			origin, err := ValidatedBrowserOrigin(request)
+			if test.wantError {
+				assert.Error(t, err)
+				assert.Empty(t, origin)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.wantOrigin, origin)
+		})
+	}
 }

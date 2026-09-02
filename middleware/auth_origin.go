@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,10 +80,29 @@ func isAllowedSessionOrigin(request *http.Request, origin string) bool {
 	if err == nil && subtle.ConstantTimeCompare([]byte(origin), []byte(requestOrigin)) == 1 {
 		return true
 	}
+	if err == nil && !common.SessionCookieSecure && isLoopbackDevelopmentOrigin(origin) && isLoopbackDevelopmentOrigin(requestOrigin) {
+		return true
+	}
 	for _, trustedOrigin := range common.SessionCookieTrustedURLs {
 		if subtle.ConstantTimeCompare([]byte(origin), []byte(trustedOrigin)) == 1 {
 			return true
 		}
 	}
 	return false
+}
+
+// isLoopbackDevelopmentOrigin recognizes only plain-HTTP browser origins on
+// the local machine. Different ports are expected when the console and API are
+// started as separate development processes.
+func isLoopbackDevelopmentOrigin(origin string) bool {
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil || parsedOrigin.Scheme != "http" {
+		return false
+	}
+	hostname := strings.ToLower(parsedOrigin.Hostname())
+	if hostname == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	return ip != nil && ip.IsLoopback()
 }

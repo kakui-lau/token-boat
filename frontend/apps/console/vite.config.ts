@@ -86,36 +86,9 @@ export default defineConfig(({ mode }) => {
                 includeDependenciesRecursively: false,
                 maxSize: 400 * 1024,
               },
-              {
-                name: "copilotkit",
-                test: /node_modules[\\/]@copilotkit[\\/]/,
-                includeDependenciesRecursively: false,
-                maxSize: 400 * 1024,
-              },
-              {
-                name: "copilot-protocol",
-                test: /node_modules[\\/](@ag-ui|@bufbuild|graphql|phoenix|rxjs)[\\/]/,
-                includeDependenciesRecursively: false,
-                maxSize: 400 * 1024,
-              },
-              {
-                name: "copilot-a2ui",
-                test: /node_modules[\\/](@a2ui|lit|lit-html)[\\/]/,
-                includeDependenciesRecursively: false,
-                maxSize: 400 * 1024,
-              },
-              {
-                name: "copilot-markdown",
-                test: /node_modules[\\/](streamdown|react-markdown|marked|unified|remark-[^/]+|rehype-[^/]+|micromark(?:-[^/]+)?|mdast-util-[^/]+|hast-util-[^/]+|unist-util-[^/]+|vfile(?:-[^/]+)?|parse5|entities|property-information)[\\/]/,
-                includeDependenciesRecursively: false,
-                maxSize: 400 * 1024,
-              },
-              {
-                name: "copilot-katex",
-                test: /node_modules[\\/]katex[\\/]/,
-                includeDependenciesRecursively: false,
-                maxSize: 400 * 1024,
-              },
+              // CopilotKit's packages contain circular runtime initializers. Let Rolldown
+              // keep that lazy feature graph together; forcing package-level groups here
+              // can evaluate an imported initializer before it has been assigned.
             ],
           },
         },

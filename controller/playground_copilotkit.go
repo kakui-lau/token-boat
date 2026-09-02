@@ -34,7 +34,7 @@ type copilotPlaygroundOpenAIMessage struct {
 }
 
 type copilotPlaygroundForwardedProps struct {
-	APIKeyID      int                        `json:"apiKeyId"`
+	APIKeyID      *int                       `json:"apiKeyId"`
 	Group         string                     `json:"group"`
 	Model         string                     `json:"model"`
 	SystemPrompt  string                     `json:"systemPrompt"`
@@ -44,7 +44,7 @@ type copilotPlaygroundForwardedProps struct {
 }
 
 type copilotPlaygroundOpenAIRequest struct {
-	APIKeyID      int                              `json:"api_key_id"`
+	APIKeyID      *int                             `json:"api_key_id,omitempty"`
 	Group         string                           `json:"group,omitempty"`
 	Model         string                           `json:"model"`
 	Messages      []copilotPlaygroundOpenAIMessage `json:"messages"`
@@ -125,9 +125,13 @@ func CopilotPlaygroundRunAdapter() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid AG-UI run request"})
 			return
 		}
-		if input.ThreadID == "" || input.RunID == "" || input.ForwardedProps.APIKeyID <= 0 ||
+		if input.ThreadID == "" || input.RunID == "" ||
 			strings.TrimSpace(input.ForwardedProps.Model) == "" {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "incomplete Playground configuration"})
+			return
+		}
+		if input.ForwardedProps.APIKeyID != nil && *input.ForwardedProps.APIKeyID <= 0 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid Playground API key"})
 			return
 		}
 		if input.ForwardedProps.Temperature != nil &&

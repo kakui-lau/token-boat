@@ -33,7 +33,6 @@ import { formatNumber } from "@/lib/format";
 const playgroundAgentId = "token-boat-playground";
 
 type CopilotPlaygroundChatProps = {
-  apiKeyId: number;
   chatRevision: number;
   group: string;
   initialMessages: PlaygroundStoredMessage[];
@@ -56,7 +55,6 @@ export function CopilotPlaygroundChat(props: CopilotPlaygroundChatProps) {
   }, [props.sessionToken]);
   const properties = useMemo(
     () => ({
-      apiKeyId: props.apiKeyId,
       group: props.group,
       localMessages: initialMessagesSnapshot,
       maxTokens: props.maxTokens,
@@ -65,7 +63,6 @@ export function CopilotPlaygroundChat(props: CopilotPlaygroundChatProps) {
       temperature: props.temperature,
     }),
     [
-      props.apiKeyId,
       props.group,
       props.maxTokens,
       props.model,
@@ -321,7 +318,7 @@ function PlaygroundChatSurface({
               <EmptyTitle className="text-lg">{t("How can I help you?")}</EmptyTitle>
               <EmptyDescription>
                 {t(
-                  "Test prompts with the selected API key's group and model permissions, then inspect output, tokens, latency, and estimated cost.",
+                  "Test prompts with your current account group and model access, then inspect output, tokens, latency, and estimated cost.",
                 )}
               </EmptyDescription>
             </EmptyHeader>

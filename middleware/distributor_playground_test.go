@@ -159,6 +159,25 @@ func TestApplyPlaygroundAPIKeySelection(t *testing.T) {
 	}
 }
 
+func TestApplyPlaygroundAPIKeySelectionAllowsAccountLevelRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/pg/chat/completions",
+		strings.NewReader(`{"model":"gpt-5","group":"default"}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	context.Set("id", 42)
+
+	assert.True(t, applyPlaygroundChannelSelection(context))
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	_, selectedAPIKey := context.Get("playground_api_key")
+	assert.False(t, selectedAPIKey)
+	assert.Zero(t, context.GetInt("token_id"))
+}
+
 func TestApplyPlaygroundChannelSelectionSkipsTaskFetch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

@@ -95,7 +95,7 @@ export function PlaygroundChat({
               <EmptyTitle className="text-xl">{t("How can I help you?")}</EmptyTitle>
               <EmptyDescription className="max-w-lg text-pretty">
                 {t(
-                  "Test prompts with the selected API key's group and model permissions, then inspect output, tokens, latency, and estimated cost.",
+                  "Test prompts with your current account group and model access, then inspect output, tokens, latency, and estimated cost.",
                 )}
               </EmptyDescription>
             </EmptyHeader>

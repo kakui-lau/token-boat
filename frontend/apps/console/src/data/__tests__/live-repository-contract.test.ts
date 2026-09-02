@@ -2874,8 +2874,6 @@ describe("live repository contracts", () => {
 
     await expect(
       liveRepository.sendPlaygroundMessage({
-        apiKeyId: 7,
-        apiKeyName: "Test key",
         group: "default",
         model: "gpt-5",
         systemPrompt: "",

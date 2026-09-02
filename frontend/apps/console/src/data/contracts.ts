@@ -252,8 +252,6 @@ export type PlaygroundModel = {
 export type PlaygroundConversation = {
   id: string;
   title: string;
-  apiKeyId: number;
-  group: string;
   model: string;
   messages: PlaygroundStoredMessage[];
   createdAt: number;
@@ -261,8 +259,6 @@ export type PlaygroundConversation = {
 };
 
 export type CreatePlaygroundConversationInput = {
-  apiKeyId: number;
-  group: string;
   model: string;
 };
 
@@ -286,8 +282,6 @@ export type PlaygroundConversationMessage = {
 };
 
 export type PlaygroundMessageInput = {
-  apiKeyId: number;
-  apiKeyName: string;
   group: string;
   model: string;
   systemPrompt: string;

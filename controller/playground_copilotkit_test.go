@@ -24,7 +24,7 @@ func TestCopilotPlaygroundRunAdapterStreamsAGUIEventsWithoutStoredThread(t *test
 			var request copilotPlaygroundOpenAIRequest
 			require.NoError(t, common.UnmarshalBodyReusable(c, &request))
 			assert.Equal(t, "/pg/chat/completions", c.Request.URL.Path)
-			assert.Equal(t, 41, request.APIKeyID)
+			assert.Nil(t, request.APIKeyID)
 			assert.Equal(t, "priority", request.Group)
 			assert.Equal(t, "anthropic/claude-sonnet", request.Model)
 			assert.True(t, request.Stream)
@@ -48,7 +48,6 @@ func TestCopilotPlaygroundRunAdapterStreamsAGUIEventsWithoutStoredThread(t *test
 		"runId":"run-1",
 		"messages":[{"id":"user-1","role":"user","content":"Hi"}],
 		"forwardedProps":{
-			"apiKeyId":41,
 			"group":"priority",
 			"model":"anthropic/claude-sonnet",
 			"systemPrompt":"Answer precisely.",
@@ -102,7 +101,7 @@ func TestCopilotPlaygroundRunAdapterConvertsRelayErrorsWithoutStoredThread(t *te
 		"threadId":"browser-only-thread",
 		"runId":"run-2",
 		"messages":[{"id":"user-2","role":"user","content":"Hi"}],
-		"forwardedProps":{"apiKeyId":42,"model":"gpt-5"}
+		"forwardedProps":{"model":"gpt-5"}
 	}`
 	request := httptest.NewRequest(
 		http.MethodPost,

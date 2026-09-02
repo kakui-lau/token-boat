@@ -4,7 +4,7 @@ import type {
   PlaygroundStoredMessage,
 } from "@/data/contracts";
 
-const storageVersion = 1;
+const storageVersion = 2;
 const storagePrefix = "token-boat:playground-history:v1:user:";
 
 type PlaygroundStorageEnvelope = {
@@ -33,10 +33,14 @@ export function listLocalPlaygroundConversations(userId: number): PlaygroundConv
     const serialized = window.localStorage.getItem(getPlaygroundStorageKey(userId));
     if (!serialized) return [];
     const value: unknown = JSON.parse(serialized);
-    if (!isPlaygroundStorageEnvelope(value)) {
+    const envelope = readPlaygroundStorageEnvelope(value);
+    if (!envelope) {
       throw new PlaygroundLocalStorageError("The local Playground history is invalid.");
     }
-    return [...value.conversations].sort(
+    if ((value as { version?: unknown }).version !== storageVersion) {
+      writeLocalPlaygroundConversations(userId, envelope.conversations);
+    }
+    return [...envelope.conversations].sort(
       (left, right) => right.updatedAt - left.updatedAt || right.id.localeCompare(left.id),
     );
   } catch (error) {
@@ -51,15 +55,13 @@ export function createLocalPlaygroundConversation(
   userId: number,
   input: CreatePlaygroundConversationInput,
 ): PlaygroundConversation[] {
-  if (!Number.isSafeInteger(input.apiKeyId) || input.apiKeyId <= 0 || !input.model.trim()) {
+  if (!input.model.trim()) {
     throw new PlaygroundLocalStorageError("The Playground configuration is invalid.");
   }
   const createdAt = Math.floor(Date.now() / 1000);
   const conversation: PlaygroundConversation = {
     id: crypto.randomUUID().replaceAll("-", ""),
     title: "",
-    apiKeyId: input.apiKeyId,
-    group: input.group.trim(),
     model: input.model.trim(),
     messages: [],
     createdAt,
@@ -84,12 +86,7 @@ export function saveLocalPlaygroundConversation(
   if (!existing) {
     throw new PlaygroundLocalStorageError("The local Playground conversation was not found.");
   }
-  if (
-    !Number.isSafeInteger(configuration.apiKeyId) ||
-    configuration.apiKeyId <= 0 ||
-    !configuration.model.trim() ||
-    !messages.every(isPlaygroundStoredMessage)
-  ) {
+  if (!configuration.model.trim() || !messages.every(isPlaygroundStoredMessage)) {
     throw new PlaygroundLocalStorageError("The Playground conversation is invalid.");
   }
 
@@ -99,8 +96,6 @@ export function saveLocalPlaygroundConversation(
   const updated: PlaygroundConversation = {
     ...existing,
     title: existing.title || createConversationTitle(firstPrompt?.content ?? ""),
-    apiKeyId: configuration.apiKeyId,
-    group: configuration.group.trim(),
     model: configuration.model.trim(),
     messages: messages.map((message) => ({
       ...message,
@@ -139,35 +134,49 @@ function writeLocalPlaygroundConversations(
   }
 }
 
-function isPlaygroundStorageEnvelope(value: unknown): value is PlaygroundStorageEnvelope {
-  if (!value || typeof value !== "object") return false;
+function readPlaygroundStorageEnvelope(value: unknown): PlaygroundStorageEnvelope | null {
+  if (!value || typeof value !== "object") return null;
   const envelope = value as Record<string, unknown>;
-  return (
-    envelope.version === storageVersion &&
-    Array.isArray(envelope.conversations) &&
-    envelope.conversations.every(isPlaygroundConversation)
-  );
+  if (
+    (envelope.version !== 1 && envelope.version !== storageVersion) ||
+    !Array.isArray(envelope.conversations)
+  ) {
+    return null;
+  }
+  const conversations = envelope.conversations.map(readPlaygroundConversation);
+  if (conversations.some((conversation) => conversation === null)) return null;
+  return {
+    version: storageVersion,
+    conversations: conversations as PlaygroundConversation[],
+  };
 }
 
-function isPlaygroundConversation(value: unknown): value is PlaygroundConversation {
-  if (!value || typeof value !== "object") return false;
+function readPlaygroundConversation(value: unknown): PlaygroundConversation | null {
+  if (!value || typeof value !== "object") return null;
   const conversation = value as Record<string, unknown>;
-  return (
-    typeof conversation.id === "string" &&
-    conversation.id.length > 0 &&
-    typeof conversation.title === "string" &&
-    Number.isSafeInteger(conversation.apiKeyId) &&
-    Number(conversation.apiKeyId) > 0 &&
-    typeof conversation.group === "string" &&
-    typeof conversation.model === "string" &&
-    conversation.model.length > 0 &&
-    Array.isArray(conversation.messages) &&
-    conversation.messages.every(isPlaygroundStoredMessage) &&
-    typeof conversation.createdAt === "number" &&
-    Number.isFinite(conversation.createdAt) &&
-    typeof conversation.updatedAt === "number" &&
-    Number.isFinite(conversation.updatedAt)
-  );
+  if (
+    typeof conversation.id !== "string" ||
+    conversation.id.length === 0 ||
+    typeof conversation.title !== "string" ||
+    typeof conversation.model !== "string" ||
+    conversation.model.length === 0 ||
+    !Array.isArray(conversation.messages) ||
+    !conversation.messages.every(isPlaygroundStoredMessage) ||
+    typeof conversation.createdAt !== "number" ||
+    !Number.isFinite(conversation.createdAt) ||
+    typeof conversation.updatedAt !== "number" ||
+    !Number.isFinite(conversation.updatedAt)
+  ) {
+    return null;
+  }
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    model: conversation.model,
+    messages: conversation.messages,
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+  };
 }
 
 function isPlaygroundStoredMessage(value: unknown): value is PlaygroundStoredMessage {

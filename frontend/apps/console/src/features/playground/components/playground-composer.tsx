@@ -12,7 +12,6 @@ import {
 import { Kbd, KbdGroup } from "@token-boat/ui/components/ui/kbd";
 
 type PlaygroundComposerProps = {
-  apiKeyName: string | null;
   disabled: boolean;
   isGenerating: boolean;
   message: string;
@@ -23,7 +22,6 @@ type PlaygroundComposerProps = {
 };
 
 export function PlaygroundComposer({
-  apiKeyName,
   disabled,
   isGenerating,
   message,
@@ -70,11 +68,6 @@ export function PlaygroundComposer({
             <Badge className="max-w-40 truncate" variant="secondary">
               {model || t("Select a model")}
             </Badge>
-            {apiKeyName && (
-              <span className="hidden max-w-48 truncate text-xs text-muted-foreground sm:inline">
-                {apiKeyName}
-              </span>
-            )}
             <KbdGroup className="hidden 2xl:inline-flex">
               <Kbd>{t("Enter")}</Kbd>
               <span className="text-xs text-muted-foreground">{t("to send")}</span>

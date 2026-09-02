@@ -3,12 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import type { ApiKeyRecord } from "@/data/contracts";
 import { PlaygroundPage } from "../pages/playground-page";
 import { getPlaygroundStorageKey } from "../playground-local-storage";
 
 const {
-  listApiKeys,
   listPlaygroundModels,
   copilotKitProps,
   copilotChatProps,
@@ -16,7 +14,6 @@ const {
   agentSubscriber,
   suggestionConfigs,
 } = vi.hoisted(() => ({
-  listApiKeys: vi.fn(),
   listPlaygroundModels: vi.fn(),
   copilotKitProps: vi.fn(),
   copilotChatProps: vi.fn(),
@@ -40,25 +37,16 @@ const {
 
 vi.mock("@/app/session/session-context", () => ({
   useSession: () => ({
-    session: { accessToken: "session-access-token", user: { id: 12 } },
+    session: { accessToken: "session-access-token", user: { id: 12, group: "default" } },
   }),
 }));
 
 vi.mock("@/data/repository", () => ({
   repository: {
     mode: "live",
-    listApiKeys,
     listPlaygroundModels,
   },
 }));
-
-vi.mock("@tanstack/react-router", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
-  return {
-    ...actual,
-    Link: ({ children }: { children: ReactNode }) => <a href="/api-keys">{children}</a>,
-  };
-});
 
 vi.mock("@copilotkit/react-core/v2", () => ({
   CopilotChatAssistantMessage: Object.assign(
@@ -159,43 +147,22 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-const activeKey: ApiKeyRecord = {
-  id: 7,
-  name: "Development key",
-  maskedKey: "sk-test-••••1234",
-  status: "active",
-  createdAt: 1,
-  lastUsedAt: null,
-  expiresAt: null,
-  unlimitedQuota: false,
-  remainingQuotaUsd: 24,
-  usedQuotaUsd: 1,
-  group: "default",
-  environment: "development",
-  allowedModels: ["gpt-5"],
-  allowedIps: [],
-};
-
 beforeEach(() => {
   window.localStorage.clear();
-  listApiKeys.mockReset();
   listPlaygroundModels.mockReset();
   copilotKitProps.mockReset();
   copilotChatProps.mockReset();
   copilotMountSequence.current = 0;
   agentSubscriber.current = null;
   suggestionConfigs.mockReset();
-  listApiKeys.mockResolvedValue([activeKey]);
   window.localStorage.setItem(
     getPlaygroundStorageKey(12),
     JSON.stringify({
-      version: 1,
+      version: 2,
       conversations: [
         {
           id: "thread-existing",
           title: "Existing conversation",
-          apiKeyId: 7,
-          group: "default",
           model: "gpt-5",
           messages: [],
           createdAt: 1,
@@ -206,7 +173,7 @@ beforeEach(() => {
   );
   listPlaygroundModels.mockResolvedValue([
     { id: "gpt-5", label: "GPT-5", group: "default" },
-    { id: "blocked-model", label: "Blocked model", group: "default" },
+    { id: "claude-sonnet", label: "Claude Sonnet", group: "default" },
   ]);
 });
 
@@ -223,18 +190,15 @@ describe("PlaygroundPage", () => {
     expect(copilotKitProps).toHaveBeenCalledTimes(1);
   });
 
-  test("renders CopilotChat with the active key's permitted model", async () => {
+  test("renders CopilotChat with the current user group's models and no API key control", async () => {
     renderPlayground();
 
     const configuration = screen.getByRole("group", { name: "Playground configuration" });
-    expect(await screen.findByRole("combobox", { name: "Select API key" })).toHaveTextContent(
-      "Development key",
-    );
     expect(await screen.findByRole("combobox", { name: "Select a model" })).toHaveTextContent(
       "GPT-5",
     );
-    expect(screen.queryByText("Blocked model")).not.toBeInTheDocument();
-    expect(screen.getByText("$24.00 remaining")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Select API key" })).not.toBeInTheDocument();
+    expect(listPlaygroundModels).toHaveBeenCalledWith("default");
     expect(configuration).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Copilot chat input" })).toHaveAttribute(
       "placeholder",
@@ -257,7 +221,6 @@ describe("PlaygroundPage", () => {
       expect.objectContaining({
         headers: { Authorization: "Bearer session-access-token" },
         properties: {
-          apiKeyId: 7,
           group: "default",
           localMessages: [],
           maxTokens: 1024,
@@ -345,8 +308,6 @@ describe("PlaygroundPage", () => {
           {
             id: "thread-existing",
             title: "Saved conversation",
-            apiKeyId: 7,
-            group: "default",
             model: "gpt-5",
             messages: [
               { id: "user-saved", role: "user", content: "Saved prompt" },
@@ -445,16 +406,7 @@ describe("PlaygroundPage", () => {
     expect(listPlaygroundModels).toHaveBeenCalledTimes(2);
   });
 
-  test("preselects a permitted model passed from the model catalog", async () => {
-    listApiKeys.mockResolvedValue([
-      activeKey,
-      {
-        ...activeKey,
-        id: 8,
-        name: "Unrestricted production key",
-        allowedModels: [],
-      },
-    ]);
+  test("preselects a model passed from the model catalog", async () => {
     listPlaygroundModels.mockResolvedValue([
       { id: "gpt-5", label: "GPT-5", group: "default" },
       { id: "claude-sonnet", label: "Claude Sonnet", group: "default" },
@@ -465,25 +417,13 @@ describe("PlaygroundPage", () => {
     expect(await screen.findByRole("combobox", { name: "Select a model" })).toHaveTextContent(
       "Claude Sonnet",
     );
-    expect(screen.getByRole("combobox", { name: "Select API key" })).toHaveTextContent(
-      "Unrestricted production key",
-    );
     fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]!);
     await screen.findByRole("textbox", { name: "Copilot chat input" });
     expect(copilotKitProps).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        properties: expect.objectContaining({ apiKeyId: 8, model: "claude-sonnet" }),
+        properties: expect.objectContaining({ group: "default", model: "claude-sonnet" }),
       }),
     );
-  });
-
-  test("does not mount the AI runtime when no active API key exists", async () => {
-    listApiKeys.mockResolvedValue([]);
-    renderPlayground();
-
-    expect(await screen.findByText("An active API key is required")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Copilot chat input" })).not.toBeInTheDocument();
-    expect(copilotKitProps).not.toHaveBeenCalled();
   });
 });
 

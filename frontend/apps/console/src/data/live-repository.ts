@@ -2332,7 +2332,6 @@ export const liveRepository: ConsoleRepository = {
       method: "POST",
       signal,
       body: {
-        api_key_id: input.apiKeyId,
         model: input.model,
         group: input.group,
         messages: [

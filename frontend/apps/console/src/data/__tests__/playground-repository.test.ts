@@ -5,7 +5,7 @@ import { liveRepository } from "../live-repository";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("live Playground repository", () => {
-  test("sends the selected key group and the complete conversation to the Playground endpoint", async () => {
+  test("sends the current user group without an API key and includes the complete conversation", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -20,8 +20,6 @@ describe("live Playground repository", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await liveRepository.sendPlaygroundMessage({
-      apiKeyId: 7,
-      apiKeyName: "Development key",
       group: "priority",
       model: "gpt-5",
       systemPrompt: "Be concise.",
@@ -37,7 +35,6 @@ describe("live Playground repository", () => {
     const [path, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(path).toBe("/pg/chat/completions");
     expect(JSON.parse(String(options.body))).toEqual({
-      api_key_id: 7,
       model: "gpt-5",
       group: "priority",
       messages: [
@@ -52,7 +49,7 @@ describe("live Playground repository", () => {
     });
   });
 
-  test("loads models for the selected API key group", async () => {
+  test("loads models for the current user group", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true, data: ["gpt-5"] }), {
         status: 200,

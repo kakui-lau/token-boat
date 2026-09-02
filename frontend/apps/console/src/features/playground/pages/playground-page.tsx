@@ -1,16 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
   ArrowUpIcon,
   BotIcon,
   Code2Icon,
   HistoryIcon,
-  KeyRoundIcon,
   LightbulbIcon,
   MessageSquareIcon,
   PlusIcon,
-  ShieldCheckIcon,
   SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -48,7 +45,6 @@ import { useSession } from "@/app/session/session-context";
 import { PageHeader } from "@/components/page-header";
 import type { PlaygroundConversation, PlaygroundStoredMessage } from "@/data/contracts";
 import { repository } from "@/data/repository";
-import { formatCurrency } from "@/lib/format";
 import { PlaygroundConversationList } from "../components/playground-conversation-list";
 import { PlaygroundSettingsSheet } from "../components/playground-settings-sheet";
 import { createPlaygroundConversationSync } from "../playground-conversation-sync";
@@ -66,20 +62,12 @@ const loadCopilotPlaygroundChat = () =>
 const CopilotPlaygroundChat = lazy(loadCopilotPlaygroundChat);
 const preloadCopilotPlaygroundChat = () => void loadCopilotPlaygroundChat();
 
-const environmentLabels = {
-  development: "Development",
-  staging: "Staging",
-  production: "Production",
-  unclassified: "Not recorded",
-} as const;
-
 export function PlaygroundPage({ initialModel = "" }: { initialModel?: string }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { session } = useSession();
-  const locale = i18n.resolvedLanguage ?? "en";
   const storageUserId = session?.user.id ?? null;
+  const selectedGroup = session?.user.group.trim() || null;
   const syncRef = useRef<ReturnType<typeof createPlaygroundConversationSync> | null>(null);
-  const [apiKeyId, setApiKeyId] = useState<number | null>(null);
   const [model, setModel] = useState(initialModel);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [chatRevision, setChatRevision] = useState(0);
@@ -92,7 +80,6 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(1024);
 
-  const keys = useQuery({ queryKey: ["api-keys"], queryFn: () => repository.listApiKeys() });
   const resolvedThreadId =
     activeThreadId ?? (initialModel ? null : (conversationItems[0]?.id ?? null));
   const activeConversation = conversationItems.find((item) => item.id === resolvedThreadId) ?? null;
@@ -139,35 +126,19 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
     setActiveThreadId(conversationItems[0]?.id ?? null);
   }, [activeThreadId, conversationItems, conversationLoading]);
 
-  const activeKeys = (keys.data ?? []).filter((apiKey) => apiKey.status === "active");
-  const preferredKey = initialModel
-    ? activeKeys.find(
-        (apiKey) =>
-          apiKey.allowedModels.length === 0 || apiKey.allowedModels.includes(initialModel),
-      )
-    : null;
-  const desiredApiKeyId = apiKeyId ?? activeConversation?.apiKeyId ?? null;
-  const selectedKey =
-    activeKeys.find((apiKey) => apiKey.id === desiredApiKeyId) ??
-    preferredKey ??
-    activeKeys[0] ??
-    null;
-  const selectedGroup = selectedKey?.group ?? null;
   const models = useQuery({
     queryKey: ["playground-models", selectedGroup],
     queryFn: () => repository.listPlaygroundModels(selectedGroup ?? ""),
     enabled: selectedGroup !== null,
   });
-  const permittedModels = (models.data ?? []).filter(
-    (item) => !selectedKey?.allowedModels.length || selectedKey.allowedModels.includes(item.id),
-  );
+  const permittedModels = models.data ?? [];
   const desiredModel = model || activeConversation?.model || initialModel;
   const selectedModel =
     permittedModels.find((item) => item.id === desiredModel)?.id ?? permittedModels[0]?.id ?? "";
 
   const createConversation = () => {
-    if (!selectedKey || !selectedModel) {
-      toast.error(t("Select an API key and model first."));
+    if (!selectedModel) {
+      toast.error(t("Select a model first."));
       return;
     }
     if (!storageUserId) {
@@ -176,8 +147,6 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
     }
     try {
       const next = createLocalPlaygroundConversation(storageUserId, {
-        apiKeyId: selectedKey.id,
-        group: selectedKey.group,
         model: selectedModel,
       });
       setConversationItems(next);
@@ -210,18 +179,17 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
 
   const selectConversation = (conversation: PlaygroundConversation) => {
     setActiveThreadId(conversation.id);
-    setApiKeyId(conversation.apiKeyId);
     setModel(conversation.model);
     setHistoryOpen(false);
   };
   const handleConversationChanged = useCallback(
     (messages: PlaygroundStoredMessage[]) => {
-      if (!resolvedThreadId || !storageUserId || !selectedKey || !selectedModel) return;
+      if (!resolvedThreadId || !storageUserId || !selectedModel) return;
       try {
         const next = saveLocalPlaygroundConversation(
           storageUserId,
           resolvedThreadId,
-          { apiKeyId: selectedKey.id, group: selectedKey.group, model: selectedModel },
+          { model: selectedModel },
           messages,
         );
         setConversationItems(next);
@@ -232,9 +200,9 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
         setConversationStorageError(true);
       }
     },
-    [resolvedThreadId, selectedKey, selectedModel, storageUserId, t],
+    [resolvedThreadId, selectedModel, storageUserId, t],
   );
-  const canCreate = Boolean(selectedKey && selectedModel && !keys.isPending && !models.isPending);
+  const canCreate = Boolean(selectedGroup && selectedModel && !models.isPending);
   const conversationList = (
     <PlaygroundConversationList
       activeId={resolvedThreadId}
@@ -250,10 +218,6 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
     />
   );
 
-  const apiKeyItems = activeKeys.map((apiKey) => ({
-    label: apiKey.name,
-    value: String(apiKey.id),
-  }));
   const modelItems = permittedModels.map((item) => ({ label: item.label, value: item.id }));
 
   return (
@@ -308,50 +272,6 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
             className="flex flex-wrap items-end gap-3 border-b bg-background/85 p-3 backdrop-blur-xl sm:p-4"
             role="group"
           >
-            <Field className="min-w-48 flex-1 gap-1.5 sm:max-w-64">
-              <FieldLabel className="text-xs" htmlFor="playground-api-key">
-                {t("API key")}
-              </FieldLabel>
-              {keys.isPending ? (
-                <Skeleton className="h-8 w-full" />
-              ) : (
-                <Select
-                  disabled={activeKeys.length === 0}
-                  items={apiKeyItems}
-                  onValueChange={(value) => {
-                    if (!value) return;
-                    setApiKeyId(Number(value));
-                    setModel("");
-                  }}
-                  value={selectedKey ? String(selectedKey.id) : null}
-                >
-                  <SelectTrigger
-                    aria-label={t("Select API key")}
-                    className="w-full bg-background"
-                    id="playground-api-key"
-                  >
-                    <KeyRoundIcon aria-hidden="true" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="start" alignItemWithTrigger={false}>
-                    <SelectGroup>
-                      <SelectLabel>{t("Active API keys")}</SelectLabel>
-                      {activeKeys.map((apiKey) => (
-                        <SelectItem key={apiKey.id} value={String(apiKey.id)}>
-                          <span className="flex min-w-0 flex-col">
-                            <span className="truncate font-medium">{apiKey.name}</span>
-                            <span className="truncate text-xs text-muted-foreground">
-                              {apiKey.maskedKey}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
-            </Field>
-
             <Field className="min-w-48 flex-1 gap-1.5 sm:max-w-72">
               <FieldLabel className="text-xs" htmlFor="playground-model">
                 {t("Model")}
@@ -388,20 +308,6 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
             </Field>
 
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:justify-end">
-              {selectedKey ? (
-                <>
-                  {selectedKey.environment !== "unclassified" ? (
-                    <Badge variant="outline">{t(environmentLabels[selectedKey.environment])}</Badge>
-                  ) : null}
-                  <Badge variant="secondary">
-                    {selectedKey.unlimitedQuota
-                      ? t("Unlimited quota")
-                      : t("{{quota}} remaining", {
-                          quota: formatCurrency(selectedKey.remainingQuotaUsd, locale, "USD"),
-                        })}
-                  </Badge>
-                </>
-              ) : null}
               <PlaygroundSettingsSheet
                 maxTokens={maxTokens}
                 onMaxTokensChange={setMaxTokens}
@@ -413,7 +319,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
             </div>
           </div>
 
-          {(keys.isError || models.isError || conversationStorageError) && (
+          {(models.isError || conversationStorageError) && (
             <Alert className="m-4 w-auto" variant="destructive">
               <TriangleAlertIcon aria-hidden="true" />
               <AlertTitle>{t("Unable to load Playground")}</AlertTitle>
@@ -422,35 +328,21 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
               </AlertDescription>
               <AlertAction>
                 <Button
-                  disabled={keys.isFetching || models.isFetching}
+                  disabled={models.isFetching}
                   onClick={() => {
-                    if (keys.isError) void keys.refetch();
                     if (models.isError) void models.refetch();
                     if (conversationStorageError) refreshLocalConversations();
                   }}
                   size="xs"
                   variant="outline"
                 >
-                  {keys.isFetching || models.isFetching ? t("Retrying…") : t("Try again")}
+                  {models.isFetching ? t("Retrying…") : t("Try again")}
                 </Button>
               </AlertAction>
             </Alert>
           )}
 
-          {!keys.isPending && activeKeys.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center p-6">
-              <Alert className="max-w-xl">
-                <ShieldCheckIcon aria-hidden="true" />
-                <AlertTitle>{t("An active API key is required")}</AlertTitle>
-                <AlertDescription>
-                  {t("Create or enable an API key before starting a Playground conversation.")}{" "}
-                  <Link className="font-medium" to="/api-keys">
-                    {t("Manage API keys")}
-                  </Link>
-                </AlertDescription>
-              </Alert>
-            </div>
-          ) : keys.isPending || models.isPending || conversationLoading || !selectedKey ? (
+          {models.isPending || conversationLoading || !selectedGroup ? (
             <div className="flex flex-1 flex-col gap-4 p-6" role="status">
               <Skeleton className="mx-auto h-10 w-2/3 max-w-md" />
               <Skeleton className="mt-auto h-28 w-full" />
@@ -462,7 +354,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
                 <SparklesIcon aria-hidden="true" />
                 <AlertTitle>{t("No permitted models")}</AlertTitle>
                 <AlertDescription>
-                  {t("This API key does not currently have access to a model for Playground chat.")}
+                  {t("Your current group does not have a model available for Playground chat.")}
                 </AlertDescription>
               </Alert>
             </div>
@@ -471,9 +363,8 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
           ) : resolvedThreadId ? (
             <Suspense fallback={<PlaygroundChatLoading />}>
               <CopilotPlaygroundChat
-                apiKeyId={selectedKey.id}
                 chatRevision={chatRevision}
-                group={selectedKey.group}
+                group={selectedGroup}
                 initialMessages={activeConversation?.messages ?? []}
                 key={`${resolvedThreadId}:${chatRevision}`}
                 maxTokens={maxTokens}
@@ -496,7 +387,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   {t(
-                    "Choose the API key and model above. Messages are stored only in this browser and restored when you return.",
+                    "Choose a model above. Messages are stored only in this browser and restored when you return.",
                   )}
                 </p>
                 <Button

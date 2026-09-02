@@ -1,9 +1,9 @@
 ---
-import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { contentLocale, localizedPath, type SiteLocale } from "@/content/site-copy";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 type Props = { locale: SiteLocale };
 const { locale } = Astro.props;
-const c = locale === "zh" ? {
+const c = contentLocale(locale) === "zh" ? {
   eyebrow: "CONTACT / SUPPORT", titleLines: ["把问题", "交给正确的", "入口。"], lead: "技术、账户、费用与商务问题需要不同上下文。我们先提供可追踪、不会泄露密钥的处理路径。",
   cards: [
     ["01", "技术支持", "带上请求时间、模型 ID、端点、HTTP 状态和控制台请求日志中的 Request ID；不要提交完整 API Key 或敏感提示词。", "/console/logs", "打开请求日志"],

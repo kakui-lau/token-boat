@@ -19,7 +19,7 @@ const { facts = [], factsLabel, lead, locale, meta, titleLines } = Astro.props;
     <div class="editorial-page-hero__meta">
       <p>TOKEN BOAT / 2026</p>
       <p>{meta}</p>
-      <p>{locale === "zh" ? "ZH / EN" : "EN / ZH"}</p>
+      <p>{locale.toUpperCase()} / GLOBAL</p>
     </div>
     <div class="editorial-page-hero__body">
       <h1>

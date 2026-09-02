@@ -1,9 +1,10 @@
 ---
-import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { contentLocale, localizedPath, type SiteLocale } from "@/content/site-copy";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 type Props = { locale: SiteLocale };
 const { locale } = Astro.props;
-const c = locale === "zh" ? {
+const chineseContent = contentLocale(locale) === "zh";
+const c = chineseContent ? {
   eyebrow: "SECURITY / TRUST", titleLines: ["说明数据", "如何经过", "网关。"], lead: "从 API Key、请求路由、供应商处理到日志与事件响应，公开说明当前能够确认的安全边界。",
   flow: ["你的服务", "Token Boat 网关", "所选模型供应商", "响应返回"],
   cards: [
@@ -36,6 +37,6 @@ const c = locale === "zh" ? {
 };
 ---
 <EditorialPageHero lead={c.lead} locale={locale} meta={c.eyebrow} titleLines={c.titleLines} />
-<section class="trust-flow-section"><div class="site-shell"><ol class="data-flow" aria-label={locale === "zh" ? "请求数据流" : "Request data flow"}>{c.flow.map((step, i) => <li><span>0{i + 1}</span><strong>{step}</strong></li>)}</ol></div></section>
+<section class="trust-flow-section"><div class="site-shell"><ol class="data-flow" aria-label={chineseContent ? "请求数据流" : "Request data flow"}>{c.flow.map((step, i) => <li><span>0{i + 1}</span><strong>{step}</strong></li>)}</ol></div></section>
 <section class="section content-section"><div class="site-shell content-grid trust-grid">{c.cards.map((card) => <article class="content-card"><div class="content-card__meta"><span>{card[0]}</span><p>TRUST NOTE</p></div><h2>{card[1]}</h2><p>{card[2]}</p></article>)}</div></section>
-<section class="content-cta"><div class="site-shell content-cta__inner"><p>POLICY & STATUS</p><h2>{locale === "zh" ? "继续核对正式边界。" : "Continue with the formal boundaries."}</h2><div class="inline-links"><a href={localizedPath(locale, "/legal/privacy")}>{c.privacy} →</a><a href={localizedPath(locale, "/legal/terms")}>{c.terms} →</a><a href={localizedPath(locale, "/status")}>{c.status} →</a><a href={localizedPath(locale, "/support")}>{c.support} →</a></div></div></section>
+<section class="content-cta"><div class="site-shell content-cta__inner"><p>POLICY & STATUS</p><h2>{chineseContent ? "继续核对正式边界。" : "Continue with the formal boundaries."}</h2><div class="inline-links"><a href={localizedPath(locale, "/legal/privacy")}>{c.privacy} →</a><a href={localizedPath(locale, "/legal/terms")}>{c.terms} →</a><a href={localizedPath(locale, "/status")}>{c.status} →</a><a href={localizedPath(locale, "/support")}>{c.support} →</a></div></div></section>

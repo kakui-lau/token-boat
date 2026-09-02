@@ -1,5 +1,6 @@
 import { createInstance, type i18n } from "i18next";
 import { initReactI18next } from "react-i18next";
+import type { SiteLocale } from "@/content/site-copy";
 
 const resources = {
   en: {
@@ -66,9 +67,105 @@ const resources = {
         "排行榜依据匿名聚合 Token 用量生成，只反映平台内的相对使用热度，不代表基准测试质量、可用性、安全性或官方推荐。",
     },
   },
+  ja: {
+    translation: {
+      "rankings.activity": "利用量の推移",
+      "rankings.activityDescription": "各集計期間の匿名トークン量。",
+      "rankings.allModels": "モデルランキング一覧",
+      "rankings.change": "変動",
+      "rankings.empty": "この期間に公開できる集計データはまだありません。",
+      "rankings.error": "公開ランキングを読み込めませんでした。",
+      "rankings.growth": "利用量",
+      "rankings.live": "匿名集計利用量",
+      "rankings.loading": "ランキングを読み込み中",
+      "rankings.model": "モデル",
+      "rankings.models": "モデル",
+      "rankings.month": "30日",
+      "rankings.movers": "上昇中",
+      "rankings.new": "新規",
+      "rankings.period": "集計期間",
+      "rankings.providerShare": "プロバイダー比率",
+      "rankings.rank": "順位",
+      "rankings.retry": "再試行",
+      "rankings.share": "シェア",
+      "rankings.topModel": "上位モデル",
+      "rankings.topModels": "最も使われているモデル",
+      "rankings.today": "今日",
+      "rankings.tokens": "トークン",
+      "rankings.week": "7日",
+      "rankings.year": "365日",
+      "rankings.droppers": "下降中",
+      "rankings.disclaimer":
+        "ランキングは匿名の集計トークン量に基づきます。相対的な利用状況を示すもので、品質、可用性、安全性、推奨を示すものではありません。",
+    },
+  },
+  ko: {
+    translation: {
+      "rankings.activity": "사용량 추이",
+      "rankings.activityDescription": "각 집계 구간의 익명 토큰 사용량입니다.",
+      "rankings.allModels": "전체 모델 순위",
+      "rankings.change": "변화",
+      "rankings.empty": "이 기간에 공개할 집계 사용량이 아직 없습니다.",
+      "rankings.error": "공개 순위를 불러오지 못했습니다.",
+      "rankings.growth": "사용량",
+      "rankings.live": "익명 집계 사용량",
+      "rankings.loading": "순위 불러오는 중",
+      "rankings.model": "모델",
+      "rankings.models": "개 모델",
+      "rankings.month": "30일",
+      "rankings.movers": "상승 중",
+      "rankings.new": "신규",
+      "rankings.period": "순위 기간",
+      "rankings.providerShare": "공급자 점유율",
+      "rankings.rank": "순위",
+      "rankings.retry": "다시 시도",
+      "rankings.share": "점유율",
+      "rankings.topModel": "인기 모델",
+      "rankings.topModels": "가장 많이 사용된 모델",
+      "rankings.today": "오늘",
+      "rankings.tokens": "토큰",
+      "rankings.week": "7일",
+      "rankings.year": "365일",
+      "rankings.droppers": "하락 중",
+      "rankings.disclaimer":
+        "순위는 익명 집계 토큰 사용량을 기준으로 하며 플랫폼 내 상대 사용량만 보여줍니다. 품질, 가용성, 안전성 또는 추천을 의미하지 않습니다.",
+    },
+  },
+  "zh-TW": {
+    translation: {
+      "rankings.activity": "用量變化",
+      "rankings.activityDescription": "各統計時間區間內的匿名彙總 Token 用量。",
+      "rankings.allModels": "完整模型榜單",
+      "rankings.change": "變化",
+      "rankings.empty": "目前週期暫時沒有可公開的彙總用量。",
+      "rankings.error": "暫時無法載入公開排行榜。",
+      "rankings.growth": "用量",
+      "rankings.live": "匿名彙總用量",
+      "rankings.loading": "正在載入排行榜",
+      "rankings.model": "模型",
+      "rankings.models": "個模型",
+      "rankings.month": "近 30 天",
+      "rankings.movers": "熱度上升",
+      "rankings.new": "新上榜",
+      "rankings.period": "排行週期",
+      "rankings.providerShare": "供應商占比",
+      "rankings.rank": "排名",
+      "rankings.retry": "重新載入",
+      "rankings.share": "占比",
+      "rankings.topModel": "熱門模型",
+      "rankings.topModels": "最常用模型",
+      "rankings.today": "今日",
+      "rankings.tokens": "Token",
+      "rankings.week": "近 7 天",
+      "rankings.year": "近 365 天",
+      "rankings.droppers": "熱度回落",
+      "rankings.disclaimer":
+        "排行榜依匿名彙總 Token 用量產生，只反映平台內的相對使用熱度，不代表基準測試品質、可用性、安全性或官方推薦。",
+    },
+  },
 } as const;
 
-export function createRankingsI18n(locale: "en" | "zh"): i18n {
+export function createRankingsI18n(locale: SiteLocale): i18n {
   const instance = createInstance();
   void instance.use(initReactI18next).init({
     fallbackLng: "zh",

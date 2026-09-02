@@ -1,0 +1,36 @@
+---
+import HomePage from "@/components/home-page.astro";
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import SiteLayout from "@/layouts/site-layout.astro";
+
+export function getStaticPaths() {
+  const locales = ["ja", "ko", "zh-TW"] satisfies SiteLocale[];
+  return locales.map((locale) => ({ params: { locale }, props: { locale } }));
+}
+
+const { locale } = Astro.props as { locale: SiteLocale };
+const metadata: Record<"ja" | "ko" | "zh-TW", { description: string; title: string }> = {
+  ja: {
+    description: "Token Boat は、AI モデルの検索、公開価格、利用状況、安定したルーティングを一つの API にまとめます。",
+    title: "Token Boat | AI モデルへの、ひとつの明快なルート",
+  },
+  ko: {
+    description: "Token Boat는 AI 모델 탐색, 공개 가격, 사용량, 안정적인 라우팅을 하나의 API로 연결합니다.",
+    title: "Token Boat | AI 모델로 향하는 하나의 명확한 경로",
+  },
+  "zh-TW": {
+    description: "Token Boat 將模型探索、公開價格、用量記錄與穩定路由整合到同一套 AI API。",
+    title: "Token Boat | 一條清晰的 AI 模型接入路徑",
+  },
+};
+const pageMeta = metadata[locale as keyof typeof metadata];
+---
+
+<SiteLayout
+  canonicalPath={localizedPath(locale, "/")}
+  description={pageMeta.description}
+  locale={locale}
+  title={pageMeta.title}
+>
+  <HomePage locale={locale} />
+</SiteLayout>

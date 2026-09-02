@@ -1,11 +1,12 @@
 ---
-import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { contentLocale, localizedPath, type SiteLocale } from "@/content/site-copy";
 import { quickstartCode, relayEndpoints } from "@/content/developer-docs";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 
 type Props = { locale: SiteLocale };
 const { locale } = Astro.props;
-const c = locale === "zh" ? {
+const documentLocale = contentLocale(locale);
+const c = documentLocale === "zh" ? {
   eyebrow: "开发者文档 / API 参考",
   titleLines: ["从 API Key", "到生产", "请求。"],
   lead: "这里是可直接使用的接入说明。示例基于统一 Base URL，端点清单与仓库中的 relay OpenAPI 契约保持一致。",
@@ -70,9 +71,9 @@ const sections = [["quickstart", c.quickstart], ["authentication", c.auth], ["ex
       <section id="authentication" class="docs-block"><p class="eyebrow">02 / AUTH</p><h2>{c.auth}</h2><p>{c.authLead}</p><div class="docs-facts"><div><span>{c.base}</span><code>https://tokenboat.com/v1</code></div><div><span>{c.authHeader}</span><code>Authorization: Bearer $TOKEN_BOAT_API_KEY</code></div></div></section>
       <section id="examples" class="docs-block"><p class="eyebrow">03 / CALL</p><h2>{c.examples}</h2><div class="code-stack"><details data-animated-details open><summary>Curl</summary><div class="details-reveal"><pre><code>{quickstartCode.curl}</code></pre></div></details><details data-animated-details><summary>Python</summary><div class="details-reveal"><pre><code>{quickstartCode.python}</code></pre></div></details><details data-animated-details><summary>JavaScript</summary><div class="details-reveal"><pre><code>{quickstartCode.javascript}</code></pre></div></details></div></section>
       <section id="streaming" class="docs-block"><p class="eyebrow">04 / STREAM</p><h2>{c.streaming}</h2><p>{c.streamLead}</p><pre><code>{quickstartCode.streaming}</code></pre></section>
-      <section id="errors" class="docs-block"><p class="eyebrow">05 / RECOVER</p><h2>{c.errors}</h2><p>{c.errorLead}</p><div class="docs-table-wrap"><table><thead><tr><th>Status</th><th>{locale === "zh" ? "含义" : "Meaning"}</th><th>{locale === "zh" ? "建议动作" : "Action"}</th></tr></thead><tbody>{c.errorRows.map((row) => <tr>{row.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div></section>
+      <section id="errors" class="docs-block"><p class="eyebrow">05 / RECOVER</p><h2>{c.errors}</h2><p>{c.errorLead}</p><div class="docs-table-wrap"><table><thead><tr><th>Status</th><th>{documentLocale === "zh" ? "含义" : "Meaning"}</th><th>{documentLocale === "zh" ? "建议动作" : "Action"}</th></tr></thead><tbody>{c.errorRows.map((row) => <tr>{row.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div></section>
       <section id="rate-limits" class="docs-block"><p class="eyebrow">06 / LIMITS</p><h2>{c.limits}</h2><p>{c.limitsLead}</p><ul class="docs-list">{c.limitsList.map((item) => <li>{item}</li>)}</ul></section>
-      <section id="endpoints" class="docs-block"><p class="eyebrow">07 / REFERENCE</p><h2>{c.endpoints}</h2><p>{c.endpointLead}</p><div class="docs-table-wrap"><table><thead><tr><th>{c.method}</th><th>{c.path}</th><th>{c.purpose}</th></tr></thead><tbody>{relayEndpoints.map((endpoint) => <tr><td><span class={`method-badge method-badge--${endpoint.method.toLowerCase()}`}>{endpoint.method}</span></td><td><code>{endpoint.path}</code></td><td>{endpoint.description[locale]}</td></tr>)}</tbody></table></div><p class="docs-source">{c.source}</p></section>
+      <section id="endpoints" class="docs-block"><p class="eyebrow">07 / REFERENCE</p><h2>{c.endpoints}</h2><p>{c.endpointLead}</p><div class="docs-table-wrap"><table><thead><tr><th>{c.method}</th><th>{c.path}</th><th>{c.purpose}</th></tr></thead><tbody>{relayEndpoints.map((endpoint) => <tr><td><span class={`method-badge method-badge--${endpoint.method.toLowerCase()}`}>{endpoint.method}</span></td><td><code>{endpoint.path}</code></td><td>{endpoint.description[documentLocale]}</td></tr>)}</tbody></table></div><p class="docs-source">{c.source}</p></section>
     </div>
   </div>
 </section>

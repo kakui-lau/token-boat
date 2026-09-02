@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { contentLocale, localizedPath, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
 import {
   parsePublicPricingEnvelope,
   type PublicPriceComponent,
   type PublicPricingModel,
 } from "@/islands/pricing/public-pricing";
 
-type Props = { locale: "en" | "zh"; modelId: string };
+type Props = { locale: SiteLocale; modelId: string };
 type Performance = {
   avgLatencyMs: number;
   avgTps: number;
@@ -22,7 +23,7 @@ export function ModelDetailPageIsland({ locale, modelId }: Props) {
   const [state, setState] = useState<State>({ status: "loading" });
   const c = useMemo(
     () =>
-      locale === "zh"
+      contentLocale(locale) === "zh"
         ? {
             loading: "正在读取模型资料与 24 小时聚合指标…",
             error: "暂时无法读取模型资料。",
@@ -157,7 +158,7 @@ export function ModelDetailPageIsland({ locale, modelId }: Props) {
               {c.account}
               <span aria-hidden="true">↗</span>
             </a>
-            <a href={locale === "en" ? "/en/docs" : "/docs"}>{c.docs} →</a>
+            <a href={localizedPath(locale, "/docs")}>{c.docs} →</a>
           </div>
         </div>
         <aside className="model-limit-source">
@@ -255,7 +256,7 @@ export function ModelDetailPageIsland({ locale, modelId }: Props) {
   );
 }
 
-function PriceRow({ item, locale }: { item: PublicPriceComponent; locale: "en" | "zh" }) {
+function PriceRow({ item, locale }: { item: PublicPriceComponent; locale: SiteLocale }) {
   const conditions =
     [
       item.tier,
@@ -271,7 +272,7 @@ function PriceRow({ item, locale }: { item: PublicPriceComponent; locale: "en" |
     <div className="model-price-table__row">
       <strong>{item.component}</strong>
       <span>
-        {new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+        {new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
           style: "currency",
           currency: item.currency,
           maximumFractionDigits: 6,
@@ -279,7 +280,7 @@ function PriceRow({ item, locale }: { item: PublicPriceComponent; locale: "en" |
       </span>
       <span>
         {item.unitSize
-          ? `${new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US").format(item.unitSize)} ${item.unit}`
+          ? `${new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale).format(item.unitSize)} ${item.unit}`
           : item.unit}
       </span>
       <span>{conditions}</span>
@@ -309,28 +310,28 @@ function parsePerformance(value: unknown, modelId: string): Performance | null {
     successRate: values[3]!,
   };
 }
-function formatNumber(value: number | null, locale: "en" | "zh", fallback: string) {
+function formatNumber(value: number | null, locale: SiteLocale, fallback: string) {
   return value && value > 0
-    ? new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US").format(value)
+    ? new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale).format(value)
     : fallback;
 }
-function formatDuration(value: number, locale: "en" | "zh") {
-  return `${new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", { maximumFractionDigits: 0 }).format(value)} ms`;
+function formatDuration(value: number, locale: SiteLocale) {
+  return `${new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, { maximumFractionDigits: 0 }).format(value)} ms`;
 }
-function formatPercent(value: number, locale: "en" | "zh") {
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+function formatPercent(value: number, locale: SiteLocale) {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     style: "percent",
     maximumFractionDigits: 2,
   }).format(value / 100);
 }
-function formatDecimal(value: number, locale: "en" | "zh") {
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+function formatDecimal(value: number, locale: SiteLocale) {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     maximumFractionDigits: 2,
   }).format(value);
 }
-function formatTimestamp(value: number, locale: "en" | "zh") {
+function formatTimestamp(value: number, locale: SiteLocale) {
   const ms = value < 10_000_000_000 ? value * 1000 : value;
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return new Intl.DateTimeFormat(siteLocaleMeta[locale].numberLocale, {
     dateStyle: "medium",
   }).format(new Date(ms));
 }

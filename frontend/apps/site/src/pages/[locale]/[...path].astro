@@ -1,0 +1,132 @@
+---
+import CatalogPage from "@/components/catalog-page.astro";
+import ContentPage from "@/components/content-page.astro";
+import DeveloperDocsPage from "@/components/developer-docs-page.astro";
+import DynamicContentPage from "@/components/dynamic-content-page.astro";
+import ModelDetailPage from "@/components/model-detail-page.astro";
+import RankingsPage from "@/components/rankings-page.astro";
+import SupportPage from "@/components/support-page.astro";
+import TrustPage from "@/components/trust-page.astro";
+import { modelDisplayName, publicModelIds } from "@/content/model-routes";
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import SiteLayout from "@/layouts/site-layout.astro";
+
+export function getStaticPaths() {
+  const locales = ["ja", "ko", "zh-TW"] satisfies SiteLocale[];
+  const routes = [
+    "about",
+    "changelog",
+    "docs",
+    "faq",
+    "legal/privacy",
+    "legal/terms",
+    "models",
+    "rankings",
+    "status",
+    "support",
+    "trust",
+  ] as const;
+  return locales.flatMap((locale) => [
+    ...routes.map((path) => ({ params: { locale, path }, props: { locale, path } })),
+    ...publicModelIds.map((modelId) => ({
+      params: { locale, path: `models/${modelId}` },
+      props: { locale, modelId, path: `models/${modelId}` },
+    })),
+  ]);
+}
+
+type RoutePath =
+  | "about"
+  | "changelog"
+  | "docs"
+  | "faq"
+  | "legal/privacy"
+  | "legal/terms"
+  | "models"
+  | "rankings"
+  | "status"
+  | "support"
+  | "trust";
+const { locale, modelId, path } = Astro.props as {
+  locale: SiteLocale;
+  modelId?: string;
+  path: RoutePath | `models/${string}`;
+};
+
+const titles = {
+  ja: {
+    about: "Token Boat について",
+    changelog: "更新履歴 | Token Boat",
+    docs: "開発者ドキュメント | Token Boat",
+    faq: "よくある質問 | Token Boat",
+    "legal/privacy": "プライバシーポリシー | Token Boat",
+    "legal/terms": "利用規約 | Token Boat",
+    models: "モデルと料金 | Token Boat",
+    rankings: "モデルランキング | Token Boat",
+    status: "サービス状況 | Token Boat",
+    support: "お問い合わせ・サポート | Token Boat",
+    trust: "セキュリティと信頼 | Token Boat",
+  },
+  ko: {
+    about: "Token Boat 소개",
+    changelog: "변경 사항 | Token Boat",
+    docs: "개발자 문서 | Token Boat",
+    faq: "자주 묻는 질문 | Token Boat",
+    "legal/privacy": "개인정보 처리방침 | Token Boat",
+    "legal/terms": "서비스 이용약관 | Token Boat",
+    models: "모델 및 가격 | Token Boat",
+    rankings: "모델 순위 | Token Boat",
+    status: "서비스 상태 | Token Boat",
+    support: "문의 및 지원 | Token Boat",
+    trust: "보안 및 신뢰 | Token Boat",
+  },
+  "zh-TW": {
+    about: "關於 Token Boat",
+    changelog: "更新日誌 | Token Boat",
+    docs: "開發者文件 | Token Boat",
+    faq: "常見問題 | Token Boat",
+    "legal/privacy": "隱私政策 | Token Boat",
+    "legal/terms": "服務條款 | Token Boat",
+    models: "模型與價格 | Token Boat",
+    rankings: "模型排行榜 | Token Boat",
+    status: "服務狀態 | Token Boat",
+    support: "聯絡與支援 | Token Boat",
+    trust: "安全與信任 | Token Boat",
+  },
+} as const;
+
+const descriptions = {
+  ja: "Token Boat のモデル、料金、開発者向け情報、サービス運用情報をご覧ください。",
+  ko: "Token Boat의 모델, 가격, 개발자 정보와 서비스 운영 정보를 확인하세요.",
+  "zh-TW": "查看 Token Boat 的模型、價格、開發者資訊與服務運行資訊。",
+} as const;
+const modelDescriptions = {
+  ja: (id: string) => `${id} の公開機能、コンテキスト、料金項目、エンドポイント、匿名集計パフォーマンス情報。`,
+  ko: (id: string) => `${id}의 공개 기능, 컨텍스트, 가격 항목, 엔드포인트 및 익명 집계 성능 정보입니다.`,
+  "zh-TW": (id: string) => `${id} 的公開能力、上下文、計費組成、端點與匿名彙總效能資料。`,
+} as const;
+
+const routePath = path as RoutePath;
+const title = modelId
+  ? `${modelDisplayName(modelId)} | Token Boat`
+  : titles[locale as keyof typeof titles][routePath];
+const description = modelId
+  ? modelDescriptions[locale as keyof typeof modelDescriptions](modelId)
+  : descriptions[locale as keyof typeof descriptions];
+const canonicalPath = localizedPath(locale, `/${path}`);
+---
+
+<SiteLayout canonicalPath={canonicalPath} description={description} locale={locale} title={title}>
+  {routePath === "about" && <ContentPage locale={locale} page="about" />}
+  {routePath === "changelog" && <DynamicContentPage locale={locale} mode="changelog" />}
+  {routePath === "docs" && <DeveloperDocsPage locale={locale} />}
+  {routePath === "faq" && <DynamicContentPage locale={locale} mode="faq" />}
+  {routePath === "legal/privacy" && <ContentPage locale={locale} page="privacy" />}
+  {routePath === "legal/terms" && <ContentPage locale={locale} page="terms" />}
+  {routePath === "models" && <CatalogPage locale={locale} />}
+  {routePath === "rankings" && <RankingsPage locale={locale} />}
+  {routePath === "status" && <ContentPage locale={locale} page="status" />}
+  {routePath === "support" && <SupportPage locale={locale} />}
+  {routePath === "trust" && <TrustPage locale={locale} />}
+  {modelId && <ModelDetailPage locale={locale} modelId={modelId} />}
+</SiteLayout>

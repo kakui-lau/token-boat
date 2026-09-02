@@ -1,5 +1,12 @@
 ---
-import { localizedPath, siteCopy, type SiteLocale } from "@/content/site-copy";
+import {
+  localizedPath,
+  siteCopy,
+  siteLocaleMeta,
+  siteLocales,
+  stripLocalePrefix,
+  type SiteLocale,
+} from "@/content/site-copy";
 import "@/styles/site.css";
 
 type Props = {
@@ -15,11 +22,13 @@ type Props = {
 const props = Astro.props;
 const copy = siteCopy[props.locale];
 const canonicalUrl = new URL(props.canonicalPath, Astro.site);
-const alternateLocale: SiteLocale = props.locale === "zh" ? "en" : "zh";
-const alternatePath = localizedPath(alternateLocale, props.canonicalPath.replace(/^\/en/, "") || "/");
-const alternateUrl = new URL(alternatePath, Astro.site);
-const localeLabel = props.locale === "zh" ? "EN" : "中文";
-const htmlLanguage = props.locale === "zh" ? "zh-CN" : "en";
+const basePath = stripLocalePrefix(props.canonicalPath);
+const alternateLinks = siteLocales.map((locale) => ({
+  href: new URL(localizedPath(locale, basePath), Astro.site),
+  hreflang: siteLocaleMeta[locale].hreflang,
+  locale,
+}));
+const htmlLanguage = siteLocaleMeta[props.locale].htmlLanguage;
 const navigation: [index: string, label: string, href: string][] = [
   ["01", copy.nav.home, localizedPath(props.locale, "/")],
   ["02", copy.nav.models, localizedPath(props.locale, "/models")],
@@ -28,7 +37,7 @@ const navigation: [index: string, label: string, href: string][] = [
   ["05", copy.nav.status, localizedPath(props.locale, "/status")],
   ["06", copy.nav.about, localizedPath(props.locale, "/about")],
 ];
-const normalizedCanonicalPath = props.canonicalPath.replace(/^\/en/, "") || "/";
+const normalizedCanonicalPath = basePath;
 const ogImageUrl = new URL(props.ogImage ?? "/brand/token-boat-og.png", Astro.site);
 const baseJsonLd = {
   "@context": "https://schema.org",
@@ -52,7 +61,7 @@ const jsonLd = props.jsonLd
     <meta name="description" content={props.description} />
     {props.noindex && <meta name="robots" content="noindex,follow" />}
     <meta name="theme-color" content="#f3ead9" />
-    {props.locale === "zh" && (
+    {(props.locale === "zh" || props.locale === "zh-TW") && (
       <link
         rel="preload"
         href="/fonts/smiley-sans-oblique.woff2"
@@ -62,8 +71,8 @@ const jsonLd = props.jsonLd
       />
     )}
     <link rel="canonical" href={canonicalUrl} />
-    <link rel="alternate" hreflang={alternateLocale === "zh" ? "zh-CN" : "en"} href={alternateUrl} />
-    <link rel="alternate" hreflang={htmlLanguage} href={canonicalUrl} />
+    {alternateLinks.map((link) => <link rel="alternate" hreflang={link.hreflang} href={link.href} />)}
+    <link rel="alternate" hreflang="x-default" href={new URL(localizedPath("en", basePath), Astro.site)} />
     <link rel="icon" type="image/png" sizes="64x64" href="/brand/token-boat-logo-64.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/brand/token-boat-logo-180.png" />
     <meta property="og:type" content="website" />
@@ -83,7 +92,7 @@ const jsonLd = props.jsonLd
     <title>{props.title}</title>
   </head>
   <body>
-    <a class="skip-link" href="#main-content">{props.locale === "zh" ? "跳到主要内容" : "Skip to content"}</a>
+    <a class="skip-link" href="#main-content">{copy.accessibility.skipToContent}</a>
     <div class="signal-bar" aria-hidden="true">
       <div class="site-shell">
         <span class="signal-bar__lead">{copy.signal.lead}</span>
@@ -100,18 +109,32 @@ const jsonLd = props.jsonLd
           <span class="brand-lockup__name">TOKEN<br />BOAT</span>
         </a>
 
-        <nav class="desktop-navigation" aria-label={props.locale === "zh" ? "主导航" : "Primary navigation"}>
+        <nav class="desktop-navigation" aria-label={copy.accessibility.primaryNavigation}>
           {navigation.map(([index, label, href]) => (
             <a
-              class:list={{ "is-active": normalizedCanonicalPath === href.replace(/^\/en/, "") }}
+              class:list={{ "is-active": normalizedCanonicalPath === stripLocalePrefix(href) }}
               href={href}
-              aria-current={normalizedCanonicalPath === href.replace(/^\/en/, "") ? "page" : undefined}
+              aria-current={normalizedCanonicalPath === stripLocalePrefix(href) ? "page" : undefined}
             ><span>{index}</span><strong>{label}</strong></a>
           ))}
         </nav>
 
         <div class="header-actions">
-          <a class="language-link" href={alternatePath}><span>LANG</span><strong>{localeLabel}</strong></a>
+          <details class="language-menu" data-animated-details>
+            <summary class="language-link" aria-label={copy.accessibility.language}>
+              <span>LANG</span><strong>{props.locale === "zh-TW" ? "繁中" : props.locale.toUpperCase()}</strong>
+            </summary>
+            <div class="language-menu__panel">
+              {siteLocales.map((locale) => (
+                <a
+                  class:list={{ "is-active": locale === props.locale }}
+                  href={localizedPath(locale, basePath)}
+                  lang={siteLocaleMeta[locale].htmlLanguage}
+                  aria-current={locale === props.locale ? "page" : undefined}
+                ><span>{locale === "zh-TW" ? "繁中" : locale.toUpperCase()}</span>{siteLocaleMeta[locale].label}</a>
+              ))}
+            </div>
+          </details>
           <a class="text-link desktop-only" href="/console/sign-in">{copy.nav.signIn}</a>
           <a class="button button--small" href="/console/getting-started">{copy.nav.getStarted}<span aria-hidden="true">↗</span></a>
           <details class="mobile-navigation" data-animated-details>
@@ -119,9 +142,9 @@ const jsonLd = props.jsonLd
             <div class="mobile-navigation__panel">
               {navigation.map(([index, label, href]) => (
                 <a
-                  class:list={{ "is-active": normalizedCanonicalPath === href.replace(/^\/en/, "") }}
+                  class:list={{ "is-active": normalizedCanonicalPath === stripLocalePrefix(href) }}
                   href={href}
-                  aria-current={normalizedCanonicalPath === href.replace(/^\/en/, "") ? "page" : undefined}
+                  aria-current={normalizedCanonicalPath === stripLocalePrefix(href) ? "page" : undefined}
                 ><span>{index}</span>{label}</a>
               ))}
               <a href="/console/sign-in"><span>07</span>{copy.nav.signIn}</a>

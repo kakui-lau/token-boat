@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { contentLocale, localizedPath, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
 import {
   parsePublicNotice,
   parsePublicStatus,
@@ -6,7 +7,7 @@ import {
   type PublicFaq,
 } from "./public-content";
 
-type Props = { locale: "en" | "zh"; mode: "faq" | "changelog" };
+type Props = { locale: SiteLocale; mode: "faq" | "changelog" };
 type State = { status: "loading" } | { status: "error" } | ({ status: "ready" } & PublicContent);
 
 const fallbackFaq: Record<"en" | "zh", PublicFaq[]> = {
@@ -161,10 +162,11 @@ const fallbackFaq: Record<"en" | "zh", PublicFaq[]> = {
 };
 
 export function PublicContentHub({ locale, mode }: Props) {
+  const uiLocale = contentLocale(locale);
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<State>({ status: "loading" });
   const text =
-    locale === "zh"
+    uiLocale === "zh"
       ? {
           loading: "正在读取已发布内容…",
           error: "暂时无法读取公开内容。",
@@ -190,8 +192,8 @@ export function PublicContentHub({ locale, mode }: Props) {
           support: "Open support center",
           status: "View service status",
         };
-  const supportHref = locale === "en" ? "/en/support" : "/support";
-  const statusHref = locale === "en" ? "/en/status" : "/status";
+  const supportHref = localizedPath(locale, "/support");
+  const statusHref = localizedPath(locale, "/status");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -243,7 +245,7 @@ export function PublicContentHub({ locale, mode }: Props) {
     );
 
   if (mode === "faq") {
-    const faqItems = state.faq.length > 0 ? state.faq : fallbackFaq[locale];
+    const faqItems = state.faq.length > 0 ? state.faq : fallbackFaq[uiLocale];
     return (
       <div className="faq-list motion-surface-enter">
         {faqItems.map((item, index) => (
@@ -304,10 +306,10 @@ export function PublicContentHub({ locale, mode }: Props) {
   );
 }
 
-function formatDate(value: string, locale: "en" | "zh"): string {
+function formatDate(value: string, locale: SiteLocale): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return new Intl.DateTimeFormat(siteLocaleMeta[locale].numberLocale, {
     dateStyle: "medium",
   }).format(date);
 }

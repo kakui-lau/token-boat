@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { contentLocale, type SiteLocale } from "@/content/site-copy";
 
 import { readLegalContent } from "@/islands/legal/legal-content";
 
 type LegalDocumentProps = {
   document: "privacy" | "terms";
   fallbackHtml: string;
-  locale: "en" | "zh";
+  locale: SiteLocale;
 };
 
 type DocumentState =
@@ -33,7 +34,7 @@ const copy = {
 } as const;
 
 export function LegalDocument(props: LegalDocumentProps) {
-  const content = copy[props.locale];
+  const content = copy[contentLocale(props.locale)];
   const endpoint = props.document === "terms" ? "/api/user-agreement" : "/api/privacy-policy";
   const [renderedHtml, setRenderedHtml] = useState<string | null>(null);
   const [state, setState] = useState<DocumentState>({ status: "loading" });

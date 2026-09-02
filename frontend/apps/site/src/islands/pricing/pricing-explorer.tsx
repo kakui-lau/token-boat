@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createPricingI18n } from "@/i18n/pricing";
+import { contentLocale, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
 import { formatCardCurrency } from "@/islands/pricing/price-format";
 import {
   parsePublicPricingEnvelope,
@@ -12,7 +13,7 @@ import {
 } from "@/islands/pricing/public-pricing";
 
 type PricingExplorerIslandProps = {
-  locale: "en" | "zh";
+  locale: SiteLocale;
 };
 
 type LoadingState =
@@ -261,7 +262,7 @@ function PricingExplorer(props: PricingExplorerIslandProps) {
 }
 
 function ModelDetailsDialog(props: {
-  locale: "en" | "zh";
+  locale: SiteLocale;
   model: PublicPricingModel | null;
   onClose: () => void;
 }) {
@@ -465,7 +466,7 @@ function ModelDetailsDialog(props: {
   );
 }
 
-function PriceComponentRow(props: { item: PublicPriceComponent; locale: "en" | "zh" }) {
+function PriceComponentRow(props: { item: PublicPriceComponent; locale: SiteLocale }) {
   const { t } = useTranslation();
   const conditions = [
     props.item.tier,
@@ -500,7 +501,7 @@ function PriceComponentRow(props: { item: PublicPriceComponent; locale: "en" | "
 
 function formatPrice(
   price: PublicModelPrice | null,
-  locale: "en" | "zh",
+  locale: SiteLocale,
   translate: (key: string) => string,
 ): string {
   if (!price) return "—";
@@ -514,23 +515,23 @@ function formatPrice(
   return `${prefix}${formatCardCurrency(price.amount, price.currency, locale)} ${translate(unitKey)}`;
 }
 
-function formatContext(contextLength: number | null, locale: "en" | "zh"): string {
+function formatContext(contextLength: number | null, locale: SiteLocale): string {
   if (!contextLength || contextLength <= 0) return "—";
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     maximumFractionDigits: 0,
     notation: "compact",
   }).format(contextLength);
 }
 
-function formatFullNumber(value: number | null, locale: "en" | "zh"): string {
+function formatFullNumber(value: number | null, locale: SiteLocale): string {
   if (!value || value <= 0) return "—";
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     maximumFractionDigits: 0,
   }).format(value);
 }
 
-function formatComponentPrice(item: PublicPriceComponent, locale: "en" | "zh"): string {
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+function formatComponentPrice(item: PublicPriceComponent, locale: SiteLocale): string {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     currency: item.currency,
     maximumFractionDigits: 6,
     minimumFractionDigits: 2,
@@ -538,10 +539,10 @@ function formatComponentPrice(item: PublicPriceComponent, locale: "en" | "zh"): 
   }).format(item.amount);
 }
 
-function formatComponentUnit(item: PublicPriceComponent, locale: "en" | "zh"): string {
+function formatComponentUnit(item: PublicPriceComponent, locale: SiteLocale): string {
   const size = item.unitSize;
   const formattedSize = size
-    ? new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+    ? new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
         notation: size >= 1_000 ? "compact" : "standard",
       }).format(size)
     : null;
@@ -553,19 +554,20 @@ function formatComponentUnit(item: PublicPriceComponent, locale: "en" | "zh"): s
     second: ["秒", "seconds"],
     token: ["Token", "tokens"],
   };
-  const unit = localizedUnits[item.unit]?.[locale === "zh" ? 0 : 1] ?? item.unit;
+  const unit = localizedUnits[item.unit]?.[contentLocale(locale) === "zh" ? 0 : 1] ?? item.unit;
   return formattedSize ? `${formattedSize} ${unit}` : unit;
 }
 
 function localizedDescription(
   model: PublicPricingModel,
-  locale: "en" | "zh",
+  locale: SiteLocale,
   fallback: string,
 ): string {
-  if (model.description && (locale === "zh" || !/[\u3400-\u9fff]/u.test(model.description))) {
+  const baseLocale = contentLocale(locale);
+  if (model.description && (baseLocale === "zh" || !/[\u3400-\u9fff]/u.test(model.description))) {
     return model.description;
   }
-  if (locale === "zh") return model.description ?? fallback;
+  if (baseLocale === "zh") return model.description ?? fallback;
   const provider = model.provider ?? "the listed provider";
   const capabilities = model.tags
     .slice(0, 3)
@@ -576,8 +578,8 @@ function localizedDescription(
     : `A ${model.family} model from ${provider}.`;
 }
 
-function localizedTag(tag: string, locale: "en" | "zh"): string {
-  if (locale === "zh") return tag;
+function localizedTag(tag: string, locale: SiteLocale): string {
+  if (contentLocale(locale) === "zh") return tag;
   const translations: Record<string, string> = {
     人物高一致: "Character consistency",
     代码: "Coding",

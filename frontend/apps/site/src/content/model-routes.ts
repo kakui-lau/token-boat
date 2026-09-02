@@ -43,10 +43,11 @@ export const publicModelIds = [
   "z-ai/glm-5.3",
 ] as const;
 
-export function modelPath(locale: "en" | "zh", modelId: string): string {
-  return `${locale === "en" ? "/en" : ""}/models/${modelId}`;
+export function modelPath(locale: SiteLocale, modelId: string): string {
+  return localizedPath(locale, `/models/${modelId}`);
 }
 
 export function modelDisplayName(modelId: string): string {
   return modelId.split("/").at(-1)?.replaceAll("-", " ") ?? modelId;
 }
+import { localizedPath, type SiteLocale } from "@/content/site-copy";

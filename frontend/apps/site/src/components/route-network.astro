@@ -1,10 +1,15 @@
 ---
-import type { SiteLocale } from "@/content/site-copy";
+import { type SiteLocale } from "@/content/site-copy";
 type Props = { locale: SiteLocale };
 const { locale } = Astro.props;
-const label = locale === "zh" ? "统一入口连接不同模型与供应商的品牌路线图" : "Brand route map connecting one API to many models and providers";
-const pause = locale === "zh" ? "暂停线条动画" : "Pause line animation";
-const play = locale === "zh" ? "继续线条动画" : "Resume line animation";
+const controls: Record<SiteLocale, { label: string; pause: string; play: string }> = {
+  zh: { label: "统一入口连接不同模型与供应商的品牌路线图", pause: "暂停线条动画", play: "继续线条动画" },
+  en: { label: "Brand route map connecting one API to many models and providers", pause: "Pause line animation", play: "Resume line animation" },
+  ja: { label: "ひとつの API と複数のモデル・プロバイダーを結ぶブランドルート図", pause: "ラインアニメーションを一時停止", play: "ラインアニメーションを再開" },
+  ko: { label: "하나의 API와 여러 모델 및 공급자를 연결하는 브랜드 경로도", pause: "선 애니메이션 일시 정지", play: "선 애니메이션 다시 시작" },
+  "zh-TW": { label: "統一入口串接不同模型與供應商的品牌路線圖", pause: "暫停線條動畫", play: "繼續線條動畫" },
+};
+const { label, pause, play } = controls[locale];
 ---
 
 <section class="route-network-section" aria-label={label} data-route-network>

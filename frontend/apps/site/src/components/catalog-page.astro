@@ -1,6 +1,6 @@
 ---
 import { PricingExplorerIsland } from "@/islands/pricing/pricing-explorer";
-import type { SiteLocale } from "@/content/site-copy";
+import { type SiteLocale } from "@/content/site-copy";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 
 type Props = {
@@ -29,10 +29,47 @@ const content = {
       ["03 / CONFIRM", "Your price after sign-in"],
     ],
   },
+  ja: {
+    eyebrow: "モデルと料金",
+    titleLines: ["モデルを選ぶ。", "能力と、", "実際の料金を比べる。"],
+    lead: "モデル、プロバイダー、能力で絞り込み、コンテキスト長、入出力料金、課金単位を比較できます。",
+    facts: [
+      ["01 / FIND", "モデル・プロバイダー・能力"],
+      ["02 / COMPARE", "コンテキストと公開料金"],
+      ["03 / CONFIRM", "ログイン後のアカウント料金"],
+    ],
+  },
+  ko: {
+    eyebrow: "모델 및 가격",
+    titleLines: ["모델을 고르고,", "기능과 실제", "가격을 비교하세요."],
+    lead: "모델, 공급자, 기능으로 필터링하고 컨텍스트 길이, 입력·출력 가격, 과금 단위를 비교하세요.",
+    facts: [
+      ["01 / FIND", "모델·공급자·기능"],
+      ["02 / COMPARE", "컨텍스트 및 공개 가격"],
+      ["03 / CONFIRM", "로그인 후 계정 가격"],
+    ],
+  },
+  "zh-TW": {
+    eyebrow: "模型與價格",
+    titleLines: ["選模型。", "看能力，", "也看清價格。"],
+    lead: "依模型、供應商與能力類型篩選目前可用選項，同時比較上下文、輸入輸出價格與實際計費單位。",
+    facts: [
+      ["01 / FIND", "模型、供應商與能力"],
+      ["02 / COMPARE", "上下文與公開價格"],
+      ["03 / CONFIRM", "登入確認帳戶價格"],
+    ],
+  },
 }[props.locale];
+const factsLabels: Record<SiteLocale, string> = {
+  zh: "頁面功能",
+  en: "Page features",
+  ja: "ページ機能",
+  ko: "페이지 기능",
+  "zh-TW": "頁面功能",
+};
 ---
 
-<EditorialPageHero facts={content.facts} factsLabel={props.locale === "zh" ? "页面功能" : "Page features"} lead={content.lead} locale={props.locale} meta={content.eyebrow} titleLines={content.titleLines} />
+<EditorialPageHero facts={content.facts} factsLabel={factsLabels[props.locale]} lead={content.lead} locale={props.locale} meta={content.eyebrow} titleLines={content.titleLines} />
 
 <section class="section catalog-section" id="catalog">
   <div class="site-shell">

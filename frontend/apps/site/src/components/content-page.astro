@@ -1,5 +1,5 @@
 ---
-import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { contentLocale, localizedPath, type BaseContentLocale, type SiteLocale } from "@/content/site-copy";
 import { legalDocumentDrafts } from "@/content/legal-documents";
 import { LegalDocument } from "@/islands/legal/legal-document";
 import { StatusPanel } from "@/islands/status/status-panel";
@@ -31,7 +31,7 @@ type ContentPage = {
 };
 
 const props = Astro.props;
-const pages: Record<SiteLocale, Record<ContentPageKey, ContentPage>> = {
+const pages: Record<BaseContentLocale, Record<ContentPageKey, ContentPage>> = {
   zh: {
     docs: {
       eyebrow: "开发者文档",
@@ -209,9 +209,10 @@ const pages: Record<SiteLocale, Record<ContentPageKey, ContentPage>> = {
     },
   },
 };
-const content = pages[props.locale][props.page];
+const documentLocale = contentLocale(props.locale);
+const content = pages[documentLocale][props.page];
 const legalDocument = props.page === "terms" ? "terms" : "privacy";
-const legalDraftHtml = marked.parse(legalDocumentDrafts[props.locale][legalDocument], {
+const legalDraftHtml = marked.parse(legalDocumentDrafts[documentLocale][legalDocument], {
   async: false,
 }) as string;
 ---

@@ -1,13 +1,14 @@
 ---
 import { modelDisplayName } from "@/content/model-routes";
-import type { SiteLocale } from "@/content/site-copy";
+import { contentLocale, type SiteLocale } from "@/content/site-copy";
 import { ModelDetailPageIsland } from "@/islands/models/model-detail-page";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 type Props = { locale: SiteLocale; modelId: string };
 const { locale, modelId } = Astro.props;
 const displayName = modelDisplayName(modelId);
 const provider = modelId.split("/")[0]?.toUpperCase() ?? "MODEL";
-const lead = locale === "zh" ? "查看公开能力、兼容端点、已核验限制、完整计费组件与近 24 小时匿名聚合性能。" : "Review public capabilities, compatible endpoints, verified limits, complete price components, and anonymous 24-hour performance aggregates.";
+const chineseContent = contentLocale(locale) === "zh";
+const lead = chineseContent ? "查看公开能力、兼容端点、已核验限制、完整计费组件与近 24 小时匿名聚合性能。" : "Review public capabilities, compatible endpoints, verified limits, complete price components, and anonymous 24-hour performance aggregates.";
 ---
-<EditorialPageHero facts={[["MODEL ID", modelId]]} factsLabel={locale === "zh" ? "模型标识" : "Model identity"} lead={lead} locale={locale} meta={`MODEL / ${provider}`} titleLines={[provider, displayName]} />
+<EditorialPageHero facts={[["MODEL ID", modelId]]} factsLabel={chineseContent ? "模型标识" : "Model identity"} lead={lead} locale={locale} meta={`MODEL / ${provider}`} titleLines={[provider, displayName]} />
 <section class="section model-detail-content"><div class="site-shell"><ModelDetailPageIsland client:load locale={locale} modelId={modelId} /></div></section>

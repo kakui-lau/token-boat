@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createRankingsI18n } from "@/i18n/rankings";
+import { localizedPath, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
 import {
   parsePublicRankingsEnvelope,
   type PublicModelRanking,
@@ -11,7 +12,7 @@ import {
 } from "@/islands/rankings/public-rankings";
 
 type RankingsBoardIslandProps = {
-  locale: "en" | "zh";
+  locale: SiteLocale;
 };
 
 type LoadingState =
@@ -129,7 +130,7 @@ function RankingsBoard(props: RankingsBoardIslandProps) {
   );
 }
 
-function RankingsContent(props: { locale: "en" | "zh"; snapshot: PublicRankingsSnapshot }) {
+function RankingsContent(props: { locale: SiteLocale; snapshot: PublicRankingsSnapshot }) {
   const { t } = useTranslation();
   const podium = props.snapshot.models.slice(0, 3);
   const maxActivity = props.snapshot.activity.reduce(
@@ -248,7 +249,7 @@ function RankingsContent(props: { locale: "en" | "zh"; snapshot: PublicRankingsS
       <div className="ranking-disclaimer">
         <span aria-hidden="true">ⓘ</span>
         <p>{t("rankings.disclaimer")}</p>
-        <a href={props.locale === "zh" ? "/models" : "/en/models"}>
+        <a href={localizedPath(props.locale, "/models")}>
           {t("rankings.topModel")} <span aria-hidden="true">↗</span>
         </a>
       </div>
@@ -256,7 +257,7 @@ function RankingsContent(props: { locale: "en" | "zh"; snapshot: PublicRankingsS
   );
 }
 
-function ModelPodiumCard(props: { locale: "en" | "zh"; row: PublicModelRanking }) {
+function ModelPodiumCard(props: { locale: SiteLocale; row: PublicModelRanking }) {
   const { t } = useTranslation();
   const isLeader = props.row.rank === 1;
   const previousRank =
@@ -315,7 +316,7 @@ function ModelPodiumCard(props: { locale: "en" | "zh"; row: PublicModelRanking }
   );
 }
 
-function ModelRankingRow(props: { locale: "en" | "zh"; row: PublicModelRanking }) {
+function ModelRankingRow(props: { locale: SiteLocale; row: PublicModelRanking }) {
   const { t } = useTranslation();
   const rankDelta =
     props.row.previousRank === null ? null : props.row.previousRank - props.row.rank;
@@ -349,7 +350,7 @@ function ModelRankingRow(props: { locale: "en" | "zh"; row: PublicModelRanking }
 
 function MoverList(props: {
   intent: "down" | "up";
-  locale: "en" | "zh";
+  locale: SiteLocale;
   rows: PublicRankingMover[];
 }) {
   return (
@@ -397,8 +398,8 @@ function RankingsLoading() {
   );
 }
 
-function modelHref(modelName: string, locale: "en" | "zh"): string {
-  const path = locale === "zh" ? "/models" : "/en/models";
+function modelHref(modelName: string, locale: SiteLocale): string {
+  const path = localizedPath(locale, "/models");
   return `${path}?q=${encodeURIComponent(modelName)}`;
 }
 
@@ -412,15 +413,15 @@ function formatGrowth(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value) + "%";
 }
 
-function formatPercent(value: number, locale: "en" | "zh"): string {
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+function formatPercent(value: number, locale: SiteLocale): string {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     maximumFractionDigits: value < 0.01 ? 2 : 1,
     style: "percent",
   }).format(value);
 }
 
-function formatTokens(value: number, locale: "en" | "zh"): string {
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+function formatTokens(value: number, locale: SiteLocale): string {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);

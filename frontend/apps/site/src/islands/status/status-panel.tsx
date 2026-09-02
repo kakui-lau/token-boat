@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { contentLocale, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
 
 import { parsePublicStatusEnvelope, type PublicStatusGroup } from "@/islands/status/public-status";
 
 type StatusPanelProps = {
-  locale: "en" | "zh";
+  locale: SiteLocale;
 };
 
 type StatusState =
@@ -42,7 +43,7 @@ const copy = {
 } as const;
 
 export function StatusPanel(props: StatusPanelProps) {
-  const content = copy[props.locale];
+  const content = copy[contentLocale(props.locale)];
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<StatusState>({ status: "loading" });
 
@@ -150,9 +151,9 @@ export function StatusPanel(props: StatusPanelProps) {
   );
 }
 
-function formatUptime(value: number | null, locale: "en" | "zh"): string {
+function formatUptime(value: number | null, locale: SiteLocale): string {
   if (value === null) return "—";
-  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
     style: "percent",

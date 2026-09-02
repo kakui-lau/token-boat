@@ -4,6 +4,7 @@ import { I18nextProvider, useTranslation } from "react-i18next";
 import { createPricingI18n } from "@/i18n/pricing";
 import { contentLocale, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
 import { formatCardCurrency } from "@/islands/pricing/price-format";
+import { modelDialogHasMoreContent } from "@/islands/pricing/scroll-state";
 import {
   parsePublicPricingEnvelope,
   type PublicModelFamily,
@@ -268,10 +269,12 @@ function ModelDetailsDialog(props: {
 }) {
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [displayedModel, setDisplayedModel] = useState<PublicPricingModel | null>(props.model);
   const [isClosing, setIsClosing] = useState(false);
+  const [showScrollCue, setShowScrollCue] = useState(false);
   const model = props.model ?? displayedModel;
 
   useEffect(() => {
@@ -322,6 +325,28 @@ function ModelDetailsDialog(props: {
     setCopyStatus("");
   }, [model?.id]);
 
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!model || !body) {
+      setShowScrollCue(false);
+      return;
+    }
+
+    body.scrollTop = 0;
+    const updateScrollCue = () => setShowScrollCue(modelDialogHasMoreContent(body));
+    const animationFrame = window.requestAnimationFrame(updateScrollCue);
+    const resizeObserver = new ResizeObserver(updateScrollCue);
+    resizeObserver.observe(body);
+    for (const child of body.children) resizeObserver.observe(child);
+    window.addEventListener("resize", updateScrollCue);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateScrollCue);
+    };
+  }, [model?.id]);
+
   return (
     <dialog
       aria-labelledby="model-details-title"
@@ -356,7 +381,13 @@ function ModelDetailsDialog(props: {
             </button>
           </header>
 
-          <div className="model-dialog__body">
+          <div
+            className="model-dialog__body"
+            onScroll={(event) => {
+              setShowScrollCue(modelDialogHasMoreContent(event.currentTarget));
+            }}
+            ref={bodyRef}
+          >
             <p className="model-dialog__description">
               {localizedDescription(model, props.locale, t("catalog.descriptionFallback"))}
             </p>
@@ -440,6 +471,14 @@ function ModelDetailsDialog(props: {
                 <p>—</p>
               )}
             </div>
+          </div>
+
+          <div
+            aria-hidden="true"
+            className={`model-dialog__scroll-cue${showScrollCue ? " is-visible" : ""}`}
+          >
+            <span>{t("catalog.scrollForMore")}</span>
+            <span className="model-dialog__scroll-cue-arrow">↓</span>
           </div>
 
           <footer className="model-dialog__footer">

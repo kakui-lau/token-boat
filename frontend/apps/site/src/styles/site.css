@@ -56,7 +56,7 @@ html:lang(ko) body {
     "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", ui-sans-serif, system-ui, sans-serif;
 }
 
-:is(html:lang(zh-TW), html:lang(ja), html:lang(ko))
+html:lang(zh-TW)
   :is(
     .hero h1,
     .editorial-page-hero h1,
@@ -65,13 +65,130 @@ html:lang(ko) body {
     .final-callout h2,
     .page-hero h1,
     .content-cta__inner h2,
-    .live-catalog-grid > div:first-child h2,
-    .site-footer__masthead
+    .live-catalog-grid > div:first-child h2
   ) {
-  font-family: inherit;
+  font-family:
+    "Noto Sans TC", "Source Han Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   font-weight: 800;
   letter-spacing: -0.045em;
   line-height: 0.94;
+}
+
+html:lang(ja)
+  :is(
+    .hero h1,
+    .editorial-page-hero h1,
+    .editorial-heading h2,
+    .contract-copy h2,
+    .final-callout h2,
+    .page-hero h1,
+    .content-cta__inner h2,
+    .live-catalog-grid > div:first-child h2
+  ) {
+  font-family: "Arial Narrow", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+}
+
+html:lang(ko)
+  :is(
+    .hero h1,
+    .editorial-page-hero h1,
+    .editorial-heading h2,
+    .contract-copy h2,
+    .final-callout h2,
+    .page-hero h1,
+    .content-cta__inner h2,
+    .live-catalog-grid > div:first-child h2
+  ) {
+  font-family: "Arial Narrow", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.94;
+}
+
+html:lang(ja) .hero h1 {
+  font-size: clamp(3.5rem, 7vw, 7.5rem);
+  line-height: 0.92;
+}
+
+html:lang(ko) .hero h1 {
+  font-size: clamp(3.7rem, 7.6vw, 8rem);
+  line-height: 0.9;
+}
+
+html:lang(zh-TW) .hero h1 {
+  font-size: clamp(3.8rem, 7.9vw, 8.3rem);
+  line-height: 0.88;
+}
+
+html:lang(zh-CN) .hero h1 {
+  font-size: clamp(3.8rem, 7.8vw, 8rem);
+  line-height: 0.88;
+}
+
+html:lang(en) .hero h1 {
+  font-size: clamp(4.2rem, 10.3vw, 9.8rem);
+  line-height: 0.76;
+}
+
+html:lang(ja) .editorial-page-hero h1 {
+  font-size: clamp(3.1rem, 5.6vw, 6.2rem);
+  line-height: 0.94;
+}
+
+html:lang(ko) .editorial-page-hero h1 {
+  font-size: clamp(3.3rem, 6vw, 6.5rem);
+  line-height: 0.92;
+}
+
+html:lang(zh-TW) .editorial-page-hero h1 {
+  font-size: clamp(3.4rem, 6.2vw, 6.7rem);
+  line-height: 0.9;
+}
+
+html:lang(zh-CN) .editorial-page-hero h1 {
+  font-size: clamp(3.4rem, 6vw, 6.5rem);
+  line-height: 0.9;
+}
+
+html:lang(en) .editorial-page-hero h1 {
+  font-size: clamp(3.7rem, 7.7vw, 7.8rem);
+  line-height: 0.8;
+}
+
+:is(html:lang(ja), html:lang(ko)) :is(.editorial-heading h2, .contract-copy h2, .final-callout h2) {
+  font-size: clamp(2.6rem, 4vw, 4.25rem);
+}
+
+html:is(:lang(zh-CN), :lang(zh-TW))
+  :is(.editorial-heading h2, .contract-copy h2, .final-callout h2) {
+  font-size: clamp(2.7rem, 4.1vw, 4.35rem);
+}
+
+html:lang(en) :is(.contract-copy h2, .final-callout h2) {
+  font-size: clamp(3rem, 5vw, 5.5rem);
+}
+
+:is(html:lang(ja), html:lang(ko)) .page-hero h1 {
+  font-size: clamp(2.7rem, 4.8vw, 4.9rem);
+}
+
+html:is(:lang(zh-CN), :lang(zh-TW)) .page-hero h1 {
+  font-size: clamp(2.9rem, 5vw, 5rem);
+}
+
+html:lang(en) .page-hero h1 {
+  font-size: clamp(3rem, 5.4vw, 5.5rem);
+}
+
+:is(html:lang(ja), html:lang(ko)) .content-cta__inner h2 {
+  font-size: clamp(2.2rem, 3.3vw, 3.4rem);
+}
+
+html:is(:lang(zh-CN), :lang(zh-TW)) .content-cta__inner h2 {
+  font-size: clamp(2.25rem, 3.4vw, 3.5rem);
 }
 
 html:lang(zh-CN)
@@ -2346,11 +2463,12 @@ html:lang(zh-CN) .page-hero h1 {
 }
 
 .model-dialog__header h2 {
+  max-width: 54rem;
   overflow-wrap: anywhere;
-  margin-top: 0.65rem;
-  font-size: clamp(1.7rem, 4vw, 3.2rem);
-  letter-spacing: -0.055em;
-  line-height: 0.95;
+  margin-top: 0.5rem;
+  font-size: clamp(1.35rem, 2.6vw, 2.35rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .model-dialog__header > button {
@@ -2375,9 +2493,70 @@ html:lang(zh-CN) .page-hero h1 {
 }
 
 .model-dialog__body {
+  grid-column: 1;
+  grid-row: 2;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: clamp(1.25rem, 3vw, 2rem);
+  padding: clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2rem) 4.75rem;
+  scrollbar-color: var(--site-signal-dark) var(--site-paper-deep);
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+}
+
+.model-dialog__body::-webkit-scrollbar {
+  width: 0.7rem;
+}
+
+.model-dialog__body::-webkit-scrollbar-track {
+  background: var(--site-paper-deep);
+}
+
+.model-dialog__body::-webkit-scrollbar-thumb {
+  border: 2px solid var(--site-paper-deep);
+  background: var(--site-signal-dark);
+}
+
+.model-dialog__scroll-cue {
+  z-index: 2;
+  display: inline-flex;
+  min-height: 2.7rem;
+  align-items: center;
+  align-self: end;
+  justify-self: center;
+  gap: 0.75rem;
+  grid-column: 1;
+  grid-row: 2;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.65rem 0.55rem 0.9rem;
+  background: var(--site-ink);
+  box-shadow: 0 0.6rem 1.5rem rgb(0 0 0 / 18%);
+  color: var(--site-white);
+  font-family: "Courier New", ui-monospace, monospace;
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.45rem);
+  transition:
+    opacity 160ms var(--site-ease),
+    transform 200ms var(--site-ease);
+}
+
+.model-dialog__scroll-cue.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.model-dialog__scroll-cue-arrow {
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  background: var(--site-signal);
+  color: var(--site-ink);
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .model-dialog__description {
@@ -4900,6 +5079,7 @@ html:lang(zh-CN) .page-hero h1 {
   }
 
   .editorial-heading,
+  .operating-section .editorial-heading,
   .page-hero .site-shell,
   .final-callout {
     grid-template-columns: 1fr;
@@ -5212,8 +5392,17 @@ html:lang(zh-CN) .page-hero h1 {
     padding: 1rem;
   }
 
+  .model-dialog__header h2 {
+    font-size: clamp(1.2rem, 7vw, 1.8rem);
+  }
+
   .model-dialog__body {
-    padding: 1rem;
+    padding: 1rem 1rem 4.5rem;
+  }
+
+  .model-dialog__scroll-cue {
+    max-width: calc(100% - 2rem);
+    margin-bottom: 0.75rem;
   }
 
   .model-facts,

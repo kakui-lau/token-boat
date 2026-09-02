@@ -2,6 +2,7 @@ channel_id: 18
 staging_group: default
 logical_model: z-ai/glm-5.3
 upstream_model: glm-5.3
+context_length: 1048576
 vendor: 智谱
 icon: ""
 description: "Z.ai flagship GLM-5.3 for long-horizon coding agents and million-token context work"
@@ -14,7 +15,9 @@ official_output_per_1m: "4.4"
 official_cache_read_per_1m: "0.26"
 official_cache_write_per_1m: ""
 purchase_discount: "0.65"
-variable_cost_rate: "0.11"
-tax_rate: "0.165"
-target_margin: "0.03"
-minimum_margin: "0.03"
+payment_fee_rate: "0.04"
+distribution_fee_rate: "0.05"
+operations_labor_rate: "0.02"
+effective_tax_rate: "0.165"
+target_net_margin: "0.03"
+minimum_margin_rate: "0.03"

@@ -40,7 +40,7 @@ export const PLAYGROUND_PARAMETER_CONTROLS = [
     valueType: 'slider',
     min: 0.1,
     max: 1,
-    step: 0.1,
+    step: 0.01,
   },
   {
     key: 'top_p',
@@ -49,7 +49,7 @@ export const PLAYGROUND_PARAMETER_CONTROLS = [
     valueType: 'slider',
     min: 0.1,
     max: 1,
-    step: 0.1,
+    step: 0.01,
   },
   {
     key: 'frequency_penalty',

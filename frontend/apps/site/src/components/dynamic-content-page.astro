@@ -1,0 +1,17 @@
+---
+import type { SiteLocale } from "@/content/site-copy";
+import { PublicContentHub } from "@/islands/content/public-content-hub";
+import EditorialPageHero from "@/components/editorial-page-hero.astro";
+type Props = { locale: SiteLocale; mode: "faq" | "changelog" };
+const { locale, mode } = Astro.props;
+const c = locale === "zh" ? {
+  faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["常见问题，", "直接给出", "答案。"], lead: "涵盖接入、模型选择、计费、密钥、安全和故障排查；后台发布的内容会优先显示。" },
+  changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["平台公告", "与更新", "日志。"], lead: "集中展示后台已发布的通知和公告，帮助你确认平台变化，而不是再做一个重复的价格页面。" },
+} : {
+  faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["COMMON QUESTIONS.", "DIRECT", "ANSWERS."], lead: "Answers for integration, model choice, billing, keys, security, and troubleshooting. Published platform entries take priority." },
+  changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["ANNOUNCEMENTS", "AND CHANGE", "LOG."], lead: "A single place for published notices and platform announcements—rather than another duplicate pricing page." },
+};
+const content = c[mode];
+---
+<EditorialPageHero lead={content.lead} locale={locale} meta={content.eyebrow} titleLines={content.titleLines} />
+<section class="section public-data-section"><div class="site-shell"><PublicContentHub client:load locale={locale} mode={mode} /></div></section>

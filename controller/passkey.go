@@ -24,6 +24,8 @@ const (
 	securityProofScopeChannelKeyRead  = "channel.key.read"
 	securityProofScopePasskeyRegister = "passkey.register"
 	securityProofScopePasskeyDelete   = "passkey.delete"
+	securityProofScopeEVMWalletBind   = "evm_wallet.bind"
+	securityProofScopeEVMWalletDelete = "evm_wallet.delete"
 )
 
 type passkeyFinishRequest struct {

@@ -1,0 +1,9 @@
+---
+import ModelDetailPage from "@/components/model-detail-page.astro";
+import { modelDisplayName, publicModelIds } from "@/content/model-routes";
+import SiteLayout from "@/layouts/site-layout.astro";
+export function getStaticPaths() { return publicModelIds.map((model) => ({ params: { model }, props: { modelId: model } })); }
+const { modelId } = Astro.props;
+const displayName = modelDisplayName(modelId);
+---
+<SiteLayout canonicalPath={`/models/${modelId}`} description={`查看 ${modelId} 的公开能力、上下文、计费组件、兼容端点与聚合性能。`} jsonLd={{ "@context": "https://schema.org", "@type": "TechArticle", headline: `${displayName} 模型资料`, about: modelId }} locale="zh" title={`${displayName} 模型资料｜Token Boat`}><ModelDetailPage locale="zh" modelId={modelId} /></SiteLayout>

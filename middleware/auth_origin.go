@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,8 +22,7 @@ func SessionCookieOriginGuard() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		origin, ok := requestBrowserOrigin(c.Request)
-		if !ok || !isAllowedSessionOrigin(c.Request, origin) {
+		if _, err := ValidatedBrowserOrigin(c.Request); err != nil {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"code":    "AUTH_ORIGIN_FORBIDDEN",
@@ -32,6 +32,18 @@ func SessionCookieOriginGuard() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// ValidatedBrowserOrigin returns the exact browser origin after verifying it
+// against the request host or the configured trusted dashboard origins. It is
+// also used by signed authentication challenges whose domain must never come
+// from an untrusted request body.
+func ValidatedBrowserOrigin(request *http.Request) (string, error) {
+	origin, ok := requestBrowserOrigin(request)
+	if !ok || !isAllowedSessionOrigin(request, origin) {
+		return "", errors.New("request origin is not allowed")
+	}
+	return origin, nil
 }
 
 func requestBrowserOrigin(request *http.Request) (string, bool) {

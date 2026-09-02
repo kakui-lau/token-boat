@@ -250,7 +250,7 @@ export function OverviewPage(props: OverviewPageProps) {
                       <Link
                         className="font-medium underline-offset-4 hover:underline"
                         search={{
-                          ...dateRangeSearchPatch(range, "7d"),
+                          ...dateRangeSearchPatch(range, "today"),
                           detail: item.id,
                           field: "request",
                           q: item.id,

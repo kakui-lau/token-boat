@@ -24,6 +24,8 @@ import type { OAuthProvider, TwoFactorLoginChallenge } from "@/data/contracts";
 import { isWebAuthnSupported } from "@/lib/webauthn";
 import { AuthShell } from "../components/auth-shell";
 import { AuthCapabilitiesError } from "../components/auth-capabilities-error";
+import { EVMWalletButton } from "../components/evm-wallet-button";
+import { Turnstile } from "../components/turnstile";
 import { TwoFactorLoginForm } from "../components/two-factor-login-form";
 import { rememberOAuthRedirect } from "../lib/auth-redirect";
 import { buildOAuthAuthorizationUrl } from "../lib/oauth";
@@ -49,6 +51,9 @@ export function SignInPage(props: { redirectTo?: string }) {
   const [challenge, setChallenge] = useState<TwoFactorLoginChallenge | null>(null);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [oauthLoading, setOAuthLoading] = useState<string | null>(null);
+  const [evmWalletLoading, setEVMWalletLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
   const authenticationLockRef = useRef(false);
   const passkeySupported = isWebAuthnSupported();
   const form = useForm<SignInValues>({
@@ -58,6 +63,14 @@ export function SignInPage(props: { redirectTo?: string }) {
       password: mode === "demo" ? "demo" : "",
     },
   });
+  const turnstileRequired = Boolean(
+    capabilities?.turnstileEnabled && capabilities.turnstileSiteKey,
+  );
+
+  const resetHumanVerification = () => {
+    setTurnstileToken("");
+    setTurnstileKey((current) => current + 1);
+  };
 
   const enterConsole = () => {
     if (props.redirectTo) return navigate({ href: props.redirectTo, replace: true });
@@ -66,9 +79,13 @@ export function SignInPage(props: { redirectTo?: string }) {
 
   const submit = form.handleSubmit(async (values) => {
     if (authenticationLockRef.current) return;
+    if (turnstileRequired && !turnstileToken) {
+      toast.info(t("Complete the human verification first"));
+      return;
+    }
     authenticationLockRef.current = true;
     try {
-      const result = await signIn(values);
+      const result = await signIn({ ...values, turnstileToken: turnstileToken || undefined });
       if (result.kind === "two_factor") {
         setChallenge(result);
         form.setValue("password", "");
@@ -84,6 +101,7 @@ export function SignInPage(props: { redirectTo?: string }) {
       }
       toast.error(message);
     } finally {
+      if (turnstileRequired) resetHumanVerification();
       authenticationLockRef.current = false;
     }
   });
@@ -139,15 +157,19 @@ export function SignInPage(props: { redirectTo?: string }) {
   };
 
   const hasAlternativeMethod = Boolean(
-    capabilities && (capabilities.passkeyEnabled || capabilities.oauthProviders.length > 0),
+    capabilities &&
+    (capabilities.passkeyEnabled ||
+      capabilities.evmWalletEnabled ||
+      capabilities.oauthProviders.length > 0),
   );
-  const authenticationBusy = form.formState.isSubmitting || passkeyLoading || Boolean(oauthLoading);
+  const authenticationBusy =
+    form.formState.isSubmitting || passkeyLoading || evmWalletLoading || Boolean(oauthLoading);
 
   return (
     <AuthShell>
       <Card className="auth-form-card w-full border-0 shadow-none">
-        <CardHeader className="gap-3">
-          <CardTitle className="text-3xl tracking-tight sm:text-4xl">
+        <CardHeader className="gap-2">
+          <CardTitle className="text-2xl tracking-tight sm:text-3xl">
             {t(challenge ? "Two-factor authentication" : "Welcome back")}
           </CardTitle>
           <CardDescription>
@@ -177,10 +199,18 @@ export function SignInPage(props: { redirectTo?: string }) {
               description={t("Unable to load sign-in methods. Try again to continue.")}
             />
           ) : (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3.5">
+              {turnstileRequired ? (
+                <Turnstile
+                  key={turnstileKey}
+                  onExpire={() => setTurnstileToken("")}
+                  onVerify={setTurnstileToken}
+                  siteKey={capabilities.turnstileSiteKey}
+                />
+              ) : null}
               {capabilities.passwordEnabled ? (
                 <form onSubmit={submit}>
-                  <FieldGroup>
+                  <FieldGroup className="gap-3.5">
                     {mode === "demo" && (
                       <Alert>
                         <ShieldCheckIcon aria-hidden="true" />
@@ -222,7 +252,8 @@ export function SignInPage(props: { redirectTo?: string }) {
                       >
                         {t("Forgot password?")}
                       </Link>
-                      {capabilities.registrationEnabled ? (
+                      {capabilities.registrationEnabled ||
+                      capabilities.evmWalletRegistrationEnabled ? (
                         <Link
                           className="font-medium underline-offset-4 hover:underline"
                           search={{ aff: undefined, redirect: props.redirectTo }}
@@ -267,6 +298,22 @@ export function SignInPage(props: { redirectTo?: string }) {
                 </>
               ) : null}
 
+              {capabilities.evmWalletEnabled ? (
+                <EVMWalletButton
+                  description="If this wallet is new, an account will be created automatically after signature verification."
+                  disabled={authenticationBusy && !evmWalletLoading}
+                  humanVerificationRequired={turnstileRequired}
+                  intent="login"
+                  onAuthenticated={enterConsole}
+                  onBusyChange={(busy) => {
+                    authenticationLockRef.current = busy;
+                    setEVMWalletLoading(busy);
+                  }}
+                  onHumanVerificationConsumed={resetHumanVerification}
+                  turnstileToken={turnstileToken || undefined}
+                />
+              ) : null}
+
               {capabilities.oauthProviders.length > 0 ? (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {capabilities.oauthProviders.map((provider) => (
@@ -290,6 +337,7 @@ export function SignInPage(props: { redirectTo?: string }) {
 
               {!capabilities.passwordEnabled &&
               !capabilities.passkeyEnabled &&
+              !capabilities.evmWalletEnabled &&
               capabilities.oauthProviders.length === 0 ? (
                 <Alert variant="destructive">
                   <AlertDescription>

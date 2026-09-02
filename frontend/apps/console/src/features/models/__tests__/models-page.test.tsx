@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelCatalogItem } from "@/data/contracts";
+import type { ModelSearch } from "@/lib/list-search";
 import { ModelsPage } from "../pages/models-page";
 
 const { listModelCatalog } = vi.hoisted(() => ({ listModelCatalog: vi.fn() }));
@@ -85,6 +86,103 @@ describe("ModelsPage", () => {
     expect(pricedCard).toHaveTextContent("1");
     expect(typesCard).toHaveTextContent("2");
     expect(screen.queryByText("Before every request")).not.toBeInTheDocument();
+  });
+
+  test("sorts every model catalog column and defaults to model name ascending", async () => {
+    const alpha = modelFixture();
+    alpha.id = "alpha/model";
+    alpha.family = "video";
+    alpha.contextWindow = 200_000;
+    alpha.features = ["Tool calling", "Vision"];
+    const zeta = modelFixture();
+    zeta.id = "zeta/model";
+    zeta.available = false;
+    zeta.availabilityStatus = "unavailable";
+    zeta.contextWindow = 100_000;
+    zeta.family = "chat";
+    zeta.features = ["Audio"];
+    zeta.inputPrice = 1;
+    zeta.outputPrice = 5;
+    listModelCatalog.mockResolvedValue([zeta, alpha]);
+
+    renderModelsPage(<ModelsPageHarness initialSearch={{ availability: "all" }} />);
+
+    const table = await screen.findByRole("table", { name: "Model catalog" });
+    await within(table).findByRole("button", { name: "alpha/model" });
+    const modelNames = () =>
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("button")[0]?.textContent?.trim());
+
+    expect(modelNames()).toEqual(["alpha/model", "zeta/model"]);
+    expect(within(table).getByRole("columnheader", { name: "Model" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(7);
+    expect(within(table).getAllByRole("button", { name: /.+/ })).toEqual(
+      expect.arrayContaining([
+        within(table).getByRole("button", { name: "Model" }),
+        within(table).getByRole("button", { name: "Type" }),
+        within(table).getByRole("button", { name: "Context" }),
+        within(table).getByRole("button", { name: "Input price" }),
+        within(table).getByRole("button", { name: "Output price" }),
+        within(table).getByRole("button", { name: "Capabilities" }),
+        within(table).getByRole("button", { name: "Status" }),
+      ]),
+    );
+
+    for (const column of ["Type", "Context", "Input price", "Output price", "Capabilities"]) {
+      const sortButton = within(table).getByRole("button", { name: column });
+      fireEvent.click(sortButton);
+      expect(modelNames()).toEqual(["zeta/model", "alpha/model"]);
+      expect(within(table).getByRole("columnheader", { name: column })).toHaveAttribute(
+        "aria-sort",
+        "ascending",
+      );
+
+      fireEvent.click(sortButton);
+      expect(modelNames()).toEqual(["alpha/model", "zeta/model"]);
+      expect(within(table).getByRole("columnheader", { name: column })).toHaveAttribute(
+        "aria-sort",
+        "descending",
+      );
+    }
+
+    const statusButton = within(table).getByRole("button", { name: "Status" });
+    fireEvent.click(statusButton);
+    expect(modelNames()).toEqual(["alpha/model", "zeta/model"]);
+    fireEvent.click(statusButton);
+    expect(modelNames()).toEqual(["zeta/model", "alpha/model"]);
+  });
+
+  test("keeps unknown numeric model facts last in both sort directions", async () => {
+    const known = modelFixture();
+    known.id = "known/model";
+    const unknown = modelFixture();
+    unknown.id = "unknown/model";
+    unknown.contextWindow = null;
+    unknown.inputPrice = null;
+    unknown.outputPrice = null;
+    listModelCatalog.mockResolvedValue([unknown, known]);
+
+    renderModelsPage(<ModelsPage />);
+
+    const table = await screen.findByRole("table", { name: "Model catalog" });
+    const modelNames = () =>
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("button")[0]?.textContent?.trim());
+
+    for (const column of ["Context", "Input price", "Output price"]) {
+      const sortButton = within(table).getByRole("button", { name: column });
+      fireEvent.click(sortButton);
+      expect(modelNames()).toEqual(["known/model", "unknown/model"]);
+      fireEvent.click(sortButton);
+      expect(modelNames()).toEqual(["known/model", "unknown/model"]);
+    }
   });
 
   test("restores a shared model detail URL and clears it when the dialog closes", async () => {
@@ -187,6 +285,10 @@ describe("ModelsPage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Anthropic");
     expect(dialog).toHaveTextContent("Balanced model for production workloads.");
+    expect(dialog).toHaveTextContent("8,192");
+    expect(
+      screen.getByRole("link", { name: "Open official model limits documentation" }),
+    ).toHaveAttribute("href", "https://vendor.example/models/claude-sonnet");
     expect(dialog).toHaveTextContent("priority");
     expect(dialog).toHaveTextContent("Input tokens / million tokens");
     expect(dialog).toHaveTextContent("3 USD");
@@ -403,6 +505,16 @@ function renderModelsPage(page: ReactNode) {
   return render(<QueryClientProvider client={queryClient}>{page}</QueryClientProvider>);
 }
 
+function ModelsPageHarness(props: { initialSearch: ModelSearch }) {
+  const [search, setSearch] = useState(props.initialSearch);
+  return (
+    <ModelsPage
+      search={search}
+      onSearchChange={(patch) => setSearch((current) => ({ ...current, ...patch }))}
+    />
+  );
+}
+
 function modelFixture(): ModelCatalogItem {
   return {
     id: "anthropic/claude-sonnet",
@@ -410,6 +522,9 @@ function modelFixture(): ModelCatalogItem {
     description: "Balanced model for production workloads.",
     family: "chat",
     contextWindow: 200_000,
+    maxOutputTokens: 8192,
+    limitsSourceUrl: "https://vendor.example/models/claude-sonnet",
+    limitsVerifiedAt: 1_788_192_000,
     inputPrice: 3,
     inputPriceQualifier: null,
     outputPrice: 15,

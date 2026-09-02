@@ -79,15 +79,24 @@ describe("AlertStatusPopover", () => {
     expect(await screen.findByText("All systems operational")).toBeInTheDocument();
     expect(getAlertCenter).toHaveBeenCalledTimes(2);
   });
+
+  test("opens immediately after the shell loads the deferred popover", async () => {
+    getAlertCenter.mockResolvedValue(alertCenter);
+
+    renderPopover(vi.fn(), true);
+
+    expect(await screen.findByText("All systems operational")).toBeInTheDocument();
+    expect(getAlertCenter).toHaveBeenCalledOnce();
+  });
 });
 
-function renderPopover(onOpenAlertCenter: () => void) {
+function renderPopover(onOpenAlertCenter: () => void, initiallyOpen = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <AlertStatusPopover onOpenAlertCenter={onOpenAlertCenter} />
+      <AlertStatusPopover initiallyOpen={initiallyOpen} onOpenAlertCenter={onOpenAlertCenter} />
     </QueryClientProvider>,
   );
 }

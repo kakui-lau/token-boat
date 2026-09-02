@@ -3,6 +3,8 @@ export type ConsoleDataMode = "demo" | "live";
 export type ConsoleUser = {
   id: number;
   username: string;
+  usernameEditable: boolean;
+  passwordSet: boolean;
   displayName: string;
   email: string;
   group: string;
@@ -25,6 +27,7 @@ export type ConsoleSession = {
 export type SignInInput = {
   username: string;
   password: string;
+  turnstileToken?: string;
 };
 
 export type OAuthProvider = {
@@ -51,12 +54,36 @@ export type OAuthCallbackInput = {
 
 export type AuthCapabilities = {
   emailVerificationEnabled: boolean;
+  evmWalletEnabled: boolean;
+  evmWalletRegistrationEnabled: boolean;
   oauthProviders: OAuthProvider[];
   passkeyEnabled: boolean;
   passwordEnabled: boolean;
   registrationEnabled: boolean;
   turnstileEnabled: boolean;
   turnstileSiteKey: string;
+};
+
+export type EVMWalletAuthBeginInput = {
+  address: string;
+  affiliateCode?: string;
+  chainId: number;
+  intent: "login" | "register";
+  turnstileToken?: string;
+};
+
+export type EVMWalletAuthChallenge = {
+  address: string;
+  chainId: number;
+  expiresAt: number;
+  flowToken: string;
+  message: string;
+  nonce: string;
+};
+
+export type EVMWalletAuthCompleteInput = {
+  flowToken: string;
+  signature: string;
 };
 
 export type RegisterInput = {
@@ -109,6 +136,7 @@ export type ActivityRecord = {
 export type DateRangePreset =
   | "today"
   | "yesterday"
+  | "3d"
   | "7d"
   | "14d"
   | "30d"
@@ -321,6 +349,9 @@ export type ModelCatalogItem = {
   description: string | null;
   family: "chat" | "reasoning" | "embedding" | "image" | "audio" | "video" | "unknown";
   contextWindow: number | null;
+  maxOutputTokens: number | null;
+  limitsSourceUrl: string | null;
+  limitsVerifiedAt: number | null;
   inputPrice: number | null;
   inputPriceQualifier: "from" | null;
   inputPriceUnit: "million_tokens" | "request" | "second" | null;
@@ -796,6 +827,11 @@ export type AccountData = {
     twoFactorEnabled: boolean;
     twoFactorLocked: boolean;
     emailBound: boolean;
+    evmWalletAddress: string | null;
+    evmWalletEnabled: boolean;
+    evmWalletLastUsedAt: number | null;
+    evmWalletRemovable: boolean;
+    evmWalletVerificationMethod: "2fa" | "passkey" | "password" | null;
   };
   sessions: LoginSessionRecord[];
 };
@@ -821,8 +857,19 @@ export type TwoFactorBackupCodesResult = AccountSecurityResult & {
 };
 
 export type UpdateProfileInput = {
+  username: string;
   displayName: string;
   email: string;
+  verificationCode?: string;
+};
+
+export type ChangePasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+export type SetPasswordWithEVMWalletInput = EVMWalletAuthCompleteInput & {
+  newPassword: string;
 };
 
 export type ConsoleRepository = {
@@ -841,6 +888,8 @@ export type ConsoleRepository = {
   signIn(input: SignInInput): Promise<SignInResult>;
   verifyTwoFactorLogin(input: VerifyTwoFactorLoginInput): Promise<ConsoleSession>;
   signInWithPasskey(): Promise<ConsoleSession | null>;
+  beginEVMWalletAuth(input: EVMWalletAuthBeginInput): Promise<EVMWalletAuthChallenge>;
+  completeEVMWalletAuth(input: EVMWalletAuthCompleteInput): Promise<ConsoleSession>;
   clearLocalSession(): void;
   signOut(session: ConsoleSession | null): Promise<void>;
   getOverview(range: DateRangeValue): Promise<OverviewData>;
@@ -888,6 +937,14 @@ export type ConsoleRepository = {
   ): Promise<PaymentConfirmationStatus>;
   getAccount(): Promise<AccountData>;
   updateProfile(input: UpdateProfileInput): Promise<AccountData>;
+  changePassword(input: ChangePasswordInput): Promise<AccountSecurityResult>;
+  beginEVMWalletPasswordSetup(input: {
+    address: string;
+    chainId: number;
+  }): Promise<EVMWalletAuthChallenge>;
+  completeEVMWalletPasswordSetup(
+    input: SetPasswordWithEVMWalletInput,
+  ): Promise<AccountSecurityResult>;
   updatePreferences(input: AccountPreferences): Promise<AccountData>;
   revokeSession(id: string): Promise<AccountData>;
   revokeOtherSessions(): Promise<RevokeOtherSessionsResult>;
@@ -897,4 +954,18 @@ export type ConsoleRepository = {
   regenerateTwoFactorBackupCodes(code: string): Promise<TwoFactorBackupCodesResult>;
   registerPasskey(twoFactorCode?: string): Promise<AccountSecurityResult>;
   removePasskey(twoFactorCode?: string): Promise<AccountSecurityResult>;
+  beginEVMWalletBinding(input: {
+    address: string;
+    chainId: number;
+    proof?: string;
+  }): Promise<EVMWalletAuthChallenge>;
+  completeEVMWalletBinding(
+    input: EVMWalletAuthCompleteInput & { proof?: string },
+  ): Promise<AccountSecurityResult>;
+  removeEVMWallet(proof?: string): Promise<AccountSecurityResult>;
+  createEVMWalletSecurityProof(
+    method: "2fa" | "passkey" | "password",
+    scope: "evm_wallet.bind" | "evm_wallet.delete",
+    code?: string,
+  ): Promise<string>;
 };

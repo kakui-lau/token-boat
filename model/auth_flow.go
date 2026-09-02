@@ -20,10 +20,13 @@ const (
 	AuthFlowPurposePasskeyLogin      = "passkey_login"
 	AuthFlowPurposePasskeyRegister   = "passkey_register"
 	AuthFlowPurposePasskeyStepUp     = "passkey_step_up"
+	AuthFlowPurposeEVMWalletAuth     = "evm_wallet_auth"
 	AuthFlowPurposeTelegramBind      = "telegram_bind"
 	AuthFlowPurposeTelegramAssertion = "telegram_assertion"
 	AuthFlowIntentLogin              = "login"
+	AuthFlowIntentRegister           = "register"
 	AuthFlowIntentBind               = "bind"
+	AuthFlowIntentPasswordSetup      = "password_setup"
 	AuthFlowTokenBytes               = 32
 	AuthFlowDefaultCleanupRetention  = 24 * time.Hour
 )

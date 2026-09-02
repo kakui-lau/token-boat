@@ -41,6 +41,16 @@ vi.mock("react-i18next", () => ({
 beforeEach(() => getUsage.mockReset());
 
 describe("UsagePage request chart", () => {
+  test("queries the most recent three days when the URL has no date range", async () => {
+    getUsage.mockResolvedValue(usageFixture());
+
+    renderUsagePage();
+
+    await waitFor(() =>
+      expect(getUsage).toHaveBeenCalledWith(expect.objectContaining({ preset: "3d" })),
+    );
+  });
+
   test("replaces empty axes with an actionable no-request state", async () => {
     getUsage.mockResolvedValue(usageFixture());
 
@@ -102,6 +112,7 @@ describe("UsagePage request chart", () => {
     expect(screen.getByRole("link", { name: "Request ID: request-20260830" })).toHaveAttribute(
       "data-search",
       JSON.stringify({
+        range: "3d",
         detail: "request-20260830",
         field: "request",
         q: "request-20260830",

@@ -12,6 +12,8 @@ const {
   revokeOtherSessions,
   revokeSession,
   resetNavigation,
+  sendEmailVerification,
+  sessionCapabilities,
   updatePreferences,
   updateProfile,
   useBlocker,
@@ -22,6 +24,12 @@ const {
   revokeOtherSessions: vi.fn(),
   revokeSession: vi.fn(),
   resetNavigation: vi.fn(),
+  sendEmailVerification: vi.fn(),
+  sessionCapabilities: {
+    emailVerificationEnabled: false,
+    turnstileEnabled: false,
+    turnstileSiteKey: "",
+  },
   updatePreferences: vi.fn(),
   updateProfile: vi.fn(),
   useBlocker: vi.fn(),
@@ -32,7 +40,11 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/app/session/session-context", () => ({
-  useSession: () => ({ session: null }),
+  useSession: () => ({
+    capabilities: sessionCapabilities,
+    sendEmailVerification,
+    session: null,
+  }),
 }));
 
 vi.mock("@/data/repository", () => ({
@@ -63,10 +75,14 @@ beforeEach(() => {
   revokeOtherSessions.mockReset();
   revokeSession.mockReset();
   resetNavigation.mockReset();
+  sendEmailVerification.mockReset();
   updatePreferences.mockReset();
   updateProfile.mockReset();
   useBlocker.mockReset();
   blockerState.blocked = false;
+  sessionCapabilities.emailVerificationEnabled = false;
+  sessionCapabilities.turnstileEnabled = false;
+  sessionCapabilities.turnstileSiteKey = "";
   useBlocker.mockImplementation((options: { disabled: boolean }) =>
     !options.disabled && blockerState.blocked
       ? {
@@ -79,6 +95,20 @@ beforeEach(() => {
 });
 
 describe("AccountPage editable drafts", () => {
+  test("shows password management in the security tab", async () => {
+    getAccount.mockResolvedValue(accountFixture());
+
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <AccountPage activeTab="security" onTabChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Change password" })).toBeVisible();
+  });
+
   test("does not overwrite an unsaved profile when the same account refetches", async () => {
     const account = accountFixture();
     getAccount.mockResolvedValue(account);
@@ -139,6 +169,105 @@ describe("AccountPage editable drafts", () => {
       expect(queryClient.getQueryData<AccountData>(["account"])?.user.displayName).toBe(
         "Updated merchant",
       ),
+    );
+  });
+
+  test("keeps an existing username locked while saving a new email", async () => {
+    const account = accountFixture();
+    getAccount.mockResolvedValue(account);
+    updateProfile.mockResolvedValue({
+      ...account,
+      user: { ...account.user, email: "new@example.com" },
+    });
+
+    renderAccountPage(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+
+    expect(await screen.findByRole("textbox", { name: "Username" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
+    expect(updateProfile.mock.calls[0]?.[0]).toEqual({
+      username: "merchant",
+      displayName: "Merchant owner",
+      email: "new@example.com",
+      verificationCode: "",
+    });
+  });
+
+  test("allows a wallet-created account to set its username exactly once", async () => {
+    const account = {
+      ...accountFixture(),
+      user: {
+        ...accountFixture().user,
+        username: "evm_generated",
+        usernameEditable: true,
+        passwordSet: false,
+      },
+    };
+    getAccount.mockResolvedValue(account);
+    updateProfile.mockResolvedValue({
+      ...account,
+      user: {
+        ...account.user,
+        username: "wallet-owner",
+        usernameEditable: false,
+        passwordSet: false,
+      },
+    });
+
+    renderAccountPage(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+
+    const username = await screen.findByRole("textbox", { name: "Username" });
+    expect(username).toBeEnabled();
+    expect(username).toHaveValue("");
+    fireEvent.change(username, { target: { value: "wallet-owner" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
+    expect(updateProfile.mock.calls[0]?.[0]).toEqual({
+      username: "wallet-owner",
+      displayName: "Merchant owner",
+      email: "owner@example.com",
+      verificationCode: "",
+    });
+    await waitFor(() => expect(username).toHaveValue("wallet-owner"));
+    expect(username).toBeDisabled();
+  });
+
+  test("requires an email code before saving a changed verified email", async () => {
+    const account = accountFixture();
+    sessionCapabilities.emailVerificationEnabled = true;
+    getAccount.mockResolvedValue(account);
+    sendEmailVerification.mockResolvedValue(undefined);
+    updateProfile.mockResolvedValue({
+      ...account,
+      user: { ...account.user, email: "verified@example.com" },
+    });
+
+    renderAccountPage(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+
+    fireEvent.change(await screen.findByRole("textbox", { name: "Email" }), {
+      target: { value: "verified@example.com" },
+    });
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Send code" }));
+    await waitFor(() =>
+      expect(sendEmailVerification).toHaveBeenCalledWith({
+        email: "verified@example.com",
+        turnstileToken: undefined,
+      }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Email verification code" }), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
+    expect(updateProfile.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ email: "verified@example.com", verificationCode: "123456" }),
     );
   });
 
@@ -358,6 +487,8 @@ function accountFixture(): AccountData {
     user: {
       id: 12,
       username: "merchant",
+      usernameEditable: false,
+      passwordSet: true,
       displayName: "Merchant owner",
       email: "owner@example.com",
       group: "default",
@@ -389,6 +520,11 @@ function accountFixture(): AccountData {
       passkeyLastUsedAt: null,
       twoFactorEnabled: false,
       twoFactorLocked: false,
+      evmWalletAddress: null,
+      evmWalletEnabled: false,
+      evmWalletLastUsedAt: null,
+      evmWalletRemovable: false,
+      evmWalletVerificationMethod: "password",
     },
     sessions: [],
   };

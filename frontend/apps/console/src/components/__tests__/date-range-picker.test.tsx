@@ -24,15 +24,16 @@ describe("DateRangePicker", () => {
 
     expect((await screen.findAllByText("Today")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Yesterday").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Last 3 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 7 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 14 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 30 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 90 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 180 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 365 days").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getAllByText("Last 7 days")[0]!);
+    fireEvent.click(screen.getAllByText("Last 3 days")[0]!);
 
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ preset: "7d" }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ preset: "3d" }));
   });
 
   test("applies a valid custom start and end date", async () => {

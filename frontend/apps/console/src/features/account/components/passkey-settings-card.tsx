@@ -24,14 +24,7 @@ import {
 } from "@token-boat/ui/components/ui/alert-dialog";
 import { Badge } from "@token-boat/ui/components/ui/badge";
 import { Button } from "@token-boat/ui/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@token-boat/ui/components/ui/card";
+import { Card, CardContent, CardFooter } from "@token-boat/ui/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +40,10 @@ import { repository } from "@/data/repository";
 import { useActionLock } from "@/hooks/use-action-lock";
 import { formatDateTime } from "@/lib/format";
 import { isWebAuthnSupported } from "@/lib/webauthn";
+import {
+  SecurityMethodCardHeader,
+  securityMethodCardClassName,
+} from "./security-method-card-header";
 
 type PasskeySettingsCardProps = {
   security: AccountData["security"];
@@ -127,21 +124,19 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FingerprintIcon className="size-4" />
-            </span>
+      <Card className={securityMethodCardClassName}>
+        <SecurityMethodCardHeader
+          description={t(
+            "Use biometrics or a hardware security key for phishing-resistant sign-in.",
+          )}
+          icon={FingerprintIcon}
+          status={
             <Badge variant={props.security.passkeyEnabled ? "secondary" : "outline"}>
               {props.security.passkeyEnabled ? t("Enabled") : t("Not enabled")}
             </Badge>
-          </div>
-          <CardTitle className="pt-3">{t("Passkeys")}</CardTitle>
-          <CardDescription>
-            {t("Use biometrics or a hardware security key for phishing-resistant sign-in.")}
-          </CardDescription>
-        </CardHeader>
+          }
+          title={t("Passkeys")}
+        />
         <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
           {props.security.passkeyLastUsedAt && (
             <p>
@@ -154,7 +149,7 @@ export function PasskeySettingsCard(props: PasskeySettingsCardProps) {
             <p>{t("This browser cannot create or verify a Passkey on this device.")}</p>
           )}
         </CardContent>
-        <CardFooter className="flex flex-wrap gap-2">
+        <CardFooter className="mt-auto flex flex-wrap gap-2">
           <Button disabled={!supported} onClick={() => setRegisterOpen(true)} size="sm">
             <KeyRoundIcon data-icon="inline-start" />
             {props.security.passkeyEnabled ? t("Replace Passkey") : t("Register Passkey")}

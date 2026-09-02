@@ -32,6 +32,7 @@ type PlaygroundConversationListProps = {
   deletingId: string | null;
   loading: boolean;
   onCreate(): void;
+  onCreateIntent(): void;
   onDelete(id: string): void;
   onSelect(conversation: PlaygroundConversation): void;
 };
@@ -44,6 +45,7 @@ export function PlaygroundConversationList({
   deletingId,
   loading,
   onCreate,
+  onCreateIntent,
   onDelete,
   onSelect,
 }: PlaygroundConversationListProps) {
@@ -65,6 +67,8 @@ export function PlaygroundConversationList({
           aria-label={t("New chat")}
           disabled={!canCreate || creating}
           onClick={onCreate}
+          onFocus={onCreateIntent}
+          onPointerEnter={onCreateIntent}
           size="icon-sm"
         >
           {creating ? (

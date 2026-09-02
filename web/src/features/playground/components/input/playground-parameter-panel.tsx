@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SlidersHorizontalIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PromptInputButton } from '@/components/ai-elements/prompt-input'
@@ -69,6 +70,59 @@ type PlaygroundParameterPanelProps = {
 
 type PlaygroundParameterContentProps = PlaygroundParameterPanelProps & {
   compact?: boolean
+}
+
+type DecimalParameterInputProps = {
+  control: (typeof PLAYGROUND_PARAMETER_CONTROLS)[number]
+  disabled: boolean
+  label: string
+  onCommit: (value: number | null) => void
+  value: number
+}
+
+function DecimalParameterInput(props: DecimalParameterInputProps) {
+  const [draft, setDraft] = useState(String(props.value))
+  const [editing, setEditing] = useState(false)
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(String(props.value))
+    }
+  }, [editing, props.value])
+
+  const commit = () => {
+    setEditing(false)
+    const value = normalizeParameterNumberValue(props.control.key, draft)
+    props.onCommit(value)
+    setDraft(String(value ?? ''))
+  }
+
+  return (
+    <Input
+      aria-label={props.label}
+      className='h-8 w-20 shrink-0 font-mono tabular-nums'
+      disabled={props.disabled}
+      inputMode='decimal'
+      max={props.control.max}
+      min={props.control.min}
+      onBlur={commit}
+      onChange={(event) => {
+        const nextValue = event.target.value
+        if (/^-?\d*(?:\.\d*)?$/.test(nextValue)) {
+          setDraft(nextValue)
+        }
+      }}
+      onFocus={() => setEditing(true)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.currentTarget.blur()
+        }
+      }}
+      step={props.control.step}
+      type='text'
+      value={draft}
+    />
+  )
 }
 
 function PlaygroundParameterContent({
@@ -149,24 +203,35 @@ function PlaygroundParameterContent({
             </div>
 
             {control.valueType === 'slider' ? (
-              <Slider
-                className='py-1.5'
-                disabled={disabled || !enabled}
-                id={controlId}
-                max={control.max}
-                min={control.min}
-                onValueChange={(nextValue) => {
-                  const firstValue = Array.isArray(nextValue)
-                    ? nextValue[0]
-                    : nextValue
-                  updateParameterConfig(
-                    control.key,
-                    normalizeParameterNumberValue(control.key, firstValue)
-                  )
-                }}
-                step={control.step}
-                value={[Number(value)]}
-              />
+              <div className='flex items-center gap-3'>
+                <Slider
+                  className='min-w-0 flex-1 py-1.5'
+                  disabled={disabled || !enabled}
+                  id={controlId}
+                  max={control.max}
+                  min={control.min}
+                  onValueChange={(nextValue) => {
+                    const firstValue = Array.isArray(nextValue)
+                      ? nextValue[0]
+                      : nextValue
+                    updateParameterConfig(
+                      control.key,
+                      normalizeParameterNumberValue(control.key, firstValue)
+                    )
+                  }}
+                  step={control.step}
+                  value={[Number(value)]}
+                />
+                <DecimalParameterInput
+                  control={control}
+                  disabled={Boolean(disabled || !enabled)}
+                  label={t(control.labelKey)}
+                  onCommit={(nextValue) =>
+                    updateParameterConfig(control.key, nextValue)
+                  }
+                  value={Number(value)}
+                />
+              </div>
             ) : (
               <Input
                 disabled={disabled || !enabled}

@@ -26,14 +26,7 @@ import {
 } from "@token-boat/ui/components/ui/alert-dialog";
 import { Badge } from "@token-boat/ui/components/ui/badge";
 import { Button } from "@token-boat/ui/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@token-boat/ui/components/ui/card";
+import { Card, CardContent, CardFooter } from "@token-boat/ui/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +52,10 @@ import type { AccountData, AccountSecurityResult, TwoFactorSetup } from "@/data/
 import { repository } from "@/data/repository";
 import { useActionLock } from "@/hooks/use-action-lock";
 import { copyText } from "@/lib/clipboard";
+import {
+  SecurityMethodCardHeader,
+  securityMethodCardClassName,
+} from "./security-method-card-header";
 
 type TwoFactorSettingsCardProps = {
   security: AccountData["security"];
@@ -166,21 +163,17 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <ShieldCheckIcon className="size-4" />
-            </span>
+      <Card className={securityMethodCardClassName}>
+        <SecurityMethodCardHeader
+          description={t("Protect password sign-in with an authenticator code and recovery codes.")}
+          icon={ShieldCheckIcon}
+          status={
             <Badge variant={props.security.twoFactorEnabled ? "secondary" : "outline"}>
               {props.security.twoFactorEnabled ? t("Enabled") : t("Not enabled")}
             </Badge>
-          </div>
-          <CardTitle className="pt-3">{t("Two-factor authentication")}</CardTitle>
-          <CardDescription>
-            {t("Protect password sign-in with an authenticator code and recovery codes.")}
-          </CardDescription>
-        </CardHeader>
+          }
+          title={t("Two-factor authentication")}
+        />
         <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
           {props.security.twoFactorEnabled && (
             <p>
@@ -197,7 +190,7 @@ export function TwoFactorSettingsCard(props: TwoFactorSettingsCardProps) {
             </p>
           )}
         </CardContent>
-        <CardFooter className="flex flex-wrap gap-2">
+        <CardFooter className="mt-auto flex flex-wrap gap-2">
           {props.security.twoFactorEnabled ? (
             <>
               <Button onClick={() => setBackupOpen(true)} size="sm" variant="outline">

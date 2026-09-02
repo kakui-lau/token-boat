@@ -2,6 +2,9 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  ArrowDownIcon,
+  ArrowUpDownIcon,
+  ArrowUpIcon,
   CheckCircle2Icon,
   CircleSlash2Icon,
   CopyIcon,
@@ -59,7 +62,12 @@ import type { ModelCatalogItem } from "@/data/contracts";
 import { repository } from "@/data/repository";
 import { copyText } from "@/lib/clipboard";
 import { formatCurrency, formatNumber, formatPreciseCurrency } from "@/lib/format";
-import { type ModelSearch, type SearchPatch, useControllableSearch } from "@/lib/list-search";
+import {
+  type ModelSearch,
+  type ModelSortKey,
+  type SearchPatch,
+  useControllableSearch,
+} from "@/lib/list-search";
 import { ModelCapabilitiesSummary, ModelDetailsDialog } from "../components/model-details-dialog";
 
 type FamilyFilter = "all" | ModelCatalogItem["family"];
@@ -76,6 +84,8 @@ export function ModelsPage(props: ModelsPageProps) {
   const queryText = search.q ?? "";
   const family: FamilyFilter = search.family ?? "all";
   const availability = search.availability ?? "available";
+  const sortKey = search.sort ?? "model";
+  const sortOrder = search.order ?? "asc";
   const accountGroup = session?.user.group ?? null;
   const query = useQuery({
     queryKey: ["model-catalog", accountGroup],
@@ -98,15 +108,17 @@ export function ModelsPage(props: ModelsPageProps) {
   }, [query.data]);
   const models = useMemo(() => {
     const normalizedQuery = queryText.trim().toLowerCase();
-    return (query.data ?? []).filter((model) => {
-      if (family !== "all" && model.family !== family) return false;
-      if (availability === "available" && !model.available) return false;
-      if (!normalizedQuery) return true;
-      return `${model.id} ${model.provider ?? ""} ${model.features.join(" ")}`
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [availability, family, query.data, queryText]);
+    return (query.data ?? [])
+      .filter((model) => {
+        if (family !== "all" && model.family !== family) return false;
+        if (availability === "available" && !model.available) return false;
+        if (!normalizedQuery) return true;
+        return `${model.id} ${model.provider ?? ""} ${model.features.join(" ")}`
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((left, right) => compareModels(left, right, sortKey, sortOrder, locale));
+  }, [availability, family, locale, query.data, queryText, sortKey, sortOrder]);
   const selectedModel = search.detail
     ? (query.data?.find((model) => model.id === search.detail) ?? null)
     : null;
@@ -118,6 +130,14 @@ export function ModelsPage(props: ModelsPageProps) {
     } catch {
       toast.error(t("Unable to copy model ID"));
     }
+  };
+
+  const handleSort = (nextKey: ModelSortKey) => {
+    updateSearch({
+      detail: undefined,
+      order: sortKey === nextKey && sortOrder === "asc" ? "desc" : "asc",
+      sort: nextKey === "model" ? undefined : nextKey,
+    });
   };
 
   return (
@@ -266,16 +286,62 @@ export function ModelsPage(props: ModelsPageProps) {
             />
           ) : (
             <div className="rounded-xl border">
-              <Table>
+              <Table aria-label={t("Model catalog")}>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("Model")}</TableHead>
-                    <TableHead>{t("Type")}</TableHead>
-                    <TableHead className="text-right">{t("Context")}</TableHead>
-                    <TableHead className="text-right">{t("Input price")}</TableHead>
-                    <TableHead className="text-right">{t("Output price")}</TableHead>
-                    <TableHead>{t("Capabilities")}</TableHead>
-                    <TableHead className="text-right">{t("Status")}</TableHead>
+                    <SortableModelTableHead
+                      column="model"
+                      label={t("Model")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
+                    <SortableModelTableHead
+                      column="type"
+                      label={t("Type")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
+                    <SortableModelTableHead
+                      align="right"
+                      column="context"
+                      label={t("Context")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
+                    <SortableModelTableHead
+                      align="right"
+                      column="inputPrice"
+                      label={t("Input price")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
+                    <SortableModelTableHead
+                      align="right"
+                      column="outputPrice"
+                      label={t("Output price")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
+                    <SortableModelTableHead
+                      column="capabilities"
+                      label={t("Capabilities")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
+                    <SortableModelTableHead
+                      align="right"
+                      column="status"
+                      label={t("Status")}
+                      onSort={handleSort}
+                      order={sortOrder}
+                      sortKey={sortKey}
+                    />
                   </TableRow>
                 </TableHeader>
                 <TableBody aria-busy={query.isPending}>
@@ -420,6 +486,114 @@ export function ModelsPage(props: ModelsPageProps) {
       ) : null}
     </div>
   );
+}
+
+function SortableModelTableHead(props: {
+  align?: "left" | "right";
+  column: ModelSortKey;
+  label: string;
+  onSort(key: ModelSortKey): void;
+  order: "asc" | "desc";
+  sortKey: ModelSortKey;
+}) {
+  const active = props.sortKey === props.column;
+  const SortIcon = active ? (props.order === "asc" ? ArrowUpIcon : ArrowDownIcon) : ArrowUpDownIcon;
+
+  return (
+    <TableHead
+      aria-sort={active ? (props.order === "asc" ? "ascending" : "descending") : "none"}
+      className={props.align === "right" ? "text-right" : undefined}
+    >
+      <button
+        className={`inline-flex h-9 w-full cursor-pointer items-center gap-1 rounded-sm px-0 text-xs font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          props.align === "right" ? "justify-end" : "justify-start"
+        }`}
+        onClick={() => props.onSort(props.column)}
+        type="button"
+      >
+        {props.label}
+        <SortIcon
+          aria-hidden="true"
+          className={active ? "size-3.5 text-foreground" : "size-3.5 text-muted-foreground"}
+        />
+      </button>
+    </TableHead>
+  );
+}
+
+function compareModels(
+  left: ModelCatalogItem,
+  right: ModelCatalogItem,
+  key: ModelSortKey,
+  order: "asc" | "desc",
+  locale: string,
+): number {
+  let comparison = 0;
+  switch (key) {
+    case "capabilities": {
+      comparison = left.features.length - right.features.length;
+      if (comparison === 0) {
+        comparison = left.features.join(" ").localeCompare(right.features.join(" "), locale);
+      }
+      break;
+    }
+    case "context":
+      return compareNullableModelNumbers(
+        left,
+        right,
+        left.contextWindow,
+        right.contextWindow,
+        order,
+        locale,
+      );
+    case "inputPrice":
+      return compareNullableModelNumbers(
+        left,
+        right,
+        left.inputPrice,
+        right.inputPrice,
+        order,
+        locale,
+      );
+    case "outputPrice":
+      return compareNullableModelNumbers(
+        left,
+        right,
+        left.outputPrice,
+        right.outputPrice,
+        order,
+        locale,
+      );
+    case "status":
+      comparison = Number(right.available) - Number(left.available);
+      break;
+    case "type":
+      comparison = left.family.localeCompare(right.family, locale);
+      break;
+    case "model":
+      comparison = left.id.localeCompare(right.id, locale);
+      break;
+  }
+  if (comparison === 0) comparison = left.id.localeCompare(right.id, locale);
+  return order === "asc" ? comparison : -comparison;
+}
+
+function compareNullableModelNumbers(
+  leftModel: ModelCatalogItem,
+  rightModel: ModelCatalogItem,
+  left: number | null,
+  right: number | null,
+  order: "asc" | "desc",
+  locale: string,
+): number {
+  if (left === null && right === null) {
+    return leftModel.id.localeCompare(rightModel.id, locale);
+  }
+  if (left === null) return 1;
+  if (right === null) return -1;
+  const comparison = left - right;
+  if (comparison === 0) return leftModel.id.localeCompare(rightModel.id, locale);
+  return order === "asc" ? comparison : -comparison;
 }
 
 function modelFamilyLabel(family: ModelCatalogItem["family"]): string {

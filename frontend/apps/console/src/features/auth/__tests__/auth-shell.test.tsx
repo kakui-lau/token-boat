@@ -20,6 +20,8 @@ describe("AuthShell", () => {
 
     expect(screen.getByRole("main")).toHaveClass("h-svh", "overflow-hidden");
     expect(container.querySelector(".auth-stage-shell")).toHaveClass("max-w-none", "p-0");
+    expect(container.querySelector(".auth-form-enter")).toHaveClass("items-start");
+    expect(container.querySelector(".auth-form-enter > div")).toHaveClass("max-w-[31rem]");
     expect(container.querySelector(".auth-visual-panel")).toHaveClass(
       "auth-visual-panel--sculpted",
     );

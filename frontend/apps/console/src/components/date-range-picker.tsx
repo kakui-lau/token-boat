@@ -31,6 +31,7 @@ type DateRangePickerProps = {
 const quickPresets: Array<Exclude<DateRangePreset, "custom">> = [
   "today",
   "yesterday",
+  "3d",
   "7d",
   "14d",
   "30d",
@@ -171,6 +172,7 @@ export function DateRangePicker(props: DateRangePickerProps) {
 function quickPresetLabel(preset: Exclude<DateRangePreset, "custom">): string {
   if (preset === "today") return "Today";
   if (preset === "yesterday") return "Yesterday";
+  if (preset === "3d") return "Last 3 days";
   if (preset === "7d") return "Last 7 days";
   if (preset === "14d") return "Last 14 days";
   if (preset === "30d") return "Last 30 days";

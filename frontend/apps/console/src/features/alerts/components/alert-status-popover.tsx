@@ -35,12 +35,13 @@ import { activeAlertRuleCount, platformStatusDetails } from "../lib/alert-status
 
 type AlertStatusPopoverProps = {
   className?: string;
+  initiallyOpen?: boolean;
   onOpenAlertCenter(): void;
 };
 
 export function AlertStatusPopover(props: AlertStatusPopoverProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(props.initiallyOpen ?? false);
   const query = useQuery({
     enabled: open,
     queryFn: () => repository.getAlertCenter(),

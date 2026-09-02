@@ -144,7 +144,7 @@ describe("OverviewPage data boundaries", () => {
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "Chat completion" })).toHaveAttribute(
         "data-search",
-        JSON.stringify({ detail: "request-42", field: "request", q: "request-42" }),
+        JSON.stringify({ range: "7d", detail: "request-42", field: "request", q: "request-42" }),
       ),
     );
   });

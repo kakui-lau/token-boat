@@ -1,5 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { CheckCircle2Icon, CircleSlash2Icon, CopyIcon, SparklesIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  CircleSlash2Icon,
+  CopyIcon,
+  ExternalLinkIcon,
+  SparklesIcon,
+} from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -21,7 +27,7 @@ import type {
   ModelCatalogPriceItem,
   ModelCatalogPriceSummary,
 } from "@/data/contracts";
-import { formatNumber } from "@/lib/format";
+import { formatDateTime, formatNumber } from "@/lib/format";
 
 type ModelDetailsDialogProps = {
   accountGroup: string;
@@ -35,6 +41,12 @@ export function ModelDetailsDialog(props: ModelDetailsDialogProps) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "zh";
   const context = props.model.contextWindow ? formatNumber(props.model.contextWindow, locale) : "—";
+  const maxOutputTokens = props.model.maxOutputTokens
+    ? formatNumber(props.model.maxOutputTokens, locale)
+    : "—";
+  const limitsVerifiedAt = props.model.limitsVerifiedAt
+    ? formatDateTime(props.model.limitsVerifiedAt, locale)
+    : "—";
   const accountPrice = props.model.accountPrice ?? legacyPriceSummary(props.model);
   const effectiveGroup = commonEffectiveGroup(accountPrice?.items ?? []);
 
@@ -76,6 +88,8 @@ export function ModelDetailsDialog(props: ModelDetailsDialogProps) {
             <ModelDetail label={t("Provider")} value={props.model.provider} />
             <ModelDetail label={t("Type")} value={t(modelFamilyLabel(props.model.family))} />
             <ModelDetail label={t("Context")} value={context} />
+            <ModelDetail label={t("Maximum output")} value={maxOutputTokens} />
+            <ModelDetail label={t("Limits verified")} value={limitsVerifiedAt} />
             <ModelDetail label={t("Account group")} value={props.accountGroup} />
             <ModelDetail
               label={t("Billing mode")}
@@ -98,6 +112,19 @@ export function ModelDetailsDialog(props: ModelDetailsDialogProps) {
               value={t(availabilityStatusLabel(props.model.availabilityStatus))}
             />
           </dl>
+
+          {props.model.limitsSourceUrl ? (
+            <a
+              aria-label={t("Open official model limits documentation")}
+              className="inline-flex w-fit items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
+              href={props.model.limitsSourceUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {t("Official limit source")}
+              <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+            </a>
+          ) : null}
 
           <Separator />
 

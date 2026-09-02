@@ -24,6 +24,31 @@ export interface LoadingSkeletonProps {
   viewMode?: ViewMode
 }
 
+const CARD_SKELETON_IDS = Array.from(
+  { length: 9 },
+  (_, index) => `card-${index + 1}`
+)
+const FILTER_SKELETONS = [
+  { id: 'provider', width: 80 },
+  { id: 'model', width: 90 },
+  { id: 'type', width: 75 },
+  { id: 'capability', width: 85 },
+  { id: 'status', width: 70 },
+] as const
+const TABLE_COLUMNS = [
+  { id: 'model', width: 200 },
+  { id: 'provider', width: 100 },
+  { id: 'input-price', width: 100 },
+  { id: 'output-price', width: 100 },
+  { id: 'context', width: 80 },
+  { id: 'actions', width: 100 },
+] as const
+const TABLE_ROW_IDS = Array.from(
+  { length: 10 },
+  (_, index) => `row-${index + 1}`
+)
+const PAGE_SKELETON_IDS = ['previous', 'page-1', 'page-2', 'next'] as const
+
 export function LoadingSkeleton(props: LoadingSkeletonProps) {
   const viewMode = props.viewMode ?? VIEW_MODES.CARD
 
@@ -47,8 +72,8 @@ export function LoadingSkeleton(props: LoadingSkeletonProps) {
 function CardContentSkeleton() {
   return (
     <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
-      {Array.from({ length: 9 }).map((_, i) => (
-        <div key={i} className='rounded-xl border p-5'>
+      {CARD_SKELETON_IDS.map((id) => (
+        <div key={id} className='rounded-xl border p-5'>
           <div className='flex items-start justify-between gap-3'>
             <div className='flex min-w-0 items-start gap-3'>
               <Skeleton className='size-10 shrink-0 rounded-xl' />
@@ -83,9 +108,9 @@ function FilterBarSkeleton() {
     <div className='space-y-3'>
       <div className='flex items-center gap-3'>
         <div className='flex flex-1 flex-wrap items-center gap-2'>
-          {[80, 90, 75, 85, 70].map((width, i) => (
+          {FILTER_SKELETONS.map(({ id, width }) => (
             <Skeleton
-              key={i}
+              key={id}
               className='h-8 rounded-lg'
               style={{ width: `${width}px` }}
             />
@@ -104,39 +129,30 @@ function FilterBarSkeleton() {
 }
 
 function TableContentSkeleton() {
-  const columns = [
-    { width: 200 },
-    { width: 100 },
-    { width: 100 },
-    { width: 100 },
-    { width: 80 },
-    { width: 100 },
-  ]
-
   return (
     <div className='space-y-4'>
       <div className='overflow-hidden rounded-lg border'>
         <div className='bg-muted/30 border-b px-4 py-3'>
           <div className='flex items-center gap-4'>
-            {columns.map((col, i) => (
+            {TABLE_COLUMNS.map((column) => (
               <Skeleton
-                key={i}
+                key={column.id}
                 className='h-4'
-                style={{ width: `${col.width}px` }}
+                style={{ width: `${column.width}px` }}
               />
             ))}
           </div>
         </div>
-        {Array.from({ length: 10 }).map((_, i) => (
+        {TABLE_ROW_IDS.map((rowId) => (
           <div
-            key={i}
+            key={rowId}
             className='flex items-center gap-4 border-b px-4 py-3 last:border-b-0'
           >
-            {columns.map((col, j) => (
+            {TABLE_COLUMNS.map((column) => (
               <Skeleton
-                key={j}
+                key={`${rowId}-${column.id}`}
                 className='h-5'
-                style={{ width: `${col.width}px` }}
+                style={{ width: `${column.width}px` }}
               />
             ))}
           </div>
@@ -145,8 +161,8 @@ function TableContentSkeleton() {
       <div className='flex items-center justify-between'>
         <Skeleton className='h-5 w-32' />
         <div className='flex items-center gap-2'>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className='size-8' />
+          {PAGE_SKELETON_IDS.map((id) => (
+            <Skeleton key={id} className='size-8' />
           ))}
         </div>
       </div>

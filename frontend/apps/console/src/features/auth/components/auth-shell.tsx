@@ -109,7 +109,7 @@ export function AuthShell({ children }: PropsWithChildren) {
           </section>
 
           <section className="auth-form-panel relative flex flex-col">
-            <div className="flex items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:justify-end lg:px-10 lg:py-8">
+            <div className="flex items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:justify-end lg:px-10 lg:py-5">
               <div className="auth-mobile-brand flex items-center gap-3 lg:hidden">
                 <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 p-1">
                   <BrandMark aria-hidden="true" className="size-9" />
@@ -128,11 +128,11 @@ export function AuthShell({ children }: PropsWithChildren) {
               </div>
             </div>
 
-            <div className="auth-form-enter flex flex-1 items-center justify-center px-4 py-8 sm:px-10 lg:px-12 xl:px-20">
-              <div className="w-full max-w-[34rem]">{children}</div>
+            <div className="auth-form-enter flex flex-1 items-start justify-center px-4 pt-3 pb-5 sm:px-10 lg:px-12 lg:pt-[clamp(1rem,3svh,2.5rem)] xl:px-20">
+              <div className="w-full max-w-[31rem]">{children}</div>
             </div>
 
-            <div className="px-6 pb-6 text-center text-xs text-muted-foreground lg:px-10 lg:pb-8">
+            <div className="px-6 pb-4 text-center text-xs text-muted-foreground lg:px-10 lg:pb-5">
               {t("Protected credentials · Encrypted session · Auditable access")}
             </div>
           </section>

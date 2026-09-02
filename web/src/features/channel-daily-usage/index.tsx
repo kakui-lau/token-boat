@@ -69,6 +69,11 @@ import {
   getUtcDate,
   getUtcMonthRange,
 } from './lib/date-range'
+import type {
+  ChannelDailyUsageFilters,
+  ChannelUsageSortBy,
+  ChannelUsageSortOrder,
+} from './types'
 
 const DAILY_USAGE_DATE_PRESETS: Array<{
   label: string
@@ -92,12 +97,6 @@ function presetUtcRange(preset: (typeof DAILY_USAGE_DATE_PRESETS)[number]): {
     end_date: getUtcDate(preset.endOffset ?? 0),
   }
 }
-import type {
-  ChannelDailyUsageFilters,
-  ChannelUsageSortBy,
-  ChannelUsageSortOrder,
-} from './types'
-
 const PAGE_SIZE = 50
 
 type PendingAction = 'recalculate' | 'lock' | 'unlock' | null

@@ -422,19 +422,8 @@ func attachProductionChannelModel(channelID int, logicalModel, upstreamModel, pu
 	if channelID <= 0 || logicalModel == "" || upstreamModel == "" {
 		return errors.New("channel-id, logical-model, and upstream-model are required")
 	}
-	for _, rate := range []struct {
-		name     string
-		value    string
-		positive bool
-	}{
-		{name: "purchase-discount", value: purchaseDiscount, positive: true},
-		{name: "variable-cost-rate", value: variableCostRate},
-		{name: "tax-rate", value: taxRate},
-		{name: "target-margin", value: targetMargin, positive: true},
-	} {
-		if err := validateUnitRate(rate.name, rate.value, rate.positive); err != nil {
-			return err
-		}
+	if err := validateUnitRate("purchase-discount", purchaseDiscount, true); err != nil {
+		return err
 	}
 
 	var channel model.Channel

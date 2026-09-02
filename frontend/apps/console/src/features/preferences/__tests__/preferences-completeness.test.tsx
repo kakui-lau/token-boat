@@ -39,7 +39,8 @@ describe("theme settings", () => {
   test("keeps every dashboard preference in the account settings panel", () => {
     render(<ThemeSettingsContent />);
 
-    expect(screen.getByRole("heading", { name: "Theme settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Theme settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore defaults" })).toBeInTheDocument();
     expect(screen.getByText("Theme preset")).toBeInTheDocument();
     expect(screen.getByText("Font")).toBeInTheDocument();
     expect(screen.getByText("Theme mode")).toBeInTheDocument();

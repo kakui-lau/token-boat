@@ -1,0 +1,78 @@
+---
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { quickstartCode, relayEndpoints } from "@/content/developer-docs";
+import EditorialPageHero from "@/components/editorial-page-hero.astro";
+
+type Props = { locale: SiteLocale };
+const { locale } = Astro.props;
+const c = locale === "zh" ? {
+  eyebrow: "开发者文档 / API 参考",
+  titleLines: ["从 API Key", "到生产", "请求。"],
+  lead: "这里是可直接使用的接入说明。示例基于统一 Base URL，端点清单与仓库中的 relay OpenAPI 契约保持一致。",
+  toc: "本页目录",
+  quickstart: "Quickstart",
+  auth: "鉴权与 Base URL",
+  examples: "三种调用方式",
+  streaming: "流式输出",
+  errors: "错误与重试",
+  limits: "限流",
+  endpoints: "主要端点",
+  keySteps: ["登录控制台创建 API Key。", "从公开模型目录复制模型 ID。", "把密钥放在服务端环境变量中，然后发送第一条请求。"],
+  authLead: "所有受保护端点使用 Bearer Token。不要把 API Key 放进浏览器代码、公开仓库、日志或截图。",
+  base: "Base URL",
+  authHeader: "请求头",
+  modelLink: "打开模型目录",
+  accountLink: "创建或管理 API Key",
+  streamLead: "对支持流式响应的模型设置 stream: true，并逐块读取 Server-Sent Events。客户端应处理连接中断和不完整的最后一块。",
+  errorLead: "错误响应包含 HTTP 状态和消息。记录请求时间、端点、模型 ID 与返回状态；不要记录完整密钥或敏感提示词。",
+  errorRows: [["400", "请求字段或模型参数无效", "修正请求后再试"], ["401", "API Key 缺失、无效或已失效", "检查 Authorization 头与密钥状态"], ["403", "账户或模型无访问权限", "检查账户权限与模型可用性"], ["429", "触发请求或 Token 限制", "读取 Retry-After，指数退避并加入抖动"], ["5xx", "网关或上游暂时不可用", "仅对幂等或可安全重放请求进行有限重试"]],
+  limitsLead: "具体 RPM、TPM 和并发上限取决于账户、模型与当前策略，因此文档不硬编码一个可能失真的数字。遇到 429 时以响应头和账户控制台为准。",
+  limitsList: ["限制并发并设置客户端超时。", "对 429 和暂时性 5xx 使用带抖动的指数退避。", "生成类任务避免盲目重放；先查询任务状态。", "需要提升上限时，从支持中心提交账户与使用场景。"],
+  endpointLead: "以下为主要公共端点；模型实际支持哪些端点，以模型详情中的兼容端点为准。",
+  method: "方法", path: "路径", purpose: "用途",
+  source: "接口契约来源：docs/openapi/relay.json",
+} : {
+  eyebrow: "DEVELOPER DOCS / API REFERENCE",
+  titleLines: ["FROM API KEY", "TO PRODUCTION", "REQUEST."],
+  lead: "A directly usable integration guide. Examples share one base URL, while the endpoint index stays contract-checked against the relay OpenAPI file in this repository.",
+  toc: "On this page",
+  quickstart: "Quickstart",
+  auth: "Authentication & base URL",
+  examples: "Three ways to call",
+  streaming: "Streaming",
+  errors: "Errors & retries",
+  limits: "Rate limits",
+  endpoints: "Core endpoints",
+  keySteps: ["Create an API key in the console.", "Copy a model ID from the public model catalog.", "Keep the key in a server-side environment variable and send the first request."],
+  authLead: "Protected endpoints use a Bearer token. Never place API keys in browser code, public repositories, logs, or screenshots.",
+  base: "Base URL",
+  authHeader: "Request header",
+  modelLink: "Open model catalog",
+  accountLink: "Create or manage an API key",
+  streamLead: "Set stream: true for models that support streaming and consume the Server-Sent Events incrementally. Clients should handle disconnects and an incomplete final chunk.",
+  errorLead: "Error responses include an HTTP status and message. Record request time, endpoint, model ID, and status—but never the full key or sensitive prompt content.",
+  errorRows: [["400", "Invalid request field or model parameter", "Correct the request before retrying"], ["401", "Missing, invalid, or expired API key", "Check the Authorization header and key status"], ["403", "Account or model access is not allowed", "Check account access and model availability"], ["429", "Request or token limit reached", "Respect Retry-After; use exponential backoff with jitter"], ["5xx", "Gateway or upstream temporarily unavailable", "Use limited retries only for safe, replayable requests"]],
+  limitsLead: "RPM, TPM, and concurrency limits vary by account, model, and current policy, so this page does not hard-code a number that may become inaccurate. For a 429 response, use its headers and the account console as the source of truth.",
+  limitsList: ["Bound concurrency and configure client timeouts.", "Use exponential backoff with jitter for 429 and temporary 5xx responses.", "Do not blindly replay generation tasks; query task state first.", "Use the support center when a production workload needs a higher limit."],
+  endpointLead: "These are the main public endpoints. Check each model detail for the endpoint types actually supported by that model.",
+  method: "Method", path: "Path", purpose: "Purpose",
+  source: "API contract source: docs/openapi/relay.json",
+};
+const sections = [["quickstart", c.quickstart], ["authentication", c.auth], ["examples", c.examples], ["streaming", c.streaming], ["errors", c.errors], ["rate-limits", c.limits], ["endpoints", c.endpoints]];
+---
+
+<EditorialPageHero lead={c.lead} locale={locale} meta={c.eyebrow} titleLines={c.titleLines} />
+<section class="section docs-section">
+  <div class="site-shell docs-layout">
+    <aside class="docs-toc"><p>{c.toc}</p><nav aria-label={c.toc}>{sections.map(([id, label], i) => <a href={`#${id}`}><span>0{i + 1}</span>{label}</a>)}</nav></aside>
+    <div class="docs-content">
+      <section id="quickstart" class="docs-block"><p class="eyebrow">01 / START</p><h2>{c.quickstart}</h2><ol class="docs-steps">{c.keySteps.map((step) => <li>{step}</li>)}</ol><div class="docs-actions"><a class="button" href="/console/api-keys">{c.accountLink}<span aria-hidden="true">↗</span></a><a class="text-action" href={localizedPath(locale, "/models")}>{c.modelLink}<span aria-hidden="true">→</span></a></div></section>
+      <section id="authentication" class="docs-block"><p class="eyebrow">02 / AUTH</p><h2>{c.auth}</h2><p>{c.authLead}</p><div class="docs-facts"><div><span>{c.base}</span><code>https://tokenboat.com/v1</code></div><div><span>{c.authHeader}</span><code>Authorization: Bearer $TOKEN_BOAT_API_KEY</code></div></div></section>
+      <section id="examples" class="docs-block"><p class="eyebrow">03 / CALL</p><h2>{c.examples}</h2><div class="code-stack"><details data-animated-details open><summary>Curl</summary><div class="details-reveal"><pre><code>{quickstartCode.curl}</code></pre></div></details><details data-animated-details><summary>Python</summary><div class="details-reveal"><pre><code>{quickstartCode.python}</code></pre></div></details><details data-animated-details><summary>JavaScript</summary><div class="details-reveal"><pre><code>{quickstartCode.javascript}</code></pre></div></details></div></section>
+      <section id="streaming" class="docs-block"><p class="eyebrow">04 / STREAM</p><h2>{c.streaming}</h2><p>{c.streamLead}</p><pre><code>{quickstartCode.streaming}</code></pre></section>
+      <section id="errors" class="docs-block"><p class="eyebrow">05 / RECOVER</p><h2>{c.errors}</h2><p>{c.errorLead}</p><div class="docs-table-wrap"><table><thead><tr><th>Status</th><th>{locale === "zh" ? "含义" : "Meaning"}</th><th>{locale === "zh" ? "建议动作" : "Action"}</th></tr></thead><tbody>{c.errorRows.map((row) => <tr>{row.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div></section>
+      <section id="rate-limits" class="docs-block"><p class="eyebrow">06 / LIMITS</p><h2>{c.limits}</h2><p>{c.limitsLead}</p><ul class="docs-list">{c.limitsList.map((item) => <li>{item}</li>)}</ul></section>
+      <section id="endpoints" class="docs-block"><p class="eyebrow">07 / REFERENCE</p><h2>{c.endpoints}</h2><p>{c.endpointLead}</p><div class="docs-table-wrap"><table><thead><tr><th>{c.method}</th><th>{c.path}</th><th>{c.purpose}</th></tr></thead><tbody>{relayEndpoints.map((endpoint) => <tr><td><span class={`method-badge method-badge--${endpoint.method.toLowerCase()}`}>{endpoint.method}</span></td><td><code>{endpoint.path}</code></td><td>{endpoint.description[locale]}</td></tr>)}</tbody></table></div><p class="docs-source">{c.source}</p></section>
+    </div>
+  </div>
+</section>

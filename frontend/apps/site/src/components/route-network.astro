@@ -1,0 +1,71 @@
+---
+import type { SiteLocale } from "@/content/site-copy";
+type Props = { locale: SiteLocale };
+const { locale } = Astro.props;
+const label = locale === "zh" ? "统一入口连接不同模型与供应商的品牌路线图" : "Brand route map connecting one API to many models and providers";
+const pause = locale === "zh" ? "暂停线条动画" : "Pause line animation";
+const play = locale === "zh" ? "继续线条动画" : "Resume line animation";
+---
+
+<section class="route-network-section" aria-label={label} data-route-network>
+  <div class="site-shell">
+    <figure class="route-network">
+      <svg class="route-network__motion" viewBox="0 0 1200 630" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id="route-network-paper" x="-10%" y="-10%" width="120%" height="120%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="4" seed="19" />
+            <feColorMatrix type="matrix" values="0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0 0.035 0 0 0 0.22 0" />
+          </filter>
+        </defs>
+        <rect class="route-network__paper-grain" width="1200" height="630" filter="url(#route-network-paper)" />
+        <g class="route-network__grid">
+          <path d="M140 0 V345 C140 372 156 388 184 388 H1200" />
+          <path d="M316 0 V300 C316 328 331 343 359 343 H747 C773 343 790 361 790 387 V630" />
+        </g>
+        <circle class="route-network__signal" r="3.5"><animateMotion begin="-5s" dur="13s" repeatCount="indefinite" path="M316 0 V300 C316 328 331 343 359 343 H747 C773 343 790 361 790 387 V520" /></circle>
+        <g class="route-network__nodes">
+          <circle cx="140" cy="388" r="5" /><circle cx="316" cy="150" r="5" />
+          <circle cx="655" cy="388" r="5" /><circle cx="790" cy="388" r="5" />
+        </g>
+        <g class="route-network__boat">
+          <path d="M190 350 H530 L444 432 H276 Z" />
+          <path d="M405 210 V345 H273 Z" />
+        </g>
+        <rect class="route-network__print-grain" width="1200" height="630" filter="url(#route-network-paper)" />
+      </svg>
+      <div class="route-network__wordmark" translate="no">
+        <strong>TOKEN BOAT</strong>
+        <span>ONE API · MANY MODELS</span>
+      </div>
+      <figcaption class="sr-only">{label}</figcaption>
+      <button class="route-network__control" type="button" aria-pressed="false" data-route-network-control data-pause={pause} data-play={play}>
+        <span class="route-network__control-mark" aria-hidden="true">Ⅱ</span><span data-route-network-label>{pause}</span>
+      </button>
+    </figure>
+  </div>
+</section>
+
+<script>
+  const networks = document.querySelectorAll<HTMLElement>("[data-route-network]");
+  networks.forEach((network) => {
+    const svg = network.querySelector<SVGSVGElement>("svg");
+    const control = network.querySelector<HTMLButtonElement>("[data-route-network-control]");
+    const label = control?.querySelector<HTMLElement>("[data-route-network-label]");
+    if (!svg || !control || !label) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      svg.pauseAnimations();
+      network.classList.add("is-paused");
+      control.hidden = true;
+      return;
+    }
+    control.addEventListener("click", () => {
+      const paused = control.getAttribute("aria-pressed") === "true";
+      control.setAttribute("aria-pressed", String(!paused));
+      network.classList.toggle("is-paused", !paused);
+      label.textContent = paused ? control.dataset.pause ?? "Pause" : control.dataset.play ?? "Resume";
+      control.querySelector<HTMLElement>(".route-network__control-mark")!.textContent = paused ? "Ⅱ" : "▶";
+      if (paused) svg.unpauseAnimations(); else svg.pauseAnimations();
+    });
+  });
+</script>

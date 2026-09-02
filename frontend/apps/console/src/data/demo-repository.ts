@@ -10,6 +10,7 @@ import type {
   BillingLedgerEntry,
   BillingLedgerListInput,
   BillingTransactionListInput,
+  ChangePasswordInput,
   ConsoleRepository,
   ConsoleSession,
   CreateRechargeCheckoutInput,
@@ -95,6 +96,8 @@ let demoSession: ConsoleSession | null = {
   user: {
     id: 1001,
     username: "demo",
+    usernameEditable: false,
+    passwordSet: true,
     displayName: "Demo Developer",
     email: "demo@token-boat.local",
     group: "default",
@@ -534,6 +537,9 @@ const modelCatalog: ModelCatalogItem[] = [
     description: "Flagship reasoning model for coding, analysis, and multimodal workloads.",
     family: "reasoning",
     contextWindow: 400_000,
+    maxOutputTokens: null,
+    limitsSourceUrl: null,
+    limitsVerifiedAt: null,
     inputPrice: 1.25,
     inputPriceQualifier: null,
     outputPrice: 10,
@@ -557,6 +563,9 @@ const modelCatalog: ModelCatalogItem[] = [
     description: "Balanced model for high-quality chat, coding, and visual understanding.",
     family: "chat",
     contextWindow: 200_000,
+    maxOutputTokens: null,
+    limitsSourceUrl: null,
+    limitsVerifiedAt: null,
     inputPrice: 3,
     inputPriceQualifier: null,
     outputPrice: 15,
@@ -580,6 +589,9 @@ const modelCatalog: ModelCatalogItem[] = [
     description: "Long-context reasoning model with multimodal input support.",
     family: "reasoning",
     contextWindow: 1_000_000,
+    maxOutputTokens: null,
+    limitsSourceUrl: null,
+    limitsVerifiedAt: null,
     inputPrice: 1.25,
     inputPriceQualifier: null,
     outputPrice: 10,
@@ -603,6 +615,9 @@ const modelCatalog: ModelCatalogItem[] = [
     description: "High-quality embeddings for semantic search, retrieval, and clustering.",
     family: "embedding",
     contextWindow: 8191,
+    maxOutputTokens: null,
+    limitsSourceUrl: null,
+    limitsVerifiedAt: null,
     inputPrice: 0.13,
     inputPriceQualifier: null,
     outputPrice: null,
@@ -626,6 +641,9 @@ const modelCatalog: ModelCatalogItem[] = [
     description: "Image generation model for high-quality visual content.",
     family: "image",
     contextWindow: null,
+    maxOutputTokens: null,
+    limitsSourceUrl: null,
+    limitsVerifiedAt: null,
     inputPrice: 0.04,
     inputPriceQualifier: null,
     outputPrice: null,
@@ -649,6 +667,9 @@ const modelCatalog: ModelCatalogItem[] = [
     description: "Video generation model with optional audio output.",
     family: "video",
     contextWindow: null,
+    maxOutputTokens: null,
+    limitsSourceUrl: null,
+    limitsVerifiedAt: null,
     inputPrice: null,
     inputPriceQualifier: null,
     outputPrice: null,
@@ -823,6 +844,11 @@ let account: AccountData = {
     twoFactorEnabled: false,
     twoFactorLocked: false,
     emailBound: true,
+    evmWalletAddress: null,
+    evmWalletEnabled: false,
+    evmWalletLastUsedAt: null,
+    evmWalletRemovable: false,
+    evmWalletVerificationMethod: "password",
   },
   sessions: [
     {
@@ -1061,6 +1087,8 @@ export const demoRepository: ConsoleRepository = {
   async getAuthCapabilities() {
     return {
       emailVerificationEnabled: true,
+      evmWalletEnabled: false,
+      evmWalletRegistrationEnabled: false,
       oauthProviders: [],
       passkeyEnabled: false,
       passwordEnabled: true,
@@ -1110,6 +1138,25 @@ export const demoRepository: ConsoleRepository = {
     return demoSession;
   },
   async signInWithPasskey() {
+    return demoSession;
+  },
+  async beginEVMWalletAuth(input) {
+    return {
+      address: input.address,
+      chainId: input.chainId,
+      expiresAt: Math.floor(Date.now() / 1_000) + 300,
+      flowToken: "demo-evm-flow",
+      message: "Demo SIWE message",
+      nonce: "DemoNonce1234",
+    };
+  },
+  async completeEVMWalletAuth() {
+    if (!demoSession) {
+      demoSession = {
+        user: { ...account.user, username: "evm_demo", displayName: "0xDemo…EVM" },
+        sessionId: "demo-evm-session",
+      };
+    }
     return demoSession;
   },
   clearLocalSession() {
@@ -1481,12 +1528,17 @@ export const demoRepository: ConsoleRepository = {
   async updateProfile(input: UpdateProfileInput) {
     const user = {
       ...account.user,
+      username: account.user.usernameEditable ? input.username : account.user.username,
+      usernameEditable: false,
       displayName: input.displayName,
       email: input.email,
     };
     account = { ...account, user };
     if (demoSession) demoSession = { ...demoSession, user };
     return account;
+  },
+  async changePassword(_input: ChangePasswordInput) {
+    return demoSecurityResult();
   },
   async updatePreferences(input: AccountPreferences) {
     account = {
@@ -1582,6 +1634,61 @@ export const demoRepository: ConsoleRepository = {
         passkeyLastUsedAt: null,
       },
     };
+    return demoSecurityResult();
+  },
+  async createEVMWalletSecurityProof() {
+    return "demo-wallet-proof";
+  },
+  async beginEVMWalletBinding(input) {
+    return {
+      address: input.address,
+      chainId: input.chainId,
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+      flowToken: "demo-wallet-flow",
+      message: "demo wallet message",
+      nonce: "demowalletnonce",
+    };
+  },
+  async completeEVMWalletBinding() {
+    account = {
+      ...account,
+      security: {
+        ...account.security,
+        evmWalletAddress: "0x0000000000000000000000000000000000000001",
+        evmWalletEnabled: true,
+        evmWalletLastUsedAt: Math.floor(Date.now() / 1000),
+        evmWalletRemovable: true,
+      },
+    };
+    return demoSecurityResult();
+  },
+  async removeEVMWallet() {
+    account = {
+      ...account,
+      security: {
+        ...account.security,
+        evmWalletAddress: null,
+        evmWalletEnabled: false,
+        evmWalletLastUsedAt: null,
+        evmWalletRemovable: false,
+      },
+    };
+    return demoSecurityResult();
+  },
+  async beginEVMWalletPasswordSetup(input) {
+    return {
+      address: input.address,
+      chainId: input.chainId,
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+      flowToken: "demo-wallet-password-flow",
+      message: "demo wallet password setup message",
+      nonce: "demopasswordnonce",
+    };
+  },
+  async completeEVMWalletPasswordSetup() {
+    const user = { ...account.user, passwordSet: true };
+    account = { ...account, user };
+    if (demoSession) demoSession = { ...demoSession, user };
     return demoSecurityResult();
   },
 };

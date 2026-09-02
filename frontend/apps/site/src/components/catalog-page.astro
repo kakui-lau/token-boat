@@ -1,0 +1,41 @@
+---
+import { PricingExplorerIsland } from "@/islands/pricing/pricing-explorer";
+import type { SiteLocale } from "@/content/site-copy";
+import EditorialPageHero from "@/components/editorial-page-hero.astro";
+
+type Props = {
+  locale: SiteLocale;
+};
+
+const props = Astro.props;
+const content = {
+  zh: {
+    eyebrow: "模型与价格",
+    titleLines: ["选模型。", "看能力，", "也看清价格。"],
+    lead: "按模型、供应商和能力类型筛选当前可用选项，同时比较上下文、输入输出价格与实际计费单位。",
+    facts: [
+      ["01 / FIND", "模型、供应商与能力"],
+      ["02 / COMPARE", "上下文与公开价格"],
+      ["03 / CONFIRM", "登录确认账户价格"],
+    ],
+  },
+  en: {
+    eyebrow: "Models & pricing",
+    titleLines: ["CHOOSE A MODEL.", "COMPARE THE", "REAL PRICE."],
+    lead: "Filter current options by model, provider, and capability while comparing context, input and output pricing, and billing units.",
+    facts: [
+      ["01 / FIND", "Model, provider & capability"],
+      ["02 / COMPARE", "Context & public pricing"],
+      ["03 / CONFIRM", "Your price after sign-in"],
+    ],
+  },
+}[props.locale];
+---
+
+<EditorialPageHero facts={content.facts} factsLabel={props.locale === "zh" ? "页面功能" : "Page features"} lead={content.lead} locale={props.locale} meta={content.eyebrow} titleLines={content.titleLines} />
+
+<section class="section catalog-section" id="catalog">
+  <div class="site-shell">
+    <PricingExplorerIsland client:load locale={props.locale} />
+  </div>
+</section>

@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	secureVerificationMethod2FA     = "2fa"
-	secureVerificationMethodPasskey = "passkey"
+	secureVerificationMethod2FA       = "2fa"
+	secureVerificationMethodPasskey   = "passkey"
+	secureVerificationMethodPassword  = "password"
+	secureVerificationMethodEVMWallet = "evm_wallet"
 )
 
 type UniversalVerifyRequest struct {
@@ -35,7 +37,7 @@ func UniversalVerify(c *gin.Context) {
 		common.ApiError(c, fmt.Errorf("参数错误: %v", err))
 		return
 	}
-	if request.Method != secureVerificationMethod2FA {
+	if request.Method != secureVerificationMethod2FA && request.Method != secureVerificationMethodPassword {
 		common.ApiError(c, errors.New("Passkey 验证必须使用 Passkey verify 流程"))
 		return
 	}
@@ -47,18 +49,22 @@ func UniversalVerify(c *gin.Context) {
 		common.ApiError(c, errors.New("验证码不能为空"))
 		return
 	}
-	twoFA, err := model.GetTwoFAByUserId(identity.UserID)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if twoFA == nil || !twoFA.IsEnabled {
-		common.ApiError(c, errors.New("用户未启用2FA"))
-		return
-	}
-	if !validateTwoFactorAuth(twoFA, request.Code) {
-		common.ApiError(c, errors.New("验证失败，请检查验证码"))
-		return
+	if request.Method == secureVerificationMethod2FA {
+		twoFA, err := model.GetTwoFAByUserId(identity.UserID)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if twoFA == nil || !twoFA.IsEnabled || !validateTwoFactorAuth(twoFA, request.Code) {
+			common.ApiError(c, errors.New("验证失败，请检查验证码"))
+			return
+		}
+	} else {
+		user, err := model.GetUserById(identity.UserID, true)
+		if err != nil || user.Password == "" || !common.ValidatePasswordAndHash(request.Code, user.Password) {
+			common.ApiError(c, errors.New("验证失败，请检查当前密码"))
+			return
+		}
 	}
 	proofToken, expiresAt, err := service.IssueSecurityProof(identity, request.Method, []string{request.Scope})
 	if err != nil {
@@ -80,7 +86,8 @@ func UniversalVerify(c *gin.Context) {
 
 func isAllowedSecurityProofScope(scope string) bool {
 	switch scope {
-	case securityProofScopeChannelKeyRead, securityProofScopePasskeyRegister, securityProofScopePasskeyDelete:
+	case securityProofScopeChannelKeyRead, securityProofScopePasskeyRegister, securityProofScopePasskeyDelete,
+		securityProofScopeEVMWalletBind, securityProofScopeEVMWalletDelete:
 		return true
 	default:
 		return false

@@ -83,6 +83,7 @@ const (
 	MsgUserUsernameOrPasswordError   = "user.username_or_password_error"
 	MsgUserEmailOrPasswordEmpty      = "user.email_or_password_empty"
 	MsgUserExists                    = "user.exists"
+	MsgUserUsernameImmutable         = "user.username_immutable"
 	MsgUserNotExists                 = "user.not_exists"
 	MsgUserDisabled                  = "user.disabled"
 	MsgUserSessionSaveFailed         = "user.session_save_failed"
@@ -91,6 +92,7 @@ const (
 	MsgUserVerificationCodeError     = "user.verification_code_error"
 	MsgUserEmailAlreadyTaken         = "user.email_already_taken"
 	MsgUserPasswordUnset             = "user.password_unset"
+	MsgUserPasswordAlreadySet        = "user.password_already_set"
 	MsgUserPasswordResetLinkInvalid  = "user.password_reset_link_invalid"
 	MsgUserInputInvalid              = "user.input_invalid"
 	MsgUserNoPermissionSameLevel     = "user.no_permission_same_level"
@@ -336,4 +338,15 @@ const (
 	MsgCustomOAuthHasBindings       = "custom_oauth.has_bindings"
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
+)
+
+// EVM wallet authentication messages
+const (
+	MsgEVMWalletAuthDisabled     = "evm_wallet.auth_disabled"
+	MsgEVMWalletAddressInvalid   = "evm_wallet.address_invalid"
+	MsgEVMWalletChainInvalid     = "evm_wallet.chain_invalid"
+	MsgEVMWalletOriginInvalid    = "evm_wallet.origin_invalid"
+	MsgEVMWalletChallengeInvalid = "evm_wallet.challenge_invalid"
+	MsgEVMWalletSignatureInvalid = "evm_wallet.signature_invalid"
+	MsgEVMWalletAccountMismatch  = "evm_wallet.account_mismatch"
 )

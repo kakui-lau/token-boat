@@ -222,7 +222,7 @@ func RequestEpay(c *gin.Context) {
 	callBackAddress := service.GetCallbackAddress()
 	returnAddress := paymentReturnPath("/usage-logs")
 	if req.ReturnURL != "" {
-		if common.ValidateRedirectURL(req.ReturnURL) != nil {
+		if validatePaymentRedirectURL(req.ReturnURL) != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "支付重定向URL不在可信任域名列表中", "data": ""})
 			return
 		}

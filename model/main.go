@@ -266,6 +266,9 @@ func migrateDB() error {
 	if err := renamePricingAuditTable(); err != nil {
 		return err
 	}
+	if err := prepareQuotaDataDimensionKey(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -327,6 +330,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := retireRedundantIndexes(DB); err != nil {
+		return err
+	}
 	if !pricingChangeBatchTableExisted {
 		if err := InitializePricingAutomationBaselines(); err != nil {
 			return err
@@ -380,6 +386,9 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := renamePricingAuditTable(); err != nil {
+		return err
+	}
+	if err := prepareQuotaDataDimensionKey(); err != nil {
 		return err
 	}
 
@@ -465,6 +474,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := retireRedundantIndexes(DB); err != nil {
+		return err
 	}
 	if !pricingChangeBatchTableExisted {
 		if err := InitializePricingAutomationBaselines(); err != nil {
@@ -559,6 +571,81 @@ func retirePricingApprovalIndex() error {
 	}
 	common.SysLog("dropping retired pricing approval index")
 	return DB.Migrator().DropIndex(&PricingAuditRecord{}, legacyIndex)
+}
+
+type retiredDatabaseIndex struct {
+	model any
+	name  string
+}
+
+func dropRetiredIndexes(db *gorm.DB, indexes []retiredDatabaseIndex) error {
+	for _, index := range indexes {
+		if !db.Migrator().HasTable(index.model) || !db.Migrator().HasIndex(index.model, index.name) {
+			continue
+		}
+		common.SysLog("dropping retired database index " + index.name)
+		if err := db.Migrator().DropIndex(index.model, index.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func retiredLogIndexes() []retiredDatabaseIndex {
+	return []retiredDatabaseIndex{
+		{model: &Log{}, name: "idx_logs_user_id"},
+		{model: &Log{}, name: "idx_logs_model_name"},
+		{model: &Log{}, name: "idx_logs_ip"},
+	}
+}
+
+func retireRedundantIndexes(db *gorm.DB) error {
+	indexes := []retiredDatabaseIndex{
+		{model: &User{}, name: "idx_users_username"},
+		{model: &TopUp{}, name: "idx_top_ups_trade_no"},
+		{model: &SubscriptionOrder{}, name: "idx_subscription_orders_trade_no"},
+		{model: &TwoFA{}, name: "idx_two_fas_user_id"},
+		{model: &CasbinRule{}, name: "idx_casbin_rule"},
+		{model: &QuotaData{}, name: "idx_quota_data_user_id"},
+		{model: &SystemInstance{}, name: "idx_system_instances_started_at"},
+		{model: &SystemInstance{}, name: "idx_system_instances_last_seen_at"},
+		{model: &SystemInstance{}, name: "idx_system_instances_created_at"},
+		{model: &SystemInstance{}, name: "idx_system_instances_updated_at"},
+		{model: &SystemTask{}, name: "idx_system_tasks_locked_by"},
+		{model: &SystemTask{}, name: "idx_system_tasks_created_at"},
+		{model: &SystemTask{}, name: "idx_system_tasks_updated_at"},
+		{model: &SystemTaskLock{}, name: "idx_system_task_locks_task_id"},
+		{model: &SystemTaskLock{}, name: "idx_system_task_locks_locked_by"},
+		{model: &SystemTaskLock{}, name: "idx_system_task_locks_locked_until"},
+		{model: &SystemTaskLock{}, name: "idx_system_task_locks_updated_at"},
+		{model: &ChannelDailyUsage{}, name: "idx_channel_daily_usages_period_start"},
+		{model: &ChannelDailyUsage{}, name: "idx_channel_daily_usages_period_end"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_channel_model_override_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_official_price_version_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_sales_price_book_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_sales_price_book_version_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_sales_price_book_item_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_price_book_assignment_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_sales_pricing_source"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_sales_price_resolved_at"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_pre_consume_captured"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_token_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_provider_cost_source"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_provider_cost_confirmed_at"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_billing_source"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_subscription_id"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_status"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_resolution"},
+		{model: &RequestPricingSnapshot{}, name: "idx_request_pricing_snapshots_resolved_at"},
+		{model: &PaymentCallbackEvent{}, name: "idx_payment_callback_events_event_id"},
+		{model: &PaymentCallbackEvent{}, name: "idx_payment_callback_events_event_type"},
+		{model: &PaymentCallbackEvent{}, name: "idx_payment_callback_events_trade_no"},
+		{model: &PaymentCallbackEvent{}, name: "idx_payment_callback_events_payload_digest"},
+		{model: &PaymentCallbackEvent{}, name: "idx_payment_callback_events_verification_status"},
+		{model: &PaymentCallbackEvent{}, name: "idx_payment_callback_events_processing_status"},
+	}
+	indexes = append(indexes, retiredLogIndexes()...)
+	return dropRetiredIndexes(db, indexes)
 }
 
 func (legacyChannelModelPricingMigration) TableName() string {
@@ -1158,7 +1245,10 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	if err := LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	return dropRetiredIndexes(LOG_DB, retiredLogIndexes())
 }
 
 // RunDatabaseMigrations applies the primary and optional standalone log

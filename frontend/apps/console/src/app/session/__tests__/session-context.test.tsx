@@ -34,8 +34,8 @@ vi.mock("../session-sync", () => ({
   },
 }));
 
-vi.mock("@/data/repository", () => ({
-  repository: {
+vi.mock("@/data/session-repository", () => ({
+  sessionRepository: {
     mode: "live",
     clearLocalSession,
     completeOAuthLogin: vi.fn(),
@@ -48,6 +48,8 @@ vi.mock("@/data/repository", () => ({
     sendEmailVerification: vi.fn(),
     signIn,
     signInWithPasskey: vi.fn(),
+    beginEVMWalletAuth: vi.fn(),
+    completeEVMWalletAuth: vi.fn(),
     signOut,
     verifyTwoFactorLogin: vi.fn(),
   },
@@ -306,6 +308,8 @@ function sessionFixture(overrides: Partial<ConsoleSession> = {}): ConsoleSession
     user: {
       id: 1,
       username: "merchant",
+      usernameEditable: false,
+      passwordSet: true,
       displayName: "Merchant",
       email: "merchant@example.com",
       group: "default",
@@ -322,6 +326,8 @@ function sessionFixture(overrides: Partial<ConsoleSession> = {}): ConsoleSession
 function authCapabilitiesFixture(): AuthCapabilities {
   return {
     emailVerificationEnabled: false,
+    evmWalletEnabled: false,
+    evmWalletRegistrationEnabled: false,
     oauthProviders: [],
     passkeyEnabled: false,
     passwordEnabled: true,

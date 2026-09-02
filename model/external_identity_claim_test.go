@@ -2,6 +2,7 @@ package model
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,4 +89,34 @@ func TestInitializeExternalIdentityClaimsRejectsAmbiguousLegacyBindings(t *testi
 	var count int64
 	require.NoError(t, DB.Model(&ExternalIdentityClaim{}).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+func TestInitializeExternalIdentityClaimsBackfillsLegacyEVMWallets(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Migrator().CreateTable(&legacyEVMWalletBinding{}))
+	t.Cleanup(func() {
+		require.NoError(t, DB.Migrator().DropTable(&legacyEVMWalletBinding{}))
+	})
+
+	user := User{Username: "evm-legacy", Password: "password", AffCode: "evm-legacy-aff"}
+	require.NoError(t, DB.Create(&user).Error)
+	lastUsedAt := time.Now().Add(-time.Hour).Truncate(time.Second)
+	require.NoError(t, DB.Create(&legacyEVMWalletBinding{
+		UserId: user.Id, Address: "0xABCDEF0000000000000000000000000000000012", LastUsedAt: lastUsedAt,
+	}).Error)
+
+	require.NoError(t, InitializeExternalIdentityClaims())
+	identity, err := GetEVMWalletIdentityByUserID(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, "0xabcdef0000000000000000000000000000000012", identity.Address)
+	assert.WithinDuration(t, lastUsedAt, identity.LastUsedAt, time.Second)
+
+	newerLastUsedAt := time.Now().Truncate(time.Second)
+	require.NoError(t, DB.Model(&ExternalIdentityClaim{}).
+		Where("provider = ? AND user_id = ?", ExternalIdentityProviderEVM, user.Id).
+		Update("last_used_at", newerLastUsedAt).Error)
+	require.NoError(t, InitializeExternalIdentityClaims())
+	identity, err = GetEVMWalletIdentityByUserID(user.Id)
+	require.NoError(t, err)
+	assert.WithinDuration(t, newerLastUsedAt, identity.LastUsedAt, time.Second)
 }

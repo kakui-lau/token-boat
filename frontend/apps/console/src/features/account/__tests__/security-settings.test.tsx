@@ -56,6 +56,11 @@ const disabledSecurity: AccountData["security"] = {
   passkeyLastUsedAt: null,
   twoFactorEnabled: false,
   twoFactorLocked: false,
+  evmWalletAddress: null,
+  evmWalletEnabled: false,
+  evmWalletLastUsedAt: null,
+  evmWalletRemovable: false,
+  evmWalletVerificationMethod: "password",
 };
 
 const enabledSecurity: AccountData["security"] = {

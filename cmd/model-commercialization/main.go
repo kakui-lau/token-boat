@@ -20,25 +20,28 @@ import (
 )
 
 type config struct {
-	ChannelID          int      `yaml:"channel_id"`
-	StagingGroup       string   `yaml:"staging_group"`
-	LogicalModel       string   `yaml:"logical_model"`
-	UpstreamModel      string   `yaml:"upstream_model"`
-	Vendor             string   `yaml:"vendor"`
-	Icon               string   `yaml:"icon"`
-	Description        string   `yaml:"description"`
-	Tags               []string `yaml:"tags"`
-	Endpoints          []string `yaml:"endpoints"`
-	OfficialSourceURL  string   `yaml:"official_source_url"`
-	OfficialInput      string   `yaml:"official_input_per_1m"`
-	OfficialOutput     string   `yaml:"official_output_per_1m"`
-	OfficialCacheRead  string   `yaml:"official_cache_read_per_1m"`
-	OfficialCacheWrite string   `yaml:"official_cache_write_per_1m"`
-	PurchaseDiscount   string   `yaml:"purchase_discount"`
-	VariableCostRate   string   `yaml:"variable_cost_rate"`
-	TaxRate            string   `yaml:"tax_rate"`
-	TargetMargin       string   `yaml:"target_margin"`
-	MinimumMargin      string   `yaml:"minimum_margin"`
+	ChannelID           int      `yaml:"channel_id"`
+	StagingGroup        string   `yaml:"staging_group"`
+	LogicalModel        string   `yaml:"logical_model"`
+	UpstreamModel       string   `yaml:"upstream_model"`
+	ContextLength       int      `yaml:"context_length"`
+	Vendor              string   `yaml:"vendor"`
+	Icon                string   `yaml:"icon"`
+	Description         string   `yaml:"description"`
+	Tags                []string `yaml:"tags"`
+	Endpoints           []string `yaml:"endpoints"`
+	OfficialSourceURL   string   `yaml:"official_source_url"`
+	OfficialInput       string   `yaml:"official_input_per_1m"`
+	OfficialOutput      string   `yaml:"official_output_per_1m"`
+	OfficialCacheRead   string   `yaml:"official_cache_read_per_1m"`
+	OfficialCacheWrite  string   `yaml:"official_cache_write_per_1m"`
+	PurchaseDiscount    string   `yaml:"purchase_discount"`
+	PaymentFeeRate      string   `yaml:"payment_fee_rate"`
+	DistributionFeeRate string   `yaml:"distribution_fee_rate"`
+	OperationsLaborRate string   `yaml:"operations_labor_rate"`
+	EffectiveTaxRate    string   `yaml:"effective_tax_rate"`
+	TargetNetMargin     string   `yaml:"target_net_margin"`
+	MinimumMarginRate   string   `yaml:"minimum_margin_rate"`
 }
 
 type stagedVideoChannelConfig struct {
@@ -65,11 +68,12 @@ type plan struct {
 	SalesCacheRead     string
 	SalesCacheWrite    string
 	SellingFactor      string
+	Warnings           []string
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		exitWithError(errors.New("usage: model-commercialization <plan|inspect|apply|verify> --config FILE"))
+		exitWithError(errors.New("usage: model-commercialization <plan|inspect|apply|verify|onboard-production-channel|audit-model-contexts|sync-model-contexts> --config FILE"))
 	}
 	command := os.Args[1]
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -100,9 +104,46 @@ func main() {
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		exitWithError(err)
 	}
+	if command == "audit-model-contexts" || command == "sync-model-contexts" {
+		if strings.TrimSpace(*configPath) == "" {
+			exitWithError(errors.New("--config is required"))
+		}
+		if command == "sync-model-contexts" && (!*yes || !*production) {
+			exitWithError(errors.New("sync-model-contexts requires --yes and --production"))
+		}
+		catalog, err := loadModelContextCatalog(*configPath)
+		if err != nil {
+			exitWithError(err)
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(reconcileModelContexts(catalog, command == "sync-model-contexts"))
+		return
+	}
+	if command == "onboard-production-channel" {
+		if !*yes || !*production {
+			exitWithError(errors.New("onboard-production-channel requires --yes and --production"))
+		}
+		if strings.TrimSpace(*configPath) == "" {
+			exitWithError(errors.New("--config is required"))
+		}
+		cfg, err := loadProductionChannelConfig(*configPath)
+		if err != nil {
+			exitWithError(err)
+		}
+		if err := openDatabase(); err != nil {
+			exitWithError(err)
+		}
+		exitWithError(onboardProductionChannel(cfg, *probe))
+		return
+	}
 	if command == "price-channel" {
 		if !*yes {
 			exitWithError(errors.New("price-channel requires --yes"))
+		}
+		if *variableCostRate != "" || *taxRate != "" || *targetMargin != "" {
+			exitWithError(errors.New("price-channel publishes purchase prices only; configure sales rates on a sales price-book draft"))
 		}
 		discounts := map[string]string{
 			"openai": *openAIDiscount, "google": *googleDiscount, "z-ai": *zAIDiscount,
@@ -116,8 +157,7 @@ func main() {
 		}
 		params := channelPricingParams{
 			ChannelID: *channelID, StagingGroup: strings.TrimSpace(*stagingGroup),
-			Discounts:        discounts,
-			VariableCostRate: *variableCostRate, TaxRate: *taxRate, TargetMargin: *targetMargin,
+			Discounts: discounts,
 		}
 		if err := validateChannelPricingParams(params); err != nil {
 			exitWithError(err)
@@ -204,10 +244,12 @@ func main() {
 		if !*yes {
 			exitWithError(errors.New("price-video-channel requires --yes"))
 		}
+		if *variableCostRate != "" || *taxRate != "" || *targetMargin != "" {
+			exitWithError(errors.New("price-video-channel publishes purchase prices only; configure sales rates on a sales price-book draft"))
+		}
 		params := channelPricingParams{
 			ChannelID: *channelID, StagingGroup: strings.TrimSpace(*stagingGroup),
 			UpscaleDiscount: *upscaleDiscount, StandardDiscount: *standardDiscount,
-			VariableCostRate: *variableCostRate, TaxRate: *taxRate, TargetMargin: *targetMargin,
 		}
 		if err := validateChannelPricingParams(params); err != nil {
 			exitWithError(err)
@@ -422,7 +464,7 @@ func stageVideoChannel(cfg stagedVideoChannelConfig) error {
 
 func inspectChannel(channelID int) error {
 	var channel model.Channel
-	if err := model.DB.Select("id", "name", "type", "status", "models", "group", "model_mapping", "base_url", "priority", "weight").First(&channel, channelID).Error; err != nil {
+	if err := model.DB.Select("id", "name", "type", "status", "models", "group", "model_mapping", "param_override", "base_url", "priority", "weight").First(&channel, channelID).Error; err != nil {
 		return err
 	}
 	priority := int64(0)
@@ -436,6 +478,7 @@ func inspectChannel(channelID int) error {
 	fmt.Printf("channel id=%d name=%q type=%d status=%d group=%q base_url=%q priority=%d weight=%d\n", channel.Id, channel.Name, channel.Type, channel.Status, channel.Group, stringValue(channel.BaseURL), priority, weight)
 	fmt.Printf("models=%s\n", channel.Models)
 	fmt.Printf("model_mapping=%s\n", stringValue(channel.ModelMapping))
+	fmt.Printf("param_override=%s\n", stringValue(channel.ParamOverride))
 
 	var channelModels []struct {
 		ID                int    `gorm:"column:id"`
@@ -525,9 +568,6 @@ type channelPricingParams struct {
 	ChannelID        int
 	StagingGroup     string
 	Discounts        map[string]string
-	VariableCostRate string
-	TaxRate          string
-	TargetMargin     string
 	UpscaleDiscount  string
 	StandardDiscount string
 }
@@ -560,15 +600,6 @@ func validateChannelPricingParams(params channelPricingParams) error {
 			return err
 		}
 		if err := validateUnitRate("standard discount", params.StandardDiscount, true); err != nil {
-			return err
-		}
-	}
-	for name, value := range map[string]string{
-		"variable-cost-rate": params.VariableCostRate,
-		"tax-rate":           params.TaxRate,
-		"target-margin":      params.TargetMargin,
-	} {
-		if err := validateUnitRate(name, value, false); err != nil {
 			return err
 		}
 	}
@@ -721,8 +752,8 @@ func loadConfig(path string) (config, error) {
 	if err := decoder.Decode(&cfg); err != nil {
 		return config{}, err
 	}
-	if cfg.MinimumMargin == "" {
-		cfg.MinimumMargin = cfg.TargetMargin
+	if cfg.MinimumMarginRate == "" {
+		cfg.MinimumMarginRate = cfg.TargetNetMargin
 	}
 	if len(cfg.Endpoints) == 0 {
 		cfg.Endpoints = []string{"openai"}
@@ -744,6 +775,9 @@ func validateConfig(cfg config) error {
 	if strings.TrimSpace(cfg.UpstreamModel) == "" {
 		return errors.New("upstream_model is required; ask the user for or verify the provider model name")
 	}
+	if cfg.ContextLength <= 0 {
+		return errors.New("context_length must be a positive token count verified from an official source")
+	}
 	if strings.TrimSpace(cfg.PurchaseDiscount) == "" {
 		return errors.New("purchase_discount is required; ask the user for the channel procurement discount")
 	}
@@ -757,24 +791,33 @@ func validateConfig(cfg config) error {
 		return errors.New("at least one official token price is required")
 	}
 	for name, value := range map[string]string{
-		"purchase_discount": cfg.PurchaseDiscount, "variable_cost_rate": cfg.VariableCostRate,
-		"tax_rate": cfg.TaxRate, "target_margin": cfg.TargetMargin, "minimum_margin": cfg.MinimumMargin,
+		"purchase_discount":     cfg.PurchaseDiscount,
+		"payment_fee_rate":      cfg.PaymentFeeRate,
+		"distribution_fee_rate": cfg.DistributionFeeRate,
+		"operations_labor_rate": cfg.OperationsLaborRate,
+		"effective_tax_rate":    cfg.EffectiveTaxRate,
+		"target_net_margin":     cfg.TargetNetMargin,
+		"minimum_margin_rate":   cfg.MinimumMarginRate,
 	} {
 		rate, err := decimal.NewFromString(value)
 		if err != nil || rate.IsNegative() || rate.GreaterThan(decimal.NewFromInt(1)) {
 			return fmt.Errorf("%s must be a decimal between 0 and 1", name)
 		}
 	}
-	minimum, _ := decimal.NewFromString(cfg.MinimumMargin)
-	target, _ := decimal.NewFromString(cfg.TargetMargin)
+	minimum, _ := decimal.NewFromString(cfg.MinimumMarginRate)
+	target, _ := decimal.NewFromString(cfg.TargetNetMargin)
 	if minimum.GreaterThan(target) {
-		return errors.New("minimum_margin cannot exceed target_margin")
+		return errors.New("minimum_margin_rate cannot exceed target_net_margin")
 	}
 	return nil
 }
 
 func buildPlan(cfg config) (plan, error) {
-	calculator, err := pricingadmin.NewSalesPriceCalculator(cfg.VariableCostRate, cfg.TaxRate, cfg.TargetMargin)
+	paymentFee, _ := decimal.NewFromString(cfg.PaymentFeeRate)
+	distributionFee, _ := decimal.NewFromString(cfg.DistributionFeeRate)
+	operationsLabor, _ := decimal.NewFromString(cfg.OperationsLaborRate)
+	variableCostRate := paymentFee.Add(distributionFee).Add(operationsLabor)
+	calculator, err := pricingadmin.NewSalesPriceCalculator(variableCostRate.String(), cfg.EffectiveTaxRate, cfg.TargetNetMargin)
 	if err != nil {
 		return plan{}, err
 	}
@@ -809,8 +852,11 @@ func buildPlan(cfg config) (plan, error) {
 		}
 		*item.purchase = purchase.String()
 		*item.sales = salesPrice.StringFixed(5)
-		if !salesPrice.LessThan(official) {
-			return plan{}, fmt.Errorf("calculated sales price %s must be lower than official price %s", salesPrice, official)
+		if salesPrice.GreaterThan(official) {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"calculated sales amount %s exceeds official amount %s",
+				salesPrice.StringFixed(5), official.String(),
+			))
 		}
 	}
 	return result, nil
@@ -820,7 +866,15 @@ func printPlan(cfg config, computed plan) {
 	fmt.Printf("model=%s channel_id=%d upstream=%s staging_group=%s\n", cfg.LogicalModel, cfg.ChannelID, cfg.UpstreamModel, cfg.StagingGroup)
 	fmt.Printf("official input=%s output=%s cache_read=%s cache_write=%s USD/1M\n", cfg.OfficialInput, cfg.OfficialOutput, cfg.OfficialCacheRead, cfg.OfficialCacheWrite)
 	fmt.Printf("purchase input=%s output=%s cache_read=%s cache_write=%s USD/1M\n", computed.PurchaseInput, computed.PurchaseOutput, computed.PurchaseCacheRead, computed.PurchaseCacheWrite)
-	fmt.Printf("sales input=%s output=%s cache_read=%s cache_write=%s USD/1M factor=%s\n", computed.SalesInput, computed.SalesOutput, computed.SalesCacheRead, computed.SalesCacheWrite, computed.SellingFactor)
+	fmt.Printf(
+		"indicative_sales input=%s output=%s cache_read=%s cache_write=%s USD/1M factor=%s payment_fee=%s distribution_fee=%s operations_labor=%s effective_tax=%s target_margin=%s minimum_margin=%s\n",
+		computed.SalesInput, computed.SalesOutput, computed.SalesCacheRead, computed.SalesCacheWrite,
+		computed.SellingFactor, cfg.PaymentFeeRate, cfg.DistributionFeeRate, cfg.OperationsLaborRate,
+		cfg.EffectiveTaxRate, cfg.TargetNetMargin, cfg.MinimumMarginRate,
+	)
+	for _, warning := range computed.Warnings {
+		fmt.Printf("warning=%q\n", warning)
+	}
 }
 
 func openDatabase() error {
@@ -833,6 +887,11 @@ func openDatabase() error {
 	// rate limits, etc.); without this the CLI always falls back to the
 	// default SQLite file and ignores SQLITE_PATH/SQL_DSN overrides.
 	common.InitEnv()
+	// This operational CLI only reads and updates application data. Schema and
+	// one-time data migrations belong to the explicit deployment migration job.
+	if err := os.Setenv("SKIP_DB_MIGRATION", "true"); err != nil {
+		return err
+	}
 	if err := os.Setenv("MIGRATION_ENABLED", "false"); err != nil {
 		return err
 	}
@@ -857,7 +916,7 @@ func inspect(cfg config) error {
 	if modelErr != nil {
 		return modelErr
 	}
-	fmt.Printf("model id=%d vendor_id=%d status=%d description=%q\n", logicalModel.Id, logicalModel.VendorID, logicalModel.Status, logicalModel.Description)
+	fmt.Printf("model id=%d vendor_id=%d status=%d context_length=%d description=%q\n", logicalModel.Id, logicalModel.VendorID, logicalModel.Status, logicalModel.ContextLength, logicalModel.Description)
 	var channelModel model.ChannelModel
 	err := model.DB.Where("channel_id = ? AND model_id = ?", cfg.ChannelID, logicalModel.Id).First(&channelModel).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -900,14 +959,14 @@ func apply(cfg config) error {
 	var logicalModel model.Model
 	err = model.DB.Where("model_name = ?", cfg.LogicalModel).First(&logicalModel).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		logicalModel = model.Model{ModelName: cfg.LogicalModel, VendorID: vendor.Id, Icon: cfg.Icon, Description: cfg.Description, Tags: strings.Join(cfg.Tags, ","), Endpoints: string(endpoints), Status: 1, SyncOfficial: 0, Visibility: "public"}
+		logicalModel = model.Model{ModelName: cfg.LogicalModel, VendorID: vendor.Id, ContextLength: cfg.ContextLength, Icon: cfg.Icon, Description: cfg.Description, Tags: strings.Join(cfg.Tags, ","), Endpoints: string(endpoints), Status: 1, SyncOfficial: 0, Visibility: "public"}
 		if err := logicalModel.Insert(); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	} else {
-		logicalModel.VendorID, logicalModel.Icon, logicalModel.Description = vendor.Id, cfg.Icon, cfg.Description
+		logicalModel.VendorID, logicalModel.ContextLength, logicalModel.Icon, logicalModel.Description = vendor.Id, cfg.ContextLength, cfg.Icon, cfg.Description
 		logicalModel.Tags, logicalModel.Endpoints, logicalModel.Status, logicalModel.SyncOfficial, logicalModel.Visibility = strings.Join(cfg.Tags, ","), string(endpoints), 1, 0, "public"
 		if err := logicalModel.Update(); err != nil {
 			return err

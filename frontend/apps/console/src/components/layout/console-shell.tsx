@@ -35,6 +35,12 @@ import {
   XIcon,
 } from "lucide-react";
 
+import {
+  userConsoleCapabilities,
+  userConsoleCapabilityGroups,
+  type UserConsoleCapabilityId,
+  type UserConsolePath,
+} from "@token-boat/app-core/product-surfaces";
 import { Button } from "@token-boat/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -71,32 +77,21 @@ import {
   useSidebar,
 } from "@token-boat/ui/components/ui/sidebar";
 import { Skeleton } from "@token-boat/ui/components/ui/skeleton";
+import { TooltipProvider } from "@token-boat/ui/components/ui/tooltip";
 import { useLayoutPreferences } from "@/app/layout/layout-preferences-context";
 import { BrandMark } from "@/components/brand-mark";
 import { HeaderActions } from "@/components/layout/header-actions";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { HeaderUserMenu, SidebarUserMenu } from "@/components/layout/sidebar-user-menu";
-import { AlertStatusPopover } from "@/features/alerts/components/alert-status-popover";
 
 const loadConsoleCommandMenu = () => import("@/components/layout/console-command-menu");
 const ConsoleCommandMenu = lazy(loadConsoleCommandMenu);
+const loadAlertStatusPopover = () => import("@/features/alerts/components/alert-status-popover");
+const AlertStatusPopover = lazy(() =>
+  loadAlertStatusPopover().then((module) => ({ default: module.AlertStatusPopover })),
+);
 
-export type ConsoleRoute =
-  | "/"
-  | "/getting-started"
-  | "/playground"
-  | "/integration"
-  | "/api-keys"
-  | "/models"
-  | "/usage"
-  | "/logs"
-  | "/activity"
-  | "/tasks"
-  | "/alerts"
-  | "/recharge"
-  | "/billing"
-  | "/team"
-  | "/account";
+export type ConsoleRoute = UserConsolePath;
 
 export type NavigationItem = {
   label: string;
@@ -118,20 +113,43 @@ export type CommandAction = {
   onSelect(): void;
 };
 
+const consoleCapabilityIcons: Record<
+  UserConsoleCapabilityId,
+  ComponentType<{ className?: string }>
+> = {
+  account: UserRoundIcon,
+  activity: HistoryIcon,
+  alerts: BellRingIcon,
+  "api-keys": KeyRoundIcon,
+  billing: CreditCardIcon,
+  "getting-started": SparklesIcon,
+  integration: BookOpenIcon,
+  logs: ScrollTextIcon,
+  models: BoxesIcon,
+  overview: LayoutDashboardIcon,
+  playground: MessageSquareTextIcon,
+  recharge: WalletCardsIcon,
+  tasks: CheckSquareIcon,
+  team: UsersRoundIcon,
+  usage: CircleDollarSignIcon,
+};
+
 export function ConsoleShell({ children }: PropsWithChildren) {
   const { preferences, updatePreferences } = useLayoutPreferences();
 
   return (
-    <SidebarProvider
-      className="bg-muted/35"
-      data-dashboard-density={preferences.density}
-      data-reduced-motion={preferences.reducedMotion}
-      data-sidebar-variant={preferences.sidebarVariant}
-      onOpenChange={(open) => updatePreferences({ sidebarCollapsed: !open })}
-      open={!preferences.sidebarCollapsed}
-    >
-      <ConsoleShellContent>{children}</ConsoleShellContent>
-    </SidebarProvider>
+    <TooltipProvider>
+      <SidebarProvider
+        className="bg-muted/35"
+        data-dashboard-density={preferences.density}
+        data-reduced-motion={preferences.reducedMotion}
+        data-sidebar-variant={preferences.sidebarVariant}
+        onOpenChange={(open) => updatePreferences({ sidebarCollapsed: !open })}
+        open={!preferences.sidebarCollapsed}
+      >
+        <ConsoleShellContent>{children}</ConsoleShellContent>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
 
@@ -140,49 +158,23 @@ function ConsoleShellContent({ children }: PropsWithChildren) {
   const navigate = useNavigate();
   const { preferences, updatePreferences } = useLayoutPreferences();
   const { isMobile, setOpenMobile, state } = useSidebar();
+  const [alertStatusRequested, setAlertStatusRequested] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname });
   const currentRoute = pathname.startsWith("/console")
     ? pathname.slice("/console".length) || "/"
     : pathname;
 
-  const navigationGroups: NavigationGroup[] = [
-    {
-      label: t("Workspace"),
-      items: [
-        { label: t("Overview"), to: "/", icon: LayoutDashboardIcon },
-        { label: t("Getting started"), to: "/getting-started", icon: SparklesIcon },
-        { label: t("Playground"), to: "/playground", icon: MessageSquareTextIcon },
-      ],
-    },
-    {
-      label: t("Develop"),
-      items: [
-        { label: t("Integration center"), to: "/integration", icon: BookOpenIcon },
-        { label: t("API keys"), to: "/api-keys", icon: KeyRoundIcon },
-        { label: t("Models and pricing"), to: "/models", icon: BoxesIcon },
-      ],
-    },
-    {
-      label: t("Operate"),
-      items: [
-        { label: t("Usage"), to: "/usage", icon: CircleDollarSignIcon },
-        { label: t("Request logs"), to: "/logs", icon: ScrollTextIcon },
-        { label: t("Tasks"), to: "/tasks", icon: CheckSquareIcon },
-        { label: t("Alerts and status"), to: "/alerts", icon: BellRingIcon },
-      ],
-    },
-    {
-      label: t("Account and organization"),
-      items: [
-        { label: t("Recharge center"), to: "/recharge", icon: WalletCardsIcon },
-        { label: t("Billing and subscriptions"), to: "/billing", icon: CreditCardIcon },
-        { label: t("Account activity"), to: "/activity", icon: HistoryIcon },
-        { label: t("Team and access"), to: "/team", icon: UsersRoundIcon },
-        { label: t("Account settings"), to: "/account", icon: UserRoundIcon },
-      ],
-    },
-  ];
+  const navigationGroups: NavigationGroup[] = userConsoleCapabilityGroups.map((group) => ({
+    label: t(group.labelKey),
+    items: userConsoleCapabilities
+      .filter((capability) => capability.group === group.id)
+      .map((capability) => ({
+        icon: consoleCapabilityIcons[capability.id],
+        label: t(capability.consoleLabelKey),
+        to: capability.consolePath,
+      })),
+  }));
   const commandActions: CommandAction[] = [
     {
       checked: preferences.themeMode === "light",
@@ -354,10 +346,27 @@ function ConsoleShellContent({ children }: PropsWithChildren) {
             >
               <CircleHelpIcon data-icon="inline-start" />
             </Button>
-            <AlertStatusPopover
-              className="hidden sm:inline-flex"
-              onOpenAlertCenter={() => void navigate({ to: "/alerts" })}
-            />
+            {alertStatusRequested ? (
+              <Suspense fallback={<AlertStatusLoadingButton />}>
+                <AlertStatusPopover
+                  className="hidden sm:inline-flex"
+                  initiallyOpen
+                  onOpenAlertCenter={() => void navigate({ to: "/alerts" })}
+                />
+              </Suspense>
+            ) : (
+              <Button
+                aria-label={t("Alerts and status")}
+                className="hidden sm:inline-flex"
+                onClick={() => setAlertStatusRequested(true)}
+                onFocus={() => void loadAlertStatusPopover()}
+                onPointerEnter={() => void loadAlertStatusPopover()}
+                size="icon"
+                variant="ghost"
+              >
+                <BellRingIcon data-icon="inline-start" />
+              </Button>
+            )}
             <LanguageSwitcher />
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -408,6 +417,21 @@ function ConsoleShellContent({ children }: PropsWithChildren) {
         </Suspense>
       )}
     </>
+  );
+}
+
+function AlertStatusLoadingButton() {
+  const { t } = useTranslation();
+  return (
+    <Button
+      aria-label={t("Loading alerts and status")}
+      className="hidden sm:inline-flex"
+      disabled
+      size="icon"
+      variant="ghost"
+    >
+      <BellRingIcon data-icon="inline-start" />
+    </Button>
   );
 }
 

@@ -24,6 +24,7 @@ import {
   FieldLabel,
 } from "@token-boat/ui/components/ui/field";
 import { Input } from "@token-boat/ui/components/ui/input";
+import { Separator } from "@token-boat/ui/components/ui/separator";
 import {
   InputGroup,
   InputGroupAddon,
@@ -34,6 +35,7 @@ import { useSession } from "@/app/session/session-context";
 import { useCountdown } from "@/hooks/use-countdown";
 import { AuthShell } from "../components/auth-shell";
 import { AuthCapabilitiesError } from "../components/auth-capabilities-error";
+import { EVMWalletButton } from "../components/evm-wallet-button";
 import { Turnstile } from "../components/turnstile";
 
 type RegisterValues = {
@@ -51,6 +53,7 @@ export function RegisterPage(props: { affiliateCode?: string; redirectTo?: strin
   const [sendingCode, setSendingCode] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileKey, setTurnstileKey] = useState(0);
+  const [evmWalletLoading, setEVMWalletLoading] = useState(false);
   const registrationLockRef = useRef(false);
   const countdown = useCountdown();
   const emailVerificationEnabled = capabilities?.emailVerificationEnabled === true;
@@ -94,7 +97,7 @@ export function RegisterPage(props: { affiliateCode?: string; redirectTo?: strin
   const turnstileRequired = Boolean(
     capabilities?.turnstileEnabled && capabilities.turnstileSiteKey,
   );
-  const registrationBusy = sendingCode || form.formState.isSubmitting;
+  const registrationBusy = sendingCode || form.formState.isSubmitting || evmWalletLoading;
 
   const sendVerificationCode = async () => {
     if (registrationLockRef.current) return;
@@ -161,8 +164,8 @@ export function RegisterPage(props: { affiliateCode?: string; redirectTo?: strin
   return (
     <AuthShell>
       <Card className="auth-form-card w-full border-0 shadow-none">
-        <CardHeader className="gap-3">
-          <CardTitle className="text-3xl tracking-tight sm:text-4xl">
+        <CardHeader className="gap-2">
+          <CardTitle className="text-2xl tracking-tight sm:text-3xl">
             {t("Create your Token Boat account")}
           </CardTitle>
           <CardDescription>
@@ -190,7 +193,7 @@ export function RegisterPage(props: { affiliateCode?: string; redirectTo?: strin
                 {t("Back to sign in")}
               </Button>
             </FieldGroup>
-          ) : !capabilities.registrationEnabled ? (
+          ) : !capabilities.registrationEnabled && !capabilities.evmWalletRegistrationEnabled ? (
             <FieldGroup>
               <Alert variant="destructive">
                 <AlertDescription>
@@ -206,116 +209,164 @@ export function RegisterPage(props: { affiliateCode?: string; redirectTo?: strin
               </Button>
             </FieldGroup>
           ) : (
-            <form onSubmit={submit}>
-              <FieldGroup>
-                <Field data-invalid={Boolean(form.formState.errors.username)}>
-                  <FieldLabel htmlFor="register-username">{t("Username")}</FieldLabel>
-                  <Input
-                    autoComplete="username"
-                    id="register-username"
-                    aria-invalid={Boolean(form.formState.errors.username)}
-                    {...form.register("username")}
-                  />
-                  <FieldError errors={[form.formState.errors.username]} />
-                </Field>
-                <Field data-invalid={Boolean(form.formState.errors.email)}>
-                  <FieldLabel htmlFor="register-email">{t("Email")}</FieldLabel>
-                  {emailVerificationEnabled ? (
-                    <InputGroup>
-                      <InputGroupInput
-                        aria-invalid={Boolean(form.formState.errors.email)}
-                        autoComplete="email"
-                        id="register-email"
-                        type="email"
-                        {...form.register("email")}
+            <div className="flex flex-col gap-3.5">
+              {turnstileRequired ? (
+                <Turnstile
+                  key={turnstileKey}
+                  onExpire={() => setTurnstileToken("")}
+                  onVerify={setTurnstileToken}
+                  siteKey={capabilities.turnstileSiteKey}
+                />
+              ) : null}
+              {capabilities.evmWalletRegistrationEnabled ? (
+                <EVMWalletButton
+                  affiliateCode={props.affiliateCode}
+                  disabled={registrationBusy && !evmWalletLoading}
+                  humanVerificationRequired={turnstileRequired}
+                  intent="register"
+                  onAuthenticated={() =>
+                    navigate({
+                      to: "/",
+                      replace: true,
+                    })
+                  }
+                  onBusyChange={(busy) => {
+                    registrationLockRef.current = busy;
+                    setEVMWalletLoading(busy);
+                  }}
+                  onHumanVerificationConsumed={() => {
+                    setTurnstileToken("");
+                    setTurnstileKey((current) => current + 1);
+                  }}
+                  turnstileToken={turnstileToken || undefined}
+                />
+              ) : null}
+              {capabilities.registrationEnabled && capabilities.evmWalletRegistrationEnabled ? (
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <Separator className="flex-1" />
+                  <span>{t("or create an account with a password")}</span>
+                  <Separator className="flex-1" />
+                </div>
+              ) : null}
+              {capabilities.registrationEnabled ? (
+                <form onSubmit={submit}>
+                  <FieldGroup className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                    <Field data-invalid={Boolean(form.formState.errors.username)}>
+                      <FieldLabel htmlFor="register-username">{t("Username")}</FieldLabel>
+                      <Input
+                        autoComplete="username"
+                        id="register-username"
+                        aria-invalid={Boolean(form.formState.errors.username)}
+                        {...form.register("username")}
                       />
-                      <InputGroupAddon align="inline-end">
-                        <InputGroupButton
-                          disabled={registrationBusy || countdown.seconds > 0}
-                          onClick={() => void sendVerificationCode()}
-                        >
-                          {sendingCode ? (
-                            <LoaderCircleIcon className="animate-spin" />
-                          ) : (
-                            <MailIcon />
-                          )}
-                          {countdown.seconds > 0
-                            ? t("Resend in {{seconds}}s", { seconds: countdown.seconds })
-                            : t("Send code")}
-                        </InputGroupButton>
-                      </InputGroupAddon>
-                    </InputGroup>
-                  ) : (
-                    <Input
-                      aria-invalid={Boolean(form.formState.errors.email)}
-                      autoComplete="email"
-                      id="register-email"
-                      type="email"
-                      {...form.register("email")}
-                    />
-                  )}
-                  {!emailVerificationEnabled ? (
-                    <FieldDescription>{t("Optional")}</FieldDescription>
-                  ) : null}
-                  <FieldError errors={[form.formState.errors.email]} />
-                </Field>
-                {emailVerificationEnabled ? (
-                  <Field data-invalid={Boolean(form.formState.errors.verificationCode)}>
-                    <FieldLabel htmlFor="register-verification-code">
-                      {t("Email verification code")}
-                    </FieldLabel>
-                    <Input
-                      aria-invalid={Boolean(form.formState.errors.verificationCode)}
-                      autoComplete="one-time-code"
-                      id="register-verification-code"
-                      inputMode="numeric"
-                      maxLength={6}
-                      {...form.register("verificationCode")}
-                    />
-                    <FieldError errors={[form.formState.errors.verificationCode]} />
-                  </Field>
-                ) : null}
-                <Field data-invalid={Boolean(form.formState.errors.password)}>
-                  <FieldLabel htmlFor="register-password">{t("Password")}</FieldLabel>
-                  <Input
-                    aria-invalid={Boolean(form.formState.errors.password)}
-                    autoComplete="new-password"
-                    id="register-password"
-                    type="password"
-                    {...form.register("password")}
-                  />
-                  <FieldDescription>{t("Use 8 to 20 characters.")}</FieldDescription>
-                  <FieldError errors={[form.formState.errors.password]} />
-                </Field>
-                <Field data-invalid={Boolean(form.formState.errors.confirmPassword)}>
-                  <FieldLabel htmlFor="register-confirm-password">
-                    {t("Confirm password")}
-                  </FieldLabel>
-                  <Input
-                    aria-invalid={Boolean(form.formState.errors.confirmPassword)}
-                    autoComplete="new-password"
-                    id="register-confirm-password"
-                    type="password"
-                    {...form.register("confirmPassword")}
-                  />
-                  <FieldError errors={[form.formState.errors.confirmPassword]} />
-                </Field>
-                {turnstileRequired ? (
-                  <Turnstile
-                    key={turnstileKey}
-                    onExpire={() => setTurnstileToken("")}
-                    onVerify={setTurnstileToken}
-                    siteKey={capabilities.turnstileSiteKey}
-                  />
-                ) : null}
-                <Button disabled={registrationBusy} type="submit">
-                  {form.formState.isSubmitting ? (
-                    <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
-                  ) : (
-                    <UserPlusIcon data-icon="inline-start" />
-                  )}
-                  {t("Create account")}
-                </Button>
+                      <FieldError errors={[form.formState.errors.username]} />
+                    </Field>
+                    <Field data-invalid={Boolean(form.formState.errors.email)}>
+                      <FieldLabel htmlFor="register-email">{t("Email")}</FieldLabel>
+                      {emailVerificationEnabled ? (
+                        <InputGroup>
+                          <InputGroupInput
+                            aria-invalid={Boolean(form.formState.errors.email)}
+                            autoComplete="email"
+                            id="register-email"
+                            type="email"
+                            {...form.register("email")}
+                          />
+                          <InputGroupAddon align="inline-end">
+                            <InputGroupButton
+                              disabled={registrationBusy || countdown.seconds > 0}
+                              onClick={() => void sendVerificationCode()}
+                            >
+                              {sendingCode ? (
+                                <LoaderCircleIcon className="animate-spin" />
+                              ) : (
+                                <MailIcon />
+                              )}
+                              {countdown.seconds > 0
+                                ? t("Resend in {{seconds}}s", { seconds: countdown.seconds })
+                                : t("Send code")}
+                            </InputGroupButton>
+                          </InputGroupAddon>
+                        </InputGroup>
+                      ) : (
+                        <Input
+                          aria-invalid={Boolean(form.formState.errors.email)}
+                          autoComplete="email"
+                          id="register-email"
+                          type="email"
+                          {...form.register("email")}
+                        />
+                      )}
+                      {!emailVerificationEnabled ? (
+                        <FieldDescription>{t("Optional")}</FieldDescription>
+                      ) : null}
+                      <FieldError errors={[form.formState.errors.email]} />
+                    </Field>
+                    {emailVerificationEnabled ? (
+                      <Field
+                        className="sm:col-span-2"
+                        data-invalid={Boolean(form.formState.errors.verificationCode)}
+                      >
+                        <FieldLabel htmlFor="register-verification-code">
+                          {t("Email verification code")}
+                        </FieldLabel>
+                        <Input
+                          aria-invalid={Boolean(form.formState.errors.verificationCode)}
+                          autoComplete="one-time-code"
+                          id="register-verification-code"
+                          inputMode="numeric"
+                          maxLength={6}
+                          {...form.register("verificationCode")}
+                        />
+                        <FieldError errors={[form.formState.errors.verificationCode]} />
+                      </Field>
+                    ) : null}
+                    <Field data-invalid={Boolean(form.formState.errors.password)}>
+                      <FieldLabel htmlFor="register-password">{t("Password")}</FieldLabel>
+                      <Input
+                        aria-invalid={Boolean(form.formState.errors.password)}
+                        autoComplete="new-password"
+                        id="register-password"
+                        type="password"
+                        {...form.register("password")}
+                      />
+                      <FieldDescription>{t("Use 8 to 20 characters.")}</FieldDescription>
+                      <FieldError errors={[form.formState.errors.password]} />
+                    </Field>
+                    <Field data-invalid={Boolean(form.formState.errors.confirmPassword)}>
+                      <FieldLabel htmlFor="register-confirm-password">
+                        {t("Confirm password")}
+                      </FieldLabel>
+                      <Input
+                        aria-invalid={Boolean(form.formState.errors.confirmPassword)}
+                        autoComplete="new-password"
+                        id="register-confirm-password"
+                        type="password"
+                        {...form.register("confirmPassword")}
+                      />
+                      <FieldError errors={[form.formState.errors.confirmPassword]} />
+                    </Field>
+                    <Button className="sm:col-span-2" disabled={registrationBusy} type="submit">
+                      {form.formState.isSubmitting ? (
+                        <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+                      ) : (
+                        <UserPlusIcon data-icon="inline-start" />
+                      )}
+                      {t("Create account")}
+                    </Button>
+                    <p className="text-center text-sm text-muted-foreground sm:col-span-2">
+                      {t("Already have an account?")}{" "}
+                      <Link
+                        className="font-medium text-foreground underline underline-offset-4"
+                        search={{ redirect: props.redirectTo }}
+                        to="/sign-in"
+                      >
+                        {t("Sign in")}
+                      </Link>
+                    </p>
+                  </FieldGroup>
+                </form>
+              ) : (
                 <p className="text-center text-sm text-muted-foreground">
                   {t("Already have an account?")}{" "}
                   <Link
@@ -326,8 +377,8 @@ export function RegisterPage(props: { affiliateCode?: string; redirectTo?: strin
                     {t("Sign in")}
                   </Link>
                 </p>
-              </FieldGroup>
-            </form>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

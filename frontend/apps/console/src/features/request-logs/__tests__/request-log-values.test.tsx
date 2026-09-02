@@ -41,6 +41,25 @@ beforeEach(() => {
 });
 
 describe("RequestLogsPage values", () => {
+  test("queries only today when the URL has no date range", async () => {
+    configureRequestLogs([]);
+
+    renderRequestLogsPage();
+
+    await waitFor(() =>
+      expect(getRequestLogsPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          range: expect.objectContaining({ preset: "today" }),
+        }),
+      ),
+    );
+    expect(getRequestLogAnalytics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        range: expect.objectContaining({ preset: "today" }),
+      }),
+    );
+  });
+
   test("keeps sub-cent costs visible and formats coarse request durations honestly", async () => {
     const logs: RequestLogRecord[] = [
       requestLogFixture({

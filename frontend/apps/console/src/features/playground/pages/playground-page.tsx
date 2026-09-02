@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -49,7 +49,6 @@ import { PageHeader } from "@/components/page-header";
 import type { PlaygroundConversation, PlaygroundStoredMessage } from "@/data/contracts";
 import { repository } from "@/data/repository";
 import { formatCurrency } from "@/lib/format";
-import { CopilotPlaygroundChat } from "../components/copilot-playground-chat";
 import { PlaygroundConversationList } from "../components/playground-conversation-list";
 import { PlaygroundSettingsSheet } from "../components/playground-settings-sheet";
 import { createPlaygroundConversationSync } from "../playground-conversation-sync";
@@ -59,6 +58,13 @@ import {
   listLocalPlaygroundConversations,
   saveLocalPlaygroundConversation,
 } from "../playground-local-storage";
+
+const loadCopilotPlaygroundChat = () =>
+  import("../components/copilot-playground-chat").then((module) => ({
+    default: module.CopilotPlaygroundChat,
+  }));
+const CopilotPlaygroundChat = lazy(loadCopilotPlaygroundChat);
+const preloadCopilotPlaygroundChat = () => void loadCopilotPlaygroundChat();
 
 const environmentLabels = {
   development: "Development",
@@ -238,6 +244,7 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
       deletingId={deletingConversationId}
       loading={conversationLoading}
       onCreate={createConversation}
+      onCreateIntent={preloadCopilotPlaygroundChat}
       onDelete={deleteConversation}
       onSelect={selectConversation}
     />
@@ -269,7 +276,13 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
                 {conversationList}
               </SheetContent>
             </Sheet>
-            <Button className="xl:hidden" disabled={!canCreate} onClick={createConversation}>
+            <Button
+              className="xl:hidden"
+              disabled={!canCreate}
+              onClick={createConversation}
+              onFocus={preloadCopilotPlaygroundChat}
+              onPointerEnter={preloadCopilotPlaygroundChat}
+            >
               <PlusIcon data-icon="inline-start" />
               {t("New chat")}
             </Button>
@@ -456,20 +469,22 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
           ) : repository.mode === "demo" && resolvedThreadId ? (
             <PlaygroundDemoPreview model={selectedModel} />
           ) : resolvedThreadId ? (
-            <CopilotPlaygroundChat
-              apiKeyId={selectedKey.id}
-              chatRevision={chatRevision}
-              group={selectedKey.group}
-              initialMessages={activeConversation?.messages ?? []}
-              key={`${resolvedThreadId}:${chatRevision}`}
-              maxTokens={maxTokens}
-              model={selectedModel}
-              onConversationChanged={handleConversationChanged}
-              sessionToken={session?.accessToken}
-              systemPrompt={systemPrompt}
-              temperature={temperature}
-              threadId={resolvedThreadId}
-            />
+            <Suspense fallback={<PlaygroundChatLoading />}>
+              <CopilotPlaygroundChat
+                apiKeyId={selectedKey.id}
+                chatRevision={chatRevision}
+                group={selectedKey.group}
+                initialMessages={activeConversation?.messages ?? []}
+                key={`${resolvedThreadId}:${chatRevision}`}
+                maxTokens={maxTokens}
+                model={selectedModel}
+                onConversationChanged={handleConversationChanged}
+                sessionToken={session?.accessToken}
+                systemPrompt={systemPrompt}
+                temperature={temperature}
+                threadId={resolvedThreadId}
+              />
+            </Suspense>
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">
               <div className="max-w-md text-center">
@@ -484,7 +499,13 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
                     "Choose the API key and model above. Messages are stored only in this browser and restored when you return.",
                   )}
                 </p>
-                <Button className="mt-5" disabled={!canCreate} onClick={createConversation}>
+                <Button
+                  className="mt-5"
+                  disabled={!canCreate}
+                  onClick={createConversation}
+                  onFocus={preloadCopilotPlaygroundChat}
+                  onPointerEnter={preloadCopilotPlaygroundChat}
+                >
                   <PlusIcon data-icon="inline-start" />
                   {t("New chat")}
                 </Button>
@@ -493,6 +514,17 @@ export function PlaygroundPage({ initialModel = "" }: { initialModel?: string })
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function PlaygroundChatLoading() {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-6" role="status">
+      <Skeleton className="mx-auto h-10 w-2/3 max-w-md" />
+      <Skeleton className="mt-auto h-28 w-full" />
+      <span className="sr-only">{t("Loading AI chat")}</span>
     </div>
   );
 }

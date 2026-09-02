@@ -32,6 +32,7 @@ const AUTH_SECTIONS = [
       <BasicAuthSection
         defaultValues={{
           PasswordLoginEnabled: settings.PasswordLoginEnabled,
+          EVMWalletAuthEnabled: settings.EVMWalletAuthEnabled,
           PasswordRegisterEnabled: settings.PasswordRegisterEnabled,
           EmailVerificationEnabled: settings.EmailVerificationEnabled,
           RegisterEnabled: settings.RegisterEnabled,

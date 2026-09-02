@@ -21,12 +21,12 @@
 
 不能只根据字段名判断关系。V2 必须在 API 和界面中明确区分以下四类：
 
-| 类型 | 含义 | 示例 | UI 规则 |
-| --- | --- | --- | --- |
-| 直接关联 | 通过稳定 ID 指向当前实体 | `ChannelModel.ChannelId → Channel.Id` | 可导航到当前实体，并显示实时状态 |
-| 逻辑关联 | 通过名称、业务键或配置建立关系，不一定有数据库外键 | `Ability.Model → Model.ModelName`、`PaymentCallbackEvent.TradeNo → TopUp.TradeNo` | 显示“逻辑匹配”，处理重命名、重复和缺失 |
-| 快照引用 | 记录发生时保存名称、价格或配置，历史含义不能被当前值覆盖 | `Log.Username`、`ChannelModelProbe.ChannelName`、`RequestPricingSnapshot` | 当前对象与历史快照并列展示，不自动改写历史 |
-| 跨库引用 | 主库、日志库或外部系统间只有可容错关联 | `Log.UserId/ChannelId/RequestId` 与主库对象 | 关联失败时保留历史详情，不能让整页报错 |
+| 类型     | 含义                                                     | 示例                                                                              | UI 规则                                    |
+| -------- | -------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
+| 直接关联 | 通过稳定 ID 指向当前实体                                 | `ChannelModel.ChannelId → Channel.Id`                                             | 可导航到当前实体，并显示实时状态           |
+| 逻辑关联 | 通过名称、业务键或配置建立关系，不一定有数据库外键       | `Ability.Model → Model.ModelName`、`PaymentCallbackEvent.TradeNo → TopUp.TradeNo` | 显示“逻辑匹配”，处理重命名、重复和缺失     |
+| 快照引用 | 记录发生时保存名称、价格或配置，历史含义不能被当前值覆盖 | `Log.Username`、`ChannelModelProbe.ChannelName`、`RequestPricingSnapshot`         | 当前对象与历史快照并列展示，不自动改写历史 |
+| 跨库引用 | 主库、日志库或外部系统间只有可容错关联                   | `Log.UserId/ChannelId/RequestId` 与主库对象                                       | 关联失败时保留历史详情，不能让整页报错     |
 
 界面文案和图例统一使用“当前关联”“历史快照”“逻辑匹配”“对象已不可用”四种语义，禁止把所有关系都表现成可编辑外键。
 
@@ -126,16 +126,16 @@ flowchart LR
 
 ## 4. 现有后台管理方式初审
 
-| 领域 | 当前主要管理方式 | 已有优点 | 主要问题 | V2 方向 |
-| --- | --- | --- | --- | --- |
-| 渠道 | Collection + 行内编辑、测试、启停；更多菜单包含余额、拉取模型、复制、多 Key 等弹层 | 操作覆盖较完整，批量能力已有基础 | 单行菜单过载；模型、路由、探测、用量、采购价和变更历史分散 | Channel Operations Workspace |
-| 模型 | Metadata / Deployments 两个 Tab；模型行支持编辑、启停、删除 | 已开始按子域分组 | 渠道模型、路由目标、官方价、采购价、销售价和使用情况仍在其他页面 | Model Commercialization Workspace |
-| 用户 | 表格 + 编辑 Drawer；行菜单管理启停、角色、绑定、订阅、Passkey、2FA 和删除 | 高频安全动作可直接到达 | API Key、资金、价本分配、使用日志和审计仍割裂；高风险动作缺少整体影响上下文 | User 360 |
-| 使用日志 | Common / Drawing / Task 表格；通过 Dialog 查看用户和部分上下文 | 筛选、分类和管理员范围已有基础 | 一次请求的用户、Token、渠道、路由、价格快照、任务和错误需要来回跳转 | Request Trace Explorer |
-| 采购定价 | ChannelModel 列表 + 筛选、同步、批量导出/删除和价格编辑 Sheet | 已围绕 ChannelModel 建模 | 与模型/渠道工作台、官方价来源和请求采用情况连接不足 | Model Workspace 中的采购价子域 + Pricing Workbench |
-| 销售价本 | Price books / Assignments / Change batches；已有版本、diff、评审、发布和审计 | 当前最接近正确的领域工作流 | 单页职责偏多，所选价本/版本上下文容易变复杂 | 保留业务流程，重构为价本 Entity + 发布 Workbench |
-| 财务 | Overview、趋势、充值订单、支付渠道、回调事件、用户资金和告警 | 覆盖运营概览较全面 | 订单、用户、回调、额度变更和订阅缺少单个案件视图 | Finance Case + Operations Overview |
-| 订阅 | 计划表格 + 创建/编辑 Drawer；用户订阅在用户行菜单 Sheet 中管理 | 计划与用户订阅均已有入口 | 计划生命周期、订单、用户订阅和余额影响分离 | Plan Entity + User 360 订阅 Tab |
+| 领域     | 当前主要管理方式                                                                   | 已有优点                         | 主要问题                                                                    | V2 方向                                            |
+| -------- | ---------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
+| 渠道     | Collection + 行内编辑、测试、启停；更多菜单包含余额、拉取模型、复制、多 Key 等弹层 | 操作覆盖较完整，批量能力已有基础 | 单行菜单过载；模型、路由、探测、用量、采购价和变更历史分散                  | Channel Operations Workspace                       |
+| 模型     | Metadata / Deployments 两个 Tab；模型行支持编辑、启停、删除                        | 已开始按子域分组                 | 渠道模型、路由目标、官方价、采购价、销售价和使用情况仍在其他页面            | Model Commercialization Workspace                  |
+| 用户     | 表格 + 编辑 Drawer；行菜单管理启停、角色、绑定、订阅、Passkey、2FA 和删除          | 高频安全动作可直接到达           | API Key、资金、价本分配、使用日志和审计仍割裂；高风险动作缺少整体影响上下文 | User 360                                           |
+| 使用日志 | Common / Drawing / Task 表格；通过 Dialog 查看用户和部分上下文                     | 筛选、分类和管理员范围已有基础   | 一次请求的用户、Token、渠道、路由、价格快照、任务和错误需要来回跳转         | Request Trace Explorer                             |
+| 采购定价 | ChannelModel 列表 + 筛选、同步、批量导出/删除和价格编辑 Sheet                      | 已围绕 ChannelModel 建模         | 与模型/渠道工作台、官方价来源和请求采用情况连接不足                         | Model Workspace 中的采购价子域 + Pricing Workbench |
+| 销售价本 | Price books / Assignments / Change batches；已有版本、diff、评审、发布和审计       | 当前最接近正确的领域工作流       | 单页职责偏多，所选价本/版本上下文容易变复杂                                 | 保留业务流程，重构为价本 Entity + 发布 Workbench   |
+| 财务     | Overview、趋势、充值订单、支付渠道、回调事件、用户资金和告警                       | 覆盖运营概览较全面               | 订单、用户、回调、额度变更和订阅缺少单个案件视图                            | Finance Case + Operations Overview                 |
+| 订阅     | 计划表格 + 创建/编辑 Drawer；用户订阅在用户行菜单 Sheet 中管理                     | 计划与用户订阅均已有入口         | 计划生命周期、订单、用户订阅和余额影响分离                                  | Plan Entity + User 360 订阅 Tab                    |
 
 初审结论不是“现有页面全部推倒”。销售价本的版本、diff、评审和发布流程，以及现有 DataTable 的筛选、分页和批量选择能力应保留业务经验；需要重做的是跨页面上下文、聚合边界和高风险操作流程。
 
@@ -265,17 +265,17 @@ Request Trace 以只读诊断为主。退款、人工结算或异常处置是独
 
 ## 6. 如何选择管理方式
 
-| 关系和任务特征 | 推荐模式 | 不推荐 |
-| --- | --- | --- |
-| 高频一对多查看，编辑较少 | EntityPage + Tab + 分页关联表 | 每条关联都开独立一级菜单 |
-| 高频从列表定位并连续查看详情 | 可调整宽度的 Master–Detail | 每次打开全屏页面再返回列表 |
-| 多对多选择且候选很多 | 可搜索双栏选择器、已选摘要、批量校验 | 原始 ID 输入或超长 Select |
-| 跨多个实体且有明确状态推进 | TaskPage / Workflow + Timeline | 普通表单 + 可随意修改的 status 下拉框 |
-| 高风险跨表写操作 | Impact Preview + Confirm + Server Command | 前端连续调用多个更新接口 |
-| 不可变版本或历史记录 | Version List + Diff + Audit Timeline | 覆盖式编辑 |
-| 需要解释依赖和传播范围 | 有限领域 Dependency Graph | 通用全库 ER 图塞进业务页面 |
-| 低频辅助查看 | Linked Records Sheet | 永久占用主页面空间 |
-| 低风险、少字段、无关联副作用 | Dialog / Inline Edit | 独立复杂工作台 |
+| 关系和任务特征               | 推荐模式                                  | 不推荐                                |
+| ---------------------------- | ----------------------------------------- | ------------------------------------- |
+| 高频一对多查看，编辑较少     | EntityPage + Tab + 分页关联表             | 每条关联都开独立一级菜单              |
+| 高频从列表定位并连续查看详情 | 可调整宽度的 Master–Detail                | 每次打开全屏页面再返回列表            |
+| 多对多选择且候选很多         | 可搜索双栏选择器、已选摘要、批量校验      | 原始 ID 输入或超长 Select             |
+| 跨多个实体且有明确状态推进   | TaskPage / Workflow + Timeline            | 普通表单 + 可随意修改的 status 下拉框 |
+| 高风险跨表写操作             | Impact Preview + Confirm + Server Command | 前端连续调用多个更新接口              |
+| 不可变版本或历史记录         | Version List + Diff + Audit Timeline      | 覆盖式编辑                            |
+| 需要解释依赖和传播范围       | 有限领域 Dependency Graph                 | 通用全库 ER 图塞进业务页面            |
+| 低频辅助查看                 | Linked Records Sheet                      | 永久占用主页面空间                    |
+| 低风险、少字段、无关联副作用 | Dialog / Inline Edit                      | 独立复杂工作台                        |
 
 判断顺序：先看操作者任务，再看一致性边界，其次看频率、风险和数据量，最后才决定组件。关系多不等于页面一定复杂；只有对决策或操作有帮助的关系才进入首屏。
 
@@ -324,29 +324,29 @@ Request Trace 以只读诊断为主。退款、人工结算或异常处置是独
 
 每个核心实体和写操作都需要填写以下字段：
 
-| 字段 | 说明 |
-| --- | --- |
-| Domain / Aggregate | 所属领域和聚合根 |
-| Model / Table | GORM Model、表名和数据库位置 |
-| Stable Identity | 主键、业务键和重命名策略 |
-| Direct Relations | 通过稳定 ID 的关系 |
-| Logical Relations | 名称、Group、TradeNo、RequestId 等业务键关系 |
-| Snapshot Fields | 必须按历史保留的名称、价格和配置 |
-| Current UI Entry | 当前路由、页面、表格、弹层和入口 |
-| Current Actions | 创建、编辑、启停、删除、发布、分配、导入和批量操作 |
-| Write Chain | Router → Controller → Service → Model 的真实调用链 |
-| Side Effects | 关联表、缓存、额度、任务、通知、审计和外部调用 |
-| Invariants | 删除约束、唯一性、状态机、计费和安全不变量 |
-| Pain Points | 当前步骤、重复输入、上下文丢失、误操作和权限问题 |
-| Target Pattern | Collection、Entity、Master–Detail、Workflow 或 Analysis |
-| API Gap | Summary、分页、Impact、Command、Timeline 和 OpenAPI 缺口 |
-| Migration | 新路由、兼容方式、灰度开关、回滚和旧代码删除条件 |
+| 字段               | 说明                                                     |
+| ------------------ | -------------------------------------------------------- |
+| Domain / Aggregate | 所属领域和聚合根                                         |
+| Model / Table      | GORM Model、表名和数据库位置                             |
+| Stable Identity    | 主键、业务键和重命名策略                                 |
+| Direct Relations   | 通过稳定 ID 的关系                                       |
+| Logical Relations  | 名称、Group、TradeNo、RequestId 等业务键关系             |
+| Snapshot Fields    | 必须按历史保留的名称、价格和配置                         |
+| Current UI Entry   | 当前路由、页面、表格、弹层和入口                         |
+| Current Actions    | 创建、编辑、启停、删除、发布、分配、导入和批量操作       |
+| Write Chain        | Router → Controller → Service → Model 的真实调用链       |
+| Side Effects       | 关联表、缓存、额度、任务、通知、审计和外部调用           |
+| Invariants         | 删除约束、唯一性、状态机、计费和安全不变量               |
+| Pain Points        | 当前步骤、重复输入、上下文丢失、误操作和权限问题         |
+| Target Pattern     | Collection、Entity、Master–Detail、Workflow 或 Analysis  |
+| API Gap            | Summary、分页、Impact、Command、Timeline 和 OpenAPI 缺口 |
+| Migration          | 新路由、兼容方式、灰度开关、回滚和旧代码删除条件         |
 
 写操作另建 Action Matrix：
 
-| 页面动作 | capability | 输入 | 读取关系 | 写入实体 | 事务边界 | 缓存失效 | 审计 | 风险 | V2 交互 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 示例：禁用渠道 | `channels.write` | Channel ID + version | Ability、ChannelModel、未完成 Task、近期用量 | Channel status | 待确认 | 路由/模型缓存 | 必须 | 高 | Impact Preview + 名称确认 |
+| 页面动作       | capability       | 输入                 | 读取关系                                     | 写入实体       | 事务边界 | 缓存失效      | 审计 | 风险 | V2 交互                   |
+| -------------- | ---------------- | -------------------- | -------------------------------------------- | -------------- | -------- | ------------- | ---- | ---- | ------------------------- |
+| 示例：禁用渠道 | `channels.write` | Channel ID + version | Ability、ChannelModel、未完成 Task、近期用量 | Channel status | 待确认   | 路由/模型缓存 | 必须 | 高   | Impact Preview + 名称确认 |
 
 示例只定义盘点格式，不能代替后端代码审计；特别是“事务边界”和“缓存失效”必须沿实际调用链确认。
 
@@ -401,6 +401,24 @@ Request Trace 以只读诊断为主。退款、人工结算或异常处置是独
 6. **P1：Finance Case**。先保留现有 Finance Overview，再为支付和入账异常增加案件详情与人工处置闭环。
 
 这六项不是六套互相复制的页面。它们共享 `EntityDetailLayout`、`LinkedRecordsPanel`、`ImpactPreview`、`VersionDiff`、`AuditTimeline`、`MasterDetail` 和服务端 DataGrid 等 Pattern；只有领域内容、权限和命令不同。
+
+### 11.1 Admin 导航收敛决策
+
+2026-09-01 复核后，Admin 不再把 User Console 的 15 个页面逐项复制成 `/admin/users/*`。管理员必须覆盖相应业务能力，但通过管理领域的聚合工作台、全局数据范围、扩展/敏感字段投影和可审计命令承载；能力覆盖不等于页面或导航对等。
+
+正式骨架保留 18 个入口：
+
+| 分组         | 入口                                               |
+| ------------ | -------------------------------------------------- |
+| 管理工作台   | 总览                                               |
+| 网关运营     | 渠道、请求与任务、渠道用量、API 与模型调试         |
+| 模型与商业化 | 模型目录、官方价格、渠道采购价、销售价本、定价治理 |
+| 客户与财务   | 用户、客户用量、财务运营、订阅、兑换码             |
+| 系统         | 系统设置、系统信息、审计日志                       |
+
+合并规则：路由、探测和凭据进入渠道工作台；异步任务进入 Request Trace；io.net 模型部署按配置进入模型工作台；API Key、接入进度、账户安全、价本分配、余额、用量和活动进入 User 360；充值、支付回调和财务告警进入 Finance；对账和熔断进入定价治理；折扣计算器进入销售价本；站点、内容、认证、模型、计费、运营、安全和集成进入统一系统设置层级。
+
+暂缓规则：多人 Workspace、完整用户告警规则和平台 Incident 管理在缺少对应领域 API、状态机和审计契约前，不进入正式导航。旧后台存在页面或配置项不构成 V2 一级菜单保留依据。
 
 ## 12. 第一轮代码依据
 

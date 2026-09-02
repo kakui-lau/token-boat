@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { DateRangeValue } from "../contracts";
 import { liveRepository } from "../live-repository";
+import { liveSessionRepository } from "../live-session-repository";
 import { server } from "@/test/server";
 
 const range: DateRangeValue = {
@@ -90,6 +91,33 @@ describe("live repository contracts", () => {
     await liveRepository.getSession({ ignoreCurrentSession: true });
 
     expect(sessionHeaders).toEqual([null, "session-a", null]);
+  });
+
+  test("shares refreshed credentials with business repository requests", async () => {
+    let authorizationHeader: string | null = null;
+    server.use(
+      http.post("*/api/user/auth/refresh", () =>
+        HttpResponse.json({
+          success: true,
+          data: authBundle("merchant"),
+        }),
+      ),
+      http.get("*/api/user/self/groups", ({ request }) => {
+        authorizationHeader = request.headers.get("Authorization");
+        return HttpResponse.json({
+          success: true,
+          data: { default: { desc: "Default routing", ratio: 1 } },
+        });
+      }),
+    );
+
+    try {
+      await liveSessionRepository.getSession({ ignoreCurrentSession: true });
+      await liveRepository.listApiKeyGroups();
+      expect(authorizationHeader).toBe("Bearer access-token");
+    } finally {
+      liveSessionRepository.clearLocalSession();
+    }
   });
 
   test("maps the backend usage summary and converts quota to USD", async () => {
@@ -276,6 +304,9 @@ describe("live repository contracts", () => {
               vendor_id: 2,
               owner_by: "",
               context_length: 200_000,
+              max_output_tokens: 32_000,
+              limits_source_url: "https://vendor.example/models/claude-fable-5",
+              limits_verified_at: 1_788_192_000,
               description: "Production reasoning model",
               tags: "文本,推理,代码",
               supported_endpoint_types: ["openai", "anthropic"],
@@ -405,6 +436,9 @@ describe("live repository contracts", () => {
         id: "anthropic/claude-fable-5",
         provider: "Anthropic",
         contextWindow: 200_000,
+        maxOutputTokens: 32_000,
+        limitsSourceUrl: "https://vendor.example/models/claude-fable-5",
+        limitsVerifiedAt: 1_788_192_000,
         description: "Production reasoning model",
         family: "reasoning",
         inputPrice: 9.95233,
@@ -509,6 +543,7 @@ describe("live repository contracts", () => {
           success: true,
           data: {
             email_verification: true,
+            evm_wallet_auth_enabled: true,
             github_oauth: true,
             github_client_id: "github-client",
             discord_oauth: false,
@@ -539,6 +574,8 @@ describe("live repository contracts", () => {
 
     await expect(liveRepository.getAuthCapabilities()).resolves.toEqual({
       emailVerificationEnabled: true,
+      evmWalletEnabled: true,
+      evmWalletRegistrationEnabled: true,
       oauthProviders: [
         {
           id: "github",
@@ -681,6 +718,7 @@ describe("live repository contracts", () => {
   test("continues a password login through the two-factor flow token", async () => {
     server.use(
       http.post("*/api/user/login", async ({ request }) => {
+        expect(request.headers.get("X-Turnstile-Token")).toBe("human-token");
         await expect(request.json()).resolves.toEqual({
           username: "secured-user",
           password: "correct-password",
@@ -709,6 +747,7 @@ describe("live repository contracts", () => {
     const result = await liveRepository.signIn({
       username: "secured-user",
       password: "correct-password",
+      turnstileToken: "human-token",
     });
     expect(result).toEqual({
       kind: "two_factor",
@@ -783,6 +822,167 @@ describe("live repository contracts", () => {
         Reflect.deleteProperty(navigator, "credentials");
       }
     }
+  });
+
+  test("binds an EVM wallet signature to the server-issued SIWE challenge", async () => {
+    const address = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const signature = `0x${"ab".repeat(65)}`;
+    server.use(
+      http.post("*/api/user/evm-wallet/register/begin", async ({ request }) => {
+        expect(new URL(request.url).search).toBe("");
+        expect(request.headers.get("X-Turnstile-Token")).toBe("human-token");
+        await expect(request.json()).resolves.toEqual({
+          address,
+          affiliate_code: "partner-code",
+          chain_id: "1",
+        });
+        return HttpResponse.json({
+          success: true,
+          data: {
+            address,
+            chain_id: "1",
+            expires_at: 1_800_000_000,
+            flow_token: "evm-flow",
+            message: "server-issued SIWE message",
+            nonce: "Nonce12345678",
+          },
+        });
+      }),
+      http.post("*/api/user/evm-wallet/login/finish", async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({
+          flow_token: "evm-flow",
+          signature,
+        });
+        return HttpResponse.json({ success: true, data: authBundle("evm-user", true) });
+      }),
+    );
+
+    await expect(
+      liveRepository.beginEVMWalletAuth({
+        address,
+        affiliateCode: "partner-code",
+        chainId: 1,
+        intent: "register",
+        turnstileToken: "human-token",
+      }),
+    ).resolves.toEqual({
+      address,
+      chainId: 1,
+      expiresAt: 1_800_000_000,
+      flowToken: "evm-flow",
+      message: "server-issued SIWE message",
+      nonce: "Nonce12345678",
+    });
+    await expect(
+      liveRepository.completeEVMWalletAuth({ flowToken: "evm-flow", signature }),
+    ).resolves.toMatchObject({
+      user: { username: "evm-user", usernameEditable: true },
+    });
+  });
+
+  test("binds an EVM wallet to an existing account with a session-bound security proof", async () => {
+    server.use(
+      http.post("*/api/user/auth/refresh", () =>
+        HttpResponse.json({ success: true, data: authBundle("merchant-owner") }),
+      ),
+    );
+    await liveRepository.getSession({ ignoreCurrentSession: true });
+    useDefaultAccountHandlers({});
+    const address = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const signature = `0x${"cd".repeat(65)}`;
+    server.use(
+      http.post("*/api/verify", async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({
+          method: "password",
+          scope: "evm_wallet.bind",
+          code: "current-password",
+        });
+        return HttpResponse.json({ success: true, data: { proof_token: "wallet-proof" } });
+      }),
+      http.post("*/api/user/evm-wallet/bind/begin", async ({ request }) => {
+        expect(request.headers.get("X-Security-Proof")).toBe("wallet-proof");
+        await expect(request.json()).resolves.toEqual({ address, chain_id: "1" });
+        return HttpResponse.json({
+          success: true,
+          data: {
+            address,
+            chain_id: "1",
+            expires_at: 1_800_000_000,
+            flow_token: "wallet-bind-flow",
+            message: "server-issued SIWE message",
+            nonce: "Nonce12345678",
+          },
+        });
+      }),
+      http.post("*/api/user/evm-wallet/bind/finish", async ({ request }) => {
+        expect(request.headers.get("X-Security-Proof")).toBe("wallet-proof");
+        await expect(request.json()).resolves.toEqual({
+          flow_token: "wallet-bind-flow",
+          signature,
+        });
+        return HttpResponse.json({ success: true, data: authBundle("merchant-owner") });
+      }),
+    );
+
+    const proof = await liveRepository.createEVMWalletSecurityProof(
+      "password",
+      "evm_wallet.bind",
+      "current-password",
+    );
+    const challenge = await liveRepository.beginEVMWalletBinding({
+      address,
+      chainId: 1,
+      proof,
+    });
+    await expect(
+      liveRepository.completeEVMWalletBinding({
+        flowToken: challenge.flowToken,
+        signature,
+        proof,
+      }),
+    ).resolves.toMatchObject({ account: { security: { evmWalletEnabled: false } } });
+  });
+
+  test("sets the first password through a purpose-bound EVM wallet challenge", async () => {
+    await authenticateLiveRepository();
+    useDefaultAccountHandlers({});
+    const address = "0x52908400098527886E0F7030069857D2E4169EE7";
+    const signature = `0x${"ef".repeat(65)}`;
+    server.use(
+      http.post("*/api/user/evm-wallet/password/begin", async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({ address, chain_id: "1" });
+        return HttpResponse.json({
+          success: true,
+          data: {
+            address,
+            chain_id: "1",
+            expires_at: 1_800_000_000,
+            flow_token: "wallet-password-flow",
+            message: "server-issued password setup message",
+            nonce: "Nonce12345678",
+          },
+        });
+      }),
+      http.post("*/api/user/evm-wallet/password/finish", async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({
+          flow_token: "wallet-password-flow",
+          signature,
+          password: "new-wallet-password",
+        });
+        return HttpResponse.json({ success: true, data: authBundle("merchant-owner") });
+      }),
+    );
+
+    await expect(
+      liveRepository.beginEVMWalletPasswordSetup({ address, chainId: 1 }),
+    ).resolves.toMatchObject({ flowToken: "wallet-password-flow", address, chainId: 1 });
+    await expect(
+      liveRepository.completeEVMWalletPasswordSetup({
+        flowToken: "wallet-password-flow",
+        signature,
+        newPassword: "new-wallet-password",
+      }),
+    ).resolves.toMatchObject({ account: { user: { passwordSet: true } } });
   });
 
   test("maps paginated API keys without exposing the stored secret", async () => {
@@ -1864,6 +2064,18 @@ describe("live repository contracts", () => {
           data: { enabled: true, locked: false, backup_codes_remaining: 6 },
         }),
       ),
+      http.get("*/api/user/evm-wallet", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            enabled: true,
+            address: "0x0000000000000000000000000000000000000001",
+            last_used_at: 1_787_904_000,
+            removable: true,
+            verification_method: "2fa",
+          },
+        }),
+      ),
       http.get("*/api/status", () =>
         HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
       ),
@@ -1912,6 +2124,30 @@ describe("live repository contracts", () => {
       revokedCount: 3,
       account: { sessions: [] },
     });
+  });
+
+  test("updates profile and verified email through the self profile contract", async () => {
+    useDefaultAccountHandlers({});
+    server.use(
+      http.put("*/api/user/self", async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({
+          username: "merchant-owner",
+          display_name: "Merchant Renamed",
+          email: "verified@example.com",
+          verification_code: "123456",
+        });
+        return HttpResponse.json({ success: true, data: null });
+      }),
+    );
+
+    await expect(
+      liveRepository.updateProfile({
+        username: "merchant-owner",
+        displayName: "Merchant Renamed",
+        email: "verified@example.com",
+        verificationCode: "123456",
+      }),
+    ).resolves.toMatchObject({ user: { username: "merchant-owner" } });
   });
 
   test("does not replace the server default balance threshold with a fabricated USD value", async () => {
@@ -2114,6 +2350,12 @@ describe("live repository contracts", () => {
           data: { enabled: false, locked: false },
         }),
       ),
+      http.get("*/api/user/evm-wallet", () =>
+        HttpResponse.json({
+          success: true,
+          data: { enabled: false, verification_method: "password" },
+        }),
+      ),
     );
 
     const account = await liveRepository.updatePreferences({
@@ -2176,6 +2418,39 @@ describe("live repository contracts", () => {
       sessionId: "session-contract",
     });
     expect(result.account.security.twoFactorEnabled).toBe(true);
+  });
+
+  test("changes the password and accepts the rotated session", async () => {
+    await authenticateLiveRepository();
+    useDefaultAccountHandlers({});
+    server.use(
+      http.put("*/api/user/self", async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({
+          original_password: "current-password",
+          password: "replacement-password",
+        });
+        return HttpResponse.json({
+          success: true,
+          data: {
+            access_token: "access-after-password-change",
+            access_expires_at: 1_900_000_000,
+            session: { sid: "session-contract" },
+          },
+        });
+      }),
+    );
+
+    const result = await liveRepository.changePassword({
+      currentPassword: "current-password",
+      newPassword: "replacement-password",
+    });
+
+    expect(result.session).toMatchObject({
+      accessToken: "access-after-password-change",
+      accessExpiresAt: 1_900_000_000,
+      sessionId: "session-contract",
+    });
+    expect(result.account.user.username).toBe("merchant-owner");
   });
 
   test("registers a Passkey with 2FA proof and serializes the browser credential", async () => {
@@ -2676,7 +2951,7 @@ describe("live repository contracts", () => {
   });
 });
 
-function authBundle(username: string) {
+function authBundle(username: string, usernameEditable = false) {
   return {
     access_token: "access-token",
     access_expires_at: 1_800_000_000,
@@ -2684,6 +2959,8 @@ function authBundle(username: string) {
     user: {
       id: 9,
       username,
+      username_editable: usernameEditable,
+      has_password: true,
       display_name: username,
       email: `${username}@example.com`,
       group: "default",
@@ -2751,6 +3028,12 @@ function useDefaultAccountHandlers(options: {
         data: { enabled: options.twoFactorEnabled ?? false, locked: false },
       }),
     ),
+    http.get("*/api/user/evm-wallet", () =>
+      HttpResponse.json({
+        success: true,
+        data: { enabled: false, verification_method: "password" },
+      }),
+    ),
     http.get("*/api/status", () =>
       HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
     ),
@@ -2761,6 +3044,8 @@ function accountUser(overrides: Record<string, unknown> = {}) {
   return {
     id: 12,
     username: "merchant-owner",
+    username_editable: false,
+    has_password: true,
     display_name: "Merchant Owner",
     email: "owner@example.com",
     group: "default",

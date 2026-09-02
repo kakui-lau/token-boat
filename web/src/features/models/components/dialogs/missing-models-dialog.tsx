@@ -128,14 +128,16 @@ export function MissingModelsDialog({
         <div className='flex items-center justify-center py-12'>
           <Loader2 className='h-8 w-8 animate-spin' />
         </div>
-      ) : missingModels.length === 0 ? (
+      ) : null}
+      {!isLoading && missingModels.length === 0 ? (
         <div className='text-muted-foreground py-12 text-center'>
           <p>{t('No missing models found.')}</p>
           <p className='text-sm'>
             {t('All models in use are properly configured.')}
           </p>
         </div>
-      ) : (
+      ) : null}
+      {!isLoading && missingModels.length > 0 ? (
         <div className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto'>
           <div className='flex flex-shrink-0 items-center justify-between gap-3'>
             <div className='text-muted-foreground text-sm whitespace-nowrap'>
@@ -234,7 +236,7 @@ export function MissingModelsDialog({
             </div>
           )}
         </div>
-      )}
+      ) : null}
     </Dialog>
   )
 }

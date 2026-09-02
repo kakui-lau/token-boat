@@ -1,3 +1,4 @@
+import { CommandMenu } from '@/components/command-menu'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -57,6 +58,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
             </SidebarInset>
           </div>
         </SidebarProvider>
+        <CommandMenu />
       </SearchProvider>
     </LayoutProvider>
   )

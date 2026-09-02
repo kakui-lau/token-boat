@@ -14,6 +14,7 @@ frontend/node_modules
 frontend/**/node_modules
 frontend/**/dist
 frontend/coverage
+frontend/**/.astro/
 !frontend/apps/console/src/data/
 !frontend/apps/console/src/data/**
 .env
@@ -42,6 +43,9 @@ electron/dist
 token_estimator_test.go
 skills-lock.json
 .playwright-mcp
+.playwright-cli/
+motion-audits/
+output/
 
 # Local-only live probes and scratch test workspaces.
 .local-tests/

@@ -1,28 +1,77 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // QuotaData 柱状图数据
 type QuotaData struct {
-	Id        int    `json:"id"`
-	UserID    int    `json:"user_id" gorm:"index"`
-	Username  string `json:"username" gorm:"index:idx_qdt_model_user_name,priority:2;size:64;default:''"`
-	ModelName string `json:"model_name" gorm:"index:idx_qdt_model_user_name,priority:1;size:64;default:''"`
-	CreatedAt int64  `json:"created_at" gorm:"bigint;index:idx_qdt_created_at,priority:2"`
-	UseGroup  string `json:"use_group" gorm:"index;size:64;default:''"`
-	TokenID   int    `json:"token_id" gorm:"index;default:0"`
-	ChannelID int    `json:"channel_id" gorm:"index;default:0"`
-	NodeName  string `json:"node_name" gorm:"index;size:64;default:''"`
-	TokenUsed int    `json:"token_used" gorm:"default:0"`
-	Count     int    `json:"count" gorm:"default:0"`
-	Quota     int    `json:"quota" gorm:"default:0"`
+	Id           int    `json:"id"`
+	DimensionKey string `json:"-" gorm:"type:char(64);not null;uniqueIndex:uk_quota_data_dimension"`
+	UserID       int    `json:"user_id" gorm:"index:idx_qdt_user_created,priority:1"`
+	Username     string `json:"username" gorm:"index:idx_qdt_model_user_name,priority:2;index:idx_qdt_username_created,priority:1;size:64;default:''"`
+	ModelName    string `json:"model_name" gorm:"index:idx_qdt_model_user_name,priority:1;size:64;default:''"`
+	CreatedAt    int64  `json:"created_at" gorm:"bigint;index:idx_qdt_created_at;index:idx_qdt_user_created,priority:2;index:idx_qdt_username_created,priority:2"`
+	UseGroup     string `json:"use_group" gorm:"index;size:64;default:''"`
+	TokenID      int    `json:"token_id" gorm:"index;default:0"`
+	ChannelID    int    `json:"channel_id" gorm:"index;default:0"`
+	NodeName     string `json:"node_name" gorm:"index;size:64;default:''"`
+	TokenUsed    int    `json:"token_used" gorm:"default:0"`
+	Count        int    `json:"count" gorm:"default:0"`
+	Quota        int    `json:"quota" gorm:"default:0"`
+}
+
+type quotaDataDimensionMigration struct {
+	DimensionKey string `gorm:"column:dimension_key;type:char(64)"`
+}
+
+func (quotaDataDimensionMigration) TableName() string {
+	return "quota_data"
+}
+
+func appendQuotaDataDimensionString(encoded []byte, value string) []byte {
+	encoded = binary.BigEndian.AppendUint64(encoded, uint64(len(value)))
+	return append(encoded, value...)
+}
+
+func quotaDataDimensionKey(quotaData *QuotaData) string {
+	encoded := append([]byte{}, "quota-data-dimension:v1"...)
+	encoded = binary.BigEndian.AppendUint64(encoded, uint64(int64(quotaData.UserID)))
+	encoded = appendQuotaDataDimensionString(encoded, quotaData.Username)
+	encoded = appendQuotaDataDimensionString(encoded, quotaData.ModelName)
+	encoded = binary.BigEndian.AppendUint64(encoded, uint64(quotaData.CreatedAt))
+	encoded = appendQuotaDataDimensionString(encoded, quotaData.UseGroup)
+	encoded = binary.BigEndian.AppendUint64(encoded, uint64(int64(quotaData.TokenID)))
+	encoded = binary.BigEndian.AppendUint64(encoded, uint64(int64(quotaData.ChannelID)))
+	encoded = appendQuotaDataDimensionString(encoded, quotaData.NodeName)
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
+}
+
+func quotaDataDimensionsEqual(left *QuotaData, right *QuotaData) bool {
+	return left.UserID == right.UserID &&
+		left.Username == right.Username &&
+		left.ModelName == right.ModelName &&
+		left.CreatedAt == right.CreatedAt &&
+		left.UseGroup == right.UseGroup &&
+		left.TokenID == right.TokenID &&
+		left.ChannelID == right.ChannelID &&
+		left.NodeName == right.NodeName
+}
+
+func (quotaData *QuotaData) BeforeSave(_ *gorm.DB) error {
+	quotaData.DimensionKey = quotaDataDimensionKey(quotaData)
+	return nil
 }
 
 type QuotaDataLogParams struct {
@@ -42,7 +91,9 @@ func UpdateQuotaData() {
 	for {
 		if common.DataExportEnabled {
 			common.SysLog("正在更新数据看板数据...")
-			SaveQuotaDataCache()
+			if err := SaveQuotaDataCache(); err != nil {
+				common.SysError("failed to save quota data cache: " + err.Error())
+			}
 		}
 		time.Sleep(time.Duration(common.DataExportInterval) * time.Minute)
 	}
@@ -52,16 +103,8 @@ var CacheQuotaData = make(map[string]*QuotaData)
 var CacheQuotaDataLock = sync.Mutex{}
 
 func logQuotaDataCache(quotaData *QuotaData) {
-	key := fmt.Sprintf("%d\x00%s\x00%s\x00%d\x00%s\x00%d\x00%d\x00%s",
-		quotaData.UserID,
-		quotaData.Username,
-		quotaData.ModelName,
-		quotaData.CreatedAt,
-		quotaData.UseGroup,
-		quotaData.TokenID,
-		quotaData.ChannelID,
-		quotaData.NodeName,
-	)
+	key := quotaDataDimensionKey(quotaData)
+	quotaData.DimensionKey = key
 	count := quotaData.Count
 	quota := quotaData.Quota
 	tokenUsed := quotaData.TokenUsed
@@ -97,45 +140,152 @@ func LogQuotaData(params QuotaDataLogParams) {
 	logQuotaDataCache(quotaData)
 }
 
-func SaveQuotaDataCache() {
+func takeQuotaDataCacheSnapshot() map[string]*QuotaData {
 	CacheQuotaDataLock.Lock()
-	defer CacheQuotaDataLock.Unlock()
-	size := len(CacheQuotaData)
-	// 如果缓存中有数据，就保存到数据库中
-	// 1. 先查询数据库中是否有数据
-	// 2. 如果有数据，就更新数据
-	// 3. 如果没有数据，就插入数据
-	for _, quotaData := range CacheQuotaData {
-		quotaDataDB := &QuotaData{}
-		DB.Table("quota_data").
-			Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
-				quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
-			First(quotaDataDB)
-		if quotaDataDB.Id > 0 {
-			//quotaDataDB.Count += quotaData.Count
-			//quotaDataDB.Quota += quotaData.Quota
-			//DB.Table("quota_data").Save(quotaDataDB)
-			increaseQuotaData(quotaData)
-		} else {
-			DB.Table("quota_data").Create(quotaData)
-		}
-	}
+	pendingQuotaData := CacheQuotaData
 	CacheQuotaData = make(map[string]*QuotaData)
-	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据", size))
+	CacheQuotaDataLock.Unlock()
+	return pendingQuotaData
 }
 
-func increaseQuotaData(quotaData *QuotaData) {
-	err := DB.Table("quota_data").
-		Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
-			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
-		Updates(map[string]interface{}{
-			"count":      gorm.Expr("count + ?", quotaData.Count),
-			"quota":      gorm.Expr("quota + ?", quotaData.Quota),
-			"token_used": gorm.Expr("token_used + ?", quotaData.TokenUsed),
-		}).Error
-	if err != nil {
-		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
+func restoreQuotaDataCache(pendingQuotaData map[string]*QuotaData) {
+	CacheQuotaDataLock.Lock()
+	defer CacheQuotaDataLock.Unlock()
+	for _, quotaData := range pendingQuotaData {
+		logQuotaDataCache(quotaData)
 	}
+}
+
+func SaveQuotaDataCache() error {
+	pendingQuotaData := takeQuotaDataCacheSnapshot()
+	size := len(pendingQuotaData)
+	if size == 0 {
+		return nil
+	}
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		for _, quotaData := range pendingQuotaData {
+			if err := upsertQuotaData(tx, quotaData); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		restoreQuotaDataCache(pendingQuotaData)
+		return err
+	}
+	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据", size))
+	return nil
+}
+
+func upsertQuotaData(tx *gorm.DB, quotaData *QuotaData) error {
+	quotaData.DimensionKey = quotaDataDimensionKey(quotaData)
+	if err := tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "dimension_key"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"count":      gorm.Expr("quota_data.count + ?", quotaData.Count),
+			"quota":      gorm.Expr("quota_data.quota + ?", quotaData.Quota),
+			"token_used": gorm.Expr("quota_data.token_used + ?", quotaData.TokenUsed),
+		}),
+	}).Create(quotaData).Error; err != nil {
+		return err
+	}
+
+	var stored QuotaData
+	if err := tx.Select(
+		"user_id", "username", "model_name", "created_at", "use_group", "token_id", "channel_id", "node_name",
+	).Where("dimension_key = ?", quotaData.DimensionKey).First(&stored).Error; err != nil {
+		return err
+	}
+	if !quotaDataDimensionsEqual(&stored, quotaData) {
+		return fmt.Errorf("quota data dimension hash collision for key %s", quotaData.DimensionKey)
+	}
+	return nil
+}
+
+func prepareQuotaDataDimensionKey() error {
+	if !DB.Migrator().HasTable(&QuotaData{}) {
+		return nil
+	}
+	if DB.Migrator().HasColumn(&QuotaData{}, "DimensionKey") &&
+		DB.Migrator().HasIndex(&QuotaData{}, "uk_quota_data_dimension") {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(&QuotaData{}, "DimensionKey") {
+		if err := DB.Migrator().AddColumn(&quotaDataDimensionMigration{}, "DimensionKey"); err != nil {
+			return err
+		}
+	}
+
+	type quotaDataGroup struct {
+		row          QuotaData
+		duplicateIDs []int
+		count        int64
+		quota        int64
+		tokenUsed    int64
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var rows []QuotaData
+		if err := tx.Order("id ASC").Find(&rows).Error; err != nil {
+			return err
+		}
+		groups := make(map[string]*quotaDataGroup, len(rows))
+		maxInt := int64(^uint(0) >> 1)
+		minInt := -maxInt - 1
+		for _, row := range rows {
+			key := quotaDataDimensionKey(&row)
+			group, exists := groups[key]
+			if !exists {
+				groups[key] = &quotaDataGroup{
+					row: row, count: int64(row.Count), quota: int64(row.Quota), tokenUsed: int64(row.TokenUsed),
+				}
+				continue
+			}
+			if !quotaDataDimensionsEqual(&group.row, &row) {
+				return fmt.Errorf("quota data dimension hash collision for key %s", key)
+			}
+			values := []struct {
+				name  string
+				total *int64
+				delta int64
+			}{
+				{name: "count", total: &group.count, delta: int64(row.Count)},
+				{name: "quota", total: &group.quota, delta: int64(row.Quota)},
+				{name: "token_used", total: &group.tokenUsed, delta: int64(row.TokenUsed)},
+			}
+			for _, value := range values {
+				if (value.delta > 0 && *value.total > maxInt-value.delta) ||
+					(value.delta < 0 && *value.total < minInt-value.delta) {
+					return fmt.Errorf("quota data %s overflows while merging dimension %s", value.name, key)
+				}
+				*value.total += value.delta
+			}
+			group.duplicateIDs = append(group.duplicateIDs, row.Id)
+		}
+
+		keys := make([]string, 0, len(groups))
+		for key := range groups {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			group := groups[key]
+			if len(group.duplicateIDs) > 0 {
+				if err := tx.Where("id IN ?", group.duplicateIDs).Delete(&QuotaData{}).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Table("quota_data").Where("id = ?", group.row.Id).Updates(map[string]any{
+				"dimension_key": key,
+				"count":         int(group.count),
+				"quota":         int(group.quota),
+				"token_used":    int(group.tokenUsed),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {

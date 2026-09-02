@@ -6,7 +6,97 @@ const sourceRoot = path.join(root, "apps/console/src");
 const localeRoot = path.join(sourceRoot, "i18n/locales");
 
 const zhAdditions = {
+  "Limits verified": "限制信息核验时间",
+  "Maximum output": "最大输出",
+  "Official limit source": "官方限制来源",
+  "Open official model limits documentation": "打开官方模型限制文档",
+  "Bind EVM wallet": "绑定 EVM 钱包",
+  "Bind wallet": "绑定钱包",
+  Bound: "已绑定",
+  "Choose replacement wallet": "选择新钱包",
+  "Choose wallet": "选择钱包",
+  "EVM wallet": "EVM 钱包",
+  "EVM wallet bound": "EVM 钱包已绑定",
+  "EVM wallet removed": "EVM 钱包已解绑",
+  "Not bound": "未绑定",
+  "Remove this EVM wallet?": "解绑此 EVM 钱包？",
+  "Remove wallet": "解绑钱包",
+  "Replace EVM wallet": "更换 EVM 钱包",
+  "Replace wallet": "更换钱包",
+  "Security verification is required.": "需要完成安全验证。",
+  "Select the browser wallet to bind to this account.": "选择要绑定到此账户的浏览器钱包。",
+  "This verification protects changes to your sign-in methods.":
+    "此验证用于保护账户登录方式的变更。",
+  "This wallet will no longer be able to sign in to your account.":
+    "解绑后，此钱包将无法再登录你的账户。",
+  "Unable to bind EVM wallet": "无法绑定 EVM 钱包",
+  "Unable to remove EVM wallet": "无法解绑 EVM 钱包",
+  "Use an EVM wallet signature to sign in without sending a blockchain transaction.":
+    "使用 EVM 钱包签名登录，无需发送链上交易。",
+  "Verify this account, then sign a one-time message with the wallet you want to bind.":
+    "先验证当前账户，再使用要绑定的钱包签署一次性消息。",
+  "Your browser will verify your Passkey before connecting the wallet.":
+    "连接钱包前，浏览器将验证你的 Passkey。",
+  "Your browser will verify your Passkey before removing the wallet.":
+    "解绑钱包前，浏览器将验证你的 Passkey。",
   "5m cache write": "5 分钟缓存写入",
+  "Choose an EVM wallet": "选择 EVM 钱包",
+  "Continue with EVM wallet": "使用 EVM 钱包继续",
+  "EVM wallet sign-in failed": "EVM 钱包登录失败",
+  "No EVM wallet was found in this browser.": "当前浏览器中未检测到 EVM 钱包。",
+  "Select the browser wallet that should sign this login request.":
+    "选择用于签署本次登录请求的浏览器钱包。",
+  "Sign a one-time message. No blockchain transaction or gas fee is required.":
+    "签署一条一次性消息即可登录，无需链上交易或支付 Gas 费。",
+  "If this wallet is new, an account will be created automatically after signature verification.":
+    "如果这是首次使用的钱包，签名验证后将自动创建账户并登录。",
+  "Signed in with EVM wallet": "已使用 EVM 钱包登录",
+  "The wallet did not return an EVM account.": "钱包未返回 EVM 账户。",
+  "The wallet sign-in challenge does not match this site or account.":
+    "钱包登录请求与当前站点或账户不匹配。",
+  "Wallet request was cancelled": "钱包请求已取消",
+  "Used to sign in and must be unique.": "用于登录，且不能与其他账户重复。",
+  "Email addresses are verified before they are linked and must be unique.":
+    "邮箱验证通过后才会绑定，且不能与其他账户重复。",
+  "Update your unique username, display name, and verified email address.":
+    "修改唯一用户名、显示名称和已验证邮箱。",
+  "Manage your username, display name, and verified email address.":
+    "管理用户名、显示名称和已验证邮箱。",
+  "Set your username once. It cannot be changed after you save it.":
+    "用户名仅可设置一次，保存后不可修改。",
+  "Your username is fixed after it is set.": "用户名设置后不可修改。",
+  "Add a password as another way to sign in to this account.":
+    "添加密码，作为此账户的另一种登录方式。",
+  "Bind an EVM wallet before setting the first password.": "设置首个密码前，请先绑定 EVM 钱包。",
+  "Create the first password after verifying the EVM wallet bound to this account.":
+    "验证当前账户绑定的 EVM 钱包后设置首个密码。",
+  "Password set": "密码已设置",
+  "Select the wallet already bound to this account.": "请选择当前账户已绑定的钱包。",
+  "Set password": "设置密码",
+  "Sign once to confirm ownership of the wallet bound to this account.":
+    "签名一次，以确认你拥有当前账户绑定的钱包。",
+  "Unable to set password": "无法设置密码",
+  "Verify wallet and set password": "验证钱包并设置密码",
+  "Wallet verification unavailable": "钱包验证不可用",
+  "or create an account with a password": "或使用密码创建账户",
+  Password: "密码",
+  "Change password": "修改密码",
+  "Update the password used to sign in to this account.": "更新用于登录此账户的密码。",
+  "Current password": "当前密码",
+  "New password": "新密码",
+  "Confirm new password": "确认新密码",
+  "Enter your current password.": "请输入当前密码。",
+  "Enter a new password.": "请输入新密码。",
+  "Password must be between 8 and 20 characters.": "密码长度必须为 8 到 20 个字符。",
+  "New password must be different from the current password.": "新密码不能与当前密码相同。",
+  "Changing password…": "正在修改密码…",
+  "Password changed": "密码已修改",
+  "Your password has been updated and this session remains active.":
+    "密码已更新，当前会话仍保持登录。",
+  "Your current session stays active; all other sessions will be signed out.":
+    "当前会话将保持登录，其他会话会被退出。",
+  "Unable to change password": "无法修改密码",
+  "Last 3 days": "最近 3 天",
   "Account balance first": "账户余额优先",
   "Account balance only": "仅账户余额",
   "AI responses may contain errors. Verify important information.":

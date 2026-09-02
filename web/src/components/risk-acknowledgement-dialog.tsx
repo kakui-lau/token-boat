@@ -65,7 +65,7 @@ type RiskAcknowledgementDialogProps = {
 }
 
 function getRequiredTextRows(text: string) {
-  return Math.max(1, Math.ceil(Array.from(text).length / 42))
+  return Math.max(1, Math.ceil([...text].length / 42))
 }
 
 export function RiskAcknowledgementDialog({
@@ -247,6 +247,8 @@ export function RiskAcknowledgementDialog({
                   {normalizedRequiredTextParts.map((part, index) =>
                     part.type === 'static' ? (
                       <span
+                        // Generated confirmation segments have stable positional identity.
+                        // eslint-disable-next-line react/no-array-index-key
                         key={`static-${index}`}
                         className='text-muted-foreground bg-background/70 border-border w-fit rounded-md border px-2 py-1.5 font-mono text-sm select-none'
                       >
@@ -254,6 +256,8 @@ export function RiskAcknowledgementDialog({
                       </span>
                     ) : (
                       <Textarea
+                        // Generated confirmation segments have stable positional identity.
+                        // eslint-disable-next-line react/no-array-index-key
                         key={`input-${index}`}
                         value={typedTextParts[part.inputIndex ?? 0] ?? ''}
                         onChange={(event) =>

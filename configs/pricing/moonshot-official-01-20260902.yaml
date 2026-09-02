@@ -1,0 +1,73 @@
+channel_name: moonshot-official-01
+channel_type: 25
+production_group: default
+base_url: https://api.moonshot.cn
+key_env: MOONSHOT_API_KEY
+param_override:
+  temperature: 1
+  top_p: 0.95
+vendor: Moonshot
+icon: Moonshot
+purchase_quote_reference: operator-confirmed-2026-09-02
+quote_valid_until: 2103638400
+models:
+  - logical_model: moonshotai/kimi-k2.7-code-premium
+    upstream_model: kimi-k2.7-code
+    context_length: 262144
+    description: Kimi K2.7 Code multimodal coding model with a 262K context window.
+    tags: [text, image, code, reasoning, long-context]
+    endpoints: [openai]
+    official_source_url: https://platform.kimi.ai/docs/pricing/chat-k27-code
+    official_source_version: "2026-09-02"
+    official_source_updated_at: 1788278400
+    official_input_per_1m: "0.95"
+    official_output_per_1m: "4"
+    official_cache_read_per_1m: "0.19"
+    official_cache_write_per_1m: ""
+    purchase_discount: "0.75"
+    route_enabled: true
+  - logical_model: moonshotai/kimi-k2.7-code-highspeed-premium
+    upstream_model: kimi-k2.7-code-highspeed
+    context_length: 262144
+    description: High-speed Kimi K2.7 Code multimodal coding model with a 262K context window.
+    tags: [text, image, code, reasoning, long-context, high-speed]
+    endpoints: [openai]
+    official_source_url: https://platform.kimi.ai/docs/pricing/chat-k27-code
+    official_source_version: "2026-09-02"
+    official_source_updated_at: 1788278400
+    official_input_per_1m: "1.90"
+    official_output_per_1m: "8"
+    official_cache_read_per_1m: "0.38"
+    official_cache_write_per_1m: ""
+    purchase_discount: "0.75"
+    route_enabled: true
+  - logical_model: moonshotai/kimi-k3-premium
+    upstream_model: kimi-k3
+    context_length: 1048576
+    description: Kimi K3 native multimodal reasoning model with a 1M context window.
+    tags: [text, image, video, code, reasoning, long-context]
+    endpoints: [openai]
+    official_source_url: https://platform.kimi.ai/docs/pricing/chat-k3
+    official_source_version: "2026-09-02"
+    official_source_updated_at: 1788278400
+    official_input_per_1m: "3"
+    official_output_per_1m: "15"
+    official_cache_read_per_1m: "0.30"
+    official_cache_write_per_1m: ""
+    purchase_discount: "0.75"
+    route_enabled: false
+  - logical_model: moonshotai/kimi-k2.6-premium
+    upstream_model: kimi-k2.6
+    context_length: 262144
+    description: Kimi K2.6 multimodal model with a 262K context window.
+    tags: [text, image, video, code, reasoning, long-context]
+    endpoints: [openai]
+    official_source_url: https://platform.kimi.ai/docs/pricing/chat-k26
+    official_source_version: "2026-09-02"
+    official_source_updated_at: 1788278400
+    official_input_per_1m: "0.95"
+    official_output_per_1m: "4"
+    official_cache_read_per_1m: "0.16"
+    official_cache_write_per_1m: ""
+    purchase_discount: "0.75"
+    route_enabled: true

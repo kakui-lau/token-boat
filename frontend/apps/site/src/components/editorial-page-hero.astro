@@ -1,0 +1,38 @@
+---
+import type { SiteLocale } from "@/content/site-copy";
+
+type Fact = readonly string[];
+type Props = {
+  facts?: readonly Fact[];
+  factsLabel?: string;
+  lead: string;
+  locale: SiteLocale;
+  meta: string;
+  titleLines: readonly string[];
+};
+
+const { facts = [], factsLabel, lead, locale, meta, titleLines } = Astro.props;
+---
+
+<section class="editorial-page-hero">
+  <div class="site-shell editorial-page-hero__frame">
+    <div class="editorial-page-hero__meta">
+      <p>TOKEN BOAT / 2026</p>
+      <p>{meta}</p>
+      <p>{locale === "zh" ? "ZH / EN" : "EN / ZH"}</p>
+    </div>
+    <div class="editorial-page-hero__body">
+      <h1>
+        {titleLines.map((line, index) => (
+          <span class:list={{ "editorial-page-hero__signal": index === titleLines.length - 1 }}>{line}</span>
+        ))}
+      </h1>
+      <p class="editorial-page-hero__lead">{lead}</p>
+    </div>
+    {facts.length > 0 && (
+      <div class="editorial-page-hero__facts" aria-label={factsLabel}>
+        {facts.map((fact) => <div><span>{fact[0]}</span><strong>{fact[1]}</strong></div>)}
+      </div>
+    )}
+  </div>
+</section>

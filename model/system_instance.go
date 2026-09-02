@@ -17,10 +17,10 @@ const (
 type SystemInstance struct {
 	NodeName   string `json:"node_name" gorm:"type:varchar(128);primaryKey"`
 	Info       string `json:"info" gorm:"type:text"`
-	StartedAt  int64  `json:"started_at" gorm:"bigint;index"`
-	LastSeenAt int64  `json:"last_seen_at" gorm:"bigint;index"`
-	CreatedAt  int64  `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt  int64  `json:"updated_at" gorm:"bigint;index"`
+	StartedAt  int64  `json:"started_at" gorm:"bigint"`
+	LastSeenAt int64  `json:"last_seen_at" gorm:"bigint"`
+	CreatedAt  int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt  int64  `json:"updated_at" gorm:"bigint"`
 }
 
 type SystemInstanceResponse struct {

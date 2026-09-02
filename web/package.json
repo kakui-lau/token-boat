@@ -9,7 +9,7 @@
     "build:check": "tsgo -b && rsbuild build",
     "typecheck": "tsgo -b",
     "test": "node scripts/run-tests.mjs",
-    "lint": "oxlint -c .oxlintrc.json .",
+    "lint": "oxlint -c .oxlintrc.json . --deny-warnings",
     "lint:fix": "oxlint -c .oxlintrc.json . --fix",
     "preview": "rsbuild preview",
     "format:check": "node scripts/format-with-protected-headers.mjs --check",

@@ -9,10 +9,16 @@ import {
 
 describe("date range contract", () => {
   it("creates inclusive quick ranges ending on the reference day", () => {
-    const range = createDateRange("7d", new Date(2026, 7, 28, 12));
+    const referenceDate = new Date(2026, 7, 28, 12);
+    const range = createDateRange("7d", referenceDate);
 
     expect(range).toEqual({ preset: "7d", from: "2026-08-22", to: "2026-08-28" });
     expect(dateRangeDayCount(range)).toBe(7);
+    expect(createDateRange("3d", referenceDate)).toEqual({
+      preset: "3d",
+      from: "2026-08-26",
+      to: "2026-08-28",
+    });
   });
 
   it("creates the previous calendar day and extended quick ranges", () => {

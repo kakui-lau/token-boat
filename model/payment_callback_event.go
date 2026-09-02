@@ -27,16 +27,16 @@ const (
 type PaymentCallbackEvent struct {
 	ID                 int64  `json:"id"`
 	Provider           string `json:"provider" gorm:"type:varchar(32);not null;index:idx_payment_callback_provider_received,priority:1;index:idx_payment_callback_provider_event,priority:1"`
-	EventID            string `json:"event_id" gorm:"type:varchar(255);index;index:idx_payment_callback_provider_event,priority:2"`
-	EventType          string `json:"event_type" gorm:"type:varchar(128);index"`
-	TradeNo            string `json:"trade_no" gorm:"type:varchar(255);index"`
+	EventID            string `json:"event_id" gorm:"type:varchar(255);index:idx_payment_callback_provider_event,priority:2"`
+	EventType          string `json:"event_type" gorm:"type:varchar(128)"`
+	TradeNo            string `json:"trade_no" gorm:"type:varchar(255)"`
 	RequestMethod      string `json:"request_method" gorm:"type:varchar(16)"`
 	RequestPath        string `json:"request_path" gorm:"type:varchar(255)"`
 	ClientIP           string `json:"client_ip" gorm:"type:varchar(64)"`
-	PayloadDigest      string `json:"payload_digest" gorm:"type:char(64);index"`
+	PayloadDigest      string `json:"payload_digest" gorm:"type:char(64)"`
 	PayloadPreview     string `json:"payload_preview" gorm:"type:text"`
-	VerificationStatus string `json:"verification_status" gorm:"type:varchar(32);not null;index"`
-	ProcessingStatus   string `json:"processing_status" gorm:"type:varchar(32);not null;index;index:idx_payment_callback_status_received,priority:1"`
+	VerificationStatus string `json:"verification_status" gorm:"type:varchar(32);not null"`
+	ProcessingStatus   string `json:"processing_status" gorm:"type:varchar(32);not null;index:idx_payment_callback_status_received,priority:1"`
 	HTTPStatus         int    `json:"http_status"`
 	ErrorMessage       string `json:"error_message" gorm:"type:text"`
 	Duplicate          bool   `json:"duplicate"`

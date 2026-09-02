@@ -68,7 +68,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	callBackAddress := service.GetCallbackAddress()
 	returnAddress := callBackAddress + "/api/subscription/epay/return"
 	if req.ReturnURL != "" {
-		if common.ValidateRedirectURL(req.ReturnURL) != nil {
+		if validatePaymentRedirectURL(req.ReturnURL) != nil {
 			common.ApiErrorMsg(c, "支付重定向URL不在可信任域名列表中")
 			return
 		}

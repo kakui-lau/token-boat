@@ -1,0 +1,18 @@
+:root {
+  --site-ink: oklch(0.16 0.012 65);
+  --site-ink-soft: oklch(0.4 0.018 65);
+  --site-paper: oklch(0.965 0.018 82);
+  --site-paper-deep: oklch(0.91 0.028 79);
+  --site-white: oklch(0.99 0.007 82);
+  --site-signal: oklch(0.67 0.19 42);
+  --site-signal-dark: oklch(0.47 0.17 37);
+  --site-signal-ink: oklch(0.14 0.018 45);
+  --site-line: oklch(0.65 0.025 72);
+  --site-line-soft: oklch(0.82 0.025 78);
+  --site-success: oklch(0.53 0.12 151);
+  --site-max-width: 88rem;
+  --site-motion-fast: 160ms;
+  --site-motion-base: 280ms;
+  --site-motion-enter: 480ms;
+  --site-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@token-boat/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 4321",
+    "build": "astro check && astro build",
+    "typecheck": "astro check",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/react": "^6.0.5",
+    "@token-boat/tokens": "workspace:*",
+    "astro": "^7.0.0",
+    "dompurify": "^3.4.14",
+    "i18next": "^26.4.0",
+    "marked": "^18.0.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.12"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

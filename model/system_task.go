@@ -41,17 +41,17 @@ type SystemTask struct {
 	State     string           `json:"state" gorm:"type:text"`
 	Result    string           `json:"result" gorm:"type:text"`
 	Error     string           `json:"error" gorm:"type:text"`
-	LockedBy  string           `json:"locked_by" gorm:"type:varchar(128);index"`
-	CreatedAt int64            `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt int64            `json:"updated_at" gorm:"bigint;index"`
+	LockedBy  string           `json:"locked_by" gorm:"type:varchar(128)"`
+	CreatedAt int64            `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64            `json:"updated_at" gorm:"bigint"`
 }
 
 type SystemTaskLock struct {
 	Type        string `json:"type" gorm:"type:varchar(64);primaryKey"`
-	TaskID      string `json:"task_id" gorm:"type:varchar(64);index"`
-	LockedBy    string `json:"locked_by" gorm:"type:varchar(128);index"`
-	LockedUntil int64  `json:"locked_until" gorm:"bigint;index"`
-	UpdatedAt   int64  `json:"updated_at" gorm:"bigint;index"`
+	TaskID      string `json:"task_id" gorm:"type:varchar(64)"`
+	LockedBy    string `json:"locked_by" gorm:"type:varchar(128)"`
+	LockedUntil int64  `json:"locked_until" gorm:"bigint"`
+	UpdatedAt   int64  `json:"updated_at" gorm:"bigint"`
 }
 
 type SystemTaskResponse struct {

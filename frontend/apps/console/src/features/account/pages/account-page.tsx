@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
-import { KeyRoundIcon, LoaderCircleIcon, MailCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { KeyRoundIcon, MailCheckIcon, TriangleAlertIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -17,7 +17,6 @@ import {
   AlertDialogTitle,
 } from "@token-boat/ui/components/ui/alert-dialog";
 import { Badge } from "@token-boat/ui/components/ui/badge";
-import { Button } from "@token-boat/ui/components/ui/button";
 import {
   Card,
   CardContent,
@@ -25,13 +24,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@token-boat/ui/components/ui/card";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@token-boat/ui/components/ui/field";
-import { Input } from "@token-boat/ui/components/ui/input";
 import { Skeleton } from "@token-boat/ui/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@token-boat/ui/components/ui/tabs";
 import { DataLoadError } from "@/components/data-load-error";
@@ -45,7 +37,14 @@ import type {
 import { repository } from "@/data/repository";
 import { useActionLock } from "@/hooks/use-action-lock";
 import { PasskeySettingsCard } from "../components/passkey-settings-card";
+import { EVMWalletSettingsCard } from "../components/evm-wallet-settings-card";
+import { PasswordSettingsCard } from "../components/password-settings-card";
+import { ProfileInformationForm } from "../components/profile-information-form";
 import { TwoFactorSettingsCard } from "../components/two-factor-settings-card";
+import {
+  SecurityMethodCardHeader,
+  securityMethodCardClassName,
+} from "../components/security-method-card-header";
 import { UsageNotificationsForm } from "../components/usage-notifications-form";
 import type { AccountTab } from "../lib/account-tabs";
 
@@ -71,7 +70,12 @@ export function AccountPage(props: AccountPageProps) {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const query = useQuery({ queryKey: ["account"], queryFn: () => repository.getAccount() });
-  const [profile, setProfile] = useState<UpdateProfileInput>({ displayName: "", email: "" });
+  const [profile, setProfile] = useState<UpdateProfileInput>({
+    username: "",
+    displayName: "",
+    email: "",
+    verificationCode: "",
+  });
   const [preferences, setPreferences] = useState<AccountPreferences>({
     balanceWarningThresholdUsd: null,
     barkUrl: "",
@@ -109,8 +113,10 @@ export function AccountPage(props: AccountPageProps) {
     const userChanged = hydratedUserIdRef.current !== query.data.user.id;
     if (userChanged || !profileDirty) {
       const nextProfile = {
+        username: query.data.user.usernameEditable ? "" : query.data.user.username,
         displayName: query.data.user.displayName,
         email: query.data.user.email,
+        verificationCode: "",
       };
       profileRef.current = nextProfile;
       setProfile(nextProfile);
@@ -129,17 +135,23 @@ export function AccountPage(props: AccountPageProps) {
     mutationFn: repository.updateProfile,
     onSuccess: (account, submittedProfile) => {
       const savedProfile = {
+        username: account.user.usernameEditable ? "" : account.user.username,
         displayName: account.user.displayName,
         email: account.user.email,
+        verificationCode: "",
       };
       const currentProfile = profileRef.current;
       const changedSinceSubmit =
+        currentProfile.username !== submittedProfile.username ||
         currentProfile.displayName !== submittedProfile.displayName ||
-        currentProfile.email !== submittedProfile.email;
+        currentProfile.email !== submittedProfile.email ||
+        currentProfile.verificationCode !== submittedProfile.verificationCode;
       if (changedSinceSubmit) {
         setProfileDirty(
           currentProfile.displayName !== savedProfile.displayName ||
-            currentProfile.email !== savedProfile.email,
+            currentProfile.email !== savedProfile.email ||
+            currentProfile.username !== savedProfile.username ||
+            Boolean(currentProfile.verificationCode),
         );
       } else {
         profileRef.current = savedProfile;
@@ -150,7 +162,8 @@ export function AccountPage(props: AccountPageProps) {
       if (session) queryClient.setQueryData(["session"], { ...session, user: account.user });
       toast.success(t("Profile updated"));
     },
-    onError: () => toast.error(t("Unable to update profile")),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t("Unable to update profile")),
     onSettled: profileLock.release,
   });
   const updatePreferences = useMutation({
@@ -195,7 +208,12 @@ export function AccountPage(props: AccountPageProps) {
     queryClient.setQueryData(["session"], result.session);
   }
   function saveProfile() {
-    if (!profileRef.current.displayName.trim() || !profileLock.tryAcquire()) return;
+    if (
+      !profileRef.current.username.trim() ||
+      !profileRef.current.displayName.trim() ||
+      !profileLock.tryAcquire()
+    )
+      return;
     updateProfile.mutate({ ...profileRef.current });
   }
   function savePreferences() {
@@ -214,8 +232,10 @@ export function AccountPage(props: AccountPageProps) {
     discardingChangesRef.current = true;
     if (query.data) {
       const nextProfile = {
+        username: query.data.user.usernameEditable ? "" : query.data.user.username,
         displayName: query.data.user.displayName,
         email: query.data.user.email,
+        verificationCode: "",
       };
       profileRef.current = nextProfile;
       preferencesRef.current = query.data.preferences;
@@ -262,72 +282,29 @@ export function AccountPage(props: AccountPageProps) {
             <Card>
               <CardHeader>
                 <CardTitle>{t("Profile information")}</CardTitle>
-                <CardDescription>{t("Update the name shown across the console.")}</CardDescription>
+                <CardDescription>
+                  {t("Manage your username, display name, and verified email address.")}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <form
-                  className="max-w-xl"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    saveProfile();
+                <ProfileInformationForm
+                  onChange={(nextProfile) => {
+                    profileRef.current = nextProfile;
+                    setProfile(nextProfile);
+                    setProfileDirty(
+                      !query.data ||
+                        nextProfile.username !== query.data.user.username ||
+                        nextProfile.displayName !== query.data.user.displayName ||
+                        nextProfile.email !== query.data.user.email ||
+                        Boolean(nextProfile.verificationCode),
+                    );
                   }}
-                >
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="display-name">{t("Display name")}</FieldLabel>
-                      <Input
-                        id="display-name"
-                        value={profile.displayName}
-                        onChange={(event) => {
-                          const nextProfile = {
-                            ...profileRef.current,
-                            displayName: event.target.value,
-                          };
-                          profileRef.current = nextProfile;
-                          setProfile(nextProfile);
-                          setProfileDirty(
-                            !query.data ||
-                              nextProfile.displayName !== query.data.user.displayName ||
-                              nextProfile.email !== query.data.user.email,
-                          );
-                        }}
-                      />
-                    </Field>
-                    <Field data-disabled={repository.mode === "live" || undefined}>
-                      <FieldLabel htmlFor="account-email">{t("Email")}</FieldLabel>
-                      <Input
-                        disabled={repository.mode === "live"}
-                        id="account-email"
-                        type="email"
-                        value={profile.email}
-                        onChange={(event) => {
-                          const nextProfile = { ...profileRef.current, email: event.target.value };
-                          profileRef.current = nextProfile;
-                          setProfile(nextProfile);
-                          setProfileDirty(
-                            !query.data ||
-                              nextProfile.displayName !== query.data.user.displayName ||
-                              nextProfile.email !== query.data.user.email,
-                          );
-                        }}
-                      />
-                      <FieldDescription>
-                        {repository.mode === "live" &&
-                          t("Email binding is managed by the existing verification flow.")}
-                      </FieldDescription>
-                    </Field>
-                    <Button
-                      className="w-fit"
-                      disabled={!profile.displayName.trim() || updateProfile.isPending}
-                      type="submit"
-                    >
-                      {updateProfile.isPending && (
-                        <LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
-                      )}
-                      {t("Save changes")}
-                    </Button>
-                  </FieldGroup>
-                </form>
+                  onSubmit={saveProfile}
+                  pending={updateProfile.isPending}
+                  savedEmail={query.data.user.email}
+                  usernameEditable={query.data.user.usernameEditable}
+                  value={profile}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -357,10 +334,19 @@ export function AccountPage(props: AccountPageProps) {
             </Card>
           </TabsContent>
           <TabsContent value="security">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {query.data && (
                 <>
+                  <PasswordSettingsCard
+                    evmWalletEnabled={query.data.security.evmWalletEnabled}
+                    onUpdated={handleSecurityUpdated}
+                    passwordSet={query.data.user.passwordSet}
+                  />
                   <PasskeySettingsCard
+                    onUpdated={handleSecurityUpdated}
+                    security={query.data.security}
+                  />
+                  <EVMWalletSettingsCard
                     onUpdated={handleSecurityUpdated}
                     security={query.data.security}
                   />
@@ -449,19 +435,17 @@ function SecurityCard({
 }) {
   const { t } = useTranslation();
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Icon className="size-4" />
-          </span>
+    <Card className={securityMethodCardClassName}>
+      <SecurityMethodCardHeader
+        description={description}
+        icon={Icon}
+        status={
           <Badge variant={active ? "secondary" : "outline"}>
             {active ? t("Enabled") : t("Not enabled")}
           </Badge>
-        </div>
-        <CardTitle className="pt-3">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
+        }
+        title={title}
+      />
     </Card>
   );
 }

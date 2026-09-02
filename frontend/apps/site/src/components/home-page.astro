@@ -1,0 +1,210 @@
+---
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { CatalogSummary } from "@/islands/home/catalog-summary";
+import RouteNetwork from "@/components/route-network.astro";
+
+type Props = {
+  locale: SiteLocale;
+};
+
+const props = Astro.props;
+const content = {
+  zh: {
+    edition: "TOKEN BOAT / 2026",
+    category: "为 AI 产品与开发团队而建",
+    title: ["一个 API。", "接入你需要的", "AI 模型。"],
+    lead:
+      "用一套兼容接口接入主流模型，清楚比较价格，并在同一个控制台管理 API Key、用量和请求记录。",
+    primaryAction: "开始接入",
+    secondaryAction: "浏览模型与价格",
+    docketLabel: "3 STEPS TO FIRST CALL",
+    docket: [
+      ["01 / KEY", "创建账户与 API Key"],
+      ["02 / MODEL", "按任务选择模型"],
+      ["03 / CALL", "发起请求并查看用量"],
+    ],
+    protocolLabel: "SUPPORTED WORKFLOWS",
+    protocols: ["/v1/responses", "/v1/chat/completions", "/v1/embeddings", "multimodal tasks"],
+    liveEyebrow: "LIVE PUBLIC CATALOG",
+    liveTitle: "只展示实时可计算的目录摘要。",
+    useCaseEyebrow: "CHOOSE BY WORKLOAD",
+    useCaseTitle: "不知道模型名，也可以从任务开始。",
+    useCases: [["TEXT", "文本与对话", "对话、摘要、内容生成", "chat"], ["REASON", "推理与代码", "复杂推理、工具和代码任务", "reasoning"], ["IMAGE", "图像生成", "图片生成、编辑与视觉任务", "image"], ["VIDEO", "视频工作流", "生成、扩展和超分任务", "video"]],
+    indexEyebrow: "WHY TOKEN BOAT",
+    indexTitle: "少处理接入差异，多专注产品。",
+    indexLead:
+      "从个人原型到团队服务，Token Boat 把模型选择、价格、用量和请求记录放进同一条清晰的工作流。",
+    capabilities: [
+      ["01", "接入", "一套兼容 API", "沿用熟悉的 SDK 与请求格式，让供应商差异留在应用之外。"],
+      ["02", "选型", "可搜索的模型目录", "按模型、供应商和能力类型筛选，快速找到适合当前任务的选择。"],
+      ["03", "成本", "清楚可比的价格", "价格同时标注币种、计费单位和适用范围，比较时不再靠猜。"],
+      ["04", "观察", "请求与用量记录", "从用量总览继续查看模型和单次请求，理解费用从哪里产生。"],
+      ["05", "调整", "保持模型选择灵活", "应用保持一套接入方式，模型可以随质量、速度和成本目标调整。"],
+      ["06", "支持", "从文档到服务状态", "接入步骤、公开价格和运行状态各有清晰入口，需要时能快速找到。"],
+    ],
+    ledgerEyebrow: "HOW IT WORKS",
+    ledgerTitle: "三步完成第一条调用。",
+    ledgerLead:
+      "不需要先理解每家供应商的接入差异。选择模型，使用统一入口，然后在控制台查看结果与成本。",
+    ledgerRows: [
+      ["01 / CHOOSE", "MODEL CATALOG", "查看类型、上下文与公开价格"],
+      ["02 / CONNECT", "OPENAI-COMPATIBLE", "沿用熟悉的 SDK 与请求格式"],
+      ["03 / UNDERSTAND", "USAGE & LOGS", "核对 Token、费用和请求结果"],
+    ],
+    ctaLabel: "START BUILDING",
+    ctaTitle: "准备好发出第一条请求了吗？",
+    ctaLead: "创建账户和 API Key，选择模型，然后在 Playground 验证完整调用。",
+    ctaAction: "开始接入",
+  },
+  en: {
+    edition: "TOKEN BOAT / 2026",
+    category: "Built for AI product & engineering teams",
+    title: ["One API.", "The AI models", "you need."],
+    lead:
+      "Reach leading models through one compatible API, compare pricing clearly, and manage API keys, usage, and request records in one console.",
+    primaryAction: "Start building",
+    secondaryAction: "Explore models & pricing",
+    docketLabel: "3 STEPS TO FIRST CALL",
+    docket: [
+      ["01 / KEY", "Create an account and API key"],
+      ["02 / MODEL", "Choose a model for the task"],
+      ["03 / CALL", "Send a request and review usage"],
+    ],
+    protocolLabel: "SUPPORTED WORKFLOWS",
+    protocols: ["/v1/responses", "/v1/chat/completions", "/v1/embeddings", "multimodal tasks"],
+    liveEyebrow: "LIVE PUBLIC CATALOG",
+    liveTitle: "Only live, computable catalog facts.",
+    useCaseEyebrow: "CHOOSE BY WORKLOAD",
+    useCaseTitle: "Start with the task—even without a model name.",
+    useCases: [["TEXT", "Text & chat", "Conversation, summarization, and generation", "chat"], ["REASON", "Reasoning & code", "Complex reasoning, tools, and coding tasks", "reasoning"], ["IMAGE", "Image generation", "Generation, editing, and visual tasks", "image"], ["VIDEO", "Video workflows", "Generation, extension, and upscaling", "video"]],
+    indexEyebrow: "WHY TOKEN BOAT",
+    indexTitle: "Spend less time on integration drift—and more on the product.",
+    indexLead:
+      "From a first prototype to a team service, Token Boat keeps model choice, pricing, usage, and request records in one clear workflow.",
+    capabilities: [
+      ["01", "ACCESS", "One compatible API", "Keep familiar SDKs and request formats while provider differences stay out of application code."],
+      ["02", "CHOOSE", "A searchable model catalog", "Filter by model, provider, and capability to narrow the right option for the task."],
+      ["03", "COST", "Pricing made comparable", "Currency, billing unit, and scope stay visible so comparisons do not depend on guesswork."],
+      ["04", "OBSERVE", "Request & usage records", "Move from usage totals to a model and an individual request to understand where cost comes from."],
+      ["05", "ADAPT", "Flexible model choice", "Keep one integration while model choice changes with quality, speed, and cost goals."],
+      ["06", "SUPPORT", "Docs through service status", "Find integration steps, public pricing, and operating status from clear dedicated entry points."],
+    ],
+    ledgerEyebrow: "HOW IT WORKS",
+    ledgerTitle: "Three steps to the first call.",
+    ledgerLead:
+      "You do not need to learn every provider integration first. Choose a model, use the unified endpoint, then review the result and cost in the console.",
+    ledgerRows: [
+      ["01 / CHOOSE", "MODEL CATALOG", "Review type, context, and public pricing"],
+      ["02 / CONNECT", "OPENAI-COMPATIBLE", "Keep familiar SDKs and request formats"],
+      ["03 / UNDERSTAND", "USAGE & LOGS", "Check tokens, cost, and request outcome"],
+    ],
+    ctaLabel: "START BUILDING",
+    ctaTitle: "Ready to send the first request?",
+    ctaLead: "Create an account and API key, choose a model, and verify the complete call in Playground.",
+    ctaAction: "Start building",
+  },
+}[props.locale];
+---
+
+<section class="hero editorial-hero">
+  <div class="site-shell hero__frame">
+    <div class="hero__meta">
+      <p>{content.edition}</p>
+      <p>{content.category}</p>
+      <p>ZH / EN</p>
+    </div>
+    <h1>
+      <span>{content.title[0]}</span>
+      <span>{content.title[1]}</span>
+      <span class="hero__signal">{content.title[2]}</span>
+    </h1>
+    <div class="hero__lower">
+      <div class="hero__intro">
+        <p class="hero__lead">{content.lead}</p>
+        <div class="hero__actions">
+          <a class="button" href="/console/getting-started">{content.primaryAction}<span aria-hidden="true">↗</span></a>
+          <a class="button button--secondary" href={localizedPath(props.locale, "/models")}>
+            {content.secondaryAction}<span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+      <aside class="system-docket" aria-label={content.docketLabel}>
+        <p class="system-docket__label">{content.docketLabel}</p>
+        {content.docket.map((item) => (
+          <div><span translate="no">{item[0]}</span><strong>{item[1]}</strong></div>
+        ))}
+      </aside>
+    </div>
+  </div>
+</section>
+
+<RouteNetwork locale={props.locale} />
+
+<section class="section live-catalog-section">
+  <div class="site-shell live-catalog-grid">
+    <div><p class="eyebrow">{content.liveEyebrow}</p><h2>{content.liveTitle}</h2></div>
+    <CatalogSummary client:load locale={props.locale} />
+  </div>
+</section>
+
+<section class="section workload-section">
+  <div class="site-shell">
+    <div class="editorial-heading"><p class="eyebrow">{content.useCaseEyebrow}</p><h2>{content.useCaseTitle}</h2></div>
+    <div class="workload-grid">{content.useCases.map((item, index) => <a href={`${localizedPath(props.locale, "/models")}?family=${item[3]}`}><span>0{index + 1} / {item[0]}</span><h3>{item[1]}</h3><p>{item[2]}</p><strong aria-hidden="true">↗</strong></a>)}</div>
+  </div>
+</section>
+
+<section class="protocol-strip" aria-label={content.protocolLabel}>
+  <div class="site-shell protocol-strip__inner">
+    <strong>{content.protocolLabel}</strong>
+    {content.protocols.map((protocol) => <span translate="no">{protocol}</span>)}
+  </div>
+</section>
+
+<section class="section operating-section">
+  <div class="site-shell">
+    <div class="editorial-heading">
+      <p class="eyebrow">{content.indexEyebrow}</p>
+      <h2>{content.indexTitle}</h2>
+      <p>{content.indexLead}</p>
+    </div>
+    <div class="operating-index">
+      {content.capabilities.map((capability) => (
+        <article class="operating-row">
+          <span class="operating-row__number">{capability[0]}</span>
+          <span class="operating-row__verb">{capability[1]}</span>
+          <h3>{capability[2]}</h3>
+          <p>{capability[3]}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section section--ink contract-section">
+  <div class="site-shell contract-grid">
+    <div class="contract-copy">
+      <p class="eyebrow">{content.ledgerEyebrow}</p>
+      <h2>{content.ledgerTitle}</h2>
+      <p>{content.ledgerLead}</p>
+    </div>
+    <div class="contract-ledger">
+      {content.ledgerRows.map((row) => (
+        <div class="contract-ledger__row">
+          <span>{row[0]}</span>
+          <strong translate="no">{row[1]}</strong>
+          <p>{row[2]}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section final-section">
+  <div class="site-shell final-callout">
+    <p class="eyebrow">{content.ctaLabel}</p>
+    <h2>{content.ctaTitle}</h2>
+    <p>{content.ctaLead}</p>
+    <a class="button" href="/console/getting-started">{content.ctaAction}<span aria-hidden="true">↗</span></a>
+  </div>
+</section>

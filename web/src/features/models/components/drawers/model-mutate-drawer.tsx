@@ -67,6 +67,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import dayjs from '@/lib/dayjs'
 
 import {
   createModel,
@@ -90,6 +91,9 @@ const extendedModelFormSchema = z
     tags: z.array(z.string()),
     vendor_id: z.number().optional(),
     context_length: z.number().int().min(0),
+    max_output_tokens: z.number().int().min(0),
+    limits_source_url: z.string().trim(),
+    limits_verified_at: z.string(),
     endpoints: z.string(),
     name_rule: z.number(),
     status: z.boolean(),
@@ -105,6 +109,48 @@ const extendedModelFormSchema = z
         code: 'custom',
         path: ['routing_target_model_id'],
         message: 'Routing target is required',
+      })
+    }
+    if (
+      values.context_length > 0 &&
+      values.max_output_tokens > values.context_length
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['max_output_tokens'],
+        message: 'Maximum output tokens cannot exceed the context window.',
+      })
+    }
+    if (values.limits_source_url) {
+      try {
+        const source = new URL(values.limits_source_url)
+        if (source.protocol !== 'https:' || !source.host) throw new Error()
+      } catch {
+        context.addIssue({
+          code: 'custom',
+          path: ['limits_source_url'],
+          message: 'Enter an absolute HTTPS URL.',
+        })
+      }
+    }
+    if (
+      values.limits_verified_at &&
+      !dayjs(values.limits_verified_at).isValid()
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['limits_verified_at'],
+        message: 'Enter a valid verification time.',
+      })
+    }
+    const hasSource = Boolean(values.limits_source_url)
+    const hasVerificationTime = Boolean(values.limits_verified_at)
+    if (hasSource !== hasVerificationTime) {
+      context.addIssue({
+        code: 'custom',
+        path: hasSource ? ['limits_verified_at'] : ['limits_source_url'],
+        message:
+          'Add both the official source and verification time, or leave both empty.',
       })
     }
   })
@@ -169,6 +215,9 @@ export function ModelMutateDrawer({
       tags: [],
       vendor_id: undefined,
       context_length: 0,
+      max_output_tokens: 0,
+      limits_source_url: '',
+      limits_verified_at: '',
       endpoints: '',
       name_rule: 0,
       status: true,
@@ -191,6 +240,11 @@ export function ModelMutateDrawer({
         tags: parseModelTags(model.tags),
         vendor_id: model.vendor_id,
         context_length: model.context_length || 0,
+        max_output_tokens: model.max_output_tokens || 0,
+        limits_source_url: model.limits_source_url || '',
+        limits_verified_at: model.limits_verified_at
+          ? dayjs.unix(model.limits_verified_at).format('YYYY-MM-DDTHH:mm')
+          : '',
         endpoints: model.endpoints || '',
         name_rule: model.name_rule || 0,
         status: model.status === 1,
@@ -208,6 +262,9 @@ export function ModelMutateDrawer({
         tags: [],
         vendor_id: undefined,
         context_length: 0,
+        max_output_tokens: 0,
+        limits_source_url: '',
+        limits_verified_at: '',
         endpoints: '',
         name_rule: 0,
         status: true,
@@ -224,12 +281,18 @@ export function ModelMutateDrawer({
     async (values: ExtendedModelFormValues): Promise<void> => {
       setIsSubmitting(true)
       try {
-        const { routing_mode: _routingMode, ...persistedValues } = values
+        const {
+          routing_mode: _routingMode,
+          limits_verified_at: verifiedAt,
+          ...persistedValues
+        } = values
         const modelData = {
           ...persistedValues,
           ...buildModelRoutingFields(values),
           id: isEditing ? currentModelId : undefined,
           tags: Array.isArray(values.tags) ? values.tags.join(',') : '',
+          limits_source_url: values.limits_source_url.trim(),
+          limits_verified_at: verifiedAt ? dayjs(verifiedAt).unix() : 0,
           status: values.status ? 1 : 0,
         }
         const response =
@@ -398,6 +461,40 @@ export function ModelMutateDrawer({
 
               <FormField
                 control={form.control}
+                name='tags'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Tags')}</FormLabel>
+                    <FormControl>
+                      <TagInput
+                        value={field.value || []}
+                        onChange={field.onChange}
+                        placeholder={t('Add tags...')}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Press Enter or comma to add tags')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </SideDrawerSection>
+
+            <SideDrawerSection>
+              <div className='space-y-1'>
+                <h3 className='text-sm font-semibold'>
+                  {t('Verified model limits')}
+                </h3>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'Only publish model limits backed by an official HTTPS source. Leave unknown values empty.'
+                  )}
+                </p>
+              </div>
+
+              <FormField
+                control={form.control}
                 name='context_length'
                 render={({ field }) => (
                   <FormItem>
@@ -423,7 +520,7 @@ export function ModelMutateDrawer({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Maximum number of tokens supported by the model; use 0 if unknown.'
+                        'Maximum number of tokens supported by the model. Leave empty if unknown.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -433,19 +530,73 @@ export function ModelMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='tags'
+                name='max_output_tokens'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Tags')}</FormLabel>
+                    <FormLabel>{t('Maximum output tokens')}</FormLabel>
                     <FormControl>
-                      <TagInput
-                        value={field.value || []}
-                        onChange={field.onChange}
-                        placeholder={t('Add tags...')}
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        placeholder='8192'
+                        value={field.value || ''}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                        onChange={(event) =>
+                          field.onChange(
+                            event.target.value === ''
+                              ? 0
+                              : event.target.valueAsNumber
+                          )
+                        }
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('Press Enter or comma to add tags')}
+                      {t(
+                        'Maximum tokens per response. Leave empty if unknown.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='limits_source_url'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Official limits source URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='url'
+                        placeholder='https://docs.vendor.example/models/model'
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Official HTTPS documentation used to verify these limits.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='limits_verified_at'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Limits verified at')}</FormLabel>
+                    <FormControl>
+                      <Input type='datetime-local' {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Local time when these limits were last checked.')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

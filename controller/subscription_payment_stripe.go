@@ -32,11 +32,11 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if req.SuccessURL != "" && common.ValidateRedirectURL(req.SuccessURL) != nil {
+	if req.SuccessURL != "" && validatePaymentRedirectURL(req.SuccessURL) != nil {
 		common.ApiErrorMsg(c, "支付成功重定向URL不在可信任域名列表中")
 		return
 	}
-	if req.CancelURL != "" && common.ValidateRedirectURL(req.CancelURL) != nil {
+	if req.CancelURL != "" && validatePaymentRedirectURL(req.CancelURL) != nil {
 		common.ApiErrorMsg(c, "支付取消重定向URL不在可信任域名列表中")
 		return
 	}

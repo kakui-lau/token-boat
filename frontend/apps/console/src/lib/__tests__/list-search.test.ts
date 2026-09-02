@@ -120,6 +120,7 @@ describe("list search parameters", () => {
       to: "2026-08-28",
     });
     expect(parseOverviewSearch({ range: "365d" })).toMatchObject({ range: "365d" });
+    expect(parseOverviewSearch({ range: "3d" })).toMatchObject({ range: "3d" });
   });
 
   it("accepts task card page sizes and keeps payment and ledger filters isolated", () => {
@@ -181,17 +182,29 @@ describe("list search parameters", () => {
   });
 
   it("keeps supported model discovery filters and a safe Playground model ID", () => {
-    expect(parseModelSearch({ availability: "all", family: "video", q: "  veo-3  " })).toEqual({
+    expect(
+      parseModelSearch({
+        availability: "all",
+        family: "video",
+        order: "desc",
+        q: "  veo-3  ",
+        sort: "context",
+      }),
+    ).toEqual({
       availability: "all",
       detail: undefined,
       family: "video",
+      order: "desc",
       q: "veo-3",
+      sort: "context",
     });
     expect(parseModelSearch({ availability: "offline", family: "document" })).toEqual({
       availability: undefined,
       detail: undefined,
       family: undefined,
+      order: undefined,
       q: undefined,
+      sort: undefined,
     });
     expect(parseModelSearch({ detail: "  anthropic/claude-sonnet  " })).toMatchObject({
       detail: "anthropic/claude-sonnet",

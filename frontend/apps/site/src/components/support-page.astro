@@ -1,0 +1,30 @@
+---
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import EditorialPageHero from "@/components/editorial-page-hero.astro";
+type Props = { locale: SiteLocale };
+const { locale } = Astro.props;
+const c = locale === "zh" ? {
+  eyebrow: "CONTACT / SUPPORT", titleLines: ["把问题", "交给正确的", "入口。"], lead: "技术、账户、费用与商务问题需要不同上下文。我们先提供可追踪、不会泄露密钥的处理路径。",
+  cards: [
+    ["01", "技术支持", "带上请求时间、模型 ID、端点、HTTP 状态和控制台请求日志中的 Request ID；不要提交完整 API Key 或敏感提示词。", "/console/logs", "打开请求日志"],
+    ["02", "账户与安全", "登录、邮箱、密码、2FA、Passkey 与账户资料问题，请从账户设置进入。", "/console/account", "打开账户设置"],
+    ["03", "计费与充值", "账户余额、账单、充值记录和账户实际价格，以登录后的计费页面为准。", "/console/billing", "打开计费中心"],
+    ["04", "商务合作", "正式商务联系方式尚未在后台公开配置。配置后会在这里和 About 页同步显示，不使用虚构邮箱占位。", null, "等待正式渠道"],
+  ],
+  checklist: "提交技术问题时建议包含", items: ["问题发生的日期与时区", "模型 ID 与调用端点", "HTTP 状态码和 Request ID", "是否可稳定复现及最小复现步骤"],
+  docs: "先查看开发者文档", status: "查看公开服务状态",
+} : {
+  eyebrow: "CONTACT / SUPPORT", titleLines: ["SEND EACH", "QUESTION TO THE", "RIGHT PLACE."], lead: "Technical, account, billing, and commercial questions need different context. These paths keep requests traceable without exposing credentials.",
+  cards: [
+    ["01", "Technical support", "Include request time, model ID, endpoint, HTTP status, and the Request ID from console logs. Never submit a full API key or sensitive prompt content.", "/console/logs", "Open request logs"],
+    ["02", "Account & security", "Use account settings for sign-in, email, password, 2FA, passkeys, and profile questions.", "/console/account", "Open account settings"],
+    ["03", "Billing & recharge", "Use the signed-in billing page for balance, invoices, recharge history, and the price that applies to the account.", "/console/billing", "Open billing"],
+    ["04", "Business enquiries", "A formal commercial contact has not yet been published in platform configuration. Once configured, it will appear here and on About; this page will not invent a placeholder email.", null, "Awaiting published channel"],
+  ],
+  checklist: "Include with a technical issue", items: ["Date, time, and timezone", "Model ID and endpoint", "HTTP status and Request ID", "Whether it is reproducible and minimal steps"],
+  docs: "Read developer docs first", status: "Check public service status",
+};
+---
+<EditorialPageHero lead={c.lead} locale={locale} meta={c.eyebrow} titleLines={c.titleLines} />
+<section class="section content-section"><div class="site-shell content-grid support-grid">{c.cards.map((card) => <article class="content-card"><div class="content-card__meta"><span>{card[0]}</span><p>SUPPORT ROUTE</p></div><h2>{card[1]}</h2><p>{card[2]}</p>{card[3] ? <a href={card[3]}>{card[4]}<span aria-hidden="true">↗</span></a> : <span class="muted-action">{card[4]}</span>}</article>)}</div></section>
+<section class="section section--ink"><div class="site-shell support-checklist"><div><p class="eyebrow">ISSUE CONTEXT</p><h2>{c.checklist}</h2></div><ol>{c.items.map((item) => <li>{item}</li>)}</ol><div><a href={localizedPath(locale, "/docs")}>{c.docs} →</a><a href={localizedPath(locale, "/status")}>{c.status} →</a></div></div></section>

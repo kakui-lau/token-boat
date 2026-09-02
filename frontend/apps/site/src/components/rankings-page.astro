@@ -1,0 +1,41 @@
+---
+import type { SiteLocale } from "@/content/site-copy";
+import { RankingsBoardIsland } from "@/islands/rankings/rankings-board";
+import EditorialPageHero from "@/components/editorial-page-hero.astro";
+
+type Props = {
+  locale: SiteLocale;
+};
+
+const props = Astro.props;
+const content = {
+  zh: {
+    eyebrow: "平台用量排行榜",
+    titleLines: ["看看谁", "正在被真正", "使用。"],
+    lead: "基于 Token Boat 匿名聚合用量，观察模型热度、供应商份额与排名变化。这里衡量使用量，不代表模型质量或官方推荐。",
+    facts: [
+      ["01 / SIGNAL", "真实聚合用量"],
+      ["02 / WINDOWS", "今日 · 周 · 月 · 年"],
+      ["03 / PRIVACY", "不展示用户数据"],
+    ],
+  },
+  en: {
+    eyebrow: "Platform usage rankings",
+    titleLines: ["SEE WHAT IS", "ACTUALLY BEING", "USED."],
+    lead: "Follow model activity, provider share, and rank movement from anonymous aggregated Token Boat usage. This measures usage, not model quality or endorsement.",
+    facts: [
+      ["01 / SIGNAL", "Real aggregate usage"],
+      ["02 / WINDOWS", "Today · week · month · year"],
+      ["03 / PRIVACY", "No user-level data"],
+    ],
+  },
+}[props.locale];
+---
+
+<EditorialPageHero facts={content.facts} factsLabel={props.locale === "zh" ? "排行榜说明" : "Ranking notes"} lead={content.lead} locale={props.locale} meta={content.eyebrow} titleLines={content.titleLines} />
+
+<section class="section rankings-section">
+  <div class="site-shell">
+    <RankingsBoardIsland client:load locale={props.locale} />
+  </div>
+</section>

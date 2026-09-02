@@ -211,6 +211,18 @@ beforeEach(() => {
 });
 
 describe("PlaygroundPage", () => {
+  test("does not mount the Copilot runtime before a local conversation exists", async () => {
+    window.localStorage.clear();
+    renderPlayground();
+
+    expect(await screen.findByText("Start a conversation")).toBeInTheDocument();
+    expect(copilotKitProps).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]!);
+    expect(await screen.findByRole("textbox", { name: "Copilot chat input" })).toBeInTheDocument();
+    expect(copilotKitProps).toHaveBeenCalledTimes(1);
+  });
+
   test("renders CopilotChat with the active key's permitted model", async () => {
     renderPlayground();
 

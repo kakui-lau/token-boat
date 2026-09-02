@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -181,6 +182,48 @@ func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {
 	require.NoError(t, EnsureEmailAvailable("taken@example.com", user.Id))
 }
 
+func TestUpdateUserProfileRejectsDuplicateIdentityFields(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	first := User{
+		Username: "profile-first", UsernameEditable: true, DisplayName: "First", Email: "first@example.com",
+		Password: "old-password", Status: common.UserStatusEnabled, AffCode: "profile-first-aff",
+	}
+	second := User{
+		Username: "profile-second", DisplayName: "Second", Email: "second@example.com",
+		Password: "old-password", Status: common.UserStatusEnabled, AffCode: "profile-second-aff",
+	}
+	require.NoError(t, DB.Create(&first).Error)
+	require.NoError(t, DB.Create(&second).Error)
+
+	_, err := UpdateUserProfile(first.Id, strings.ToUpper(second.Username), first.DisplayName, first.Email)
+	require.ErrorIs(t, err, ErrUsernameAlreadyTaken)
+	_, err = UpdateUserProfile(first.Id, first.Username, first.DisplayName, " SECOND@EXAMPLE.COM ")
+	require.ErrorIs(t, err, ErrEmailAlreadyTaken)
+
+	updated, err := UpdateUserProfile(
+		first.Id, "profile-renamed", "Renamed", " UPDATED@EXAMPLE.COM ",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "profile-renamed", updated.Username)
+	assert.False(t, updated.UsernameEditable)
+	assert.Equal(t, "Renamed", updated.DisplayName)
+	assert.Equal(t, "updated@example.com", updated.Email)
+
+	_, err = UpdateUserProfile(
+		first.Id, "profile-renamed-again", "Renamed again", "updated@example.com",
+	)
+	require.ErrorIs(t, err, ErrUsernameImmutable)
+
+	updated, err = UpdateUserProfile(
+		first.Id, "profile-renamed", "Final display name", "final@example.com",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "profile-renamed", updated.Username)
+	assert.Equal(t, "Final display name", updated.DisplayName)
+	assert.Equal(t, "final@example.com", updated.Email)
+}
+
 func TestInsertRejectsDuplicateEmailWithoutUniqueIndex(t *testing.T) {
 	setupUserUpdateTestState(t)
 
@@ -220,6 +263,32 @@ func TestInsertKeepsBlankPasswordForPasswordlessUser(t *testing.T) {
 	var stored User
 	require.NoError(t, DB.Where("username = ?", user.Username).First(&stored).Error)
 	assert.Empty(t, stored.Password)
+}
+
+func TestSetInitialUserPasswordAllowsOnlyOneAtomicTransition(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	user := User{
+		Username: "wallet-password-user",
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	initialAuthVersion := user.AuthVersion
+	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+		return SetInitialUserPasswordWithTx(tx, user.Id, "wallet-password")
+	}))
+
+	var stored User
+	require.NoError(t, DB.First(&stored, user.Id).Error)
+	assert.True(t, common.ValidatePasswordAndHash("wallet-password", stored.Password))
+	assert.Equal(t, initialAuthVersion+1, stored.AuthVersion)
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		return SetInitialUserPasswordWithTx(tx, user.Id, "replacement-password")
+	})
+	require.ErrorIs(t, err, ErrUserPasswordAlreadySet)
+	require.NoError(t, DB.First(&stored, user.Id).Error)
+	assert.True(t, common.ValidatePasswordAndHash("wallet-password", stored.Password))
 }
 
 func TestValidateAndFillRejectsPasswordlessUser(t *testing.T) {

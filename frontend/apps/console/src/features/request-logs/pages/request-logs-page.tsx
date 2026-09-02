@@ -68,7 +68,7 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
   const { t, i18n } = useTranslation();
   const [search, updateSearch] = useControllableSearch(props.search, props.onSearchChange);
   const range = useMemo(
-    () => resolveDateRange(search, "7d"),
+    () => resolveDateRange(search, "today"),
     [search.from, search.range, search.to],
   );
   const status: StatusFilter = search.status ?? "all";
@@ -122,7 +122,7 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
           <DateRangePicker
             onChange={(value) => {
               updateSearch({
-                ...dateRangeSearchPatch(value, "7d"),
+                ...dateRangeSearchPatch(value, "today"),
                 detail: undefined,
                 detailTab: undefined,
                 page: undefined,

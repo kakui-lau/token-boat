@@ -1,0 +1,9 @@
+---
+import ModelDetailPage from "@/components/model-detail-page.astro";
+import { modelDisplayName, publicModelIds } from "@/content/model-routes";
+import SiteLayout from "@/layouts/site-layout.astro";
+export function getStaticPaths() { return publicModelIds.map((model) => ({ params: { model }, props: { modelId: model } })); }
+const { modelId } = Astro.props;
+const displayName = modelDisplayName(modelId);
+---
+<SiteLayout canonicalPath={`/en/models/${modelId}`} description={`Public capabilities, context, price components, endpoints, and aggregate performance for ${modelId}.`} jsonLd={{ "@context": "https://schema.org", "@type": "TechArticle", headline: `${displayName} model profile`, about: modelId }} locale="en" title={`${displayName} model profile | Token Boat`}><ModelDetailPage locale="en" modelId={modelId} /></SiteLayout>

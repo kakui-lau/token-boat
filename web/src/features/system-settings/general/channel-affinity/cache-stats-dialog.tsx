@@ -50,32 +50,34 @@ export function CacheStatsDialog(props: Props) {
   const seqRef = useRef(0)
 
   useEffect(() => {
+    const seq = ++seqRef.current
+
     if (!props.open || !props.target?.rule_name || !props.target?.key_fp) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStats(null)
+      setLoading(false)
       return
     }
 
-    const seq = ++seqRef.current
-
+    const target = props.target
     setLoading(true)
-
     setStats(null)
 
-    getAffinityUsageCache(props.target)
-      .then((res) => {
+    void (async () => {
+      try {
+        const res = await getAffinityUsageCache(target)
         if (seq !== seqRef.current) return
         if (res.success) setStats((res.data as Record<string, unknown>) || {})
         else toast.error(res.message || t('Request failed'))
-      })
-      .catch(() => {
+      } catch {
         if (seq !== seqRef.current) return
         toast.error(t('Request failed'))
-      })
-      .finally(() => {
-        if (seq !== seqRef.current) return
-        setLoading(false)
-      })
+      } finally {
+        if (seq === seqRef.current) {
+          setLoading(false)
+        }
+      }
+    })()
   }, [props.open, props.target, t])
 
   const rows = useMemo(() => {
@@ -85,47 +87,57 @@ export function CacheStatsDialog(props: Props) {
     const hit = Number(s.hit || 0)
     const total = Number(s.total || 0)
 
-    if (s.rule_name || props.target?.rule_name)
+    if (s.rule_name || props.target?.rule_name) {
       data.push({
         key: t('Rule'),
         value: (s.rule_name || props.target?.rule_name || '') as string,
       })
-    if (s.using_group || props.target?.using_group)
+    }
+    if (s.using_group || props.target?.using_group) {
       data.push({
         key: t('Group'),
         value: (s.using_group || props.target?.using_group || '') as string,
       })
-    if (props.target?.key_hint)
+    }
+    if (props.target?.key_hint) {
       data.push({ key: t('Key Summary'), value: props.target.key_hint })
-    if (s.key_fp || props.target?.key_fp)
+    }
+    if (s.key_fp || props.target?.key_fp) {
       data.push({
         key: t('Key Fingerprint'),
         value: (s.key_fp || props.target?.key_fp || '') as string,
       })
-    if (Number(s.window_seconds || 0) > 0)
+    }
+    if (Number(s.window_seconds || 0) > 0) {
       data.push({ key: t('TTL (seconds)'), value: s.window_seconds as number })
-    if (total > 0)
+    }
+    if (total > 0) {
       data.push({
         key: t('Hit Rate'),
         value: `${hit}/${total} (${formatRate(hit, total)})`,
       })
-    if (Number(s.last_seen_at || 0) > 0)
+    }
+    if (Number(s.last_seen_at || 0) > 0) {
       data.push({
         key: t('Last Seen'),
         value: formatTimestampToDate(s.last_seen_at as number | undefined),
       })
+    }
 
     const promptTokens = Number(s.prompt_tokens || 0)
     const cachedTokens = Number(s.cached_tokens || 0)
     const completionTokens = Number(s.completion_tokens || 0)
     const totalTokens = Number(s.total_tokens || 0)
 
-    if (promptTokens > 0)
+    if (promptTokens > 0) {
       data.push({ key: 'Prompt tokens', value: promptTokens })
-    if (cachedTokens > 0)
+    }
+    if (cachedTokens > 0) {
       data.push({ key: 'Cached tokens', value: cachedTokens })
-    if (completionTokens > 0)
+    }
+    if (completionTokens > 0) {
       data.push({ key: 'Completion tokens', value: completionTokens })
+    }
     if (totalTokens > 0) data.push({ key: 'Total tokens', value: totalTokens })
 
     return data
@@ -149,7 +161,8 @@ export function CacheStatsDialog(props: Props) {
         <div className='text-muted-foreground py-8 text-center text-sm'>
           {t('Loading...')}
         </div>
-      ) : rows.length > 0 ? (
+      ) : null}
+      {!loading && rows.length > 0 ? (
         <div className='space-y-2'>
           {rows.map((row) => (
             <div
@@ -163,11 +176,12 @@ export function CacheStatsDialog(props: Props) {
             </div>
           ))}
         </div>
-      ) : (
+      ) : null}
+      {!loading && rows.length === 0 ? (
         <div className='text-muted-foreground py-8 text-center text-sm'>
           {t('No data available')}
         </div>
-      )}
+      ) : null}
     </Dialog>
   )
 }

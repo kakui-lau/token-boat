@@ -13,11 +13,14 @@ func TestPublicPricingIncludesActiveExactModelWithoutAbility(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 
 	require.NoError(t, DB.Create(&Model{
-		Id:            201,
-		ModelName:     "catalog-only-model",
-		ContextLength: 200_000,
-		Status:        1,
-		NameRule:      NameRuleExact,
+		Id:               201,
+		ModelName:        "catalog-only-model",
+		ContextLength:    200_000,
+		MaxOutputTokens:  8192,
+		LimitsSourceURL:  "https://vendor.example/models/catalog-only-model",
+		LimitsVerifiedAt: 1_788_192_000,
+		Status:           1,
+		NameRule:         NameRuleExact,
 	}).Error)
 	require.NoError(t, DB.Create(&Model{
 		Id:        202,
@@ -50,6 +53,9 @@ func TestPublicPricingIncludesActiveExactModelWithoutAbility(t *testing.T) {
 	require.Contains(t, catalog, "catalog-only-model")
 	assert.Equal(t, 201, catalog["catalog-only-model"].ID)
 	assert.Equal(t, 200_000, catalog["catalog-only-model"].ContextLength)
+	assert.Equal(t, 8192, catalog["catalog-only-model"].MaxOutputTokens)
+	assert.Equal(t, "https://vendor.example/models/catalog-only-model", catalog["catalog-only-model"].LimitsSourceURL)
+	assert.EqualValues(t, 1_788_192_000, catalog["catalog-only-model"].LimitsVerifiedAt)
 	assert.Empty(t, catalog["catalog-only-model"].EnableGroup)
 	assert.NotContains(t, catalog, "disabled-catalog-model")
 	assert.NotContains(t, catalog, "catalog-prefix-")

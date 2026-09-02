@@ -12,6 +12,8 @@ const {
   sessionState,
   signIn,
   signInWithPasskey,
+  beginEVMWalletAuth,
+  completeEVMWalletAuth,
   verifyTwoFactorLogin,
 } = vi.hoisted(() => ({
   createOAuthLoginFlow: vi.fn(),
@@ -19,10 +21,14 @@ const {
   retryCapabilities: vi.fn(),
   signIn: vi.fn(),
   signInWithPasskey: vi.fn(),
+  beginEVMWalletAuth: vi.fn(),
+  completeEVMWalletAuth: vi.fn(),
   verifyTwoFactorLogin: vi.fn(),
   sessionState: {
     capabilities: {
       emailVerificationEnabled: false,
+      evmWalletEnabled: false,
+      evmWalletRegistrationEnabled: false,
       oauthProviders: [] as OAuthProvider[],
       passkeyEnabled: false,
       passwordEnabled: true,
@@ -63,6 +69,11 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 vi.mock("@/lib/webauthn", () => ({ isWebAuthnSupported: () => true }));
+vi.mock("../components/evm-wallet-button", () => ({
+  EVMWalletButton: (props: { description?: string }) => (
+    <button type="button">{props.description ?? "Continue with EVM wallet"}</button>
+  ),
+}));
 vi.mock("@/app/session/session-context", () => ({
   useSession: () => ({
     ...sessionState,
@@ -70,6 +81,8 @@ vi.mock("@/app/session/session-context", () => ({
     retryCapabilities,
     signIn,
     signInWithPasskey,
+    beginEVMWalletAuth,
+    completeEVMWalletAuth,
     verifyTwoFactorLogin,
   }),
 }));
@@ -80,9 +93,13 @@ beforeEach(() => {
   retryCapabilities.mockReset();
   signIn.mockReset();
   signInWithPasskey.mockReset();
+  beginEVMWalletAuth.mockReset();
+  completeEVMWalletAuth.mockReset();
   verifyTwoFactorLogin.mockReset();
   sessionState.capabilities = {
     emailVerificationEnabled: false,
+    evmWalletEnabled: false,
+    evmWalletRegistrationEnabled: false,
     oauthProviders: [],
     passkeyEnabled: false,
     passwordEnabled: true,
@@ -96,6 +113,23 @@ beforeEach(() => {
 });
 
 describe("User Console sign-in", () => {
+  test("explains that a new wallet is registered automatically", () => {
+    sessionState.capabilities = {
+      ...(sessionState.capabilities as AuthCapabilities),
+      evmWalletEnabled: true,
+      evmWalletRegistrationEnabled: true,
+      passwordEnabled: false,
+    };
+
+    render(<SignInPage />);
+
+    expect(
+      screen.getByText(
+        "If this wallet is new, an account will be created automatically after signature verification.",
+      ),
+    ).toBeVisible();
+  });
+
   test("continues a password sign-in with the issued two-factor flow token", async () => {
     signIn.mockResolvedValue({
       kind: "two_factor",

@@ -40,8 +40,8 @@ type ChannelDailyUsage struct {
 	ID                      int64  `json:"id" gorm:"primaryKey"`
 	UsageDate               string `json:"usage_date" gorm:"type:varchar(10);not null;uniqueIndex:uk_channel_daily_usage,priority:1"`
 	Timezone                string `json:"timezone" gorm:"type:varchar(32);not null;uniqueIndex:uk_channel_daily_usage,priority:2"`
-	PeriodStart             int64  `json:"period_start" gorm:"bigint;not null;index"`
-	PeriodEnd               int64  `json:"period_end" gorm:"bigint;not null;index"`
+	PeriodStart             int64  `json:"period_start" gorm:"bigint;not null"`
+	PeriodEnd               int64  `json:"period_end" gorm:"bigint;not null"`
 	ChannelID               int    `json:"channel_id" gorm:"not null;index;uniqueIndex:uk_channel_daily_usage,priority:3"`
 	ChannelName             string `json:"channel_name" gorm:"type:varchar(128)"`
 	ModelName               string `json:"model_name" gorm:"type:varchar(128);not null;index;uniqueIndex:uk_channel_daily_usage,priority:4"`

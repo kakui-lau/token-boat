@@ -1,0 +1,41 @@
+---
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import EditorialPageHero from "@/components/editorial-page-hero.astro";
+type Props = { locale: SiteLocale };
+const { locale } = Astro.props;
+const c = locale === "zh" ? {
+  eyebrow: "SECURITY / TRUST", titleLines: ["说明数据", "如何经过", "网关。"], lead: "从 API Key、请求路由、供应商处理到日志与事件响应，公开说明当前能够确认的安全边界。",
+  flow: ["你的服务", "Token Boat 网关", "所选模型供应商", "响应返回"],
+  cards: [
+    ["01", "身份与密钥", "API 请求使用 Bearer Key。密钥应只保存在服务端；账户可用的登录与二次验证方式取决于当前系统配置。"],
+    ["02", "请求与供应商", "网关会把完成所选模型调用所需的请求内容发送给对应上游供应商。切换模型也可能改变处理数据的供应商。"],
+    ["03", "日志与诊断", "控制台可提供请求、用量和错误诊断数据。当前公开页面不承诺一个未经正式政策确认的数据保留周期。"],
+    ["04", "故障响应", "公开状态页只显示已配置的监控项。账户级异常应结合 Request ID 和请求日志定位。"],
+    ["05", "隐私边界", "不要在不需要时提交个人信息、密钥或敏感业务数据。正式法律文本发布后，以隐私政策和服务条款为准。"],
+    ["06", "访问控制", "按应用拆分并定期轮换 API Key；可用的 2FA、Passkey 和权限能力以当前账户配置为准。不要共享高权限账户。"],
+    ["07", "最少必要", "只提交完成任务所需的数据。个人信息、密钥、受监管数据和敏感业务资料应先进行删除、脱敏或去标识化。"],
+    ["08", "保留与删除", "不同日志和账务记录具有不同用途。正式期限尚未配置前不作虚假承诺；不再需要的数据应按适用要求删除、匿名化或限制处理。"],
+    ["09", "诚实声明", "当前不展示 SOC 2、ISO 27001 等认证徽章，因为尚无经过核验且允许公开展示的证据。安全问题请通过支持中心报告。"],
+  ],
+  privacy: "查看隐私政策", terms: "查看服务条款", status: "查看服务状态", support: "报告安全问题",
+} : {
+  eyebrow: "SECURITY / TRUST", titleLines: ["HOW DATA MOVES", "THROUGH THE", "GATEWAY."], lead: "From API keys and request routing to provider processing, logs, and incident response, this page describes the security boundaries that can currently be verified.",
+  flow: ["Your service", "Token Boat gateway", "Selected model provider", "Response returned"],
+  cards: [
+    ["01", "Identity & keys", "API requests use a Bearer key. Keep keys server-side. Available sign-in and second-factor methods depend on current system configuration."],
+    ["02", "Requests & providers", "The gateway sends the request content required for the selected model call to the corresponding upstream provider. Changing models may also change the data processor."],
+    ["03", "Logs & diagnosis", "The console can expose request, usage, and error diagnostics. This public page does not promise an unapproved data-retention duration."],
+    ["04", "Incident response", "The public status page shows only configured monitors. Account-level failures should be diagnosed with a Request ID and request logs."],
+    ["05", "Privacy boundary", "Do not submit personal data, credentials, or sensitive business content when it is not required. Published privacy and service terms are the governing documents."],
+    ["06", "Access control", "Separate and rotate API keys by application. Available 2FA, passkey, and permission controls depend on current account configuration. Do not share privileged accounts."],
+    ["07", "Data minimization", "Submit only what a task requires. Remove, redact, or de-identify personal data, credentials, regulated data, and sensitive business information before use."],
+    ["08", "Retention & deletion", "Logs and billing records serve different purposes. No unconfigured duration is promised; data that is no longer needed should be deleted, anonymized, or restricted as applicable."],
+    ["09", "Honest assurance", "SOC 2, ISO 27001, and other badges are not displayed without verified, publishable evidence. Report suspected security issues through the support center."],
+  ],
+  privacy: "Read privacy policy", terms: "Read terms", status: "View service status", support: "Report a security issue",
+};
+---
+<EditorialPageHero lead={c.lead} locale={locale} meta={c.eyebrow} titleLines={c.titleLines} />
+<section class="trust-flow-section"><div class="site-shell"><ol class="data-flow" aria-label={locale === "zh" ? "请求数据流" : "Request data flow"}>{c.flow.map((step, i) => <li><span>0{i + 1}</span><strong>{step}</strong></li>)}</ol></div></section>
+<section class="section content-section"><div class="site-shell content-grid trust-grid">{c.cards.map((card) => <article class="content-card"><div class="content-card__meta"><span>{card[0]}</span><p>TRUST NOTE</p></div><h2>{card[1]}</h2><p>{card[2]}</p></article>)}</div></section>
+<section class="content-cta"><div class="site-shell content-cta__inner"><p>POLICY & STATUS</p><h2>{locale === "zh" ? "继续核对正式边界。" : "Continue with the formal boundaries."}</h2><div class="inline-links"><a href={localizedPath(locale, "/legal/privacy")}>{c.privacy} →</a><a href={localizedPath(locale, "/legal/terms")}>{c.terms} →</a><a href={localizedPath(locale, "/status")}>{c.status} →</a><a href={localizedPath(locale, "/support")}>{c.support} →</a></div></div></section>

@@ -41,6 +41,9 @@ export interface Model {
   tags?: string
   vendor_id?: number
   context_length?: number
+  max_output_tokens?: number
+  limits_source_url?: string
+  limits_verified_at?: number
   endpoints?: string
   status: number
   sync_official: number
@@ -250,6 +253,9 @@ export const modelFormSchema = z.object({
   tags: z.array(z.string()).default([]),
   vendor_id: z.number().optional(),
   context_length: z.number().int().min(0).default(0),
+  max_output_tokens: z.number().int().min(0).default(0),
+  limits_source_url: z.string().default(''),
+  limits_verified_at: z.number().int().min(0).default(0),
   endpoints: z.string().default(''),
   name_rule: z.number().min(0).max(3).default(0),
   status: z.boolean().default(true),

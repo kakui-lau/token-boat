@@ -14,13 +14,7 @@ export function ThemeSettingsContent() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h2 className="text-lg font-semibold">{t("Theme settings")}</h2>
-          <p className="text-sm text-muted-foreground">
-            {t("Customize your dashboard layout preferences.")}
-          </p>
-        </div>
+      <div className="flex justify-end">
         <Button className="w-fit" onClick={resetPreferences} variant="outline">
           <RotateCcwIcon data-icon="inline-start" />
           {t("Restore defaults")}

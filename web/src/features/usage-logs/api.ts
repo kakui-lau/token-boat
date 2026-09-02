@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-// eslint-disable-next-line import/no-cycle -- legacy log fetch helpers share query serialization
-import { buildQueryParams } from './lib/utils'
+import { buildQueryParams } from './lib/query'
 import type {
   GetLogsParams,
   GetLogsResponse,

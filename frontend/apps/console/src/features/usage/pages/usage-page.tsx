@@ -75,10 +75,10 @@ export function UsagePage(props: UsagePageProps) {
   }>({ direction: "descending", key: "tokens" });
   const [search, updateSearch] = useControllableSearch(props.search, props.onSearchChange);
   const range = useMemo(
-    () => resolveDateRange(search, "7d"),
+    () => resolveDateRange(search, "3d"),
     [search.from, search.range, search.to],
   );
-  const setRange = (value: DateRangeValue) => updateSearch(dateRangeSearchPatch(value, "7d"));
+  const setRange = (value: DateRangeValue) => updateSearch(dateRangeSearchPatch(value, "3d"));
   const query = useQuery({ queryKey: ["usage", range], queryFn: () => repository.getUsage(range) });
   const locale = i18n.resolvedLanguage ?? "en";
   const modelCollator = useMemo(
@@ -398,7 +398,7 @@ export function UsagePage(props: UsagePageProps) {
                           aria-label={`${t("Request ID")}: ${item.id}`}
                           className="inline-flex underline-offset-4 hover:underline"
                           search={{
-                            ...dateRangeSearchPatch(range, "7d"),
+                            ...dateRangeSearchPatch(range, "today"),
                             detail: item.id,
                             field: "request",
                             q: item.id,

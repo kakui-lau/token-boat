@@ -1,5 +1,3 @@
-import { ApiClientError, createApiClient } from "@token-boat/api-client";
-
 import type {
   AccountActivityListInput,
   AccountActivityRecord,
@@ -8,7 +6,6 @@ import type {
   AccountSecurityResult,
   ActivityRecord,
   AlertCenterData,
-  AuthCapabilities,
   ApiKeyGroupOption,
   ApiKeyListInput,
   ApiKeyRecord,
@@ -18,6 +15,7 @@ import type {
   BillingLedgerListInput,
   BillingTransactionListInput,
   BillingTransaction,
+  ChangePasswordInput,
   ConsoleRepository,
   ConsoleSession,
   ConsoleUser,
@@ -29,13 +27,8 @@ import type {
   LoginSessionRecord,
   ModelCatalogItem,
   ModelCatalogPriceSummary,
-  OAuthCallbackInput,
-  OAuthLoginFlow,
-  OAuthProvider,
   PaymentConfirmationInput,
   PaymentConfirmationStatus,
-  PasswordResetConfirmInput,
-  PasswordResetRequestInput,
   PaginatedResult,
   PlatformMonitor,
   PlaygroundMessageInput,
@@ -51,9 +44,6 @@ import type {
   RequestLogAnalyticsInput,
   RequestLogRecord,
   RequestLogListInput,
-  RegisterInput,
-  SignInResult,
-  SignInInput,
   SubscriptionPlan,
   SubscriptionPaymentMethod,
   TaskListInput,
@@ -67,9 +57,29 @@ import type {
   UpdateApiKeyInput,
   UpdateProfileInput,
   UsageData,
-  EmailVerificationInput,
-  VerifyTwoFactorLoginInput,
 } from "./contracts";
+import {
+  asRecord,
+  LiveDataContractError,
+  readItems,
+  readNumber,
+  readOptionalBoolean,
+  readOptionalItems,
+  readOptionalNumber,
+  readString,
+  readUnixTime,
+  requireBoolean,
+  requireItems,
+  requireNumber,
+  requireString,
+  requireStringField,
+} from "./live-contract";
+import { liveSessionRepository } from "./live-session-repository";
+import {
+  mapLiveEVMWalletChallenge as mapEVMWalletChallenge,
+  mapLiveUser as mapUser,
+} from "./live-session-mappers";
+import { getLiveSession, liveApiClient as client, setLiveSession } from "./live-repository-runtime";
 import { dateRangeDayCount, dateRangeToUnix, localDateToKey } from "@/lib/date-range";
 import {
   buildAssertionCredential,
@@ -78,9 +88,6 @@ import {
   prepareCredentialRequestOptions,
 } from "@/lib/webauthn";
 
-const client = createApiClient({
-  baseUrl: import.meta.env.VITE_CONSOLE_API_BASE_URL,
-});
 const LOG_TYPE_TOPUP = 1;
 const LOG_TYPE_CONSUME = 2;
 const LOG_TYPE_MANAGE = 3;
@@ -88,89 +95,6 @@ const LOG_TYPE_SYSTEM = 4;
 const LOG_TYPE_ERROR = 5;
 const LOG_TYPE_REFUND = 6;
 const LOG_TYPE_LOGIN = 7;
-
-let currentSession: ConsoleSession | null = null;
-
-class LiveDataContractError extends Error {
-  constructor(field: string) {
-    super(`The live API response is missing required field: ${field}`);
-    this.name = "LiveDataContractError";
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
-
-function readString(record: Record<string, unknown>, key: string, fallback = ""): string {
-  return typeof record[key] === "string" ? record[key] : fallback;
-}
-
-function readNumber(record: Record<string, unknown>, key: string, fallback = Number.NaN): number {
-  if (record[key] === null || record[key] === undefined || record[key] === "") return fallback;
-  const value = Number(record[key]);
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function readOptionalNumber(record: Record<string, unknown>, key: string): number | null {
-  if (record[key] === null || record[key] === undefined || record[key] === "") return null;
-  const value = Number(record[key]);
-  return Number.isFinite(value) ? value : null;
-}
-
-function readOptionalBoolean(record: Record<string, unknown>, key: string): boolean | null {
-  return typeof record[key] === "boolean" ? record[key] : null;
-}
-
-function requireString(record: Record<string, unknown>, key: string, field = key): string {
-  const value = readString(record, key).trim();
-  if (!value) throw new LiveDataContractError(field);
-  return value;
-}
-
-function requireStringField(record: Record<string, unknown>, key: string, field = key): string {
-  const value = record[key];
-  if (typeof value !== "string") throw new LiveDataContractError(field);
-  return value;
-}
-
-function requireNumber(record: Record<string, unknown>, key: string, field = key): number {
-  const value = readOptionalNumber(record, key);
-  if (value === null) throw new LiveDataContractError(field);
-  return value;
-}
-
-function requireBoolean(record: Record<string, unknown>, key: string, field = key): boolean {
-  const value = readOptionalBoolean(record, key);
-  if (value === null) throw new LiveDataContractError(field);
-  return value;
-}
-
-function readUnixTime(record: Record<string, unknown>, key: string): number | null {
-  const value = record[key];
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
-  if (typeof value !== "string" || !value) return null;
-  const milliseconds = Date.parse(value);
-  return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
-}
-
-function readItems(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  const record = asRecord(value);
-  return Array.isArray(record.items) ? record.items : [];
-}
-
-function readOptionalItems(value: unknown, field: string): unknown[] {
-  if (value === null || value === undefined) return [];
-  return requireItems(value, field);
-}
-
-function requireItems(value: unknown, field: string): unknown[] {
-  if (Array.isArray(value)) return value;
-  const record = asRecord(value);
-  if (Array.isArray(record.items)) return record.items;
-  throw new LiveDataContractError(field);
-}
 
 function mapPaginatedResult<T>(
   value: unknown,
@@ -549,112 +473,6 @@ export function mapLiveTaskRecord(value: unknown, quotaPerUnit: number): TaskRec
       format: readTaskString(sources, ["format", "response_format", "output_format"]),
     },
   };
-}
-
-function mapUser(value: unknown): ConsoleUser {
-  const user = asRecord(value);
-  return {
-    id: requireNumber(user, "id", "user.id"),
-    username: requireString(user, "username", "user.username"),
-    displayName:
-      readString(user, "display_name") || requireString(user, "username", "user.username"),
-    email: readString(user, "email"),
-    group: requireString(user, "group", "user.group"),
-    role: requireNumber(user, "role", "user.role"),
-    quotaUnits: requireNumber(user, "quota", "user.quota"),
-    usedQuotaUnits: requireNumber(user, "used_quota", "user.used_quota"),
-    requestCount: requireNumber(user, "request_count", "user.request_count"),
-    createdAt: readUnixTime(user, "created_time"),
-  };
-}
-
-function mapOAuthProviders(status: Record<string, unknown>): OAuthProvider[] {
-  const providers: OAuthProvider[] = [];
-  if (requireBoolean(status, "github_oauth", "status.github_oauth")) {
-    providers.push({
-      id: "github",
-      name: "GitHub",
-      clientId: requireString(status, "github_client_id", "status.github_client_id"),
-      authorizationEndpoint: "https://github.com/login/oauth/authorize",
-      scopes: "user:email",
-      kind: "github",
-    });
-  }
-  if (requireBoolean(status, "discord_oauth", "status.discord_oauth")) {
-    providers.push({
-      id: "discord",
-      name: "Discord",
-      clientId: requireString(status, "discord_client_id", "status.discord_client_id"),
-      authorizationEndpoint: "https://discord.com/oauth2/authorize",
-      scopes: "identify openid",
-      kind: "discord",
-    });
-  }
-  if (requireBoolean(status, "oidc_enabled", "status.oidc_enabled")) {
-    providers.push({
-      id: "oidc",
-      name: readString(status, "oidc_display_name", "OIDC"),
-      clientId: requireString(status, "oidc_client_id", "status.oidc_client_id"),
-      authorizationEndpoint: requireString(
-        status,
-        "oidc_authorization_endpoint",
-        "status.oidc_authorization_endpoint",
-      ),
-      scopes: "openid profile email",
-      kind: "oidc",
-    });
-  }
-  if (requireBoolean(status, "linuxdo_oauth", "status.linuxdo_oauth")) {
-    providers.push({
-      id: "linuxdo",
-      name: "Linux DO",
-      clientId: requireString(status, "linuxdo_client_id", "status.linuxdo_client_id"),
-      authorizationEndpoint: "https://connect.linux.do/oauth2/authorize",
-      scopes: "",
-      kind: "linuxdo",
-    });
-  }
-  for (const value of readOptionalItems(
-    status.custom_oauth_providers,
-    "status.custom_oauth_providers",
-  )) {
-    const provider = asRecord(value);
-    const id = requireString(provider, "slug", "status.custom_oauth_providers[].slug");
-    const clientId = requireString(
-      provider,
-      "client_id",
-      `status.custom_oauth_providers.${id}.client_id`,
-    );
-    const authorizationEndpoint = requireString(
-      provider,
-      "authorization_endpoint",
-      `status.custom_oauth_providers.${id}.authorization_endpoint`,
-    );
-    providers.push({
-      id,
-      name: readString(provider, "name", id),
-      clientId,
-      authorizationEndpoint,
-      scopes: readString(provider, "scopes"),
-      kind: "custom",
-    });
-  }
-  return providers;
-}
-
-function mapSessionBundle(value: unknown): ConsoleSession {
-  const bundle = asRecord(value);
-  const session = asRecord(bundle.session);
-  const accessToken = requireString(bundle, "access_token", "session.access_token");
-  const mapped: ConsoleSession = {
-    user: mapUser(bundle.user),
-    accessToken,
-    accessExpiresAt: requireNumber(bundle, "access_expires_at", "session.access_expires_at"),
-    sessionId: requireString(session, "sid", "session.sid"),
-  };
-  client.setAccessToken(accessToken);
-  currentSession = mapped;
-  return mapped;
 }
 
 function mapApiKeyStatus(status: number): ApiKeyStatus {
@@ -1174,6 +992,8 @@ function mapCatalogModel(
     "context_window",
     readNumber(record, "context_length", Number.NaN),
   );
+  const maxOutputTokens = readNumber(record, "max_output_tokens", Number.NaN);
+  const limitsVerifiedAt = readNumber(record, "limits_verified_at", Number.NaN);
   const tags = readString(record, "tags");
   const features = tags
     .split(/[,，]/)
@@ -1185,7 +1005,12 @@ function mapCatalogModel(
     provider,
     description: readString(record, "description") || null,
     family: catalogModelFamily(billingMode, tags),
-    contextWindow: Number.isFinite(contextWindow) ? contextWindow : null,
+    contextWindow: Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : null,
+    maxOutputTokens:
+      Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : null,
+    limitsSourceUrl: readString(record, "limits_source_url").trim() || null,
+    limitsVerifiedAt:
+      Number.isFinite(limitsVerifiedAt) && limitsVerifiedAt > 0 ? limitsVerifiedAt : null,
     inputPrice: Number.isFinite(inputPrice) ? inputPrice : null,
     inputPriceQualifier: structuredInput?.qualifier ?? null,
     inputPriceUnit: catalogPriceUnit(structuredInput?.unit ?? legacyUnit),
@@ -1755,6 +1580,7 @@ async function getPaymentConfirmation(
 }
 
 function applyAuthRotation(value: unknown): ConsoleSession {
+  const currentSession = getLiveSession();
   if (!currentSession) throw new Error("The current session is unavailable.");
   const rotation = asRecord(value);
   const session = asRecord(rotation.session);
@@ -1766,9 +1592,7 @@ function applyAuthRotation(value: unknown): ConsoleSession {
     accessExpiresAt: requireNumber(rotation, "access_expires_at", "session.access_expires_at"),
     sessionId: readString(session, "sid", currentSession.sessionId),
   };
-  client.setAccessToken(accessToken);
-  currentSession = updated;
-  return updated;
+  return setLiveSession(updated);
 }
 
 async function securityResult(value: unknown): Promise<AccountSecurityResult> {
@@ -1861,17 +1685,38 @@ async function getAccountPreferences(): Promise<AccountPreferences> {
 }
 
 async function getAccountData(): Promise<AccountData> {
-  const [userRecord, preferences, sessionsResponse, passkeyResponse, twoFactorResponse] =
-    await Promise.all([
-      getUserRecord(),
-      getAccountPreferences(),
-      client.request<unknown>({ path: "/api/user/sessions" }),
-      client.request<unknown>({ path: "/api/user/passkey" }),
-      client.request<unknown>({ path: "/api/user/2fa/status" }),
-    ]);
+  const [
+    userRecord,
+    preferences,
+    sessionsResponse,
+    passkeyResponse,
+    twoFactorResponse,
+    evmWalletResponse,
+  ] = await Promise.all([
+    getUserRecord(),
+    getAccountPreferences(),
+    client.request<unknown>({ path: "/api/user/sessions" }),
+    client.request<unknown>({ path: "/api/user/passkey" }),
+    client.request<unknown>({ path: "/api/user/2fa/status" }),
+    client.request<unknown>({ path: "/api/user/evm-wallet" }),
+  ]);
   const user = mapUser(userRecord);
   const passkey = asRecord(passkeyResponse.data);
   const twoFactor = asRecord(twoFactorResponse.data);
+  const evmWallet = asRecord(evmWalletResponse.data);
+  const walletVerificationMethod = readString(evmWallet, "verification_method") as
+    | "2fa"
+    | "passkey"
+    | "password"
+    | "";
+  if (
+    walletVerificationMethod &&
+    walletVerificationMethod !== "2fa" &&
+    walletVerificationMethod !== "passkey" &&
+    walletVerificationMethod !== "password"
+  ) {
+    throw new LiveDataContractError("evm_wallet.verification_method");
+  }
   return {
     user,
     preferences,
@@ -1885,6 +1730,11 @@ async function getAccountData(): Promise<AccountData> {
       twoFactorEnabled: requireBoolean(twoFactor, "enabled", "two_factor.enabled"),
       twoFactorLocked: requireBoolean(twoFactor, "locked", "two_factor.locked"),
       emailBound: Boolean(user.email),
+      evmWalletAddress: readString(evmWallet, "address") || null,
+      evmWalletEnabled: requireBoolean(evmWallet, "enabled", "evm_wallet.enabled"),
+      evmWalletLastUsedAt: readUnixTime(evmWallet, "last_used_at"),
+      evmWalletRemovable: readOptionalBoolean(evmWallet, "removable") === true,
+      evmWalletVerificationMethod: walletVerificationMethod || null,
     },
     sessions: requireItems(sessionsResponse.data, "login_sessions").map(mapLoginSession),
   };
@@ -2336,208 +2186,7 @@ async function getBillingTransactionsPage(
 }
 
 export const liveRepository: ConsoleRepository = {
-  mode: "live",
-  async getAuthCapabilities(): Promise<AuthCapabilities> {
-    const response = await client.request<unknown>({
-      path: "/api/status",
-      authenticated: false,
-    });
-    const status = asRecord(response.data);
-    const turnstileEnabled = requireBoolean(status, "turnstile_check", "status.turnstile_check");
-    const turnstileSiteKey = readString(status, "turnstile_site_key");
-    if (turnstileEnabled && !turnstileSiteKey) {
-      throw new LiveDataContractError("status.turnstile_site_key");
-    }
-    return {
-      emailVerificationEnabled: requireBoolean(
-        status,
-        "email_verification",
-        "status.email_verification",
-      ),
-      oauthProviders: mapOAuthProviders(status),
-      passkeyEnabled: requireBoolean(status, "passkey_login", "status.passkey_login"),
-      passwordEnabled: requireBoolean(
-        status,
-        "password_login_enabled",
-        "status.password_login_enabled",
-      ),
-      registrationEnabled:
-        requireBoolean(status, "register_enabled", "status.register_enabled") &&
-        requireBoolean(status, "password_register_enabled", "status.password_register_enabled"),
-      turnstileEnabled,
-      turnstileSiteKey,
-    };
-  },
-  async createOAuthLoginFlow(provider: string): Promise<OAuthLoginFlow> {
-    const response = await client.request<unknown>({
-      path: "/api/oauth/state",
-      method: "POST",
-      body: { provider, intent: "login", client: "console_v2" },
-      authenticated: false,
-    });
-    const flow = asRecord(response.data);
-    const flowToken = readString(flow, "flow_token");
-    const redirectUri = readString(flow, "redirect_uri");
-    if (!flowToken || !redirectUri) {
-      throw new Error("The server did not return a valid OAuth flow.");
-    }
-    return { flowToken, redirectUri };
-  },
-  async completeOAuthLogin(input: OAuthCallbackInput): Promise<ConsoleSession> {
-    if (!input.provider) {
-      throw new LiveDataContractError("oauth.provider");
-    }
-    const search = new URLSearchParams({ state: input.state });
-    if (input.code) search.set("code", input.code);
-    if (input.error) search.set("error", input.error);
-    if (input.errorDescription) search.set("error_description", input.errorDescription);
-    const response = await client.request<unknown>({
-      path: `/api/oauth/${encodeURIComponent(input.provider)}?${search.toString()}`,
-      authenticated: false,
-    });
-    return mapSessionBundle(response.data);
-  },
-  async register(input: RegisterInput) {
-    const search = new URLSearchParams();
-    if (input.turnstileToken) search.set("turnstile", input.turnstileToken);
-    const suffix = search.size > 0 ? `?${search.toString()}` : "";
-    await client.request({
-      path: `/api/user/register${suffix}`,
-      method: "POST",
-      body: {
-        username: input.username,
-        password: input.password,
-        email: input.email,
-        verification_code: input.verificationCode,
-        aff_code: input.affiliateCode,
-      },
-      authenticated: false,
-    });
-  },
-  async sendEmailVerification(input: EmailVerificationInput) {
-    const search = new URLSearchParams({ email: input.email });
-    if (input.turnstileToken) search.set("turnstile", input.turnstileToken);
-    await client.request({
-      path: `/api/verification?${search.toString()}`,
-      authenticated: false,
-    });
-  },
-  async requestPasswordReset(input: PasswordResetRequestInput) {
-    const search = new URLSearchParams({
-      email: input.email,
-      redirect_path: "/console/user/reset",
-    });
-    if (input.turnstileToken) search.set("turnstile", input.turnstileToken);
-    await client.request({
-      path: `/api/reset_password?${search.toString()}`,
-      authenticated: false,
-    });
-  },
-  async confirmPasswordReset(input: PasswordResetConfirmInput) {
-    const response = await client.request<string>({
-      path: "/api/user/reset",
-      method: "POST",
-      body: input,
-      authenticated: false,
-    });
-    if (typeof response.data !== "string" || !response.data) {
-      throw new Error("The server did not return a new password.");
-    }
-    return response.data;
-  },
-  async getSession(options) {
-    try {
-      const response = await client.request<unknown>({
-        path: "/api/user/auth/refresh",
-        method: "POST",
-        authenticated: false,
-        signal: options?.signal,
-        headers:
-          !options?.ignoreCurrentSession && currentSession?.sessionId
-            ? { "X-Auth-Session": currentSession.sessionId }
-            : undefined,
-      });
-      return mapSessionBundle(response.data);
-    } catch (error) {
-      if (error instanceof ApiClientError && (error.status === 401 || error.status === 403)) {
-        currentSession = null;
-        client.clearAccessToken();
-        return null;
-      }
-      throw error;
-    }
-  },
-  async signIn(input: SignInInput): Promise<SignInResult> {
-    const response = await client.request<unknown>({
-      path: "/api/user/login",
-      method: "POST",
-      body: input,
-      authenticated: false,
-    });
-    const payload = asRecord(response.data);
-    if (payload.require_2fa !== undefined && typeof payload.require_2fa !== "boolean") {
-      throw new LiveDataContractError("login.require_2fa");
-    }
-    if (payload.require_2fa === true) {
-      const flowToken = readString(payload, "flow_token");
-      if (!flowToken) throw new Error("The two-factor login flow is invalid.");
-      return {
-        kind: "two_factor",
-        flowToken,
-        expiresAt: requireNumber(payload, "expires_at", "two_factor.expires_at"),
-      };
-    }
-    return { kind: "authenticated", session: mapSessionBundle(response.data) };
-  },
-  async verifyTwoFactorLogin(input: VerifyTwoFactorLoginInput) {
-    const response = await client.request<unknown>({
-      path: "/api/user/login/2fa",
-      method: "POST",
-      body: { code: input.code, flow_token: input.flowToken },
-      authenticated: false,
-    });
-    return mapSessionBundle(response.data);
-  },
-  async signInWithPasskey() {
-    if (typeof navigator.credentials?.get !== "function") {
-      throw new Error("Passkey is not available in this browser.");
-    }
-    const begin = await client.request<unknown>({
-      path: "/api/user/passkey/login/begin",
-      method: "POST",
-      authenticated: false,
-    });
-    const beginData = asRecord(begin.data);
-    const flowToken = readString(beginData, "flow_token");
-    if (!flowToken) throw new Error("The Passkey login flow is invalid.");
-    const credential = (await navigator.credentials.get({
-      publicKey: prepareCredentialRequestOptions(beginData.options ?? begin.data),
-    })) as PublicKeyCredential | null;
-    if (!credential) return null;
-    const finish = await client.request<unknown>({
-      path: "/api/user/passkey/login/finish",
-      method: "POST",
-      body: {
-        flow_token: flowToken,
-        credential: buildAssertionCredential(credential),
-      },
-      authenticated: false,
-    });
-    return mapSessionBundle(finish.data);
-  },
-  clearLocalSession() {
-    currentSession = null;
-    client.clearAccessToken();
-  },
-  async signOut(session) {
-    await client.request({
-      path: "/api/user/auth/logout",
-      method: "POST",
-      headers: session?.sessionId ? { "X-Auth-Session": session.sessionId } : undefined,
-    });
-    currentSession = null;
-    client.clearAccessToken();
-  },
+  ...liveSessionRepository,
   async getOverview(range: DateRangeValue) {
     const unixRange = dateRangeToUnix(range);
     const [user, keys, recentActivity, statsResponse, quotaPerUnit] = await Promise.all([
@@ -2787,6 +2436,9 @@ export const liveRepository: ConsoleRepository = {
         description: null,
         family: "unknown",
         contextWindow: null,
+        maxOutputTokens: null,
+        limitsSourceUrl: null,
+        limitsVerifiedAt: null,
         inputPrice: null,
         inputPriceQualifier: null,
         inputPriceUnit: null,
@@ -2865,9 +2517,25 @@ export const liveRepository: ConsoleRepository = {
     await client.request({
       path: "/api/user/self",
       method: "PUT",
-      body: { display_name: input.displayName },
+      body: {
+        username: input.username,
+        display_name: input.displayName,
+        email: input.email,
+        verification_code: input.verificationCode,
+      },
     });
     return getAccountData();
+  },
+  async changePassword(input: ChangePasswordInput) {
+    const response = await client.request<unknown>({
+      path: "/api/user/self",
+      method: "PUT",
+      body: {
+        original_password: input.currentPassword,
+        password: input.newPassword,
+      },
+    });
+    return securityResult(response.data);
   },
   async updatePreferences(input: AccountPreferences) {
     if (
@@ -2987,6 +2655,64 @@ export const liveRepository: ConsoleRepository = {
       path: "/api/user/passkey",
       method: "DELETE",
       headers: securityProofHeaders(proof),
+    });
+    return securityResult(response.data);
+  },
+  async createEVMWalletSecurityProof(method, scope, code) {
+    if (method === "passkey") return createPasskeyProof(scope);
+    if (!code?.trim()) throw new Error("Security verification is required.");
+    const response = await client.request<unknown>({
+      path: "/api/verify",
+      method: "POST",
+      body: { method, scope, code: code.trim() },
+    });
+    const proof = readString(asRecord(response.data), "proof_token");
+    if (!proof) throw new Error("The server did not return a security proof.");
+    return proof;
+  },
+  async beginEVMWalletBinding(input) {
+    const begin = await client.request<unknown>({
+      path: "/api/user/evm-wallet/bind/begin",
+      method: "POST",
+      headers: securityProofHeaders(input.proof),
+      body: { address: input.address, chain_id: String(input.chainId) },
+    });
+    return mapEVMWalletChallenge(begin.data);
+  },
+  async completeEVMWalletBinding(input) {
+    const response = await client.request<unknown>({
+      path: "/api/user/evm-wallet/bind/finish",
+      method: "POST",
+      headers: securityProofHeaders(input.proof),
+      body: { flow_token: input.flowToken, signature: input.signature },
+    });
+    return securityResult(response.data);
+  },
+  async removeEVMWallet(proof) {
+    const response = await client.request<unknown>({
+      path: "/api/user/evm-wallet",
+      method: "DELETE",
+      headers: securityProofHeaders(proof),
+    });
+    return securityResult(response.data);
+  },
+  async beginEVMWalletPasswordSetup(input) {
+    const response = await client.request<unknown>({
+      path: "/api/user/evm-wallet/password/begin",
+      method: "POST",
+      body: { address: input.address, chain_id: String(input.chainId) },
+    });
+    return mapEVMWalletChallenge(response.data);
+  },
+  async completeEVMWalletPasswordSetup(input) {
+    const response = await client.request<unknown>({
+      path: "/api/user/evm-wallet/password/finish",
+      method: "POST",
+      body: {
+        flow_token: input.flowToken,
+        signature: input.signature,
+        password: input.newPassword,
+      },
     });
     return securityResult(response.data);
   },

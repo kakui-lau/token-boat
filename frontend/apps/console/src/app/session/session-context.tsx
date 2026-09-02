@@ -12,6 +12,9 @@ import type {
   AuthCapabilities,
   ConsoleSession,
   EmailVerificationInput,
+  EVMWalletAuthBeginInput,
+  EVMWalletAuthChallenge,
+  EVMWalletAuthCompleteInput,
   OAuthCallbackInput,
   OAuthLoginFlow,
   PasswordResetConfirmInput,
@@ -21,7 +24,7 @@ import type {
   SignInResult,
   VerifyTwoFactorLoginInput,
 } from "@/data/contracts";
-import { repository } from "@/data/repository";
+import { sessionRepository } from "@/data/session-repository";
 import { createSessionSync } from "./session-sync";
 
 type SessionContextValue = {
@@ -32,7 +35,7 @@ type SessionContextValue = {
   error: Error | null;
   session: ConsoleSession | null;
   loading: boolean;
-  mode: typeof repository.mode;
+  mode: typeof sessionRepository.mode;
   retrying: boolean;
   signingOut: boolean;
   retryCapabilities(): Promise<void>;
@@ -45,6 +48,8 @@ type SessionContextValue = {
   confirmPasswordReset(input: PasswordResetConfirmInput): Promise<string>;
   signIn(input: SignInInput): Promise<SignInResult>;
   signInWithPasskey(): Promise<ConsoleSession | null>;
+  beginEVMWalletAuth(input: EVMWalletAuthBeginInput): Promise<EVMWalletAuthChallenge>;
+  completeEVMWalletAuth(input: EVMWalletAuthCompleteInput): Promise<ConsoleSession>;
   verifyTwoFactorLogin(input: VerifyTwoFactorLoginInput): Promise<ConsoleSession>;
   signOut(): Promise<void>;
 };
@@ -79,7 +84,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const previousAccessTokenRef = useRef<string | null>(null);
   const sessionQuery = useQuery({
     queryKey: ["session"],
-    queryFn: ({ signal }) => repository.getSession({ signal }),
+    queryFn: ({ signal }) => sessionRepository.getSession({ signal }),
     refetchInterval: (query) =>
       resolveSessionRefreshInterval(query.state.data, query.state.status === "error"),
     refetchIntervalInBackground: true,
@@ -88,7 +93,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   });
   const capabilitiesQuery = useQuery({
     queryKey: ["auth-capabilities"],
-    queryFn: () => repository.getAuthCapabilities(),
+    queryFn: () => sessionRepository.getAuthCapabilities(),
     retry: false,
     staleTime: 5 * 60_000,
   });
@@ -104,13 +109,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
     const sync = createSessionSync((event) => {
       const revision = ++sessionSyncRevisionRef.current;
       if (event === "signed-out") {
-        repository.clearLocalSession();
+        sessionRepository.clearLocalSession();
         clearAuthenticatedQueryData();
         return;
       }
 
       void queryClient.cancelQueries({ queryKey: ["session"] });
-      void repository
+      void sessionRepository
         .getSession({ ignoreCurrentSession: true })
         .then((session) => {
           if (revision !== sessionSyncRevisionRef.current) return;
@@ -152,7 +157,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [queryClient],
   );
   const signInMutation = useMutation({
-    mutationFn: (input: SignInInput) => repository.signIn(input),
+    mutationFn: (input: SignInInput) => sessionRepository.signIn(input),
     onSuccess: (result) => {
       if (result.kind === "authenticated") {
         applyAuthenticatedSession(result.session);
@@ -160,36 +165,44 @@ export function SessionProvider({ children }: PropsWithChildren) {
     },
   });
   const oauthFlowMutation = useMutation({
-    mutationFn: (provider: string) => repository.createOAuthLoginFlow(provider),
+    mutationFn: (provider: string) => sessionRepository.createOAuthLoginFlow(provider),
   });
   const oauthCallbackMutation = useMutation({
-    mutationFn: (input: OAuthCallbackInput) => repository.completeOAuthLogin(input),
+    mutationFn: (input: OAuthCallbackInput) => sessionRepository.completeOAuthLogin(input),
     onSuccess: applyAuthenticatedSession,
   });
   const registerMutation = useMutation({
-    mutationFn: (input: RegisterInput) => repository.register(input),
+    mutationFn: (input: RegisterInput) => sessionRepository.register(input),
   });
   const emailVerificationMutation = useMutation({
-    mutationFn: (input: EmailVerificationInput) => repository.sendEmailVerification(input),
+    mutationFn: (input: EmailVerificationInput) => sessionRepository.sendEmailVerification(input),
   });
   const passwordResetRequestMutation = useMutation({
-    mutationFn: (input: PasswordResetRequestInput) => repository.requestPasswordReset(input),
+    mutationFn: (input: PasswordResetRequestInput) => sessionRepository.requestPasswordReset(input),
   });
   const passwordResetConfirmMutation = useMutation({
-    mutationFn: (input: PasswordResetConfirmInput) => repository.confirmPasswordReset(input),
+    mutationFn: (input: PasswordResetConfirmInput) => sessionRepository.confirmPasswordReset(input),
   });
   const verifyTwoFactorMutation = useMutation({
-    mutationFn: (input: VerifyTwoFactorLoginInput) => repository.verifyTwoFactorLogin(input),
+    mutationFn: (input: VerifyTwoFactorLoginInput) => sessionRepository.verifyTwoFactorLogin(input),
     onSuccess: applyAuthenticatedSession,
   });
   const passkeyMutation = useMutation({
-    mutationFn: () => repository.signInWithPasskey(),
+    mutationFn: () => sessionRepository.signInWithPasskey(),
     onSuccess: (session) => {
       if (session) applyAuthenticatedSession(session);
     },
   });
+  const evmWalletBeginMutation = useMutation({
+    mutationFn: (input: EVMWalletAuthBeginInput) => sessionRepository.beginEVMWalletAuth(input),
+  });
+  const evmWalletCompleteMutation = useMutation({
+    mutationFn: (input: EVMWalletAuthCompleteInput) =>
+      sessionRepository.completeEVMWalletAuth(input),
+    onSuccess: applyAuthenticatedSession,
+  });
   const { isPending: signingOut, mutateAsync: mutateSignOut } = useMutation({
-    mutationFn: () => repository.signOut(sessionQuery.data ?? null),
+    mutationFn: () => sessionRepository.signOut(sessionQuery.data ?? null),
     onSuccess: () => {
       clearAuthenticatedQueryData();
       sessionSyncRef.current?.publish("signed-out");
@@ -216,7 +229,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         error: sessionQuery.error instanceof Error ? sessionQuery.error : null,
         session: sessionQuery.data ?? null,
         loading: sessionQuery.isPending,
-        mode: repository.mode,
+        mode: sessionRepository.mode,
         retrying: sessionQuery.isFetching,
         signingOut,
         retryCapabilities: async () => {
@@ -233,6 +246,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
         confirmPasswordReset: passwordResetConfirmMutation.mutateAsync,
         signIn: signInMutation.mutateAsync,
         signInWithPasskey: passkeyMutation.mutateAsync,
+        beginEVMWalletAuth: evmWalletBeginMutation.mutateAsync,
+        completeEVMWalletAuth: evmWalletCompleteMutation.mutateAsync,
         verifyTwoFactorLogin: verifyTwoFactorMutation.mutateAsync,
         signOut,
       }}

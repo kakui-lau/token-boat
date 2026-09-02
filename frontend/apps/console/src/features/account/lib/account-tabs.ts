@@ -1,9 +1,13 @@
-import { z } from "zod";
+const accountTabs = ["profile", "preferences", "security", "sessions", "theme"] as const;
 
-export const accountTabSchema = z.enum(["profile", "preferences", "security", "sessions", "theme"]);
+export type AccountTab = (typeof accountTabs)[number];
 
-export const accountSearchSchema = z.object({
-  tab: accountTabSchema.catch("profile").default("profile"),
-});
-
-export type AccountTab = z.infer<typeof accountTabSchema>;
+export function parseAccountSearch(search: Record<string, unknown>): { tab?: AccountTab } {
+  const tab = search.tab;
+  return {
+    tab:
+      typeof tab === "string" && accountTabs.includes(tab as AccountTab)
+        ? (tab as AccountTab)
+        : "profile",
+  };
+}

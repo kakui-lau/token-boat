@@ -1,18 +1,20 @@
 # Frontend V2 全量重构与开发推进方案
 
-> 状态：In Progress — User Console 首批范围已完成生产收口并接入联合发布链路；暂缓能力见第 52 节
+> 状态：In Progress — User Console V2 首批范围已正式发布；完整 V2 蓝图仍在推进，当前生产与后续增量边界见第 68 节
 >
 > 适用范围：Token Boat / new-api 全部 Web 前端，包括公共站点、用户控制台、管理控制台和 Electron 内嵌页面
 >
-> 更新时间：2026-08-31
+> 更新时间：2026-09-01
 >
 > 目标：在不继承现有前端框架和实现约束的前提下，重新定义产品交互、技术架构、工程规范、迁移方式和交付计划
 
 ## 0. 实施记录
 
+> 说明：0.1 起的内容按时间保留当时的实施边界，其中“暂不切换现网”“不执行部署”等表述只适用于对应日期；当前生产状态统一以第 68 节为准。
+
 ### 0.1 2026-08-28：User Console 旁路功能模板已落地
 
-第一批代码已经放入仓库根目录下独立的 `frontend/` Bun workspace，当前只搭建 User Console，不创建 Admin Console、公共 Site，也不改变现有发布链路。默认使用进程内 Demo Repository；可通过环境变量显式启用 Live Repository 在隔离环境联调现有 API。后端仅为 Playground 增加向后兼容的可选 `api_key_id`，未携带该字段的旧前端请求保持原行为。
+第一批代码已经放入仓库根目录下独立的 `frontend/` Bun workspace。User Console 已完成首批生产发布；2026-09-01 起继续加入独立 Astro 公共 Site 与 React Admin Console 工程骨架，但两者仍保持旁路预览，不改变现有生产发布链路。User Console 默认使用进程内 Demo Repository；可通过环境变量显式启用 Live Repository 在隔离环境联调现有 API。后端仅为 Playground 增加向后兼容的可选 `api_key_id`，未携带该字段的旧前端请求保持原行为。
 
 已落地内容：
 
@@ -291,7 +293,7 @@ User Console 已补齐 GitHub、Discord、OIDC、Linux DO 和自定义 OAuth Pro
 2. **用户中台 User Console**：使用 React + Vite 构建客户端应用，承载登录后的接入向导、Playground、API Key、用量、任务、计费和账户安全，正式路径为 `/console/*`。
 3. **管理员后台 Admin Console**：使用另一套 React + Vite 应用，承载渠道、模型、路由、定价、客户、财务、运行状态和系统设置，正式路径为 `/admin/*`。
 
-三个应用放在同一个 Bun workspace 中。User Console 与 Admin Console 拥有独立入口、Router、RouteCatalog、功能代码、构建产物和性能预算，但共享登录会话协议、设计 Token、国际化基础、API 生成类型、测试工具、shadcn Primitive、Pattern 和 Shell 组件。构建结束后合成为一个静态产物目录，继续支持：
+三个应用放在同一个 Bun workspace 中。User Console 与 Admin Console 拥有独立入口、Router、角色 RouteCatalog、功能代码、构建产物和性能预算，但共享登录会话协议、产品能力基线、设计 Token、国际化基础、API 生成类型、测试工具、shadcn Primitive、Pattern 和 Shell 组件。构建结束后合成为一个静态产物目录，继续支持：
 
 - Go 单二进制嵌入部署；
 - `FRONTEND_BASE_URL` 分离部署；
@@ -309,7 +311,7 @@ User Console 已补齐 GitHub、Discord、OIDC、Linux DO 和自定义 OAuth Pro
 - 测试：Vitest、Testing Library、MSW、Playwright；
 - 包管理与工作区：Bun workspaces。
 
-User Console 与 Admin Console 都以 [Studio Admin E-commerce Dashboard](https://next-shadcn-admin-dashboard.vercel.app/dashboard/ecommerce) 为视觉与交互基线，共享侧边栏、顶栏、账户入口、动态主题和布局设置的组件实现；两者不共享导航树、全局搜索范围或业务 feature。右侧内容区根据各自任务选择性迁移或重新设计。工程实现不等于采用 Next.js 运行时：V2 继续使用静态应用架构，并优先从同作者的 Base UI/TanStack 版本迁移兼容代码，避免把 Radix API、Next Server Action 和 Node 生产运行时带入目标系统。完整 Shell 决策和页面映射见第 29 节。
+User Console 与 Admin Console 都以 [Studio Admin E-commerce Dashboard](https://next-shadcn-admin-dashboard.vercel.app/dashboard/ecommerce) 为视觉与交互基线，共享侧边栏、顶栏、账户入口、动态主题和布局设置的组件实现；两者共享设计语言和无权限假设的交互 Pattern，但分别维护按操作者任务组织的导航。Admin 通过 User 360、Request Trace、Finance Case、Pricing Governance 等工作台覆盖用户相关管理能力，不与 User Console 建立逐页路由映射，也不共享全局搜索范围或业务 feature。右侧内容区根据各自任务选择性迁移或重新设计。工程实现不等于采用 Next.js 运行时：V2 继续使用静态应用架构，并优先从同作者的 Base UI/TanStack 版本迁移兼容代码，避免把 Radix API、Next Server Action 和 Node 生产运行时带入目标系统。完整 Shell 决策和页面映射见第 29 节。
 
 按完整功能覆盖估算，推荐 1 名产品负责人、2 名设计师、1 名前端负责人、4 名前端工程师、1 名 QA 自动化工程师和 0.5 名后端工程师，周期约 **22～28 周**。如果只有 3 名前端工程师，按 **32～40 周**规划更现实。
 
@@ -433,14 +435,16 @@ V2 的核心难点是复杂控制台交互和领域治理，而不是服务端 R
 
 ## 6. Workspace 与目录结构
 
-新代码放入独立 `frontend/` 目录，避免迁移期污染旧 `web/`。
+新代码放入独立 `frontend/` 目录，保持与旧 `web/` 的源码边界；生产构建只在产物阶段进行装配。
 
-迁移期将以下边界视为硬约束：
+当前边界：
 
-- `web/`、`web/dist/`、当前 Dockerfile 的旧前端构建阶段和 `main.go` 的 `//go:embed web/dist` 继续服务现网，不改为指向 V2。
-- `frontend/` 使用独立 `package.json`、`bun.lock`、缓存、开发端口和 `frontend/dist/`，不得把 V2 产物复制到 `web/dist/` 做日常预览。
-- V2 的构建、测试和预览使用独立、显式触发的 CI Job；在正式切换前不改变当前 release Job 的输入和产物。
-- 开发者如需同时运行两套代码，优先使用独立 Git worktree 和独立容器/端口，避免依赖、环境变量与生成文件互相覆盖。
+- `web/` 继续承载现有公共站点与管理端；`frontend/apps/console` 承载已经上线的 User Console V2，两者不直接导入对方业务模块。
+- `frontend/` 使用独立 `package.json`、`bun.lock`、缓存和开发端口；日常预览保持独立，只有 `make build-all-web` 和正式 Docker/Release 构建才把 Console 产物装配到 `web/dist/console`。
+- CI 已包含 V2 测试、类型检查、Lint、格式检查和生产构建；Release 同时构建旧版与 User Console V2。
+- 开发者需要同时运行两套代码时使用 `bun run dev:dual` 或隔离容器/端口，避免依赖、环境变量与生成文件互相覆盖。
+
+完整目标目录如下；`apps/console` 已上线，`apps/site` 已完成首批静态页面与公开价格 Island，`apps/admin` 已完成独立应用和安全空壳，后两者仍待继续建设和发布：
 
 ```text
 frontend/
@@ -539,19 +543,21 @@ api-client -X-> React components
 
 ### 6.3 User Console 与 Admin Console 边界
 
-| 维度         | User Console                                                                                 | Admin Console                                                            |
-| ------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 正式路径     | `/console/*`                                                                                 | `/admin/*`                                                               |
-| 目标用户     | 普通用户、API 开发者                                                                         | 管理员、运营、财务和超级管理员                                           |
-| Router       | 独立 TanStack Router                                                                         | 独立 TanStack Router                                                     |
-| RouteCatalog | 只包含自助服务和开发工具                                                                     | 只包含运营和管理能力                                                     |
-| 全局搜索     | Key、用量、任务、文档和个人设置                                                              | 渠道、模型、用户、请求、价格、订单和系统设置                             |
-| 构建产物     | `assets/console/*`                                                                           | `assets/admin/*`                                                         |
-| 偏好存储     | 共享 `appearance_preferences_v1`，当前 User Shell 统一迁移到 `console_layout_preferences_v3` | 共享 `appearance_preferences_v1`，布局使用 `admin_layout_preferences_v1` |
-| 会话         | 与 Admin 共享服务端登录会话                                                                  | 与 User Console 共享会话，但额外校验管理员 capability                    |
-| 部署         | 默认与 Go 静态产物一起发布                                                                   | 默认一起发布，未来可单独域名、内网或零信任访问                           |
+| 维度         | User Console                                                                                 | Admin Console                                                                |
+| ------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 正式路径     | `/console/*`                                                                                 | `/admin/*`                                                                   |
+| 目标用户     | 普通用户、API 开发者                                                                         | 管理员、运营、财务和超级管理员                                               |
+| Router       | 独立 TanStack Router                                                                         | 独立 TanStack Router                                                         |
+| RouteCatalog | 自助服务和开发工具                                                                           | 按管理任务组织的领域工作台；通过 User 360 等聚合覆盖用户能力，不复制用户菜单 |
+| 数据范围     | 当前用户/工作区，有限字段投影，以查看和自助操作为主                                          | 所有获权用户/工作区，策略授权的扩展与敏感字段投影                            |
+| 写操作       | 仅允许账户所有者可执行的自助操作                                                             | 按管理员 capability 开放领域写操作，并执行 step-up、确认和审计               |
+| 全局搜索     | Key、用量、任务、文档和个人设置                                                              | 渠道、模型、用户、请求、价格、订单和系统设置                                 |
+| 构建产物     | `assets/console/*`                                                                           | `assets/admin/*`                                                             |
+| 偏好存储     | 共享 `appearance_preferences_v1`，当前 User Shell 统一迁移到 `console_layout_preferences_v3` | 共享 `appearance_preferences_v1`，布局使用 `admin_layout_preferences_v1`     |
+| 会话         | 与 Admin 共享服务端登录会话                                                                  | 与 User Console 共享会话，但额外校验管理员 capability                        |
+| 部署         | 默认与 Go 静态产物一起发布                                                                   | 默认一起发布，未来可单独域名、内网或零信任访问                               |
 
-共享只发生在 `packages/`。两个应用不得互相 import 页面、feature、Router、Query Cache 或 Zustand Store。`packages/patterns` 可以提供同一套 `SharedConsoleShell`、`PageHeader`、`DataGrid` 和弹层 Pattern，但每个应用必须注入自己的导航、搜索 Provider、通知入口和账户菜单。
+共享只发生在 `packages/`。两个应用不得互相 import 页面、feature、Router、Query Cache、Repository、角色 DTO 或 Zustand Store。`packages/app-core` 提供不包含数据权限实现的产品能力基线，`packages/patterns` 可以提供同一套 `SharedConsoleShell`、`PageHeader`、`DataGrid` 和弹层 Pattern；每个应用必须注入自己的角色导航、搜索 Provider、通知入口、账户菜单和数据投影。
 
 ## 7. 产品信息架构
 
@@ -560,7 +566,6 @@ api-client -X-> React components
 ```text
 /
 /models
-/pricing
 /rankings
 /docs
 /status
@@ -597,30 +602,25 @@ api-client -X-> React components
 ```text
 /admin                            管理员工作台
 /admin/gateway/channels
-/admin/gateway/routing
-/admin/gateway/probes
+/admin/gateway/diagnostics
+/admin/operations/requests
+/admin/operations/channel-usage
 /admin/catalog/models
-/admin/catalog/deployments
 /admin/pricing/official
 /admin/pricing/purchase
 /admin/pricing/price-books
-/admin/pricing/reconciliation
-/admin/operations/overview
-/admin/operations/incidents
-/admin/operations/usage
-/admin/operations/system
+/admin/pricing/governance
 /admin/customers/users
+/admin/customers/usage
 /admin/customers/subscriptions
 /admin/customers/redemptions
 /admin/finance/overview
-/admin/finance/transactions
-/admin/settings/site
-/admin/settings/auth
-/admin/settings/billing
-/admin/settings/security
-/admin/settings/integrations
-/admin/settings/maintenance
+/admin/settings
+/admin/system/info
+/admin/system/audit
 ```
+
+路由、探测和凭据进入 Channel Operations Workspace；异步任务进入 Request Trace；模型部署作为模型工作台内受 `io.net` 配置控制的子域；充值、支付回调和财务告警进入 Finance；站点、内容、认证、模型、计费、运营、安全和集成进入统一系统设置层级。多人 Workspace、完整用户告警规则和事件管理在缺少领域 API 时不进入正式导航。
 
 ### 7.4 应用切换与隔离规则
 
@@ -639,7 +639,7 @@ api-client -X-> React components
 - 三级及以下导航进入页面内部，不继续嵌套侧栏。
 - 导航、面包屑、命令面板、权限和预加载均来源于统一 `RouteCatalog`。
 - 服务端模块开关和用户 capability 只过滤可见入口；路由进入时仍再次检查。
-- User Console 和 Admin Console 分别维护 RouteCatalog；共享 Route 类型和 capability 结构，不共享菜单数据。
+- User Console 和 Admin Console 分别维护角色 RouteCatalog；共享设计 Token、基础组件和通用 Pattern，但不从 User Console 菜单自动生成 Admin 路由。Admin 的能力覆盖通过领域工作台、实体详情、权限和预加载策略显式维护。
 
 ## 8. 角色、权限与能力模型
 
@@ -926,7 +926,8 @@ Adapter 负责：
 ```ts
 const channelKeys = {
   all: ["channels"] as const,
-  list: (filters: ChannelFilters) => [...channelKeys.all, "list", filters] as const,
+  list: (filters: ChannelFilters) =>
+    [...channelKeys.all, "list", filters] as const,
   detail: (id: number) => [...channelKeys.all, "detail", id] as const,
 };
 ```
@@ -1190,35 +1191,41 @@ frontend/dist/
 
 ### 18.3 部署模式
 
-| 模式            | 说明                                                             |
-| --------------- | ---------------------------------------------------------------- |
-| Embedded        | 默认模式；`frontend/dist` 嵌入 Go 二进制                         |
-| External static | 通过 `FRONTEND_BASE_URL` 托管到 CDN/对象存储                     |
-| Electron        | Electron 加载本地 Go 服务的 `/console`                           |
-| Development     | Site、Console 和 Go API 分别启动，通过 Vite/Astro proxy 访问 API |
+| 模式            | 说明                                                                |
+| --------------- | ------------------------------------------------------------------- |
+| Embedded        | 当前生产默认模式；`web/dist`（含 `web/dist/console`）嵌入 Go 二进制 |
+| External static | 通过 `FRONTEND_BASE_URL` 托管到 CDN/对象存储                        |
+| Electron        | Electron 加载本地 Go 服务的 `/console`                              |
+| Development     | Site、Console 和 Go API 分别启动，通过 Vite/Astro proxy 访问 API    |
 
 ### 18.4 迁移期产物隔离
 
-当前生产链路是 `web → web/dist → Go //go:embed web/dist → 当前 Docker 镜像`。在最终切换批准前，这条链路保持不变。
-
-V2 使用另一条旁路链路：
+当前生产链路保留 `web → web/dist → Go //go:embed web/dist → Docker/Release`，并在嵌入前增加 User Console V2 装配：
 
 ```text
-frontend/apps/site + frontend/apps/console + frontend/apps/admin
+frontend/apps/console → frontend/apps/console/dist
+  → web/dist/console
+  → Go //go:embed web/dist
+  → Docker / Release
+```
+
+已搭建但尚未发布的新版公共站点和 Admin Console 继续保持旁路，不进入当前生产产物：
+
+```text
+frontend/apps/site + frontend/apps/admin
   → 独立 Bun CI Jobs
   → frontend/dist
   → V2 Preview Image / Static Preview
   → 独立 staging 域名
 ```
 
-规则：
+后续模块规则：
 
-- V2 Preview Image 不覆盖、挂载或复制文件到 `web/dist`。
+- 未发布的 Site/Admin Preview 不覆盖、挂载或复制文件到 `web/dist`。
 - V2 Preview 使用独立域名、CSP、OAuth Callback、支付 Sandbox 和环境变量。
 - 开发与自动化测试先使用 MSW；集成测试只连接隔离的 staging API、脱敏数据库副本和独立 Redis。
 - 禁止 V2 开发环境向生产数据库、生产 Redis、生产支付回调或生产 OAuth 应用发送写请求。
-- 正式切换支持两种部署：有负载均衡时优先 Blue–Green；单机/嵌入式部署使用同一 Release 中的 Legacy/V2 双前端选择器。
-- User/Admin 使用独立选择值，例如 `FRONTEND_CONSOLE_VARIANT` 与 `FRONTEND_ADMIN_VARIANT`，默认都为 `legacy`；只有切换操作才设置为 `v2`。选择器只改变静态资源和前端 fallback，不改变 `/api/*`、`/v1/*` 和 relay 路由。
+- User Console 已使用固定 `/console/*` 入口上线；未来 Site/Admin 切换仍优先使用 Blue–Green 或独立前端选择器，不改变 `/api/*`、`/v1/*` 和 relay 路由。
 
 ## 19. 开发工作流
 
@@ -1275,17 +1282,16 @@ frontend/apps/site + frontend/apps/console + frontend/apps/admin
 
 ### 20.2 双轨运行
 
-迁移期在隔离环境保留：
+当前实际双轨状态：
 
 ```text
-生产域名 + 现有路径        旧前端，开发期唯一对外版本
-V2 staging `/console/*`   User Console 内部预览
-V2 staging `/admin/*`     Admin Console 内部预览
-生产 `/console/*`         最终切换后的 User Console
-生产 `/admin/*`           最终切换后的 Admin Console
+生产 `/`                  现有公共站点与非 Console 路由
+生产 `/console/*`         已上线的 User Console V2
+生产现有管理路由           现有 `web/` 管理端
+V2 staging `/admin/*`     已搭建 Admin Console 空壳，尚未接入生产 Router
 ```
 
-实际路径在实施 ADR 中最终确定。推荐过程：
+以下流程继续适用于尚未发布的 Admin Console、公共站点和重大 Console 增量：
 
 1. V2 只在本地、CI Preview 和隔离 staging 开放给内部人员。
 2. 未完成全部功能矩阵和发布门槛前，不在生产域名增加 `/v2` 路由，也不让真实用户参与半成品灰度。
@@ -1309,16 +1315,16 @@ V2 staging `/admin/*`     Admin Console 内部预览
 
 ### 20.4 零影响并行开发策略
 
-| 层级     | 现有版本             | V2 开发期                              | 隔离要求                                             |
-| -------- | -------------------- | -------------------------------------- | ---------------------------------------------------- |
-| 源码     | `web/`               | `frontend/`                            | 不直接导入旧前端内部模块，不覆盖生成文件             |
-| Git      | 当前稳定分支/工作区  | 独立 feature 分支或 worktree           | 当前紧急修复按明确流程同步，不混合未完成 V2 变更     |
-| 依赖     | `web/bun.lock`       | `frontend/bun.lock`                    | 不共享 `node_modules`、锁文件或脚本副作用            |
-| 构建     | `web/dist`           | `frontend/dist`                        | 现有 Go embed 和 Docker Release Job 在切换前保持原样 |
-| 运行     | 当前生产域名         | 独立本地端口和 staging 域名            | 不在生产 Router 暴露半成品路由                       |
-| API      | 当前稳定契约         | Mock → staging API → Release Candidate | 新接口只做向后兼容扩展，不改变旧接口语义             |
-| 数据     | 生产 DB/Redis        | 脱敏 DB 副本、独立 Redis 和对象存储    | 禁止开发环境写生产数据                               |
-| 外部集成 | 生产 OAuth/支付/回调 | 独立应用、Sandbox 和 Callback Domain   | 生产密钥不进入 V2 环境                               |
+| 层级     | 现有版本             | V2 开发期                              | 隔离要求                                         |
+| -------- | -------------------- | -------------------------------------- | ------------------------------------------------ |
+| 源码     | `web/`               | `frontend/`                            | 不直接导入旧前端内部模块，不覆盖生成文件         |
+| Git      | 当前稳定分支/工作区  | 独立 feature 分支或 worktree           | 当前紧急修复按明确流程同步，不混合未完成 V2 变更 |
+| 依赖     | `web/bun.lock`       | `frontend/bun.lock`                    | 不共享 `node_modules`、锁文件或脚本副作用        |
+| 构建     | `web/dist`           | 独立源码构建；正式发布时装配 Console   | 未发布 Site/Admin 不进入生产产物                 |
+| 运行     | `/` 与 `/console/*`  | 独立本地端口和 staging 域名            | 不在生产 Router 暴露未验收增量                   |
+| API      | 当前稳定契约         | Mock → staging API → Release Candidate | 新接口只做向后兼容扩展，不改变旧接口语义         |
+| 数据     | 生产 DB/Redis        | 脱敏 DB 副本、独立 Redis 和对象存储    | 禁止开发环境写生产数据                           |
+| 外部集成 | 生产 OAuth/支付/回调 | 独立应用、Sandbox 和 Callback Domain   | 生产密钥不进入 V2 环境                           |
 
 如果 V2 需要后端或数据库变化，采用 Expand–Migrate–Contract：
 
@@ -1330,6 +1336,8 @@ V2 staging `/admin/*`     Admin Console 内部预览
 不得为验证新前端执行生产 shadow write、双写或自动修复。只读结果对比也优先使用 staging 快照；确需生产只读观测时必须单独审批并脱敏。
 
 ### 20.5 最终切换与回滚 Runbook
+
+User Console V2 首批范围已经完成生产发布；本节门槛继续适用于完整 V2 蓝图切换、新版 Admin Console、公共站点和未来重大迁移。
 
 切换前门槛：
 
@@ -1351,18 +1359,18 @@ V2 staging `/admin/*`     Admin Console 内部预览
 7. 触发回滚门槛时立即回到 Blue/Legacy；不回滚数据库的前提是切换版本只使用向后兼容迁移。
 8. 观察期结束后再规划旧前端删除，删除不与首次切换处于同一 Release。
 
-单机、自托管和 Electron 没有外部负载均衡时，最终 Go Release 应同时保留 Legacy 与 V2 静态资源，通过启动配置选择入口。当前 `web/dist` embed 的替换和 Router fallback 调整只能在 Phase 7 的切换工作包中落地。
+单机、自托管和 Electron 没有外部负载均衡时，Go Release 继续同时保留现有前端与 User Console V2 静态资源。`web/dist/console` 装配和 `/console/*` Router fallback 已经落地；未来 Site/Admin 的替换与回滚仍应作为独立切换工作包实施。
 
 ## 21. 分阶段路线图
 
-### 21.0 当前旁路实施的优先级覆盖
+### 21.0 完整蓝图后续优先级
 
-下面 Phase 0～7 仍用于描述完整产品交付依赖，但当前 User Console 旁路开发采用以下实际排期：
+下面 Phase 0～7 仍用于描述完整产品交付依赖。User Console 首批范围已上线，未完成模块与后续增量采用以下排期原则：
 
 1. **前端完成度优先**：使用 Demo Repository 和现有接口完成全部页面、交互、组件状态、响应式与测试，不伪造 Live 写入。
 2. **现有接口联调其次**：逐页切换到 Live Repository，校验真实字段、权限、错误和空状态；能复用现有接口时不新增后端能力。
 3. **后端扩展最后集中实施**：新增 Go endpoint、领域服务、数据表、迁移或索引的需求统一进入独立工作包，完成影响评审后再开发，并继续使用隔离数据库和旁路端口。
-4. **发布切换仍为最终步骤**：后端扩展、支付/OAuth 外部环境和回归全部通过后，才进入 Legacy/V2 双入口、灰度、回滚和正式替换。
+4. **新增模块发布仍为最终步骤**：后端扩展、支付/OAuth 外部环境和回归全部通过后，未发布的 Admin、Site 或重大 Console 增量才进入灰度、回滚和正式发布。
 
 ### Phase 0：立项与契约盘点，2 周
 
@@ -2211,11 +2219,11 @@ User Console V2 将“页面可显示”与“数据事实正确”分开处理�
 - 表格、图表和卡片区分加载、真实空数据、接口失败和契约缺失；金额、价格、IP、端点、模型、状态、延迟等事实不使用误导性兜底；
 - 新前端必须通过完整单元/组件测试、Lint、Format、TypeScript 类型检查和生产构建；Go 模块必须通过 `go test ./...`；
 - 本地 PostgreSQL Live 验收至少验证登录服务、用量聚合、请求列表、来源 IP、账户范围详情以及内部字段清洗；
-- 本批不执行线上构建替换、域名切流、数据库迁移或生产部署。旧版与新版并行访问策略保持不变，待用户明确授权上线后再执行发布清单。
+- 本批在 2026-08-31 验收时仍不执行线上构建替换、域名切流、数据库迁移或生产部署；该约束是发布前历史记录。User Console V2 随后已于 2026-09-01 发布到生产，当前状态见第 68 节。
 
 当前代码验收结果：Frontend V2 共 60 个测试文件、292 个测试通过，Lint、Format、TypeScript 类型检查和生产构建通过；Go 全量测试通过；本地 PostgreSQL Live 接口已验证账户用量聚合、请求统计与请求列表使用同一筛选口径，请求列表包含真实来源 IP，精确详情可按 Request ID 返回且不会暴露 `admin_info`。历史请求没有毫秒级延迟时返回未知，符合“不能兜底”的数据规则。
 
-仍依赖生产外部配置、不能仅靠仓库代码宣告完成的项目包括 OAuth 回调注册、Passkey 的 RP/Origin 配置，以及支付渠道沙箱、回调地址和签名密钥联调。这些项目在正式上线前必须使用目标域名与真实供应商配置单独验收。
+仍依赖生产外部配置、不能仅靠仓库代码宣告完成的项目包括 OAuth 回调注册、Passkey 的 RP/Origin 配置，以及支付渠道沙箱、回调地址和签名密钥联调。User Console 核心范围已经上线；这些可选能力在生产启用前仍必须使用目标域名与真实供应商配置单独验收。
 
 ## 53. 历史日志可选扩展字段兼容
 
@@ -2230,7 +2238,7 @@ User Console V2 将“页面可显示”与“数据事实正确”分开处理�
 
 ## 54. 新旧前端联合发布链路
 
-截至 2026-08-31，新旧前端已从“仅开发环境并行”推进为“同一产物并行发布”，但本批仍不执行线上部署：
+截至 2026-08-31，新旧前端已从“仅开发环境并行”推进为“同一产物并行发布”；该产物随后已于 2026-09-01 部署到生产：
 
 - `make build-all-web` 先构建旧版 `web/dist`，再构建 User Console V2，并将 V2 产物装配到 `web/dist/console`；
 - Go 二进制继续只嵌入一个 `web/dist`，旧版入口保持 `/`，新版入口固定为 `/console/`；`/console/*` 深链接使用 V2 的 SPA Index 回退，不会误落到旧版页面；
@@ -2239,7 +2247,8 @@ User Console V2 将“页面可显示”与“数据事实正确”分开处理�
 - CI 新增 Frontend V2 的测试、类型检查、Lint、格式检查和生产构建门槛；
 - 新旧前端仍共享同一个 Go API、登录会话和数据库，不复制后端服务，也不增加“返回旧版”账户菜单；
 - 联合 Docker 产物已完成本地验收：旧版 `/`、新版 `/console/`、新版深链接 `/console/logs` 和 `/console/assets/*` 均由同一容器正确返回；开发环境继续通过 `bun run dev:dual` 启动两个前端入口并共享端口 `3000` 的同一后端与 PostgreSQL；
-- 告警中心、团队与权限、Playground、新版 Admin Console、新版公共站点继续暂缓，不因联合发布而扩大首批生产功能范围。
+- 2026-09-01 生产复核确认 `https://tokenboat.com/console/` 与 `/console/logs` 均返回新版 SPA，公开 `/api/pricing` 返回结构化销售价本数据；
+- 告警中心、团队与权限、Playground、新版 Admin Console、新版公共站点未纳入 2026-08-31 冻结的首批生产承诺；其中 Playground 后续恢复开发，状态见第 67、68 节。
 
 ## 55. 用量统计口径修正与折叠导航复验
 
@@ -2394,4 +2403,237 @@ User Console V2 将“页面可显示”与“数据事实正确”分开处理�
 - 当前开源 SSE Runtime 不宣称拥有 CopilotKit Intelligence 的实时协同能力；跨设备同步、服务端可恢复的中断流和官方 Threads Drawer 如后续需要，必须另行评审后端存储与隐私策略；
 - Demo Repository 不连接 `/pg/copilotkit`，只展示不发送请求的工作区预览，避免演示数据模式把 Runtime 404 误报成真实功能故障；Live Repository 才挂载完整 `<CopilotChat>` 与账户后端。
 
-本轮包含 Go 后端无状态 AG-UI 适配、Frontend V2 浏览器本地存储、CopilotKit V2 Thread 接入、中英文文案和回归测试；不包含 Playground 会话数据库迁移，仍不执行线上部署，也不把 Playground 自动纳入此前确定的首批生产发布范围。
+本轮包含 Go 后端无状态 AG-UI 适配、Frontend V2 浏览器本地存储、CopilotKit V2 Thread 接入、中英文文案和回归测试；不包含 Playground 会话数据库迁移。User Console 核心范围已经上线，但本轮 Playground 增量仍属于当前工作区后续版本，不因开发完成而自动纳入既有首批生产承诺。
+
+## 68. 2026-09-01 生产状态对齐
+
+本节覆盖本文前面各阶段留下的“未部署”“待切换”等历史描述，作为当前状态基线：
+
+- 新版报价与计费系统已经完成生产迁移并正式发布；生产公开定价接口返回 `sales_prices_by_group`、计费组件、单位和最终销售价格，复核时共返回 40 个模型。
+- User Console V2 首批范围已经正式发布，生产入口为 `https://tokenboat.com/console/`；旧版入口 `/` 与新版 `/console/*` 继续由同一 Go 服务、会话和数据库承载。
+- 当前生产配置启用密码登录和密码注册；Passkey 与 OAuth Provider 在代码中已接入，但生产配置暂未启用，启用前仍需完成真实 RP/Origin、Callback 和供应商配置验收。
+- 生产环境已有受认证保护的 Playground 后端路由；第 67 节描述的 CopilotKit 本地会话与工作区增量仍属于后续发布，不据此宣称完整 Playground 产品验收已经完成。
+- 告警中心目前提供 Uptime Kuma 状态与余额通知能力，缺少完整的用户级消费、错误率、延迟规则和触发历史；团队与权限仍缺少 Workspace、Member、Role、Invite 和 Audit 领域接口。
+- `frontend/apps` 当前包含 `console`、`site` 与 `admin`。新版公共站点已完成首批 16 个中英文内容页面、2 个旧价格路径兼容重定向、品牌首页，以及读取 `/api/pricing` 和 `/api/rankings` 的模型价格与排行榜 Island；新版 Admin Console 已完成独立 `/admin/*` 应用、RouteCatalog、i18n、共享 Token 与 fail-closed 能力边界空壳。两者尚未接入生产 Router 和静态产物，生产继续使用现有 `web/` 管理端与公共站点。
+- 当前工作区已经完成 EVM 钱包登录/自动注册/绑定、账户资料补全、钱包账户首个密码设置、现有管理端开关、模型限制目录以及用量聚合并发写入和索引优化。生产 EVM 钱包路由当前返回 404，因此这些内容不得计入已发布范围；模型限制目录也尚未执行生产数据库同步。
+
+管理口径按两个范围分别统计：
+
+| 范围                                  | 当前进度 | 说明                                                                                                                                                       |
+| ------------------------------------- | -------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 已承诺的 User Console V2 首批生产范围 |   约 95% | 核心功能已上线，剩余工作以生产观察、可选外部能力和体验优化为主                                                                                             |
+| 完整 V2 蓝图                          |   约 67% | User Console 与核心商业系统已上线；公共站点完成全新视觉与首批页面，Admin 已收敛领域工作台信息架构；真实 Admin 领域、公共站点运行时能力、团队和告警仍未完成 |
+
+2026-09-01 当前工作区质量复核：Go 全量测试通过，`relaykit` 独立构建通过；Frontend V2 共 69 个测试文件、366 个测试通过，TypeScript、格式检查和三个应用的生产构建通过。Oxlint 仅对 Astro 自动生成的 `.astro/types.d.ts` 发出 1 条 triple-slash warning；生产构建仍对若干大 Chunk 发出警告，其中 User Console Playground 产物约 1.61 MB，Admin 首包约 503 KB，需要后续继续拆包。该工作区结果用于下一次发布判断，不改变已经上线版本的完成状态。
+
+## 69. 2026-09-01 新版公共站点与 Admin Console 工程启动
+
+本轮按既定三应用架构正式创建 `frontend/apps/site` 与 `frontend/apps/admin`，同时保持生产入口不变：
+
+- 公共站点使用 Astro 7 静态输出，完成 `/`、`/models`、`/rankings`、`/docs`、`/status`、`/about`、服务条款和隐私政策及对应 `/en/*` 页面，共 16 个内容页面；旧 `/pricing` 与 `/en/pricing` 保留为指向对应模型与价格目录的静态兼容跳转页。视觉已从旧站常见的渐变网格、双栏终端和路线图完全切换为暖纸色、黑墨、信号橙的编辑型基础设施设计；不使用虚假客户、虚假运行指标或无法核实的价格数字。
+- 合并后的 `/models` 在目录区域加载 React Island，读取现有公开 `/api/pricing`。公开页优先展示 `lowest_price`，缺失时才回退官方参考价；不读取或暴露具体账户分组内部价格。加载、错误、空筛选、类型筛选、搜索、显示全部和移动端布局均有明确状态。
+- `/rankings` 使用独立 React Island 读取现有公开 `/api/rankings`，支持今日、近 7 天、近 30 天和近 365 天周期，展示前三模型、完整模型榜、聚合用量变化、供应商份额以及升降榜。页面明确说明榜单只衡量匿名聚合 Token 用量，不把热度表述为模型质量、可用性、安全性或官方推荐，也不展示用户级数据。
+- 公共站点默认中文并生成英文 `/en/*` 页面、canonical 与 `hreflang`；首页保持静态无 React 运行时，价格交互页单独加载 Island，符合公共站点首屏预算方向。
+- 公共内容已按潜在客户、开发者、采购/技术决策者和现有用户重新审查：删除价本字段名、控制平面、管理员权限、迁移计划和“骨架已完成”等内部口吻；首页改为统一接入、模型选择、价格比较、用量与请求记录的用户价值路径，Docs、About 与合并后的 Models & Pricing 只保留访客可理解、可行动且与现有能力一致的内容。
+- 公共视觉继续保留暖纸色、黑墨和信号橙方向，并完成内页精修：增加当前导航、纸张纹理、页面功能索引、目录标题栏、卡片节奏、明确 Hover/Focus、移动端单列和 `prefers-reduced-motion`；Models & Pricing 首屏缩短并把搜索、比较和账户价格确认路径前置。
+- `/status` 已读取真实 `/api/uptime/status`，只展示已经公开的监控项；没有监控时提供面向访客的诚实空状态和 Request Logs 路径。服务条款与隐私政策分别读取现有 `/api/user-agreement`、`/api/privacy-policy`，支持安全渲染 Markdown/HTML 和外部文档链接，未发布时不再展示开发占位文案，也不虚构法律内容。
+- Admin Console 使用独立 React 19 + Vite 8 应用和 `/admin` basepath，继续拥有自己的 Router、Query Cache、i18n、构建产物与开发端口；Shell 复用 User Console 已采用的 shadcn Sidebar 组合方式，但 Admin RouteCatalog 独立按管理任务维护，不再由 `@token-boat/app-core/product-surfaces` 的用户菜单生成。
+- Admin 导航收敛为 18 个工作台入口：总览；渠道、请求与任务、渠道用量、API/模型调试；模型、官方价、采购价、销售价本、定价治理；用户、客户用量、财务、订阅、兑换码；系统设置、系统信息和审计。路由、探测、模型部署、API Key、充值、价格对账和各设置子域进入所属工作台；多人 Workspace、完整用户告警和事件管理明确暂缓。
+- “复用用户中台”采用同领域、不同权限投影：可以复用信息结构、无权限假设的展示组件和交互 Pattern，但不复用 self-scoped Repository、Query Key 或用户接口 DTO。用户中台默认当前账户、有限字段、以只读为主；Admin 使用独立管理员契约读取全局范围与策略授权后的扩展/敏感字段，并按领域增加管理员写操作。敏感字段查询、导出和写入都必须进入能力校验、字段级策略和审计链路，不能仅靠前端隐藏。
+- Admin 首屏和各领域骨架明确保留 fail-closed 能力边界：接入管理数据前必须完成服务端会话和管理员 capability bootstrap；当前不提供假数据或假写入，也没有修改 Go 后端权限。
+- 新增 Site 公开价格解析契约测试和 Admin RouteCatalog 隔离、核心领域覆盖、合并能力归属、暂缓能力边界测试；Site 与 Admin 的 TypeScript、测试和生产构建已经独立通过。Astro app 使用 TypeScript 6 以满足当前 `astro check` 的程序化 API 兼容要求，workspace 其他 React 应用继续使用 TypeScript 7。
+- Workspace 新增 `dev:site`、`dev:admin` 及各应用独立 build/typecheck/test 命令；根 build 会验证三个 V2 应用，但 `make build-all-web` 仍只把 User Console 装配到 `web/dist/console`。新版 Site/Admin 不复制到 `web/dist`，不修改生产 `/`、`/admin/*` Router，也不因本轮开发自动发布。
+- 当前 Frontend V2 共 69 个测试文件、364 个测试通过，三个应用的 TypeScript、Oxlint、Oxfmt 和生产构建均通过。公共首页初始 JavaScript 为 0；模型/价格页交互资源合计约 79.6 KB gzip、全站 CSS 约 4.3 KB gzip；Admin 空壳 JavaScript 约 117.3 KB gzip、CSS 约 19.6 KB gzip，均低于既定首屏预算。Console 既有 Playground 大 Chunk 警告仍需单独治理，不归因于本轮 Site/Admin 增量。
+
+下一批公共站点优先完成公开监控项、正式法律文本与品牌联系渠道的生产配置，继续补齐完整 API 文档内容和自动化视觉回归、可访问性与性能预算检查；Admin 下一批先完成真实管理员 bootstrap/capability、敏感字段投影和审计契约，再按 Channel Operations、Request Trace、User 360、Model Commercialization、Pricing Governance、Finance Case 的优先级接入领域能力。
+
+## 70. EVM 身份与生产配置闭环
+
+截至 2026-09-01，EVM 钱包能力从专用绑定记录收敛为通用外部身份，并补齐现有生产管理端的配置入口：
+
+- 钱包地址以 `provider=evm` 的外部身份声明保存，不保存链、资产或交易信息；原 `evm_wallet_bindings` 只作为一个回滚窗口内的只读迁移来源，不再承担运行时读写；
+- 登录使用服务端一次性 SIWE Challenge。已绑定地址直接登录；未注册地址在全局注册开关允许时原子创建账户并声明身份，注册路径仍受 Turnstile 配置约束；
+- 钱包自动注册账户的系统占位用户名不会冒充用户已设置名称；账户资料页允许用户设置一次用户名，保存后服务端与界面同时锁定，普通账户和已设置账户不能修改用户名；显示名称和邮箱仍可更新，用户名与邮箱执行不区分大小写的唯一性校验，更换邮箱在启用邮箱验证时必须提交验证码；
+- 现有管理端“认证设置”增加“EVM 钱包登录”开关，持久化更新 `EVMWalletAuthEnabled`，保存后同步刷新公开状态能力；关闭该开关不会删除既有身份，重新开启后仍可继续使用；
+- 管理端复用现有 shadcn Form/Switch 组合，并通过项目 i18n 同步脚本补齐七种语言；组件回归测试固定开关关闭时提交准确配置键和值。
+
+本轮同时调整 Go 用户身份状态与 User Console V2：新增 `username_editable` 一次性能力位，并在服务端通过条件更新原子锁定；管理端开关复用前序后端选项。以上能力尚未部署到生产。
+
+## 71. 钱包账户首个密码与身份投影闭环
+
+截至 2026-09-01，钱包自动注册账户已经补齐首个密码设置，同时保持密码和钱包两种凭证的安全边界：
+
+- `GET /api/user/self`、登录与刷新响应的安全用户投影增加 `username_editable` 和 `has_password`，前端严格依赖后端事实决定是否展示一次性用户名和首个密码入口；接口不返回密码或密码哈希，也不根据其他字段猜测密码状态；
+- 尚无密码且已绑定 EVM 身份的账户，可在账户安全页选择当前绑定钱包并完成一次 SIWE 签名后设置首个密码；Challenge 与 `password_setup` 用途、账户、当前会话、绑定地址和 Origin 同时关联，五分钟失效且只能消费一次；
+- 完成阶段在同一数据库事务中消费 Challenge、再次确认钱包仍归属于当前账户，并以 `password = ''` 条件原子写入密码哈希；已有密码的账户无法调用首设接口，仍必须通过原“当前密码 + 新密码”流程修改；
+- 首个密码写入会递增账户认证版本、轮换当前会话并使其他旧会话失效，同时记录带来源 IP 的账户安全审计；密码本身不会进入钱包身份声明或前端存储；
+- User Console 复用现有 EVM 钱包选择和签名组件、shadcn Dialog/Field/Alert 组合及中英文 i18n；交互状态留在组件内，不新增全局客户端状态。
+
+本轮新增模型原子转换、Controller 端到端钱包签名和前端 Repository/UI 契约回归测试；Go 全量测试、Console 363 项测试、TypeScript 检查和 Console 生产构建通过。构建仍提示 Playground 大 Chunk，需要后续拆分。本轮能力尚未部署到生产。
+
+## 72. 用量缓存并发写入与账户日志索引
+
+截至 2026-09-01，用量基础设施完成下一批生产化收口：
+
+- 小时用量缓存刷盘改为在互斥区内快速交换待写批次，随后在锁外执行数据库事务；请求处理期间的新用量可以继续写入新的内存批次，不再被整段数据库事务阻塞；
+- 刷盘事务失败时，待写批次会在锁内按完整维度合并回当前缓存，与失败期间新到达的数据累加后等待下一次重试，不会清空或覆盖新数据；多节点与重叠批次继续依赖 `dimension_key` 唯一约束和数据库原子 Upsert 累加；
+- `logs` 新增 `(user_id, type, created_at, id)` 复合索引，直接覆盖 User Console 请求日志和 `/api/log/self/usage` 的账户、日志类型与时间范围前缀，保留现有全局日志索引用于管理端查询；
+- 回归测试固定“刷盘期间有新写入且旧批次恢复时必须完整合并”的无丢失契约，并验证迁移创建新的复合索引。
+
+本轮同时恢复本地双前端开发网关：`http://localhost:5173/` 为旧版，`http://localhost:5173/console/` 为新版，两者的 API 请求继续代理到同一个 `3000` 后端和本地数据库。本轮能力尚未部署到生产。
+
+## 73. 模型限制目录与来源证明
+
+截至 2026-09-01，模型目录补齐上下文、最大输出及其来源链路，且继续遵守“不用猜测值代替事实”的规则：
+
+- 模型元数据新增可选 `max_output_tokens`、官方限制来源 URL 和核验时间；上下文长度与最大输出必须为非负值，已知上下文时最大输出不能超过上下文，来源必须是绝对 HTTPS URL；
+- `/api/pricing` 在可路由模型和仅目录模型两条公开投影中返回相同限制字段。零值通过 `omitempty` 保持缺失，Frontend V2 映射为 `null` 并显示 `—`，不会根据供应商、模型名称、价格或上下文窗口推算；
+- 模型详情 Dialog 增加“最大输出”“限制信息核验时间”和官方限制文档链接；使用现有 shadcn Dialog 结构，来源不存在时不渲染虚假入口；
+- `audit-model-contexts` 同时审计上下文、最大输出和来源差异；`sync-model-contexts` 仍要求显式 `--yes --production`，只更新目录声明的限制元数据并在事务后复核，不改描述、路由、分组、渠道和价格；
+- 现有生产目录的 26 个模型已有官方上下文来源，但目录尚未为所有模型声明可核实的最大输出值。未声明项保持未知，后续必须按官方文档逐项核验后才可写入；
+- 回归测试覆盖限制字段持久化与清除、无效值拒绝、公开价格投影、目录校验与同步来源证明，以及前端 Repository 和详情页展示。
+
+本轮没有执行模型目录数据库同步，没有修改生产渠道、模型映射、采购价、销售价或流量分组，也没有部署线上版本。
+
+## 74. 现有管理端模型限制编辑闭环
+
+截至 2026-09-01，现有管理端模型创建与编辑抽屉已经接入第 73 节的限制元数据，不再要求通过脚本或数据库直接维护：
+
+- 模型表单增加独立的“已核验的模型限制”区域，可维护上下文窗口、最大输出 Token、官方限制来源 URL 和最近核验时间；未知数值继续使用 0，未知来源与时间同时留空，不使用模型名称或供应商推算；
+- 前后端共同拒绝负数、最大输出超过已知上下文、非绝对 HTTPS 来源以及只填写来源或核验时间一项的请求；来源与核验时间作为一组来源证明同时保存或同时清除；
+- 编辑已有模型时把 Unix 秒转换为本地 `datetime-local`，提交时再准确转换回 Unix 秒；公开价格目录继续通过零值省略字段，不把未知值包装成已核验事实；
+- 管理端沿用现有 shadcn Sheet、Form 和 Input 组合，并通过项目脚本补齐七种语言；回归测试覆盖字段加载、提交、矛盾限制和不完整来源证明；
+- PostgreSQL 小时用量缓存 Upsert 同时修复为限定当前表列名，避免 `ON CONFLICT` 中当前行与 `excluded` 行的 `count`、`quota`、`token_used` 歧义导致批次反复回滚。
+
+本轮没有执行生产模型目录同步，没有修改价格、渠道、模型映射、流量分组或生产数据库，也没有部署线上版本。
+
+## 75. 公共站点全页视觉精修与公开模型详情
+
+截至 2026-09-02，新版公共站点完成第二轮中英文视觉、信息密度和交互细节收口：
+
+- Models & Pricing 英文首屏改为短句式标题并限制英文最大字号与行宽，中文标题单独调整字距和行高；About 橙色行动区改为更短的访客文案，同时收紧全站 Header、高密度导航、内容卡片和 CTA 的垂直尺度，解决超宽屏长标题失控与无效留白问题；
+- 全部 16 个中英文内容页继续使用同一套暖纸色、黑墨、信号橙视觉 Token，并针对首页、模型、排行榜、文档、状态、关于和法律页复核导航当前态、Hero、内容边界、空状态、Footer 与横向溢出；1280px 实际浏览器验收下全部页面横向溢出为 0，运行控制台无 Error 或 Warning；
+- 模型卡片从“模型 ID + 两个价格”扩展为供应商、公开说明、能力标签、输入/输出价格、上下文和详情入口；英文页面会翻译目录中的中文能力标签，中文模型说明不会直接混入英文句子，而是根据公开供应商、类型和能力生成不夸大事实的英文摘要；
+- 模型详情使用轻量原生 `dialog` React Island，支持 URL `model` 参数深链接、Esc 和关闭按钮、焦点可见状态、独立滚动、复制模型 ID 状态反馈及小屏单列布局；详情展示供应商、模型类型、上下文、最大输出、可用状态、计费模式、价格结构、价格来源、全部能力、兼容端点和完整公开计费组件；
+- 详情数据只读取公开 `/api/pricing` 的 `lowest_price`，缺失时回退 `official_price`；不读取 `sales_prices_by_group`、账户分组、内部采购价或其他管理员字段。公开接口未提供上下文或最大输出时继续显示“—”，不根据模型名称猜测；
+- 公共价格解析契约新增完整计费组件、描述、端点、可用状态和模型限制字段覆盖，并验证畸形计费项不会进入 UI。Site 当前 4 个测试文件、9 项测试通过，Astro TypeScript 检查通过；本轮仍只更新工作区源码和文档，不改变生产 Router 与发布状态。
+
+## 76. 模型目录排序与双前端质量门禁
+
+截至 2026-09-02，User Console 模型目录与前端持续集成完成下一批生产化收口：
+
+- 模型目录的模型、类型、上下文、输入价格、输出价格、能力和状态七列均支持排序，默认按模型名称升序，同列再次点击切换降序；排序字段和方向进入 URL 查询状态，刷新、分享和浏览器前进后退不会丢失；
+- 表头使用原生按钮与 `aria-sort` 暴露当前排序方向，缺失上下文或价格继续保留为未知值，不使用模型名称、供应商或其他字段推算；
+- 回归测试固定默认顺序、全部可排序表头、方向切换、未知数值排序和非法 URL 排序值拒绝；Console、Site 与 Admin 共 379 项测试、TypeScript、格式检查和三应用生产构建通过；
+- 现有 `web/` 前端完成全量 Oxlint 清理，异步错误处理、Hook 依赖、循环依赖、无障碍按钮和不稳定列表 Key 等问题已收口；177 项测试、TypeScript、Oxlint、格式检查和生产构建通过；
+- CI 的现有前端任务改为执行完整测试、TypeScript、零警告 Lint、格式检查和生产构建；Frontend V2 Lint 排除 Astro 自动生成目录并启用 `--deny-warnings`，避免生成文件噪声掩盖真实回归；
+- Go 根模块与独立 `relaykit` 模块全量测试通过。本轮没有执行生产模型目录同步，也没有发布或更新线上版本。
+
+## 77. Playground CopilotKit 按需加载
+
+截至 2026-09-02，Playground 在不改变浏览器本地会话和后端无状态 Runtime 契约的前提下完成首轮加载性能收口：
+
+- `CopilotPlaygroundChat` 改为独立动态模块；进入 Playground 时先加载历史、密钥、模型和配置工作区，只有存在本地会话并准备进入聊天区域时才下载和挂载 CopilotKit；
+- 没有会话、没有 API Key、没有可用模型、Demo 预览或配置加载失败时不再下载 CopilotKit、Markdown 渲染器及其样式；创建第一条本地会话后才进入原有 Runtime 流程；
+- 动态模块加载期间复用现有聊天 Skeleton 和可访问 `role=status` 文案，不引入空白闪烁，也不改变 Thread ID、消息持久化、跨窗口通知、Token 指标或错误处理；
+- Console 生产构建中 Playground 页面工作区 Chunk 从约 1.61 MB 降至约 42 KB；约 1.57 MB 的 CopilotKit 聊天实现变为按需 Chunk，不再阻塞无会话页面首段加载；
+- 回归测试固定“没有本地会话时 Runtime 不挂载，创建会话后只挂载一次”的契约。Playground 组件 12 项测试、Console TypeScript、零警告 Lint 和生产构建通过；Frontend V2 当前共 380 项测试。
+
+本轮没有修改 Playground 后端、数据库、API Key 权限或会话存储位置，也没有发布或更新线上版本。
+
+## 78. Playground CopilotKit 解析预算与意图预加载
+
+截至 2026-09-02，Playground 继续收口进入真实会话时的前端加载成本，并把结果固化为生产构建门禁：
+
+- 在第 77 节路由级按需加载基础上，使用 Vite 8 / Rolldown 的 `output.codeSplitting` 将 CopilotKit 核心、AG-UI/GraphQL 协议、A2UI、Markdown 渲染和 KaTeX 拆为独立延迟 Chunk；分组只匹配明确的第三方包且不递归吞并共享依赖，避免把 CopilotKit 重新带回 Console 首屏；
+- 实际聊天入口由单个约 1.57 MB、gzip 约 448 KB 的 JavaScript Chunk，拆为最大约 415 KB、gzip 约 91 KB 的可缓存 Chunk；Playground 页面工作区仍约 42.8 KB，Console `index.html` 不预加载任何 CopilotKit 资源；
+- 无会话时继续完全不下载聊天运行时；用户通过鼠标或键盘表达“新对话”意图时提前触发模块加载，点击后仍由原 `Suspense` Skeleton 承接，不改变 API 请求、Thread ID、本地消息持久化或跨窗口同步；
+- 新增构建后预算检查：必须产出延迟 CopilotKit Chunk、每个相关 JavaScript Chunk 不得超过 600 KiB，且 Console 入口文档不得静态引用 CopilotKit；任一条件回归会直接使生产构建失败；
+- Playground 12 项回归测试、Console TypeScript、Frontend V2 零警告 Lint、目标文件格式检查和带预算门禁的 Console 生产构建通过。
+
+本轮没有修改后端、数据库、计费、模型权限或生产路由，也没有发布或更新线上版本。
+
+## 79. Console 首屏运行时与钱包认证延迟边界
+
+截至 2026-09-02，User Console 在 Playground 拆包之后继续收口全局首屏依赖：
+
+- 全局 `AppProviders` 不再挂载 Wagmi。EVM 钱包 Provider 与配置移动到实际钱包认证操作内部，只有登录、注册或账户安全中的钱包入口被渲染时才加载；普通概览、日志、用量、账单和模型页面不再为未使用的钱包能力初始化连接器；
+- 钱包身份、SIWE Challenge、签名校验、WalletConnect 配置、自动注册和账户绑定契约保持不变；钱包按钮内部仍拥有独立 `WagmiProvider`，不会依赖页面外部隐式上下文；
+- React、React DOM 与 Scheduler 作为稳定运行时从业务入口中分离，钱包协议栈使用独立 `wallet-auth` 延迟 Chunk；Console 主入口由约 690 KB、gzip 约 209 KB 降至约 455 KB、gzip 约 135 KB，最大 React 运行时 Chunk 约 175 KB；
+- Console `index.html` 不引用 `wallet-auth` 或 CopilotKit。构建预算继续限制 CopilotKit 与任一首屏 JavaScript Chunk 不超过 600 KiB，并新增任意 JavaScript Chunk 不超过 800 KiB 的全局上限；已知按需语法模块仍受该上限约束，不再用单纯提高警告阈值掩盖回归；
+- Frontend V2 共 380 项测试、三个应用生产构建、Console TypeScript、零警告 Lint、目标文件格式检查和 Bundle 预算门禁通过。
+
+本轮没有修改钱包后端、数据库身份记录、认证协议、生产路由或线上版本。
+
+## 80. Console 导航预加载与首屏总预算
+
+截至 2026-09-02，User Console 在单 Chunk 预算之外补齐导航加载策略和首屏依赖总量门禁：
+
+- Console Router 明确使用 `intent` 预加载；侧边栏菜单不会在页面初始化时批量加载全部路由，只有用户悬停、聚焦或开始导航时才预取目标页面代码，在避免无意下载的同时保留可感知的跳转速度；
+- 命令菜单继续独立动态加载，搜索按钮悬停、聚焦或快捷键触发时才预取；未操作搜索入口时不进入首屏依赖；
+- 构建预算除限制入口、CopilotKit 和任意单个 JavaScript Chunk 外，新增所有 `index.html` 初始 JavaScript 的总量上限 1100 KiB，防止通过拆成多个小 Chunk 绕过首屏预算；
+- 新增 Router 回归测试固定意图预加载策略，构建检查会输出首屏 Chunk 数量和实际原始字节数，便于后续优化判断。
+
+本轮只增加加载策略回归保护和构建门禁，没有修改业务接口、后端、数据库、生产路由或线上版本。
+
+## 81. Console 会话与业务数据加载边界
+
+截至 2026-09-02，User Console 将全局认证会话从完整业务 Repository 中拆出，避免访客入口和会话恢复加载无关领域代码：
+
+- 新增专用 Session Repository，只包含认证能力、登录、注册、OAuth、Passkey、EVM 钱包、两步验证、密码找回、会话刷新和退出；登录与注册页面不再因为会话 Provider 静态加载日志、用量、计费、任务和模型目录映射；
+- Session Repository 与完整业务 Repository 共享同一个内存 API Client 和访问令牌状态。刷新、登录或安全操作轮换令牌后，后续业务请求立即使用新令牌，不创建第二套认证状态，也不写入浏览器持久化；
+- 直播接口的严格字段读取与错误类型抽成共享契约模块，认证和业务映射继续遵守缺失数据不猜测、不兜底的规则；完整 `liveRepository` 复用同一组认证实现，避免两条认证逻辑漂移；
+- 顶栏“告警与状态”改为用户悬停、聚焦时预取，点击后才加载并打开；没有操作该入口时，不再把告警组件和完整业务 Repository 带入 Console 根入口；
+- Console 主入口由约 455 KB、gzip 约 135 KB 降至约 440 KB、gzip 约 131 KB；`index.html` 初始 JavaScript 从 1,004,678 字节、39 个 Chunk 降至 936,975 字节、35 个 Chunk。构建门禁同步收紧为总量不超过 1024 KiB，并禁止入口预加载完整 Repository 与告警 Popover；
+- 回归测试覆盖认证刷新令牌可被业务 Repository 立即使用；既有认证、跨窗口会话、告警和 Live Repository 契约继续通过。
+
+本轮遵循按功能条件加载、重组件动态导入和用户意图预加载原则，没有修改认证接口、后端、数据库、生产路由或线上版本。
+
+## 82. Console 访客入口与认证后工作台边界
+
+截至 2026-09-02，User Console 继续将访客认证入口与登录后的完整工作台 Shell 分离：
+
+- 根路由不再静态导入侧边栏、顶部导航、命令菜单、账户菜单、语言与外观菜单等认证后工作台代码；只有会话恢复成功并准备渲染受保护页面时才加载 `ConsoleShell`；
+- 登录、注册、找回密码、密码重置和 OAuth 回调继续直接进入各自的访客路由，不会下载工作台 Shell。受保护路由等待 Shell 时展示与会话恢复一致的可访问骨架状态，不出现空白页面；
+- Console 主入口由约 440 KB、gzip 约 131 KB 降至约 399 KB、gzip 约 120 KB；`index.html` 初始 JavaScript 从 936,975 字节、35 个 Chunk 降至 831,857 字节、25 个 Chunk；
+- 构建门禁新增认证后 Shell 不得进入入口文档的检查，同时把入口 Chunk 上限从 600 KiB 收紧到 500 KiB、初始 JavaScript 总量上限从 1024 KiB 收紧到 900 KiB；
+- Console 369 项测试、TypeScript 和带新预算门禁的生产构建通过。
+
+本轮按会话状态条件加载认证后界面，没有修改登录协议、会话接口、后端、数据库、生产路由或线上版本。
+
+## 83. Console 全局 Provider 首帧依赖收口
+
+截至 2026-09-02，User Console 继续清理仍在访客入口提前加载的工作台 Provider 与非关键反馈组件：
+
+- 全局 `AppProviders` 不再挂载 Tooltip Runtime；Tooltip Provider 移入认证后的 `ConsoleShell`，登录、注册、找回密码和 OAuth 回调不再为侧边栏折叠提示、模型价格提示等工作台交互加载定位与浮层依赖；
+- Sonner Toaster 改为首帧提交后动态加载。Toast 调用方式、主题同步、成功/失败图标和现有业务错误处理不变，但通知渲染器不再阻塞入口模块解析；
+- Console 主入口由约 399 KB、gzip 约 120 KB 降至约 363 KB、gzip 约 108 KB；`index.html` 初始 JavaScript 从 831,857 字节、25 个 Chunk 降至 743,424 字节、24 个 Chunk；
+- 构建门禁新增 Toaster 不得进入入口文档的检查，并把入口 Chunk 上限从 500 KiB 收紧到 450 KiB、初始 JavaScript 总量上限从 900 KiB 收紧到 800 KiB；
+- Console 369 项测试、TypeScript 和带新预算门禁的生产构建通过。
+
+本轮遵循非关键第三方模块延后加载及按功能边界提供上下文的原则，没有修改 Toast 业务调用、后端、数据库、生产路由或线上版本。
+
+## 84. EVM 钱包签名连接器与路由验证依赖收口
+
+截至 2026-09-02，User Console 修复 Wagmi 钱包已经完成连接、但等待服务端 Challenge 后签名阶段报 `Connector not connected` 的问题，并继续减少根路由验证依赖：
+
+- 钱包签名现在把本次用户明确选择并由 `connectAsync` 成功连接的 Connector 直接传给 `signMessageAsync`，不再依赖异步 Challenge 返回时 `config.state.current` 仍能推断当前连接器；
+- 连接、账户与链读取、SIWE Challenge 严格校验、签名、服务端完成认证以及最终断开连接的顺序保持不变；未降低域名、Origin、地址、Chain ID 或 Nonce 校验，也没有改为直接调用不受 Wagmi 管理的 Provider；
+- 钱包认证回归测试固定签名必须携带同一个 Connector，覆盖登录、自动注册和账户绑定共用的签名组件；不需要升级或降级当前 `wagmi`、`@wagmi/core` 与 `viem` 版本；
+- 账户 Tab 与充值回跳状态的根路由 Search 验证改为轻量、确定性的显式解析器，保持账户非法 Tab 回到资料页、充值状态只接受 `cancelled`、`pending` 和 `success`，其他值继续拒绝；Zod 仍保留在登录、注册、找回密码和两步验证等实际表单路由中，不进入 Console 入口文档；
+- `index.html` 初始 JavaScript 从 743,424 字节、24 个 Chunk 降至 674,358 字节、23 个 Chunk；构建门禁新增表单验证 Schema 不得回流入口，并把入口 Chunk 上限收紧到 400 KiB、初始 JavaScript 总量上限收紧到 720 KiB；
+- Console 69 个测试文件、378 项测试、TypeScript 和带新预算门禁的生产构建通过。
+
+本轮没有修改 SIWE 后端、钱包绑定数据、账户自动注册规则、数据库结构、生产路由或线上版本。
+
+## 85. Console 认证动作与会话恢复运行时边界
+
+截至 2026-09-02，User Console 继续拆分认证运行时，避免仅恢复会话或查看登录页时提前解析尚未触发的认证实现：
+
+- 会话核心只保留公开认证能力探测、访问令牌刷新、本地会话清理和退出；密码登录与注册、邮箱验证、密码找回、OAuth 回调、两步验证、Passkey 和 EVM 钱包认证动作移动到独立按需模块，只有用户真正发起对应操作时才加载；
+- 用户、认证会话和 EVM Challenge 的严格映射提取为共享模块；会话刷新与动态认证动作继续复用同一个 Live API Client 和内存访问令牌状态，不创建第二套 Token 状态，也不把会话写入浏览器持久化；
+- Passkey 的 WebAuthn 编解码辅助模块随认证动作延迟加载。构建门禁新增 `live-auth-repository` 与 `webauthn` 不得进入入口文档的检查，防止后续静态引用把完整认证实现重新带回首屏；
+- Console 初始 JavaScript 从 674,358 字节、23 个 Chunk 调整为 670,370 字节、24 个 Chunk；新增的映射边界使 Chunk 数增加 1，但认证动作约 3.7 KB、WebAuthn 约 2.0 KB 均已移出入口。初始 JavaScript 总预算从 720 KiB 收紧到 700 KiB；
+- 现有登录、OAuth、两步验证、Passkey、EVM 钱包自动注册与会话刷新契约保持不变；Console 69 个测试文件、378 项测试、TypeScript 和带新预算门禁的生产构建通过。
+
+本轮按实际认证动作条件加载模块，没有修改后端认证协议、SIWE 校验、数据库、生产路由，也没有发布或更新线上版本。

@@ -78,7 +78,8 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
 	Id               int                        `json:"id"`
-	Username         string                     `json:"username" gorm:"unique;index" validate:"max=20"`
+	Username         string                     `json:"username" gorm:"unique" validate:"max=20"`
+	UsernameEditable bool                       `json:"username_editable" gorm:"column:username_editable"`
 	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
 	OriginalPassword string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
 	DisplayName      string                     `json:"display_name" gorm:"index" validate:"max=20"`
@@ -259,6 +260,46 @@ func CheckUserExistOrDeleted(username string, email string) (bool, error) {
 	}
 	// exist, return true, nil
 	return true, nil
+}
+
+func ensureUsernameAvailableWithTx(tx *gorm.DB, username string, excludeUserID int) error {
+	normalizedUsername := strings.ToLower(strings.TrimSpace(username))
+	if normalizedUsername == "" {
+		return ErrUsernameAlreadyTaken
+	}
+	query := tx.Unscoped().Model(&User{}).Where("LOWER(username) = ?", normalizedUsername)
+	if excludeUserID > 0 {
+		query = query.Where("id <> ?", excludeUserID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrUsernameAlreadyTaken
+	}
+	return nil
+}
+
+// withUsernameLock serializes application writes for one username. The users
+// table unique constraint remains the final database-level safeguard.
+func withUsernameLock(tx *gorm.DB, username string, fn func(tx *gorm.DB) error) error {
+	normalizedUsername := strings.ToLower(strings.TrimSpace(username))
+	if normalizedUsername == "" {
+		return ErrUsernameAlreadyTaken
+	}
+	switch {
+	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", "username:"+normalizedUsername).Error; err != nil {
+			return err
+		}
+	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
+		var ids []int
+		if err := tx.Raw("SELECT id FROM users WHERE LOWER(username) = ? FOR UPDATE", normalizedUsername).Scan(&ids).Error; err != nil {
+			return err
+		}
+	}
+	return fn(tx)
 }
 
 func NormalizeEmail(email string) string {
@@ -464,6 +505,19 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 	return &user, err
 }
 
+func UserHasPassword(id int) (bool, error) {
+	if id <= 0 {
+		return false, errors.New("invalid user id")
+	}
+	var credential struct {
+		Password string
+	}
+	if err := DB.Model(&User{}).Select("password").Where("id = ?", id).First(&credential).Error; err != nil {
+		return false, err
+	}
+	return credential.Password != "", nil
+}
+
 func GetUserIdByAffCode(affCode string) (int, error) {
 	if affCode == "" {
 		return 0, errors.New("affCode 为空！")
@@ -538,6 +592,10 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
+	user.Username = strings.TrimSpace(user.Username)
+	if err := ensureUsernameAvailableWithTx(tx, user.Username, 0); err != nil {
+		return err
+	}
 	user.Email = NormalizeEmail(user.Email)
 	if err := ensureEmailAvailableWithTx(tx, user.Email, 0); err != nil {
 		return err
@@ -590,21 +648,23 @@ func ensureEmailAvailableWithTx(tx *gorm.DB, email string, excludeUserID int) er
 
 func (user *User) Insert(inviterId int) error {
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		return withNormalizedEmailLock(tx, user.Email, func(tx *gorm.DB) error {
-			if err := user.prepareForInsert(tx); err != nil {
-				return err
-			}
-			user.Quota = common.QuotaForNewUser
-			user.AffCode = common.GetRandomString(4)
+		return withUsernameLock(tx, user.Username, func(tx *gorm.DB) error {
+			return withNormalizedEmailLock(tx, user.Email, func(tx *gorm.DB) error {
+				if err := user.prepareForInsert(tx); err != nil {
+					return err
+				}
+				user.Quota = common.QuotaForNewUser
+				user.AffCode = common.GetRandomString(4)
 
-			// 初始化用户设置，包括默认的边栏配置
-			if user.Setting == "" {
-				defaultSetting := dto.UserSetting{}
-				// 这里暂时不设置SidebarModules，因为需要在用户创建后根据角色设置
-				user.SetSetting(defaultSetting)
-			}
+				// 初始化用户设置，包括默认的边栏配置
+				if user.Setting == "" {
+					defaultSetting := dto.UserSetting{}
+					// 这里暂时不设置SidebarModules，因为需要在用户创建后根据角色设置
+					user.SetSetting(defaultSetting)
+				}
 
-			return tx.Create(user).Error
+				return tx.Create(user).Error
+			})
 		})
 	}); err != nil {
 		return err
@@ -654,21 +714,102 @@ func (user *User) FinishInsert(inviterId int) {
 // This is used for OAuth registration where user creation and binding need to be atomic.
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
 func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
-	return withNormalizedEmailLock(tx, user.Email, func(tx *gorm.DB) error {
-		if err := user.prepareForInsert(tx); err != nil {
+	return withUsernameLock(tx, user.Username, func(tx *gorm.DB) error {
+		return withNormalizedEmailLock(tx, user.Email, func(tx *gorm.DB) error {
+			if err := user.prepareForInsert(tx); err != nil {
+				return err
+			}
+			user.Quota = common.QuotaForNewUser
+			user.AffCode = common.GetRandomString(4)
+
+			// 初始化用户设置
+			if user.Setting == "" {
+				defaultSetting := dto.UserSetting{}
+				user.SetSetting(defaultSetting)
+			}
+
+			return tx.Create(user).Error
+		})
+	})
+}
+
+func UpdateUserProfile(userID int, username, displayName, email string) (*User, error) {
+	username = strings.TrimSpace(username)
+	displayName = strings.TrimSpace(displayName)
+	email = NormalizeEmail(email)
+	var updated User
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var current User
+		if err := tx.Select("id", "username", "username_editable").First(&current, userID).Error; err != nil {
 			return err
 		}
-		user.Quota = common.QuotaForNewUser
-		user.AffCode = common.GetRandomString(4)
-
-		// 初始化用户设置
-		if user.Setting == "" {
-			defaultSetting := dto.UserSetting{}
-			user.SetSetting(defaultSetting)
+		usernameChanged := username != current.Username
+		if usernameChanged && !current.UsernameEditable {
+			return ErrUsernameImmutable
 		}
-
-		return tx.Create(user).Error
+		return withUsernameLock(tx, username, func(tx *gorm.DB) error {
+			return withNormalizedEmailLock(tx, email, func(tx *gorm.DB) error {
+				if err := ensureUsernameAvailableWithTx(tx, username, userID); err != nil {
+					return err
+				}
+				if err := ensureEmailAvailableWithTx(tx, email, userID); err != nil {
+					return err
+				}
+				updates := map[string]interface{}{
+					"display_name": displayName,
+					"email":        email,
+				}
+				if usernameChanged {
+					updates["username"] = username
+					updates["username_editable"] = false
+				}
+				query := tx.Model(&User{}).Where("id = ?", userID)
+				if usernameChanged {
+					query = query.Where("username = ? AND username_editable = ?", current.Username, true)
+				}
+				result := query.Updates(updates)
+				if result.Error != nil {
+					return result.Error
+				}
+				if usernameChanged && result.RowsAffected != 1 {
+					return ErrUsernameImmutable
+				}
+				return tx.First(&updated, userID).Error
+			})
+		})
 	})
+	if err != nil {
+		return nil, err
+	}
+	if err := updateUserCache(updated); err != nil {
+		return nil, err
+	}
+	return &updated, nil
+}
+
+// SetInitialUserPasswordWithTx adds the first password credential after the
+// caller has completed a purpose-bound authentication ceremony. The empty
+// password predicate makes the one-time transition atomic on every supported
+// database; returning an error rolls back the surrounding auth-flow consume.
+func SetInitialUserPasswordWithTx(tx *gorm.DB, userID int, password string) error {
+	if tx == nil || userID <= 0 || password == "" {
+		return ErrUserPasswordAlreadySet
+	}
+	hashedPassword, err := common.Password2Hash(password)
+	if err != nil {
+		return err
+	}
+	result := tx.Model(&User{}).
+		Where("id = ? AND password = ?", userID, "").
+		Update("password", hashedPassword)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrUserPasswordAlreadySet
+	}
+	_, err = IncrementUserAuthVersionWithTx(tx, userID)
+	return err
 }
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.

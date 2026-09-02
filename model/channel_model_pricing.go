@@ -161,36 +161,36 @@ type purchasePriceComponentProjection struct {
 }
 
 type RequestPricingSnapshot struct {
-	Id                      int     `json:"id"`
+	Id                      int     `json:"id" gorm:"index:idx_request_pricing_status_created_id,priority:3"`
 	RequestId               string  `json:"request_id" gorm:"type:varchar(64);not null;uniqueIndex"`
 	UserId                  int     `json:"user_id" gorm:"not null;index"`
 	ModelId                 int     `json:"model_id" gorm:"not null;index"`
 	ChannelModelId          int     `json:"channel_model_id" gorm:"not null;index"`
-	ChannelModelOverrideId  int     `json:"channel_model_override_id" gorm:"index"`
+	ChannelModelOverrideId  int     `json:"channel_model_override_id"`
 	PurchasePriceVersionId  int     `json:"purchase_price_version_id" gorm:"not null"`
 	PurchaseBillingExpr     string  `json:"purchase_billing_expr" gorm:"type:text"`
 	PurchaseExprHash        string  `json:"purchase_expr_hash" gorm:"type:varchar(64)"`
-	OfficialPriceVersionId  *int    `json:"official_price_version_id" gorm:"index"`
+	OfficialPriceVersionId  *int    `json:"official_price_version_id"`
 	OfficialBillingExpr     string  `json:"official_billing_expr" gorm:"type:text"`
 	OfficialExprHash        string  `json:"official_expr_hash" gorm:"type:varchar(64)"`
 	EstimatedOfficialAmount *string `json:"estimated_official_amount" gorm:"type:decimal(36,18)"`
 	OfficialAmount          *string `json:"official_amount" gorm:"type:decimal(36,18)"`
-	SalesPriceBookId        int     `json:"sales_price_book_id" gorm:"index"`
-	SalesPriceBookVersionId int     `json:"sales_price_book_version_id" gorm:"index"`
-	SalesPriceBookItemId    int     `json:"sales_price_book_item_id" gorm:"index"`
-	PriceBookAssignmentId   int     `json:"price_book_assignment_id" gorm:"index"`
+	SalesPriceBookId        int     `json:"sales_price_book_id"`
+	SalesPriceBookVersionId int     `json:"sales_price_book_version_id"`
+	SalesPriceBookItemId    int     `json:"sales_price_book_item_id"`
+	PriceBookAssignmentId   int     `json:"price_book_assignment_id"`
 	SalesBillingExpr        string  `json:"sales_billing_expr" gorm:"type:text"`
 	SalesExprHash           string  `json:"sales_expr_hash" gorm:"type:varchar(64)"`
-	SalesPricingSource      string  `json:"sales_pricing_source" gorm:"type:varchar(24);index"`
-	SalesPriceResolvedAt    int64   `json:"sales_price_resolved_at" gorm:"bigint;index"`
+	SalesPricingSource      string  `json:"sales_pricing_source" gorm:"type:varchar(24)"`
+	SalesPriceResolvedAt    int64   `json:"sales_price_resolved_at" gorm:"bigint"`
 	BillingMode             string  `json:"billing_mode" gorm:"type:varchar(32);not null"`
 	EstimatedUsage          string  `json:"estimated_usage" gorm:"type:text"`
 	ActualUsage             string  `json:"actual_usage" gorm:"type:text"`
 	ReservedQuota           int64   `json:"reserved_quota" gorm:"bigint;not null"`
 	ActualPreConsumedQuota  int64   `json:"actual_pre_consumed_quota" gorm:"bigint;not null;default:0"`
 	TokenPreConsumedQuota   int64   `json:"token_pre_consumed_quota" gorm:"bigint;not null;default:0"`
-	PreConsumeCaptured      bool    `json:"pre_consume_captured" gorm:"index"`
-	TokenId                 int     `json:"token_id" gorm:"index"`
+	PreConsumeCaptured      bool    `json:"pre_consume_captured" gorm:"index:idx_request_pricing_status_preconsume,priority:2"`
+	TokenId                 int     `json:"token_id"`
 	SettledQuota            int64   `json:"settled_quota" gorm:"bigint;not null"`
 	PurchaseCost            string  `json:"purchase_cost" gorm:"type:decimal(36,18);not null"`
 	ProviderReportedCost    string  `json:"provider_reported_cost" gorm:"type:decimal(36,18)"`
@@ -198,8 +198,8 @@ type RequestPricingSnapshot struct {
 	ProviderCostScope       string  `json:"provider_cost_scope" gorm:"type:varchar(32)"`
 	ProviderCostMode        string  `json:"provider_cost_mode" gorm:"type:varchar(32);index"`
 	ProviderCostStatus      string  `json:"provider_cost_status" gorm:"type:varchar(32);index"`
-	ProviderCostSource      string  `json:"provider_cost_source" gorm:"type:varchar(32);index"`
-	ProviderCostConfirmedAt int64   `json:"provider_cost_confirmed_at" gorm:"bigint;index"`
+	ProviderCostSource      string  `json:"provider_cost_source" gorm:"type:varchar(32)"`
+	ProviderCostConfirmedAt int64   `json:"provider_cost_confirmed_at" gorm:"bigint"`
 	CostVariance            string  `json:"cost_variance" gorm:"type:decimal(36,18)"`
 	GrossMargin             string  `json:"gross_margin" gorm:"type:decimal(36,18)"`
 	SalesAmount             string  `json:"sales_amount" gorm:"type:decimal(36,18);not null"`
@@ -217,18 +217,18 @@ type RequestPricingSnapshot struct {
 	MinimumMarginRate       string  `json:"minimum_margin_rate" gorm:"type:decimal(18,12)"`
 	NetMarginRate           string  `json:"net_margin_rate" gorm:"type:decimal(36,18)"`
 	MarginCompliant         bool    `json:"margin_compliant"`
-	BillingSource           string  `json:"billing_source" gorm:"type:varchar(16);index"`
-	SubscriptionId          int     `json:"subscription_id" gorm:"index"`
+	BillingSource           string  `json:"billing_source" gorm:"type:varchar(16)"`
+	SubscriptionId          int     `json:"subscription_id"`
 	GrossMarginKnown        bool    `json:"gross_margin_known"`
 	Currency                string  `json:"currency" gorm:"type:varchar(8);not null"`
-	Status                  string  `json:"status" gorm:"type:varchar(16);not null;index"`
+	Status                  string  `json:"status" gorm:"type:varchar(16);not null;index:idx_request_pricing_status_created_id,priority:1;index:idx_request_pricing_status_updated,priority:1;index:idx_request_pricing_status_preconsume,priority:1"`
 	FailureCode             string  `json:"failure_code" gorm:"type:varchar(64);index"`
 	FailureReason           string  `json:"failure_reason" gorm:"type:text"`
-	Resolution              string  `json:"resolution" gorm:"type:varchar(32);index"`
-	ResolvedAt              int64   `json:"resolved_at" gorm:"bigint;index"`
+	Resolution              string  `json:"resolution" gorm:"type:varchar(32)"`
+	ResolvedAt              int64   `json:"resolved_at" gorm:"bigint"`
 	ResolvedBy              int     `json:"resolved_by"`
-	CreatedAt               int64   `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt               int64   `json:"updated_at" gorm:"bigint"`
+	CreatedAt               int64   `json:"created_at" gorm:"bigint;index;index:idx_request_pricing_status_created_id,priority:2"`
+	UpdatedAt               int64   `json:"updated_at" gorm:"bigint;index:idx_request_pricing_status_updated,priority:2"`
 }
 
 func setPricingVersionCreateTimes(createdAt *int64, updatedAt *int64) {

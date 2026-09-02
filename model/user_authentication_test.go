@@ -30,6 +30,7 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 	require.NoError(t, DB.Create(&TwoFABackupCode{UserId: user.Id, CodeHash: "hash"}).Error)
 	require.NoError(t, DB.Create(&PasskeyCredential{UserID: user.Id, CredentialID: "credential", PublicKey: "public-key"}).Error)
 	require.NoError(t, DB.Create(&UserOAuthBinding{UserId: user.Id, ProviderId: 1, ProviderUserId: "provider-user"}).Error)
+	require.NoError(t, DB.Create(&ExternalIdentityClaim{Provider: ExternalIdentityProviderEVM, Subject: "0x0000000000000000000000000000000000000001", UserId: user.Id}).Error)
 	require.NoError(t, DB.Create(&UserSession{
 		SID: "hard-delete-session", UserID: user.Id, Version: 1, UserAuthVersion: 1,
 		Status: UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
@@ -66,11 +67,13 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 		&UserOAuthBinding{},
 		&UserSession{},
 		&AuthFlow{},
-		&ExternalIdentityClaim{},
 	} {
 		require.NoError(t, DB.Unscoped().Model(record).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.EqualValues(t, 1, count)
 	}
+	require.NoError(t, DB.Unscoped().Model(&ExternalIdentityClaim{}).
+		Where("user_id = ?", user.Id).Count(&count).Error)
+	assert.EqualValues(t, 2, count)
 }
 
 func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.T) {
@@ -90,6 +93,7 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 	require.NoError(t, DB.Create(&TwoFABackupCode{UserId: user.Id, CodeHash: "hash"}).Error)
 	require.NoError(t, DB.Create(&PasskeyCredential{UserID: user.Id, CredentialID: "credential-success", PublicKey: "public-key"}).Error)
 	require.NoError(t, DB.Create(&UserOAuthBinding{UserId: user.Id, ProviderId: 1, ProviderUserId: "provider-user-success"}).Error)
+	require.NoError(t, DB.Create(&ExternalIdentityClaim{Provider: ExternalIdentityProviderEVM, Subject: "0x0000000000000000000000000000000000000002", UserId: user.Id}).Error)
 	require.NoError(t, DB.Create(&UserSession{
 		SID: "hard-delete-success-session", UserID: user.Id, Version: 1, UserAuthVersion: 1,
 		Status: UserSessionStatusActive, RefreshHash: "refresh-hash", LoginMethod: "password",
@@ -127,6 +131,29 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, "2", committed)
 	assert.False(t, server.Exists(getUserCacheKey(user.Id)))
+}
+
+func TestEVMWalletIdentityKeepsSoftDeletedIdentityUnavailable(t *testing.T) {
+	truncateTables(t)
+
+	user := User{Username: "soft-deleted-wallet-user", Password: "password"}
+	require.NoError(t, DB.Create(&user).Error)
+	address := "0x0000000000000000000000000000000000000003"
+	require.NoError(t, DB.Create(&ExternalIdentityClaim{
+		Provider: ExternalIdentityProviderEVM,
+		UserId:   user.Id,
+		Subject:  address,
+	}).Error)
+	require.NoError(t, DB.Delete(&user).Error)
+
+	_, err := GetUserByEVMWalletAddress(address)
+	assert.ErrorIs(t, err, ErrEVMWalletUserUnavailable)
+
+	var bindingCount int64
+	require.NoError(t, DB.Model(&ExternalIdentityClaim{}).
+		Where("provider = ? AND subject = ?", ExternalIdentityProviderEVM, address).
+		Count(&bindingCount).Error)
+	assert.EqualValues(t, 1, bindingCount)
 }
 
 func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {

@@ -77,11 +77,22 @@ export type UsageSearch = DateRangeSearch;
 
 export type OverviewSearch = DateRangeSearch;
 
+export type ModelSortKey =
+  | "capabilities"
+  | "context"
+  | "inputPrice"
+  | "model"
+  | "outputPrice"
+  | "status"
+  | "type";
+
 export type ModelSearch = {
   availability?: "all" | "available";
   detail?: string;
   family?: ModelCatalogItem["family"];
+  order?: SortOrder;
   q?: string;
+  sort?: ModelSortKey;
 };
 
 export type PlaygroundSearch = {
@@ -214,7 +225,17 @@ export function parseModelSearch(search: Record<string, unknown>): ModelSearch {
       "video",
       "unknown",
     ]),
+    order: parseEnum(search.order, ["asc", "desc"]),
     q: parseKeyword(search.q),
+    sort: parseEnum(search.sort, [
+      "capabilities",
+      "context",
+      "inputPrice",
+      "model",
+      "outputPrice",
+      "status",
+      "type",
+    ]),
   };
 }
 
@@ -257,6 +278,7 @@ function parseDateRangeSearch(search: Record<string, unknown>): DateRangeSearch 
     range: parseEnum(search.range, [
       "today",
       "yesterday",
+      "3d",
       "7d",
       "14d",
       "30d",

@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,9 @@ type Model struct {
 	Tags                 string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
 	VendorID             int            `json:"vendor_id,omitempty" gorm:"index"`
 	ContextLength        int            `json:"context_length,omitempty"`
+	MaxOutputTokens      int            `json:"max_output_tokens,omitempty"`
+	LimitsSourceURL      string         `json:"limits_source_url,omitempty" gorm:"type:varchar(512)"`
+	LimitsVerifiedAt     int64          `json:"limits_verified_at,omitempty" gorm:"bigint"`
 	Endpoints            string         `json:"endpoints,omitempty" gorm:"type:text"`
 	Status               int            `json:"status" gorm:"default:1"`
 	SyncOfficial         int            `json:"sync_official" gorm:"default:1"`
@@ -111,7 +115,7 @@ func (mi *Model) Update() error {
 		}
 		// 使用 Select 强制更新所有字段，包括零值
 		return tx.Model(&Model{}).Where("id = ?", mi.Id).
-			Select("model_name", "description", "icon", "tags", "vendor_id", "context_length", "endpoints", "status", "sync_official", "visibility", "model_purpose", "routing_target_model_id", "name_rule", "updated_time").
+			Select("model_name", "description", "icon", "tags", "vendor_id", "context_length", "max_output_tokens", "limits_source_url", "limits_verified_at", "endpoints", "status", "sync_official", "visibility", "model_purpose", "routing_target_model_id", "name_rule", "updated_time").
 			Updates(mi).Error
 	})
 	if err == nil {
@@ -122,8 +126,27 @@ func (mi *Model) Update() error {
 }
 
 func (mi *Model) validateMetadata() error {
+	mi.LimitsSourceURL = strings.TrimSpace(mi.LimitsSourceURL)
 	if mi.ContextLength < 0 {
 		return errors.New("context_length must be non-negative")
+	}
+	if mi.MaxOutputTokens < 0 {
+		return errors.New("max_output_tokens must be non-negative")
+	}
+	if mi.ContextLength > 0 && mi.MaxOutputTokens > mi.ContextLength {
+		return errors.New("max_output_tokens must not exceed context_length")
+	}
+	if mi.LimitsVerifiedAt < 0 {
+		return errors.New("limits_verified_at must be non-negative")
+	}
+	if (mi.LimitsSourceURL == "") != (mi.LimitsVerifiedAt == 0) {
+		return errors.New("limits_source_url and limits_verified_at must be provided together")
+	}
+	if mi.LimitsSourceURL != "" {
+		source, err := url.ParseRequestURI(mi.LimitsSourceURL)
+		if err != nil || source.Scheme != "https" || source.Host == "" {
+			return errors.New("limits_source_url must be an absolute HTTPS URL")
+		}
 	}
 	return nil
 }

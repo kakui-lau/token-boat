@@ -21,10 +21,10 @@ type TopUp struct {
 	PayAmountCents  int64   `json:"pay_amount_cents" gorm:"default:0"`
 	PayCurrency     string  `json:"pay_currency" gorm:"type:varchar(8);default:''"`
 	StripeSessionId string  `json:"stripe_session_id" gorm:"type:varchar(255);default:''"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255)"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time" gorm:"index:idx_topups_status_created,priority:2"`
+	CreateTime      int64   `json:"create_time" gorm:"index:idx_topups_created;index:idx_topups_status_created,priority:2"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status" gorm:"index:idx_topups_status_created,priority:1"`
 	CreditedQuota   int64   `json:"credited_quota" gorm:"-"`

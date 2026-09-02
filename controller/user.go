@@ -121,6 +121,8 @@ func loginMethodFromContext(c *gin.Context) string {
 		return "2fa"
 	case "/api/user/passkey/login/finish":
 		return "passkey"
+	case "/api/user/evm-wallet/login/finish":
+		return "evm_wallet"
 	case "/api/oauth/wechat":
 		return "wechat"
 	case "/api/oauth/telegram/login":
@@ -165,6 +167,11 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 		common.ApiError(c, err)
 		return
 	}
+	selfData, err := buildSelfUserData(currentUser)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	var bundle *service.AuthBundle
 	if expectedAuthVersion > 0 {
 		bundle, err = service.CreateLoginSessionAtAuthVersion(
@@ -198,7 +205,7 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 			"token_type":        bundle.TokenType,
 			"access_expires_at": bundle.AccessExpiresAt,
 			"session":           bundle.Session,
-			"user":              buildSelfUserData(currentUser),
+			"user":              selfData,
 		},
 	})
 }
@@ -273,6 +280,10 @@ func Register(c *gin.Context) {
 		cleanUser.Email = user.Email
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
+		if errors.Is(err, model.ErrUsernameAlreadyTaken) {
+			common.ApiErrorI18n(c, i18n.MsgUserExists)
+			return
+		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
@@ -493,7 +504,11 @@ func GetSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	responseData := buildSelfUserData(user)
+	responseData, err := buildSelfUserData(user)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// The authenticated role is loaded from GetUserCache. It should equal the
 	// row role, but use it for capabilities so GetSelf and login/refresh remain
 	// consistent with the authorization decision made for this request.
@@ -512,14 +527,20 @@ func GetSelf(c *gin.Context) {
 // buildSelfUserData is the single safe dashboard-user DTO used by GetSelf,
 // login and refresh. It intentionally excludes password, management PAT and
 // administrator-only remarks.
-func buildSelfUserData(user *model.User) map[string]interface{} {
+func buildSelfUserData(user *model.User) (map[string]interface{}, error) {
+	hasPassword, err := model.UserHasPassword(user.Id)
+	if err != nil {
+		return nil, err
+	}
 	userSetting := user.GetSetting()
 	permissions := calculateUserPermissions(user.Role)
 	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
 	return map[string]interface{}{
 		"id":                user.Id,
 		"username":          user.Username,
+		"username_editable": user.UsernameEditable,
 		"display_name":      user.DisplayName,
+		"has_password":      hasPassword,
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,
@@ -542,7 +563,7 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
-	}
+	}, nil
 }
 
 // 计算用户权限的辅助函数
@@ -846,6 +867,84 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
+	_, usernameExists := requestData["username"]
+	_, displayNameExists := requestData["display_name"]
+	_, emailExists := requestData["email"]
+	_, passwordExists := requestData["password"]
+	_, originalPasswordExists := requestData["original_password"]
+	if (usernameExists || displayNameExists || emailExists) && !passwordExists && !originalPasswordExists {
+		userId := c.GetInt("id")
+		current, err := model.GetUserById(userId, false)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		profile := struct {
+			Username         string `validate:"required,max=20"`
+			DisplayName      string `validate:"required,max=20"`
+			Email            string `validate:"omitempty,email,max=50"`
+			VerificationCode string
+		}{
+			Username: current.Username, DisplayName: current.DisplayName, Email: current.Email,
+		}
+		for key, target := range map[string]*string{
+			"username": &profile.Username, "display_name": &profile.DisplayName,
+			"email": &profile.Email, "verification_code": &profile.VerificationCode,
+		} {
+			value, exists := requestData[key]
+			if !exists {
+				continue
+			}
+			stringValue, ok := value.(string)
+			if !ok {
+				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+				return
+			}
+			*target = strings.TrimSpace(stringValue)
+		}
+		profile.Email = model.NormalizeEmail(profile.Email)
+		if err := common.Validate.Struct(&profile); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+			return
+		}
+		emailChanged := profile.Email != model.NormalizeEmail(current.Email)
+		if emailChanged && common.EmailVerificationEnabled {
+			if profile.Email == "" || profile.VerificationCode == "" {
+				common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
+				return
+			}
+			if !common.VerifyCodeWithKey(profile.Email, profile.VerificationCode, common.EmailVerificationPurpose) {
+				common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
+				return
+			}
+		}
+		updated, err := model.UpdateUserProfile(
+			userId, profile.Username, profile.DisplayName, profile.Email,
+		)
+		if err != nil {
+			switch {
+			case errors.Is(err, model.ErrUsernameAlreadyTaken):
+				common.ApiErrorI18n(c, i18n.MsgUserExists)
+			case errors.Is(err, model.ErrUsernameImmutable):
+				common.ApiErrorI18n(c, i18n.MsgUserUsernameImmutable)
+			case errors.Is(err, model.ErrEmailAlreadyTaken):
+				common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
+			default:
+				common.ApiError(c, err)
+			}
+			return
+		}
+		if emailChanged {
+			common.DeleteKey(profile.Email, common.EmailVerificationPurpose)
+		}
+		recordUserSecurityAudit(c, userId, "user.profile_update", map[string]interface{}{
+			"username_changed": current.Username != updated.Username,
+			"email_changed":    emailChanged,
+		})
+		common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
+		return
+	}
+
 	// 原有的用户信息更新逻辑
 	var user model.User
 	requestDataBytes, err := common.Marshal(requestData)
@@ -868,7 +967,6 @@ func UpdateSelf(c *gin.Context) {
 
 	cleanUser := model.User{
 		Id:          c.GetInt("id"),
-		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 	}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Token Boat</title>
+  <desc id="desc">Minimal geometric sailboat logo.</desc>
+  <g fill="currentColor" color="#111111">
+    <path d="M335 78V258H177Z"/>
+    <path d="M54 286H458L372 414H144Z"/>
+  </g>
+</svg>

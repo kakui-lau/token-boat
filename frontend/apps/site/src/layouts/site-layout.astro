@@ -1,0 +1,212 @@
+---
+import { localizedPath, siteCopy, type SiteLocale } from "@/content/site-copy";
+import "@/styles/site.css";
+
+type Props = {
+  canonicalPath: string;
+  description: string;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+  locale: SiteLocale;
+  noindex?: boolean;
+  ogImage?: string;
+  title: string;
+};
+
+const props = Astro.props;
+const copy = siteCopy[props.locale];
+const canonicalUrl = new URL(props.canonicalPath, Astro.site);
+const alternateLocale: SiteLocale = props.locale === "zh" ? "en" : "zh";
+const alternatePath = localizedPath(alternateLocale, props.canonicalPath.replace(/^\/en/, "") || "/");
+const alternateUrl = new URL(alternatePath, Astro.site);
+const localeLabel = props.locale === "zh" ? "EN" : "中文";
+const htmlLanguage = props.locale === "zh" ? "zh-CN" : "en";
+const navigation: [index: string, label: string, href: string][] = [
+  ["01", copy.nav.home, localizedPath(props.locale, "/")],
+  ["02", copy.nav.models, localizedPath(props.locale, "/models")],
+  ["03", copy.nav.rankings, localizedPath(props.locale, "/rankings")],
+  ["04", copy.nav.docs, localizedPath(props.locale, "/docs")],
+  ["05", copy.nav.status, localizedPath(props.locale, "/status")],
+  ["06", copy.nav.about, localizedPath(props.locale, "/about")],
+];
+const normalizedCanonicalPath = props.canonicalPath.replace(/^\/en/, "") || "/";
+const ogImageUrl = new URL(props.ogImage ?? "/brand/token-boat-og.png", Astro.site);
+const baseJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Token Boat",
+  url: new URL("/", Astro.site).toString(),
+  inLanguage: htmlLanguage,
+};
+const jsonLd = props.jsonLd
+  ? Array.isArray(props.jsonLd)
+    ? [baseJsonLd, ...props.jsonLd]
+    : [baseJsonLd, props.jsonLd]
+  : [baseJsonLd];
+---
+
+<!doctype html>
+<html lang={htmlLanguage}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={props.description} />
+    {props.noindex && <meta name="robots" content="noindex,follow" />}
+    <meta name="theme-color" content="#f3ead9" />
+    {props.locale === "zh" && (
+      <link
+        rel="preload"
+        href="/fonts/smiley-sans-oblique.woff2"
+        as="font"
+        type="font/woff2"
+        crossorigin="anonymous"
+      />
+    )}
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="alternate" hreflang={alternateLocale === "zh" ? "zh-CN" : "en"} href={alternateUrl} />
+    <link rel="alternate" hreflang={htmlLanguage} href={canonicalUrl} />
+    <link rel="icon" type="image/png" sizes="64x64" href="/brand/token-boat-logo-64.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/token-boat-logo-180.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Token Boat" />
+    <meta property="og:title" content={props.title} />
+    <meta property="og:description" content={props.description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Token Boat — One API, many models" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={props.title} />
+    <meta name="twitter:description" content={props.description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <title>{props.title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">{props.locale === "zh" ? "跳到主要内容" : "Skip to content"}</a>
+    <div class="signal-bar" aria-hidden="true">
+      <div class="site-shell">
+        <span class="signal-bar__lead">{copy.signal.lead}</span>
+        <span class="signal-bar__trail">{copy.signal.trail}</span>
+      </div>
+    </div>
+    <header class="site-header">
+      <div class="site-shell site-header__inner">
+        <a class="brand-lockup" href={localizedPath(props.locale, "/")} aria-label="Token Boat" translate="no">
+          <img class="brand-lockup__logo" src="/brand/token-boat-logo.svg" alt="" width="512" height="512" />
+          <span class="brand-lockup__name">TOKEN<br />BOAT</span>
+        </a>
+
+        <nav class="desktop-navigation" aria-label={props.locale === "zh" ? "主导航" : "Primary navigation"}>
+          {navigation.map(([index, label, href]) => (
+            <a
+              class:list={{ "is-active": normalizedCanonicalPath === href.replace(/^\/en/, "") }}
+              href={href}
+              aria-current={normalizedCanonicalPath === href.replace(/^\/en/, "") ? "page" : undefined}
+            ><span>{index}</span><strong>{label}</strong></a>
+          ))}
+        </nav>
+
+        <div class="header-actions">
+          <a class="language-link" href={alternatePath}><span>LANG</span><strong>{localeLabel}</strong></a>
+          <a class="text-link desktop-only" href="/console/sign-in">{copy.nav.signIn}</a>
+          <a class="button button--small" href="/console/getting-started">{copy.nav.getStarted}<span aria-hidden="true">↗</span></a>
+          <details class="mobile-navigation" data-animated-details>
+            <summary aria-label={copy.nav.menu}><span></span><span></span><span></span></summary>
+            <div class="mobile-navigation__panel">
+              {navigation.map(([index, label, href]) => (
+                <a
+                  class:list={{ "is-active": normalizedCanonicalPath === href.replace(/^\/en/, "") }}
+                  href={href}
+                  aria-current={normalizedCanonicalPath === href.replace(/^\/en/, "") ? "page" : undefined}
+                ><span>{index}</span>{label}</a>
+              ))}
+              <a href="/console/sign-in"><span>07</span>{copy.nav.signIn}</a>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-shell site-footer__masthead" aria-hidden="true" translate="no">
+        <span>TOKEN</span><span>BOAT</span>
+      </div>
+      <div class="site-shell site-footer__grid">
+        <div class="footer-brand">
+          <p class="footer-index">TB—PUBLIC / {new Date().getFullYear()}</p>
+          <p>{copy.footer.description}</p>
+        </div>
+        <div>
+          <h2>01 / {copy.footer.product}</h2>
+          <a href={localizedPath(props.locale, "/models")}>{copy.nav.models}</a>
+          <a href={localizedPath(props.locale, "/rankings")}>{copy.nav.rankings}</a>
+          <a href={localizedPath(props.locale, "/docs")}>{copy.nav.docs}</a>
+        </div>
+        <div>
+          <h2>02 / {copy.footer.company}</h2>
+          <a href={localizedPath(props.locale, "/about")}>{copy.nav.about}</a>
+          <a href={localizedPath(props.locale, "/status")}>{copy.nav.status}</a>
+          <a href={localizedPath(props.locale, "/changelog")}>{copy.nav.changelog}</a>
+        </div>
+        <div>
+          <h2>03 / {copy.nav.support}</h2>
+          <a href={localizedPath(props.locale, "/support")}>{copy.nav.support}</a>
+          <a href={localizedPath(props.locale, "/faq")}>{copy.nav.faq}</a>
+          <a href={localizedPath(props.locale, "/trust")}>{copy.nav.trust}</a>
+        </div>
+        <div>
+          <h2>04 / {copy.footer.legal}</h2>
+          <a href={localizedPath(props.locale, "/legal/terms")}>{copy.footer.terms}</a>
+          <a href={localizedPath(props.locale, "/legal/privacy")}>{copy.footer.privacy}</a>
+        </div>
+      </div>
+      <div class="site-shell site-footer__bottom">
+        <span>© {new Date().getFullYear()} Token Boat. {copy.footer.rights}</span>
+        <span>{copy.signal.lead} / {copy.signal.trail}</span>
+      </div>
+    </footer>
+    <script>
+      const closingDetails = new WeakMap<HTMLDetailsElement, number>();
+
+      document.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const summary = event.target.closest("summary");
+        const details = summary?.parentElement;
+        if (!(details instanceof HTMLDetailsElement) || !details.matches("[data-animated-details]")) {
+          return;
+        }
+
+        if (event.detail === 0) {
+          details.dataset.instant = "true";
+          window.setTimeout(() => delete details.dataset.instant, 50);
+          return;
+        }
+
+        const existingTimer = closingDetails.get(details);
+        if (existingTimer !== undefined) {
+          event.preventDefault();
+          window.clearTimeout(existingTimer);
+          closingDetails.delete(details);
+          delete details.dataset.closing;
+          return;
+        }
+
+        if (!details.open || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+        event.preventDefault();
+        details.dataset.closing = "true";
+        const timer = window.setTimeout(() => {
+          details.open = false;
+          delete details.dataset.closing;
+          closingDetails.delete(details);
+        }, 140);
+        closingDetails.set(details, timer);
+      });
+    </script>
+  </body>
+</html>

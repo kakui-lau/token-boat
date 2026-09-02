@@ -124,7 +124,7 @@ export function RechargeFormCard({
 
   const handleAmountChange = (value: string) => {
     const integerPart = value.split(/[.,]/, 1)[0] ?? ''
-    const normalizedValue = integerPart.replace(/\D/g, '')
+    const normalizedValue = integerPart.replaceAll(/\D/g, '')
     setLocalAmount(normalizedValue)
     onTopupAmountChange(Number.parseInt(normalizedValue, 10) || 0)
   }

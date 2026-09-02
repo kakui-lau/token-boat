@@ -26,6 +26,8 @@ const {
     capabilities: {
       oauthProviders: [],
       emailVerificationEnabled: false,
+      evmWalletEnabled: false,
+      evmWalletRegistrationEnabled: false,
       passkeyEnabled: false,
       passwordEnabled: true,
       registrationEnabled: true,
@@ -77,6 +79,8 @@ beforeEach(() => {
   sendEmailVerification.mockReset();
   sessionState.capabilities = {
     emailVerificationEnabled: false,
+    evmWalletEnabled: false,
+    evmWalletRegistrationEnabled: false,
     oauthProviders: [],
     passkeyEnabled: false,
     passwordEnabled: true,
@@ -89,6 +93,14 @@ beforeEach(() => {
 });
 
 describe("User Console account access", () => {
+  test("uses a compact two-column layout for password registration", () => {
+    render(<RegisterPage />);
+
+    const form = screen.getByRole("button", { name: "Create account" }).closest("form");
+    expect(form?.querySelector('[data-slot="field-group"]')).toHaveClass("sm:grid-cols-2");
+    expect(screen.getByRole("button", { name: "Create account" })).toHaveClass("sm:col-span-2");
+  });
+
   test("creates a password account using the existing registration contract", async () => {
     register.mockResolvedValue(undefined);
     render(<RegisterPage affiliateCode="partner-code" redirectTo="/console/getting-started" />);

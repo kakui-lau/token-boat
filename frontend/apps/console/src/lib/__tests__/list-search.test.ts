@@ -62,6 +62,17 @@ describe("list search parameters", () => {
       preset: "7d",
       to: "2026-08-28",
     });
+
+    const oversizedSearch = parseRequestLogSearch({
+      from: "2026-01-01",
+      range: "custom",
+      to: "2026-06-30",
+    });
+    expect(resolveDateRange(oversizedSearch, "7d", referenceDate)).toEqual({
+      from: "2026-08-22",
+      preset: "7d",
+      to: "2026-08-28",
+    });
   });
 
   it("keeps the public service-trace search field", () => {
@@ -116,6 +127,17 @@ describe("list search parameters", () => {
       end: 1_788_310_800,
       tz: "Asia/Shanghai",
     });
+
+    const oversizedSearch = parseRequestLogSearch({
+      start: String(Date.UTC(2026, 0, 1) / 1_000),
+      end: String(Date.UTC(2026, 5, 30, 23, 59, 59) / 1_000),
+      tz: "UTC",
+    });
+    expect(resolveRequestLogRange(oversizedSearch, "today", referenceDate)).toMatchObject({
+      from: "2026-08-28",
+      preset: "today",
+      to: "2026-08-28",
+    });
   });
 
   it("keeps only supported account activity filters", () => {
@@ -155,7 +177,7 @@ describe("list search parameters", () => {
       range: undefined,
       to: "2026-08-28",
     });
-    expect(parseOverviewSearch({ range: "365d" })).toMatchObject({ range: "365d" });
+    expect(parseOverviewSearch({ range: "365d" })).toMatchObject({ range: undefined });
     expect(parseOverviewSearch({ range: "3d" })).toMatchObject({ range: "3d" });
   });
 

@@ -21,6 +21,7 @@ import {
   createDateRange,
   localDateFromKey,
   localDateToKey,
+  MAX_DATE_RANGE_DAYS,
 } from "@/lib/date-range";
 
 type DateRangePickerProps = {
@@ -37,7 +38,6 @@ const quickPresets: Array<Exclude<DateRangePreset, "custom">> = [
   "30d",
   "90d",
   "180d",
-  "365d",
 ];
 
 export function DateRangePicker(props: DateRangePickerProps) {
@@ -144,6 +144,7 @@ export function DateRangePicker(props: DateRangePickerProps) {
               defaultMonth={draftRange.from}
               disabled={{ after: new Date() }}
               locale={calendarLocale}
+              max={MAX_DATE_RANGE_DAYS - 1}
               mode="range"
               numberOfMonths={2}
               onSelect={(range) => setDraftRange(range ?? { from: undefined })}
@@ -177,6 +178,5 @@ function quickPresetLabel(preset: Exclude<DateRangePreset, "custom">): string {
   if (preset === "14d") return "Last 14 days";
   if (preset === "30d") return "Last 30 days";
   if (preset === "90d") return "Last 90 days";
-  if (preset === "180d") return "Last 180 days";
-  return "Last 365 days";
+  return "Last 180 days";
 }

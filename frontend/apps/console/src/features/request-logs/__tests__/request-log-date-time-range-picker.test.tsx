@@ -101,6 +101,43 @@ describe("RequestLogDateTimeRangePicker", () => {
     });
   });
 
+  test("keeps a newly selected time zone and converts the draft wall-clock times", async () => {
+    const onChange = vi.fn();
+    render(
+      <RequestLogDateTimeRangePicker
+        onChange={onChange}
+        value={{
+          preset: "custom",
+          from: "2026-09-02",
+          to: "2026-09-02",
+          startTimestamp: Date.UTC(2026, 8, 2, 0) / 1_000,
+          endTimestamp: Date.UTC(2026, 8, 2, 1) / 1_000,
+          timeZone: "Asia/Shanghai",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select date range" }));
+    const timeZoneSelect = await screen.findByRole("combobox", { name: "Time zone" });
+    fireEvent.click(timeZoneSelect);
+    const tokyoOption = await screen.findByRole("option", { name: /Asia\/Tokyo/ });
+    fireEvent.pointerDown(tokyoOption);
+    fireEvent.pointerUp(tokyoOption);
+    fireEvent.click(tokyoOption);
+
+    expect(timeZoneSelect).toHaveTextContent("Asia/Tokyo");
+    expect(screen.getByLabelText("Start time")).toHaveValue("09:00");
+    expect(screen.getByLabelText("End time")).toHaveValue("10:00");
+    expect(onChange).toHaveBeenCalledWith({
+      preset: "custom",
+      from: "2026-09-02",
+      to: "2026-09-02",
+      startTimestamp: Date.UTC(2026, 8, 2, 0) / 1_000,
+      endTimestamp: Date.UTC(2026, 8, 2, 1) / 1_000,
+      timeZone: "Asia/Tokyo",
+    });
+  });
+
   test("blocks an end time earlier than the start time", async () => {
     render(
       <RequestLogDateTimeRangePicker
@@ -124,5 +161,25 @@ describe("RequestLogDateTimeRangePicker", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Start time must be before end time");
     expect(screen.getByRole("button", { name: "Apply custom range" })).toBeDisabled();
+  });
+
+  test("blocks a custom range longer than 180 inclusive days", async () => {
+    render(
+      <RequestLogDateTimeRangePicker
+        onChange={vi.fn()}
+        value={{
+          preset: "custom",
+          from: "2026-01-01",
+          to: "2026-06-30",
+          startTimestamp: Date.UTC(2026, 0, 1) / 1_000,
+          endTimestamp: Date.UTC(2026, 5, 30, 23, 59, 59) / 1_000,
+          timeZone: "UTC",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select date range" }));
+
+    expect(await screen.findByRole("button", { name: "Apply custom range" })).toBeDisabled();
   });
 });

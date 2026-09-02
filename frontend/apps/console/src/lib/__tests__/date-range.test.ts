@@ -31,10 +31,15 @@ describe("date range contract", () => {
     });
     expect(dateRangeDayCount(createDateRange("14d", referenceDate))).toBe(14);
     expect(dateRangeDayCount(createDateRange("180d", referenceDate))).toBe(180);
-    expect(dateRangeDayCount(createDateRange("365d", referenceDate))).toBe(365);
   });
 
-  it("rejects incomplete and reversed custom ranges", () => {
+  it("accepts at most 180 inclusive days for custom ranges", () => {
+    expect(createCustomDateRange("2026-01-01", "2026-06-29")).toEqual({
+      preset: "custom",
+      from: "2026-01-01",
+      to: "2026-06-29",
+    });
+    expect(createCustomDateRange("2026-01-01", "2026-06-30")).toBeNull();
     expect(createCustomDateRange("", "2026-08-28")).toBeNull();
     expect(createCustomDateRange("2026-08-29", "2026-08-28")).toBeNull();
   });

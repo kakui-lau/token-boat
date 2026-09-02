@@ -1,6 +1,7 @@
 import type { DateRangePreset, DateRangeValue } from "@/data/contracts";
 
 const dayInMilliseconds = 86_400_000;
+export const MAX_DATE_RANGE_DAYS = 180;
 
 export function localDateToKey(date: Date): string {
   const year = date.getFullYear();
@@ -39,7 +40,13 @@ export function createDateRange(
 
 export function createCustomDateRange(from: string, to: string): DateRangeValue | null {
   if (!from || !to || from > to) return null;
-  return { preset: "custom", from, to };
+  const fromDate = localDateFromKey(from);
+  const toDate = localDateFromKey(to);
+  if (localDateToKey(fromDate) !== from || localDateToKey(toDate) !== to) return null;
+
+  const range = { preset: "custom", from, to } as const;
+  if (dateRangeDayCount(range) > MAX_DATE_RANGE_DAYS) return null;
+  return range;
 }
 
 export function dateRangeToUnix(range: DateRangeValue): { start: number; end: number } {

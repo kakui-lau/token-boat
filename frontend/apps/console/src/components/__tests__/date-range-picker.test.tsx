@@ -30,7 +30,7 @@ describe("DateRangePicker", () => {
     expect(screen.getAllByText("Last 30 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 90 days").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Last 180 days").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Last 365 days").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Last 365 days")).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByText("Last 3 days")[0]!);
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ preset: "3d" }));

@@ -297,14 +297,16 @@ export function resolveRequestLogRange(
   if (search.start !== undefined && search.end !== undefined && search.start <= search.end) {
     const startParts = formatZonedDateTimeParts(search.start, timeZone);
     const endParts = formatZonedDateTimeParts(search.end, timeZone);
-    return {
-      preset: search.range ?? "custom",
-      from: startParts.date,
-      to: endParts.date,
-      startTimestamp: search.start,
-      endTimestamp: search.end,
-      timeZone,
-    };
+    const calendarRange = createCustomDateRange(startParts.date, endParts.date);
+    if (calendarRange) {
+      return {
+        ...calendarRange,
+        preset: search.range ?? "custom",
+        startTimestamp: search.start,
+        endTimestamp: search.end,
+        timeZone,
+      };
+    }
   }
 
   if (search.range && search.range !== "custom") {
@@ -344,7 +346,6 @@ function parseDateRangeSearch(search: Record<string, unknown>): DateRangeSearch 
       "30d",
       "90d",
       "180d",
-      "365d",
       "custom",
     ]),
     to: parseDateKey(search.to),

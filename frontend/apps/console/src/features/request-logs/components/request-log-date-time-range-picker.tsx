@@ -26,7 +26,12 @@ import {
 import { Separator } from "@token-boat/ui/components/ui/separator";
 import { cn } from "@token-boat/ui/lib/utils";
 import type { DateRangeValue } from "@/data/contracts";
-import { localDateFromKey, localDateToKey } from "@/lib/date-range";
+import {
+  createCustomDateRange,
+  localDateFromKey,
+  localDateToKey,
+  MAX_DATE_RANGE_DAYS,
+} from "@/lib/date-range";
 import {
   createRecentZonedDateRange,
   formatTimeZoneOffset,
@@ -83,10 +88,11 @@ export function RequestLogDateTimeRangePicker(props: RequestLogDateTimeRangePick
   const [draft, setDraft] = useState<DateTimeDraft>(() => draftFromValue(props.value, timeZone));
 
   useEffect(() => {
-    const nextTimeZone = isValidTimeZone(props.value.timeZone) ? props.value.timeZone : timeZone;
+    if (!isValidTimeZone(props.value.timeZone)) return;
+    const nextTimeZone = props.value.timeZone;
     setTimeZone(nextTimeZone);
     setDraft(draftFromValue(props.value, nextTimeZone));
-  }, [props.value, timeZone]);
+  }, [props.value]);
 
   const locale = i18n.resolvedLanguage ?? "zh";
   const calendarLocale = locale.startsWith("en") ? enUS : zhCN;
@@ -102,6 +108,8 @@ export function RequestLogDateTimeRangePicker(props: RequestLogDateTimeRangePick
   const endTimestamp = parseZonedDateTime(draft.endDate, draft.endTime, timeZone);
   const validOrder =
     startTimestamp !== undefined && endTimestamp !== undefined && startTimestamp <= endTimestamp;
+  const validDateRange = createCustomDateRange(draft.startDate, draft.endDate) !== null;
+  const validRange = validOrder && validDateRange;
   const selectedRange: DateRange | undefined = draft.startDate
     ? {
         from: localDateFromKey(draft.startDate),
@@ -116,7 +124,7 @@ export function RequestLogDateTimeRangePicker(props: RequestLogDateTimeRangePick
   };
 
   const applyDraft = () => {
-    if (!validOrder || startTimestamp === undefined || endTimestamp === undefined) return;
+    if (!validRange || startTimestamp === undefined || endTimestamp === undefined) return;
     props.onChange({
       preset: "custom",
       from: draft.startDate,
@@ -130,15 +138,35 @@ export function RequestLogDateTimeRangePicker(props: RequestLogDateTimeRangePick
 
   const changeTimeZone = (nextTimeZone: string | null) => {
     if (!nextTimeZone || !isValidTimeZone(nextTimeZone)) return;
-    setTimeZone(nextTimeZone);
-    setDraft(
-      draftFromTimestamps(
-        parseZonedDateTime(draft.startDate, draft.startTime, timeZone),
-        parseZonedDateTime(draft.endDate, draft.endTime, timeZone),
-        nextTimeZone,
-      ),
+    const nextDraft = draftFromTimestamps(
+      parseZonedDateTime(draft.startDate, draft.startTime, timeZone),
+      parseZonedDateTime(draft.endDate, draft.endTime, timeZone),
+      nextTimeZone,
     );
+    setTimeZone(nextTimeZone);
+    setDraft(nextDraft);
     window.localStorage.setItem(timeZoneStorageKey, nextTimeZone);
+    const nextStartTimestamp = parseZonedDateTime(
+      nextDraft.startDate,
+      nextDraft.startTime,
+      nextTimeZone,
+    );
+    const nextEndTimestamp = parseZonedDateTime(nextDraft.endDate, nextDraft.endTime, nextTimeZone);
+    if (
+      nextStartTimestamp === undefined ||
+      nextEndTimestamp === undefined ||
+      nextStartTimestamp > nextEndTimestamp
+    ) {
+      return;
+    }
+    props.onChange({
+      preset: "custom",
+      from: nextDraft.startDate,
+      to: nextDraft.endDate,
+      startTimestamp: nextStartTimestamp,
+      endTimestamp: nextEndTimestamp,
+      timeZone: nextTimeZone,
+    });
   };
 
   return (
@@ -220,6 +248,7 @@ export function RequestLogDateTimeRangePicker(props: RequestLogDateTimeRangePick
                 className="mx-auto p-0 [--cell-size:--spacing(8)]"
                 defaultMonth={selectedRange?.from}
                 locale={calendarLocale}
+                max={MAX_DATE_RANGE_DAYS - 1}
                 mode="range"
                 numberOfMonths={2}
                 onSelect={(range) =>
@@ -268,7 +297,7 @@ export function RequestLogDateTimeRangePicker(props: RequestLogDateTimeRangePick
                 ? t("Start time must be before end time")
                 : t("Times use {{timeZone}} with second precision.", { timeZone })}
             </p>
-            <Button disabled={!validOrder} onClick={applyDraft} size="sm">
+            <Button disabled={!validRange} onClick={applyDraft} size="sm">
               {t("Apply custom range")}
             </Button>
           </div>

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -105,6 +106,29 @@ func GetUserTask(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.ApiSuccess(c, pageInfo)
+}
+
+func GetUserTaskArtifact(c *gin.Context) {
+	position, err := strconv.Atoi(c.Param("position"))
+	if err != nil || position < 0 {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	artifact, exists, err := model.GetUserTaskArtifact(c.GetInt("id"), c.Param("task_id"), position)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !exists {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.Header("Cache-Control", "private, max-age=31536000, immutable")
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"task-result-%d\"", position+1))
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, artifact.ContentType, artifact.Content)
 }
 
 func ManuallyFailAndRefundTask(c *gin.Context) {

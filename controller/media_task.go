@@ -2,6 +2,10 @@ package controller
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -19,7 +23,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const mediaTaskResponseCaptureLimit = 256 * 1024
+const (
+	mediaTaskResponseCaptureLimit = 32 << 20
+	mediaTaskArtifactLimit        = 4
+	mediaTaskArtifactBytesLimit   = 16 << 20
+	mediaTaskArtifactsBytesLimit  = 24 << 20
+)
 
 var markdownImageURLPattern = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^\s)]+)\)`)
 
@@ -76,7 +85,7 @@ func persistCompletedMediaTask(
 	request dto.Request,
 	responseBody []byte,
 ) {
-	task, ok := buildCompletedMediaTask(info, request, responseBody)
+	task, artifacts, ok := buildCompletedMediaTask(info, request, responseBody)
 	if !ok {
 		return
 	}
@@ -88,7 +97,7 @@ func persistCompletedMediaTask(
 	if exists {
 		return
 	}
-	if err := task.Insert(); err != nil {
+	if err := task.InsertWithArtifacts(artifacts); err != nil {
 		logger.LogError(c, "persist completed image task: "+err.Error())
 	}
 }
@@ -97,17 +106,18 @@ func buildCompletedMediaTask(
 	info *relaycommon.RelayInfo,
 	request dto.Request,
 	responseBody []byte,
-) (*model.Task, bool) {
+) (*model.Task, []model.TaskArtifact, bool) {
 	if info == nil || strings.TrimSpace(info.RequestId) == "" {
-		return nil, false
+		return nil, nil, false
 	}
 
 	isDedicatedImage := info.RelayMode == relayconstant.RelayModeImagesGenerations ||
 		info.RelayMode == relayconstant.RelayModeImagesEdits
 	hasGeneratedImage, resultURLs, resultCount := inspectGeneratedImageResponse(responseBody, isDedicatedImage)
 	if !isDedicatedImage && (!info.IsPlayground || !hasGeneratedImage) {
-		return nil, false
+		return nil, nil, false
 	}
+	artifacts := extractGeneratedImageArtifacts(responseBody, time.Now().Unix())
 
 	now := time.Now().Unix()
 	action := "image_generation"
@@ -119,6 +129,13 @@ func buildCompletedMediaTask(
 		metadata["result_count"] = resultCount
 	}
 	metadata["request_id"] = info.RequestId
+	if len(artifacts) > 0 {
+		metadata["stored_result_count"] = len(artifacts)
+		resultURLs = make([]string, len(artifacts))
+		for index := range artifacts {
+			resultURLs[index] = fmt.Sprintf("/api/task/self/%s/artifacts/%d", url.PathEscape(info.RequestId), index)
+		}
+	}
 
 	task := &model.Task{
 		CreatedAt:        now,
@@ -150,7 +167,139 @@ func buildCompletedMediaTask(
 		task.PrivateData.ResultURL = resultURLs[0]
 	}
 	task.SetData(metadata)
-	return task, true
+	return task, artifacts, true
+}
+
+func extractGeneratedImageArtifacts(body []byte, createdAt int64) []model.TaskArtifact {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return nil
+	}
+
+	artifacts := make([]model.TaskArtifact, 0, 1)
+	seen := make(map[[sha256.Size]byte]struct{})
+	totalBytes := 0
+	appendEncoded := func(encoded string, declaredType string) {
+		if len(artifacts) >= mediaTaskArtifactLimit || totalBytes >= mediaTaskArtifactsBytesLimit {
+			return
+		}
+		encoded = strings.Map(func(r rune) rune {
+			if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+				return -1
+			}
+			return r
+		}, encoded)
+		if encoded == "" || base64.StdEncoding.DecodedLen(len(encoded)) > mediaTaskArtifactBytesLimit {
+			return
+		}
+		content, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			content, err = base64.RawStdEncoding.DecodeString(encoded)
+		}
+		if err != nil || len(content) == 0 || len(content) > mediaTaskArtifactBytesLimit || totalBytes+len(content) > mediaTaskArtifactsBytesLimit {
+			return
+		}
+		contentType := http.DetectContentType(content)
+		if !isSafeTaskImageType(contentType) {
+			declaredType = strings.ToLower(strings.TrimSpace(strings.Split(declaredType, ";")[0]))
+			if declaredType != "image/avif" || !looksLikeAVIF(content) {
+				return
+			}
+			contentType = declaredType
+		}
+		digest := sha256.Sum256(content)
+		if _, exists := seen[digest]; exists {
+			return
+		}
+		seen[digest] = struct{}{}
+		artifacts = append(artifacts, model.TaskArtifact{
+			CreatedAt:   createdAt,
+			Position:    len(artifacts),
+			ContentType: contentType,
+			Content:     content,
+		})
+		totalBytes += len(content)
+	}
+
+	var inspect func(any, bool, string)
+	inspect = func(value any, imageContext bool, declaredType string) {
+		switch typed := value.(type) {
+		case map[string]any:
+			mapType := declaredType
+			for key, child := range typed {
+				normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+				if normalized == "mime_type" || normalized == "mimetype" {
+					mapType, _ = child.(string)
+				}
+			}
+			for key, child := range typed {
+				normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+				childContext := imageContext || normalized == "image_url" || normalized == "image_urls" ||
+					normalized == "b64_json" || normalized == "inline_data" || normalized == "inlinedata"
+				if text, ok := child.(string); ok {
+					if normalized == "b64_json" || (imageContext && normalized == "data") {
+						appendEncoded(text, mapType)
+					}
+					if mediaType, encoded, ok := parseImageDataURI(text); ok {
+						appendEncoded(encoded, mediaType)
+					}
+				}
+				inspect(child, childContext, mapType)
+			}
+		case []any:
+			for _, child := range typed {
+				inspect(child, imageContext, declaredType)
+			}
+		case string:
+			if mediaType, encoded, ok := parseImageDataURI(typed); ok {
+				appendEncoded(encoded, mediaType)
+			}
+		}
+	}
+	var payload any
+	if err := common.Unmarshal(trimmed, &payload); err == nil {
+		inspect(payload, false, "image/png")
+	} else {
+		for _, line := range bytes.Split(trimmed, []byte("\n")) {
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, []byte("data:")) {
+				continue
+			}
+			line = bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+			if common.Unmarshal(line, &payload) == nil {
+				inspect(payload, false, "image/png")
+			}
+		}
+	}
+	return artifacts
+}
+
+func parseImageDataURI(value string) (string, string, bool) {
+	value = strings.TrimSpace(value)
+	comma := strings.IndexByte(value, ',')
+	if comma <= len("data:image/") || !strings.HasPrefix(strings.ToLower(value), "data:image/") {
+		return "", "", false
+	}
+	header := value[:comma]
+	if !strings.Contains(strings.ToLower(header), ";base64") {
+		return "", "", false
+	}
+	mediaType := strings.TrimPrefix(strings.SplitN(header, ";", 2)[0], "data:")
+	return mediaType, value[comma+1:], true
+}
+
+func isSafeTaskImageType(contentType string) bool {
+	switch contentType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func looksLikeAVIF(content []byte) bool {
+	return len(content) >= 12 && string(content[4:8]) == "ftyp" &&
+		(string(content[8:12]) == "avif" || string(content[8:12]) == "avis")
 }
 
 func mediaTaskRequestDetails(request dto.Request) (string, map[string]any) {

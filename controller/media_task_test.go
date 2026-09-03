@@ -32,7 +32,7 @@ func TestBuildCompletedMediaTaskForImageAPI(t *testing.T) {
 		ResponseFormat: "url",
 	}
 
-	task, ok := buildCompletedMediaTask(info, request, []byte(`{
+	task, artifacts, ok := buildCompletedMediaTask(info, request, []byte(`{
 		"created": 1,
 		"data": [
 			{"url": "https://cdn.example/one.png"},
@@ -42,6 +42,7 @@ func TestBuildCompletedMediaTaskForImageAPI(t *testing.T) {
 
 	require.True(t, ok)
 	require.NotNil(t, task)
+	assert.Empty(t, artifacts)
 	assert.Equal(t, "request-image-1", task.TaskID)
 	assert.Equal(t, "image", string(task.Platform))
 	assert.Equal(t, "image_generation", task.Action)
@@ -80,19 +81,22 @@ func TestBuildCompletedMediaTaskForPlaygroundChatImage(t *testing.T) {
 	response := []byte(`{
 		"choices": [{
 			"message": {
-				"content": [{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]
+				"content": [{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}}]
 			}
 		}]
 	}`)
 
-	task, ok := buildCompletedMediaTask(info, request, response)
+	task, artifacts, ok := buildCompletedMediaTask(info, request, response)
 
 	require.True(t, ok)
 	require.NotNil(t, task)
 	assert.Equal(t, "request-chat-image", task.TaskID)
 	assert.Equal(t, "draw a rabbit", task.Properties.Input)
-	assert.Empty(t, task.PrivateData.ResultURL)
-	assert.Empty(t, task.PrivateData.ResultURLs, "embedded image data must not be copied into the database")
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "image/png", artifacts[0].ContentType)
+	assert.NotEmpty(t, artifacts[0].Content)
+	assert.Equal(t, "/api/task/self/request-chat-image/artifacts/0", task.PrivateData.ResultURL)
+	assert.Equal(t, []string{"/api/task/self/request-chat-image/artifacts/0"}, task.PrivateData.ResultURLs)
 }
 
 func TestBuildCompletedMediaTaskSkipsOrdinaryPlaygroundChat(t *testing.T) {
@@ -106,7 +110,7 @@ func TestBuildCompletedMediaTaskSkipsOrdinaryPlaygroundChat(t *testing.T) {
 		Messages: []dto.Message{{Role: "user", Content: "hello"}},
 	}
 
-	task, ok := buildCompletedMediaTask(
+	task, artifacts, ok := buildCompletedMediaTask(
 		info,
 		request,
 		[]byte(`{"choices":[{"message":{"content":"hello"}}]}`),
@@ -114,6 +118,7 @@ func TestBuildCompletedMediaTaskSkipsOrdinaryPlaygroundChat(t *testing.T) {
 
 	assert.False(t, ok)
 	assert.Nil(t, task)
+	assert.Nil(t, artifacts)
 }
 
 func TestInspectGeneratedImageResponseRejectsUnsafeResultURL(t *testing.T) {
@@ -125,4 +130,23 @@ func TestInspectGeneratedImageResponseRejectsUnsafeResultURL(t *testing.T) {
 	assert.True(t, hasImage)
 	assert.Empty(t, resultURLs)
 	assert.GreaterOrEqual(t, count, 1)
+}
+
+func TestExtractGeneratedImageArtifactsRejectsNonImageBase64(t *testing.T) {
+	artifacts := extractGeneratedImageArtifacts(
+		[]byte(`{"data":[{"b64_json":"SGVsbG8="}]}`),
+		100,
+	)
+
+	assert.Empty(t, artifacts)
+}
+
+func TestExtractGeneratedImageArtifactsReadsServerSentEvent(t *testing.T) {
+	artifacts := extractGeneratedImageArtifacts(
+		[]byte("data: {\"image_url\":{\"url\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=\"}}\n\ndata: [DONE]\n"),
+		100,
+	)
+
+	require.Len(t, artifacts, 1)
+	assert.Equal(t, "image/png", artifacts[0].ContentType)
 }

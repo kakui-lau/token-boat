@@ -360,6 +360,7 @@ func SetApiRouter(router *gin.Engine) {
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
+			taskRoute.GET("/self/:task_id/artifacts/:position", middleware.UserAuth(), controller.GetUserTaskArtifact)
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
 			taskRoute.POST("/:task_id/fail-and-refund", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ManuallyFailAndRefundTask)
 		}

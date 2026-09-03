@@ -121,6 +121,23 @@ export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
                   </Alert>
                 ) : null}
 
+                {task.type === "image" && task.resultUrl ? (
+                  <section aria-labelledby="task-result-heading">
+                    <h3 className="mb-2 font-medium" id="task-result-heading">
+                      {t("Generated result")}
+                    </h3>
+                    <a href={task.resultUrl} rel="noreferrer" target="_blank">
+                      <img
+                        alt={task.prompt || t("Generated result")}
+                        className="max-h-[32rem] w-full rounded-xl border bg-muted/30 object-contain"
+                        decoding="async"
+                        loading="lazy"
+                        src={task.resultUrl}
+                      />
+                    </a>
+                  </section>
+                ) : null}
+
                 <section aria-labelledby="task-observation-heading">
                   <h3 className="mb-2 font-medium" id="task-observation-heading">
                     {t("Task information")}

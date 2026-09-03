@@ -1,5 +1,5 @@
 import type { TaskRecord, TaskStatus, TaskType } from "@/data/contracts";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 
 export type TaskTypeFilter = "all" | TaskType;
 
@@ -40,7 +40,12 @@ export function taskStatusLabel(status: "all" | TaskStatus): string {
 }
 
 export function taskCostLabel(task: TaskRecord, locale: string): string {
-  return formatCurrency(task.cost, locale, "USD");
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  }).format(task.cost);
 }
 
 export function taskDurationSeconds(task: TaskRecord): number | null {

@@ -118,6 +118,22 @@ describe("TasksPage", () => {
     expect(dialog).toHaveTextContent("Billing unit");
     expect(dialog).toHaveTextContent("https://cdn.example.com/image-failed.png");
     expect(dialog).toHaveTextContent("Unsupported aspect ratio");
+    expect(screen.getByRole("img", { name: "Failed image prompt" })).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/image-failed.png",
+    );
+  });
+
+  test("shows task charges with four decimal places in cards and details", async () => {
+    const task = taskFixture("image-cost", "image", "Precisely billed image");
+    task.cost = 0.049572;
+    configureTaskRepository([task]);
+
+    renderTasksPage();
+
+    expect(await screen.findByText("$0.0496")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View details" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("$0.0496");
   });
 
   test("restores a shared task detail and clears the URL selection when closed", async () => {

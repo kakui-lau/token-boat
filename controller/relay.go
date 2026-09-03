@@ -129,6 +129,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	var mediaResponse *mediaTaskResponseWriter
+	if shouldCaptureMediaTaskResponse(relayInfo) {
+		mediaResponse = newMediaTaskResponseWriter(c.Writer)
+		c.Writer = mediaResponse
+	}
+
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
@@ -337,6 +343,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	retryLimit := relayRetryLimit(relayInfo)
 
 	for ; retryParam.GetRetry() <= retryLimit; retryParam.IncreaseRetry() {
+		if mediaResponse != nil {
+			mediaResponse.Reset()
+		}
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -378,6 +387,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				)
 			}
 			relayInfo.LastError = nil
+			if mediaResponse != nil {
+				persistCompletedMediaTask(c, relayInfo, request, mediaResponse.Bytes())
+			}
 			return
 		}
 

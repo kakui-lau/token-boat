@@ -118,6 +118,7 @@ type RelayInfo struct {
 	SendResponseCount      int
 	ReceivedResponseCount  int
 	FinalPreConsumedQuota  int // 最终预消耗的配额
+	FinalConsumedQuota     int // 结算后实际扣除的配额
 	SettlementStatus       string
 	SettlementError        string
 	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，

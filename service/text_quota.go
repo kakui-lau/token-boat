@@ -359,16 +359,20 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
+		relayInfo.FinalConsumedQuota = relayInfo.FinalPreConsumedQuota
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 		pricingruntime.MarkRequestPricingPendingWithReason(
 			relayInfo.RequestId, "billing_settlement_failed", err.Error(),
 		)
-	} else if err := pricingruntime.SettleRequestPricingSnapshot(
-		relayInfo,
-		billingUsage,
-		summary.Quota,
-	); err != nil {
-		logger.LogError(ctx, "error settling pricing snapshot: "+err.Error())
+	} else {
+		relayInfo.FinalConsumedQuota = summary.Quota
+		if err := pricingruntime.SettleRequestPricingSnapshot(
+			relayInfo,
+			billingUsage,
+			summary.Quota,
+		); err != nil {
+			logger.LogError(ctx, "error settling pricing snapshot: "+err.Error())
+		}
 	}
 
 	logModel := summary.ModelName

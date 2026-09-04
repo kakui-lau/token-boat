@@ -136,6 +136,19 @@ describe("TasksPage", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("$0.0496");
   });
 
+  test("previews a completed video from its authenticated result URL", async () => {
+    const task = taskFixture("video-result", "video", "Preview this video");
+    task.resultUrl = "/v1/videos/video-result/content?index=0";
+    configureTaskRepository([task]);
+
+    renderTasksPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "View details" }));
+    const preview = screen.getByLabelText("Preview this video");
+    expect(preview).toBeInstanceOf(HTMLVideoElement);
+    expect(preview).toHaveAttribute("src", "/v1/videos/video-result/content?index=0");
+  });
+
   test("restores a shared task detail and clears the URL selection when closed", async () => {
     configureTaskRepository([taskFixture("video-shared", "video", "Shared video task")]);
     const onSearchChange = vi.fn();

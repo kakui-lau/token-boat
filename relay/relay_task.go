@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -535,7 +536,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
+	isOpenAIVideoAPI := c.Request != nil && c.Request.URL != nil &&
+		strings.HasPrefix(c.Request.URL.Path, "/v1/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
@@ -545,7 +547,22 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 
 	// /v1/videos always uses the provider-independent OpenRouter public schema.
 	if isOpenAIVideoAPI {
-		respBody, err = common.Marshal(buildOpenRouterVideoResponse(originTask))
+		response := buildOpenRouterVideoResponse(originTask)
+		if c.GetBool("playground_request") && response.Status == dto.OpenRouterVideoStatusCompleted {
+			resultCount := len(originTask.PrivateData.ResultURLs)
+			if resultCount == 0 {
+				resultCount = 1
+			}
+			response.UnsignedURLs = make([]string, resultCount)
+			for index := range resultCount {
+				response.UnsignedURLs[index] = fmt.Sprintf(
+					"/v1/videos/%s/content?index=%d",
+					url.PathEscape(originTask.TaskID),
+					index,
+				)
+			}
+		}
+		respBody, err = common.Marshal(response)
 		if err != nil {
 			taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 		}

@@ -1,14 +1,20 @@
 package relay
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestBuildOpenRouterVideoResponseUsesDirectProviderURLs(t *testing.T) {
@@ -45,6 +51,47 @@ func TestBuildOpenRouterVideoResponseFallsBackToContentProxy(t *testing.T) {
 
 	require.Len(t, response.UnsignedURLs, 1)
 	assert.Contains(t, response.UnsignedURLs[0], "/v1/videos/task_public/content?index=0")
+}
+
+func TestPlaygroundVideoFetchUsesPublicSchemaAndAuthenticatedContentURLs(t *testing.T) {
+	previousDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() { model.DB = previousDB })
+	require.NoError(t, db.AutoMigrate(&model.Task{}))
+
+	task := &model.Task{
+		TaskID:   "task_playground_video",
+		UserId:   42,
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAnitix)),
+		Status:   model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{ResultURLs: []string{
+			"https://provider.example/video-1.mp4",
+			"https://provider.example/video-2.mp4",
+		}},
+	}
+	require.NoError(t, task.Insert())
+
+	request := httptest.NewRequest(http.MethodGet, "/pg/videos/task_playground_video", nil)
+	request.URL.Path = "/v1/videos/task_playground_video"
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = request
+	context.Set("id", 42)
+	context.Set("playground_request", true)
+	context.Params = gin.Params{{Key: "task_id", Value: task.TaskID}}
+
+	body, taskErr := videoFetchByIDRespBodyBuilder(context)
+	require.Nil(t, taskErr)
+	var response dto.OpenRouterVideoGenerationResponse
+	require.NoError(t, common.Unmarshal(body, &response))
+	assert.Equal(t, task.TaskID, response.ID)
+	assert.Equal(t, dto.OpenRouterVideoStatusCompleted, response.Status)
+	assert.Equal(t, []string{
+		"/v1/videos/task_playground_video/content?index=0",
+		"/v1/videos/task_playground_video/content?index=1",
+	}, response.UnsignedURLs)
 }
 
 func TestTaskModel2DtoRedactsOpenRouterSupplierData(t *testing.T) {

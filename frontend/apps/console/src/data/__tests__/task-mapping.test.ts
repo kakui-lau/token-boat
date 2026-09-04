@@ -56,6 +56,7 @@ describe("live task mapping", () => {
         progress: "100%",
         submit_time: 1_777_000_000,
         quota: 746_585,
+        result_url: "https://provider.example/expiring-video.mp4",
         properties: { origin_model_name: "byteplus/seedance-2.0-hc" },
       },
       500_000,
@@ -63,6 +64,7 @@ describe("live task mapping", () => {
 
     expect(task.type).toBe("video");
     expect(task.cost).toBe(1.49317);
+    expect(task.resultUrl).toBe("/v1/videos/seedance-61/content?index=0");
   });
 
   test("maps submitted and queued backend states to a visible queued status", () => {

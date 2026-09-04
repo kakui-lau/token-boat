@@ -285,6 +285,50 @@ describe("PlaygroundPage", () => {
     expect(await screen.findByText("Download video")).toBeInTheDocument();
   });
 
+  test("submits a billable media request only once when generate is activated twice", async () => {
+    listPlaygroundModels.mockResolvedValue([
+      {
+        id: "video-model",
+        label: "Video model",
+        group: "default",
+        supportedEndpointTypes: ["openai-video"],
+      },
+    ]);
+    let completeRequest:
+      | ((value: Awaited<ReturnType<typeof createPlaygroundVideo>>) => void)
+      | null = null;
+    createPlaygroundVideo.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          completeRequest = resolve;
+        }),
+    );
+    renderPlayground();
+
+    const prompt = await screen.findByPlaceholderText(
+      "Describe the video scene, motion, and camera direction…",
+    );
+    fireEvent.change(prompt, { target: { value: "One billable request" } });
+    const generateButton = screen.getByRole("button", { name: "Generate" });
+    act(() => {
+      generateButton.click();
+      generateButton.click();
+    });
+
+    expect(createPlaygroundVideo).toHaveBeenCalledTimes(1);
+    act(() => {
+      completeRequest?.({
+        id: "video-task",
+        pollingUrl: "/v1/videos/video-task",
+        status: "completed",
+        unsignedUrls: ["/v1/videos/video-task/content?index=0"],
+        error: null,
+        estimatedCost: 0.4,
+      });
+    });
+    expect(await screen.findByText("Download video")).toBeInTheDocument();
+  });
+
   test("does not mount the Copilot runtime before a local conversation exists", async () => {
     window.localStorage.clear();
     renderPlayground();

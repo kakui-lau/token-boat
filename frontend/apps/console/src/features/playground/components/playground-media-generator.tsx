@@ -62,6 +62,7 @@ const videoAspectRatios = ["16:9", "9:16", "1:1"];
 export function PlaygroundMediaGenerator({ group, mode, model }: PlaygroundMediaGeneratorProps) {
   const { t } = useTranslation();
   const abortRef = useRef<AbortController | null>(null);
+  const pendingRef = useRef(false);
   const [prompt, setPrompt] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -89,8 +90,9 @@ export function PlaygroundMediaGenerator({ group, mode, model }: PlaygroundMedia
 
   const generate = async () => {
     const normalizedPrompt = prompt.trim();
-    if (!normalizedPrompt || pending) return;
+    if (!normalizedPrompt || pendingRef.current) return;
 
+    pendingRef.current = true;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -152,6 +154,7 @@ export function PlaygroundMediaGenerator({ group, mode, model }: PlaygroundMedia
     } finally {
       if (abortRef.current === controller) {
         abortRef.current = null;
+        pendingRef.current = false;
         setPending(false);
       }
     }

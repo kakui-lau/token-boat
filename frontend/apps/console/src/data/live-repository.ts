@@ -499,10 +499,17 @@ export function mapLiveTaskRecord(value: unknown, quotaPerUnit: number): TaskRec
     readOptionalNumber(record, "submit_time") ??
     requireNumber(record, "created_at", "task.created_at");
   const updatedAt = readOptionalNumber(record, "updated_at");
+  const id = rawId || String(numericId);
+  const type = inferTaskType(platform, action, model);
+  const upstreamResultUrl = readString(record, "result_url") || null;
+  const resultUrl =
+    type === "video" && status === "succeeded" && upstreamResultUrl
+      ? `/v1/videos/${encodeURIComponent(id)}/content?index=0`
+      : upstreamResultUrl;
 
   return {
-    id: rawId || String(numericId),
-    type: inferTaskType(platform, action, model),
+    id,
+    type,
     model,
     prompt,
     platform,
@@ -514,7 +521,7 @@ export function mapLiveTaskRecord(value: unknown, quotaPerUnit: number): TaskRec
     updatedAt,
     completedAt: completedAt > 0 ? completedAt : null,
     failureReason,
-    resultUrl: readString(record, "result_url") || null,
+    resultUrl,
     cost: quotaUnitsToUsd(requireNumber(record, "quota", "task.quota"), quotaPerUnit),
     costUnit: "usd",
     metadata: {

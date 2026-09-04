@@ -2,7 +2,6 @@ package controller
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -57,7 +56,7 @@ func playgroundRelay(c *gin.Context, relayFormat types.RelayFormat, tokenName st
 
 	playgroundToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("%s-%s", tokenName, relayInfo.UsingGroup),
+		Name:   tokenName,
 		Group:  relayInfo.UsingGroup,
 	}
 	if selectedToken, ok := c.Get("playground_api_key"); ok {

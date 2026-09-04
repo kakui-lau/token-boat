@@ -138,6 +138,24 @@ export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
                   </section>
                 ) : null}
 
+                {task.type === "video" && task.resultUrl ? (
+                  <section aria-labelledby="task-result-heading">
+                    <h3 className="mb-2 font-medium" id="task-result-heading">
+                      {t("Generated result")}
+                    </h3>
+                    <video
+                      aria-label={task.prompt || t("Generated result")}
+                      className="aspect-video w-full rounded-xl border bg-black object-contain"
+                      controls
+                      playsInline
+                      preload="metadata"
+                      src={task.resultUrl}
+                    >
+                      {t("Your browser does not support video playback.")}
+                    </video>
+                  </section>
+                ) : null}
+
                 <section aria-labelledby="task-observation-heading">
                   <h3 className="mb-2 font-medium" id="task-observation-heading">
                     {t("Task information")}

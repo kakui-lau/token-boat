@@ -119,6 +119,12 @@ func createTaskError(err error, code string, statusCode int, localError bool) *d
 
 func storeTaskRequest(c *gin.Context, info *RelayInfo, action string, requestObj TaskSubmitReq) {
 	info.Action = action
+	prompt := strings.TrimSpace(requestObj.Prompt)
+	promptRunes := []rune(prompt)
+	if len(promptRunes) > 4000 {
+		prompt = string(promptRunes[:4000])
+	}
+	info.TaskInput = prompt
 	c.Set("task_request", requestObj)
 }
 func GetTaskRequest(c *gin.Context) (TaskSubmitReq, error) {

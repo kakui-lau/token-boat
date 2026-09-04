@@ -12,6 +12,7 @@ func TestInitTaskCopiesAdminUpstreamRequestIntoPrivateData(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		ChannelMeta: &relaycommon.ChannelMeta{},
 		TaskRelayInfo: &relaycommon.TaskRelayInfo{
+			TaskInput: "A paper boat crossing a moonlit lake",
 			AdminUpstreamRequest: &relaycommon.TaskUpstreamRequestSnapshot{
 				Method: "POST",
 				URL:    "https://provider.example/v1/tasks",
@@ -27,4 +28,5 @@ func TestInitTaskCopiesAdminUpstreamRequestIntoPrivateData(t *testing.T) {
 	assert.Equal(t, "https://provider.example/v1/tasks", task.PrivateData.AdminUpstreamRequest.URL)
 	assert.Equal(t, `{"model":"video"}`, task.PrivateData.AdminUpstreamRequest.Body)
 	assert.Empty(t, task.PrivateData.AdminUpstreamRequest.Failure)
+	assert.Equal(t, "A paper boat crossing a moonlit lake", task.Properties.Input)
 }

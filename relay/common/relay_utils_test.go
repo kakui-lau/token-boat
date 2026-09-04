@@ -119,6 +119,7 @@ func TestValidateBasicTaskRequestPreservesMultipartVideoBillingFields(t *testing
 	assert.True(t, *request.GenerateAudio)
 	require.NotNil(t, request.Seed)
 	assert.Equal(t, 7, *request.Seed)
+	assert.Equal(t, "animate", info.TaskInput)
 	assert.NotContains(t, request.Metadata, "resolution")
 	assert.NotContains(t, request.Metadata, "seconds")
 }

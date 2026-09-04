@@ -191,6 +191,22 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 
 func taskToDto(task *model.Task, includeAdminFields bool) *dto.TaskDto {
 	result := relay.TaskModel2Dto(task)
+	properties := task.Properties
+	if strings.TrimSpace(properties.Input) == "" && task.PrivateData.AdminUpstreamRequest != nil {
+		var request struct {
+			Prompt string `json:"prompt"`
+		}
+		if err := common.Unmarshal([]byte(task.PrivateData.AdminUpstreamRequest.Body), &request); err == nil {
+			properties.Input = strings.TrimSpace(request.Prompt)
+			result.Properties = properties
+		}
+	}
+	if result.Quota == 0 &&
+		task.RefundStatus != model.TaskRefundStatusCompleted &&
+		task.SettlementStatus == model.TaskSettlementStatusCompleted &&
+		task.SettlementTargetQuota > 0 {
+		result.Quota = task.SettlementTargetQuota
+	}
 	if includeAdminFields {
 		result.AdminUpstreamRequest = task.PrivateData.AdminUpstreamRequest
 		result.AdminBilling = &dto.TaskAdminBilling{

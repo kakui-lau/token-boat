@@ -43,6 +43,44 @@ func TestTaskToDtoOnlyExposesAdminDetailsToAdministrators(t *testing.T) {
 	assert.Equal(t, task.BillingAuditError, adminDTO.AdminBilling.BillingAuditError)
 }
 
+func TestTaskToDtoRecoversLegacyPromptAndSettledCharge(t *testing.T) {
+	task := &model.Task{
+		Quota:                 0,
+		SettlementStatus:      model.TaskSettlementStatusCompleted,
+		SettlementTargetQuota: 24_786,
+		Properties: model.Properties{
+			OriginModelName: "byteplus/seedance-2.0-fast-hc",
+		},
+		PrivateData: model.TaskPrivateData{
+			AdminUpstreamRequest: &model.TaskUpstreamRequest{
+				Body: `{"model_name":"dreamina-seedance-2-0-fast-hc","prompt":"A paper boat crossing a moonlit lake"}`,
+			},
+		},
+	}
+
+	result := taskToDto(task, false)
+
+	properties, ok := result.Properties.(model.Properties)
+	require.True(t, ok)
+	assert.Equal(t, "A paper boat crossing a moonlit lake", properties.Input)
+	assert.Equal(t, 24_786, result.Quota)
+	assert.Nil(t, result.AdminUpstreamRequest)
+}
+
+func TestTaskToDtoDoesNotRestoreARefundedCharge(t *testing.T) {
+	task := &model.Task{
+		Quota:                 0,
+		RefundStatus:          model.TaskRefundStatusCompleted,
+		RefundQuota:           24_786,
+		SettlementStatus:      model.TaskSettlementStatusCompleted,
+		SettlementTargetQuota: 24_786,
+	}
+
+	result := taskToDto(task, false)
+
+	assert.Zero(t, result.Quota)
+}
+
 func TestGetUserTaskArtifactReturnsOnlyOwnedImage(t *testing.T) {
 	previousDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

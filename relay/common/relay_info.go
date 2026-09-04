@@ -838,6 +838,9 @@ type TaskRelayInfo struct {
 	Action       string
 	OriginTaskID string
 	CallbackURL  string
+	// TaskInput is the user-visible prompt retained for the task history UI.
+	// It is separate from the administrator-only upstream request snapshot.
+	TaskInput string
 	// PublicTaskID 是提交时预生成的 task_xxxx 格式公开 ID，
 	// 供 DoResponse 在返回给客户端时使用（避免暴露上游真实 ID）。
 	PublicTaskID string

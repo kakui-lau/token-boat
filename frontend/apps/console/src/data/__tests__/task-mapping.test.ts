@@ -65,6 +65,25 @@ describe("live task mapping", () => {
     expect(task.cost).toBe(1.49317);
   });
 
+  test("maps submitted and queued backend states to a visible queued status", () => {
+    for (const status of ["NOT_START", "SUBMITTED", "QUEUED"]) {
+      const task = mapLiveTaskRecord(
+        {
+          task_id: `seedance-${status}`,
+          platform: "video",
+          status,
+          progress: "0%",
+          submit_time: 1_777_000_000,
+          quota: 24_786,
+          properties: { origin_model_name: "byteplus/seedance-2.0-fast-hc" },
+        },
+        500_000,
+      );
+
+      expect(task.status).toBe("queued");
+    }
+  });
+
   test("keeps cancelled status and failure context instead of treating it as queued", () => {
     const task = mapLiveTaskRecord(
       {

@@ -341,6 +341,7 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 		privateData.CallbackURL = relayInfo.CallbackURL
 		privateData.ClientIP = relayInfo.ClientIP
 		properties.GenerationID = relayInfo.GenerationID
+		properties.Input = relayInfo.TaskInput
 		if relayInfo.TaskRelayInfo != nil && relayInfo.AdminUpstreamRequest != nil {
 			request := relayInfo.AdminUpstreamRequest
 			privateData.AdminUpstreamRequest = &TaskUpstreamRequest{

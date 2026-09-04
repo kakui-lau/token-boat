@@ -401,6 +401,10 @@ function mapPaymentCheckout(response: LegacyPaymentResponse): RechargeCheckout {
 
 function mapTaskStatus(value: string): TaskStatus {
   switch (value.toUpperCase()) {
+    case "NOT_START":
+    case "SUBMITTED":
+    case "QUEUED":
+      return "queued";
     case "SUCCESS":
     case "SUCCEEDED":
     case "COMPLETED":

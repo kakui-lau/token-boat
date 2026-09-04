@@ -214,7 +214,7 @@ export function parseBillingSearch(search: Record<string, unknown>): BillingSear
     page: parsePositiveInteger(search.page),
     pageSize: parsePageSize(search.pageSize),
     q: parseKeyword(search.q),
-    status: parseEnum(search.status, ["all", "completed", "pending", "failed"]),
+    status: parseEnum(search.status, ["all", "completed", "pending", "failed", "expired"]),
     tab,
     type: parseEnum(search.type, ["all", "topup", "subscription"]),
   };

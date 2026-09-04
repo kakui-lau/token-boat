@@ -107,6 +107,38 @@ export function createApiClient(options: ApiClientOptions = {}) {
       }
       return payload;
     },
+    async requestBlob(request: RequestOptions): Promise<Blob> {
+      const headers = new Headers(request.headers);
+      headers.set("Accept", "*/*");
+      headers.set("Cache-Control", "no-store");
+      if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+
+      const response = await fetch(`${options.baseUrl ?? ""}${request.path}`, {
+        method: request.method ?? "GET",
+        cache: "no-store",
+        credentials: "include",
+        headers,
+        signal: request.signal,
+      });
+      if (!response.ok) {
+        let message = `Request failed with status ${response.status}.`;
+        let code: string | undefined;
+        try {
+          const payload = (await response.clone().json()) as Record<string, unknown>;
+          if (typeof payload.message === "string") message = payload.message;
+          if (typeof payload.code === "string") code = payload.code;
+          const error = payload.error;
+          if (error && typeof error === "object") {
+            const errorMessage = (error as Record<string, unknown>).message;
+            if (typeof errorMessage === "string") message = errorMessage;
+          }
+        } catch {
+          // Keep the status-derived message for non-JSON media errors.
+        }
+        throw new ApiClientError(message, response.status, code, responseRequestId(response));
+      }
+      return response.blob();
+    },
   };
 }
 

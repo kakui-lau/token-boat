@@ -1445,6 +1445,8 @@
   "Unable to load setup progress": "无法加载设置进度",
   "Unable to load sign-in methods. Refresh the page and try again.": "无法加载登录方式，请刷新页面后重试。",
   "Unable to load sign-in methods. Try again to continue.": "无法加载登录方式，请重试后继续。",
+  "Unable to load video preview": "无法加载视频预览",
+  "The generated video could not be loaded. Try again.": "无法加载生成的视频，请重试。",
   "Unable to load subscription plans": "无法加载订阅套餐",
   "Unable to load tasks": "无法加载任务",
   "Unable to load team members": "无法加载团队成员",

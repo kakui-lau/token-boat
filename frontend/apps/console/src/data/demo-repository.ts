@@ -1537,6 +1537,11 @@ export const demoRepository: ConsoleRepository = {
       audio: filtered.filter((item) => item.type === "audio").length,
     };
   },
+  async getTaskResult(taskId: string) {
+    const task = tasks.find((item) => item.id === taskId && item.type === "video");
+    if (!task?.resultUrl) throw new Error("Task result not found.");
+    return new Blob([], { type: "video/mp4" });
+  },
   async getBilling() {
     return buildBilling();
   },

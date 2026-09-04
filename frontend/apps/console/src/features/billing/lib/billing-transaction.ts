@@ -10,6 +10,7 @@ export function billingTransactionTypeLabel(type: BillingTransaction["type"]): s
 export function billingTransactionStatusLabel(status: BillingTransaction["status"]): string {
   if (status === "completed") return "Completed";
   if (status === "failed") return "Failed";
+  if (status === "expired") return "Expired";
   return "Pending";
 }
 
@@ -17,6 +18,6 @@ export function billingTransactionStatusVariant(
   status: BillingTransaction["status"],
 ): "destructive" | "outline" | "secondary" {
   if (status === "completed") return "secondary";
-  if (status === "failed") return "destructive";
+  if (status === "failed" || status === "expired") return "destructive";
   return "outline";
 }

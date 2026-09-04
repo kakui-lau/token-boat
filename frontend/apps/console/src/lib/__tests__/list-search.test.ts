@@ -230,6 +230,7 @@ describe("list search parameters", () => {
       detail: "payment-order-42",
       ledgerDetail: undefined,
     });
+    expect(parseBillingSearch({ status: "expired" })).toMatchObject({ status: "expired" });
     expect(
       parseBillingSearch({
         detail: "order-hidden-on-plans",

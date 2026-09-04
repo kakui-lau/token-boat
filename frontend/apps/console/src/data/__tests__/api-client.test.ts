@@ -42,6 +42,31 @@ describe("api client", () => {
     });
   });
 
+  test("downloads authenticated media without exposing the bearer token in the URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Blob(["video-bytes"], { type: "video/mp4" }), {
+        status: 200,
+        headers: { "Content-Type": "video/mp4" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient({ baseUrl: "https://api.example.com" });
+    client.setAccessToken("media-token");
+
+    const result = await client.requestBlob({ path: "/v1/videos/task-1/content?index=0" });
+
+    expect(result.type).toBe("video/mp4");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/v1/videos/task-1/content?index=0",
+      expect.objectContaining({
+        credentials: "include",
+        headers: expect.any(Headers),
+      }),
+    );
+    const options = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(options.headers).get("Authorization")).toBe("Bearer media-token");
+  });
+
   test("preserves the real service request ID on API failures", async () => {
     vi.stubGlobal(
       "fetch",

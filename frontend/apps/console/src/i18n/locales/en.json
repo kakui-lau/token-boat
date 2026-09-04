@@ -1445,6 +1445,8 @@
   "Unable to load setup progress": "Unable to load setup progress",
   "Unable to load sign-in methods. Refresh the page and try again.": "Unable to load sign-in methods. Refresh the page and try again.",
   "Unable to load sign-in methods. Try again to continue.": "Unable to load sign-in methods. Try again to continue.",
+  "Unable to load video preview": "Unable to load video preview",
+  "The generated video could not be loaded. Try again.": "The generated video could not be loaded. Try again.",
   "Unable to load subscription plans": "Unable to load subscription plans",
   "Unable to load tasks": "Unable to load tasks",
   "Unable to load team members": "Unable to load team members",

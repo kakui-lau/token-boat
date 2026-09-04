@@ -6,13 +6,14 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { TaskListInput, TaskRecord, TaskType } from "@/data/contracts";
 import { TasksPage } from "../pages/tasks-page";
 
-const { getTasksPage, getTaskTypeCounts } = vi.hoisted(() => ({
+const { getTaskResult, getTasksPage, getTaskTypeCounts } = vi.hoisted(() => ({
+  getTaskResult: vi.fn(),
   getTasksPage: vi.fn(),
   getTaskTypeCounts: vi.fn(),
 }));
 
 vi.mock("@/data/repository", () => ({
-  repository: { getTasksPage, getTaskTypeCounts },
+  repository: { getTaskResult, getTasksPage, getTaskTypeCounts },
 }));
 
 vi.mock("@/components/date-range-picker", () => ({
@@ -33,8 +34,12 @@ vi.mock("react-i18next", () => ({
 }));
 
 beforeEach(() => {
+  getTaskResult.mockReset();
+  getTaskResult.mockResolvedValue(new Blob(["video"], { type: "video/mp4" }));
   getTasksPage.mockReset();
   getTaskTypeCounts.mockReset();
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:authenticated-video");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 });
 
 describe("TasksPage", () => {
@@ -144,9 +149,10 @@ describe("TasksPage", () => {
     renderTasksPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "View details" }));
-    const preview = screen.getByLabelText("Preview this video");
+    const preview = await screen.findByLabelText("Preview this video");
     expect(preview).toBeInstanceOf(HTMLVideoElement);
-    expect(preview).toHaveAttribute("src", "/v1/videos/video-result/content?index=0");
+    expect(preview).toHaveAttribute("src", "blob:authenticated-video");
+    expect(getTaskResult).toHaveBeenCalledWith("video-result", expect.any(AbortSignal));
   });
 
   test("restores a shared task detail and clears the URL selection when closed", async () => {

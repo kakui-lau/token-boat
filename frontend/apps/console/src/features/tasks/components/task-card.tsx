@@ -122,7 +122,12 @@ export function TaskCard(props: TaskCardProps) {
         <Button onClick={props.onOpenDetails} size="sm" variant="ghost">
           {t("View details")}
         </Button>
-        {props.task.resultUrl && (
+        {props.task.resultUrl && props.task.type === "video" ? (
+          <Button onClick={props.onOpenDetails} size="sm" variant="outline">
+            {t("View result")}
+            <ExternalLinkIcon data-icon="inline-end" />
+          </Button>
+        ) : props.task.resultUrl ? (
           <Button
             nativeButton={false}
             render={<a href={props.task.resultUrl} rel="noreferrer" target="_blank" />}
@@ -132,7 +137,7 @@ export function TaskCard(props: TaskCardProps) {
             {t("View result")}
             <ExternalLinkIcon data-icon="inline-end" />
           </Button>
-        )}
+        ) : null}
       </CardFooter>
     </Card>
   );

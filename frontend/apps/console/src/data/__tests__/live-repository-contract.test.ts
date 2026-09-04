@@ -1827,6 +1827,46 @@ describe("live repository contracts", () => {
     ).resolves.toEqual({ items: [], page: 2, pageSize: 50, total: 61 });
   });
 
+  test("keeps expired payment orders readable in billing history", async () => {
+    server.use(
+      http.get("*/api/user/topup/self", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            page: 1,
+            page_size: 20,
+            total: 1,
+            items: [
+              {
+                trade_no: "expired-order-1",
+                order_type: "wallet",
+                money: 10,
+                status: "expired",
+                create_time: 1_756_944_000,
+                payment_method: "stripe",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    const result = await liveRepository.getBillingTransactionsPage({
+      keyword: "",
+      order: "desc",
+      page: 1,
+      pageSize: 20,
+      range,
+      status: "all",
+      type: "all",
+    });
+
+    expect(result).toMatchObject({
+      items: [{ id: "expired-order-1", status: "expired" }],
+      total: 1,
+    });
+  });
+
   test("creates an API key and exposes the full secret once with its client prefix", async () => {
     server.use(
       http.post("*/api/token/", async ({ request }) => {
@@ -2779,6 +2819,24 @@ describe("live repository contracts", () => {
         orderId: "ref_payment_1",
       }),
     ).resolves.toBe("completed");
+  });
+
+  test("reports an expired returned top-up as failed", async () => {
+    server.use(
+      http.get("*/api/user/topup/self", () =>
+        HttpResponse.json({
+          success: true,
+          data: { items: [{ trade_no: "ref_payment_expired", status: "expired" }] },
+        }),
+      ),
+    );
+
+    await expect(
+      liveRepository.getPaymentConfirmation({
+        kind: "topup",
+        orderId: "ref_payment_expired",
+      }),
+    ).resolves.toBe("failed");
   });
 
   test("rejects an unknown payment state instead of reporting a failed order", async () => {

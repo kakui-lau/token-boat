@@ -690,7 +690,7 @@ export type BillingTransaction = {
   id: string;
   type: "topup" | "redeem" | "usage" | "subscription";
   amount: number;
-  status: "completed" | "pending" | "failed";
+  status: "completed" | "pending" | "failed" | "expired";
   createdAt: number;
   description: string | null;
 };
@@ -976,6 +976,7 @@ export type ConsoleRepository = {
   getTaskTypeCounts(
     input: Omit<TaskListInput, "page" | "pageSize" | "type">,
   ): Promise<TaskTypeCounts>;
+  getTaskResult(taskId: string, signal?: AbortSignal): Promise<Blob>;
   getBilling(): Promise<BillingData>;
   getBillingTransactionsPage(
     input: BillingTransactionListInput,

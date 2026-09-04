@@ -1636,7 +1636,7 @@ async function getPaymentConfirmation(
   const status = readString(order, "status");
   if (status === "success") return "completed";
   if (status === "pending") return "pending";
-  if (status === "failed") return "failed";
+  if (status === "failed" || status === "expired") return "failed";
   throw new LiveDataContractError("billing_transaction.status");
 }
 
@@ -1808,6 +1808,7 @@ function mapBillingTransaction(value: unknown): BillingTransaction {
   if (statusValue === "success") status = "completed";
   else if (statusValue === "pending") status = "pending";
   else if (statusValue === "failed") status = "failed";
+  else if (statusValue === "expired") status = "expired";
   else throw new LiveDataContractError("billing_transaction.status");
   const orderType = requireString(record, "order_type", "billing_transaction.order_type");
   if (orderType !== "wallet" && orderType !== "subscription") {
@@ -2236,7 +2237,9 @@ async function getBillingTransactionsPage(
   if (input.status !== "all") {
     search.set(
       "status",
-      { completed: "success", failed: "failed", pending: "pending" }[input.status],
+      { completed: "success", expired: "expired", failed: "failed", pending: "pending" }[
+        input.status
+      ],
     );
   }
   if (input.type !== "all") {
@@ -2638,6 +2641,13 @@ export const liveRepository: ConsoleRepository = {
   },
   getTasksPage,
   getTaskTypeCounts,
+  async getTaskResult(taskId: string, signal?: AbortSignal): Promise<Blob> {
+    if (!taskId.trim()) throw new LiveDataContractError("task.task_id");
+    return client.requestBlob({
+      path: `/v1/videos/${encodeURIComponent(taskId)}/content?index=0`,
+      signal,
+    });
+  },
   getBilling: getBillingData,
   getBillingTransactionsPage,
   async redeemCode(code: string) {

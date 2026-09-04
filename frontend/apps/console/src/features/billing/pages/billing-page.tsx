@@ -502,6 +502,7 @@ export function BillingPage(props: BillingPageProps) {
                       <SelectItem value="completed">{t("Completed")}</SelectItem>
                       <SelectItem value="pending">{t("Pending")}</SelectItem>
                       <SelectItem value="failed">{t("Failed")}</SelectItem>
+                      <SelectItem value="expired">{t("Expired")}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -718,5 +719,6 @@ function transactionStatusLabel(status: BillingTransactionListInput["status"]): 
   if (status === "completed") return "Completed";
   if (status === "pending") return "Pending";
   if (status === "failed") return "Failed";
+  if (status === "expired") return "Expired";
   return "All statuses";
 }

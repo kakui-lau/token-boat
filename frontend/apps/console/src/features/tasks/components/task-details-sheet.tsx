@@ -1,4 +1,6 @@
-import { AlertCircleIcon, CopyIcon, ExternalLinkIcon, XIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertCircleIcon, CopyIcon, ExternalLinkIcon, LoaderCircleIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -25,6 +27,7 @@ import {
   SheetTitle,
 } from "@token-boat/ui/components/ui/sheet";
 import type { TaskRecord } from "@/data/contracts";
+import { repository } from "@/data/repository";
 import { copyText } from "@/lib/clipboard";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -45,6 +48,22 @@ type TaskDetailsSheetProps = {
 export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
   const { t } = useTranslation();
   const task = props.task;
+  const videoResultQuery = useQuery({
+    queryKey: ["task-result", task?.id],
+    queryFn: ({ signal }) => repository.getTaskResult(task!.id, signal),
+    enabled: task?.type === "video" && Boolean(task.resultUrl),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!videoResultQuery.data) {
+      setVideoObjectUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(videoResultQuery.data);
+    setVideoObjectUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [videoResultQuery.data]);
   const metadata = task ? taskMetadataEntries(task, props.locale) : [];
   const copyTaskId = () => {
     if (!task) return;
@@ -143,16 +162,41 @@ export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
                     <h3 className="mb-2 font-medium" id="task-result-heading">
                       {t("Generated result")}
                     </h3>
-                    <video
-                      aria-label={task.prompt || t("Generated result")}
-                      className="aspect-video w-full rounded-xl border bg-black object-contain"
-                      controls
-                      playsInline
-                      preload="metadata"
-                      src={task.resultUrl}
-                    >
-                      {t("Your browser does not support video playback.")}
-                    </video>
+                    {videoResultQuery.isPending ? (
+                      <div className="flex aspect-video items-center justify-center rounded-xl border bg-black text-white">
+                        <LoaderCircleIcon
+                          aria-label={t("Loading")}
+                          className="size-6 animate-spin"
+                        />
+                      </div>
+                    ) : videoResultQuery.isError ? (
+                      <Alert variant="destructive">
+                        <AlertCircleIcon />
+                        <AlertTitle>{t("Unable to load video preview")}</AlertTitle>
+                        <AlertDescription>
+                          {t("The generated video could not be loaded. Try again.")}
+                        </AlertDescription>
+                        <Button
+                          className="mt-3"
+                          onClick={() => void videoResultQuery.refetch()}
+                          size="sm"
+                          variant="outline"
+                        >
+                          {t("Try again")}
+                        </Button>
+                      </Alert>
+                    ) : videoObjectUrl ? (
+                      <video
+                        aria-label={task.prompt || t("Generated result")}
+                        className="aspect-video w-full rounded-xl border bg-black object-contain"
+                        controls
+                        playsInline
+                        preload="metadata"
+                        src={videoObjectUrl}
+                      >
+                        {t("Your browser does not support video playback.")}
+                      </video>
+                    ) : null}
                   </section>
                 ) : null}
 
@@ -234,12 +278,20 @@ export function TaskDetailsSheet(props: TaskDetailsSheetProps) {
                 <CopyIcon data-icon="inline-start" />
                 {t("Copy task ID")}
               </Button>
-              {task.resultUrl ? (
+              {task.resultUrl && task.type !== "video" ? (
                 <Button
                   nativeButton={false}
                   render={<a href={task.resultUrl} rel="noreferrer" target="_blank" />}
                 >
                   {t("Open result")}
+                  <ExternalLinkIcon data-icon="inline-end" />
+                </Button>
+              ) : videoObjectUrl ? (
+                <Button
+                  nativeButton={false}
+                  render={<a download={`${task.id}.mp4`} href={videoObjectUrl} />}
+                >
+                  {t("Download video")}
                   <ExternalLinkIcon data-icon="inline-end" />
                 </Button>
               ) : null}

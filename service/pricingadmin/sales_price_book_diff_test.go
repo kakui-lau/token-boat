@@ -71,6 +71,39 @@ func TestSalesPriceBookChannelMarginsIdentifyOverriddenPolicyFields(t *testing.T
 	assert.Equal(t, "0.04", margins[0].TargetNetMargin)
 }
 
+func TestSalesPriceBookChannelMarginsIdentifyChannelThatSetsUnifiedPrice(t *testing.T) {
+	version := model.SalesPriceBookVersion{
+		CostBasisStrategy: "max_eligible_cost",
+		PaymentFeeRate:    "0.04", DistributionFeeRate: "0.05", OperationsLaborRate: "0.02",
+		EffectiveTaxRate: "0.165", TargetNetMargin: "0.03", MinimumMarginRate: "0.02",
+	}
+	item := SalesPriceBookItemListItem{SalesPriceBookItem: model.SalesPriceBookItem{
+		BillingMode:      "token",
+		SalesBillingExpr: `v2:p * 0.78447731893711 / 1000000`,
+	}}
+	margins, err := salesPriceBookChannelMargins(
+		item,
+		version,
+		[]salesPriceBookDiffBasisSource{
+			{
+				ChannelModelId: 1, ChannelName: "higher-cost", PurchasePriceVersionId: 11,
+				BillingMode: "token", PurchaseBillingExpr: `v2:p * 0.67 / 1000000`,
+				SourceRole: "cost_basis",
+			},
+			{
+				ChannelModelId: 2, ChannelName: "lower-cost", PurchasePriceVersionId: 12,
+				BillingMode: "token", PurchaseBillingExpr: `v2:p * 0.65 / 1000000`,
+				SourceRole: "cost_basis",
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, margins, 2)
+	assert.Equal(t, "sets_price", margins[0].PriceBasisRole)
+	assert.Equal(t, "margin_check", margins[1].PriceBasisRole)
+}
+
 func TestLowestSalesPriceBookChannelMarginUsesEffectiveChannelMargins(t *testing.T) {
 	margins := []SalesPriceBookChannelMargin{
 		{ChannelName: "default", MarginRate: "-0.0117"},

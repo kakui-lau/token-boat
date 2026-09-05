@@ -292,10 +292,14 @@ test('shows an above-official warning without changing the enabled status', () =
 })
 
 test('expands a logical model to show each channel cost and margin', () => {
+  const item = {
+    ...modelPrice(),
+    purchase_discount: '0.8',
+  }
   render(
     <ModelPriceTable
       version={version(1, 1, 'active')}
-      items={[modelPrice()]}
+      items={[item]}
       isLoading={false}
       canExport={false}
       isExporting={false}
@@ -323,7 +327,7 @@ test('expands a logical model to show each channel cost and margin', () => {
   })
   expect(expandButton).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('Primary Channel')).toBeInTheDocument()
-  expect(screen.getByText('Backup Channel')).toBeInTheDocument()
+  expect(within(channelDetails).getAllByText('Backup Channel')).toHaveLength(2)
   expect(within(channelDetails).getByText('Sales discount')).toBeInTheDocument()
   expect(
     within(channelDetails).getByText('8.194/10 (81.9398% of official price)')
@@ -334,6 +338,14 @@ test('expands a logical model to show each channel cost and margin', () => {
   expect(
     screen.getByText('Price using the highest eligible channel cost')
   ).toBeInTheDocument()
+  expect(screen.getByText('Unified sales price basis')).toBeInTheDocument()
+  expect(
+    screen.getByText('Purchase discount: 8/10 (80% of official price)')
+  ).toBeInTheDocument()
+  expect(screen.getByText('Sample net margin')).toBeInTheDocument()
+  expect(screen.getByText('1.5%')).toBeInTheDocument()
+  expect(screen.getByText('Sets unified sales price')).toBeInTheDocument()
+  expect(screen.getByText('Margin check only')).toBeInTheDocument()
   expect(screen.getByText('Margin allows routing')).toBeInTheDocument()
   expect(screen.getByText('Margin blocks routing')).toBeInTheDocument()
   expect(screen.getByText('Purchase Discount')).toBeInTheDocument()
@@ -343,7 +355,6 @@ test('expands a logical model to show each channel cost and margin', () => {
   expect(screen.getByText('Version default')).toBeInTheDocument()
   expect(screen.queryByText('Sample sales amount')).not.toBeInTheDocument()
   expect(screen.queryByText('Sample purchase amount')).not.toBeInTheDocument()
-  expect(screen.queryByText('Sample net margin')).not.toBeInTheDocument()
 })
 
 test('opens itemized sales price details from an expanded logical model', () => {

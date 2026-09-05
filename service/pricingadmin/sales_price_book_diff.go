@@ -56,6 +56,7 @@ type SalesPriceBookChannelMargin struct {
 	PurchaseDiscount        string   `json:"purchase_discount"`
 	SalesDiscount           string   `json:"sales_discount"`
 	SourceRole              string   `json:"source_role"`
+	PriceBasisRole          string   `json:"price_basis_role"`
 	ReferenceCost           string   `json:"reference_cost"`
 	MarginRate              string   `json:"margin_rate"`
 	MeetsMinimumMargin      bool     `json:"meets_minimum_margin"`
@@ -451,7 +452,86 @@ func salesPriceBookChannelMargins(
 		}
 		margins = append(margins, entry)
 	}
+	populateSalesPriceBasisRoles(margins, sales, version)
 	return margins, nil
+}
+
+func populateSalesPriceBasisRoles(
+	margins []SalesPriceBookChannelMargin,
+	sales decimal.Decimal,
+	version model.SalesPriceBookVersion,
+) {
+	for index := range margins {
+		margins[index].PriceBasisRole = "margin_check"
+		if margins[index].SourceRole == "selected" {
+			margins[index].PriceBasisRole = "sets_price"
+		} else if margins[index].SourceRole == "cost_basis" {
+			margins[index].PriceBasisRole = "contributes"
+		}
+	}
+	if version.CostBasisStrategy == "designated_channel" {
+		return
+	}
+	if version.CostBasisStrategy != "max_eligible_cost" &&
+		version.CostBasisStrategy != "min_eligible_cost" {
+		return
+	}
+
+	type candidate struct {
+		index int
+		price decimal.Decimal
+	}
+	candidates := make([]candidate, 0, len(margins))
+	for index := range margins {
+		if strings.TrimSpace(margins[index].ReferenceCost) == "" {
+			continue
+		}
+		cost, err := decimal.NewFromString(margins[index].ReferenceCost)
+		if err != nil {
+			continue
+		}
+		calculator, err := NewSalesPriceCalculator(
+			margins[index].TotalVariableCostRate,
+			margins[index].EffectiveTaxRate,
+			margins[index].TargetNetMargin,
+		)
+		if err != nil {
+			continue
+		}
+		factor, err := calculator.SellingFactor()
+		if err != nil {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			index: index,
+			price: cost.Mul(factor),
+		})
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	selectedPrice := candidates[0].price
+	for _, value := range candidates[1:] {
+		shouldReplace := value.price.GreaterThan(selectedPrice)
+		if version.CostBasisStrategy == "min_eligible_cost" {
+			shouldReplace = value.price.LessThan(selectedPrice)
+		}
+		if shouldReplace {
+			selectedPrice = value.price
+		}
+	}
+	if sales.Sub(selectedPrice).Abs().GreaterThan(decimal.NewFromFloat(0.0001)) {
+		return
+	}
+	for index := range margins {
+		margins[index].PriceBasisRole = "margin_check"
+	}
+	for _, value := range candidates {
+		if value.price.Equal(selectedPrice) {
+			margins[value.index].PriceBasisRole = "sets_price"
+		}
+	}
 }
 
 func salesPriceBookItemReference(

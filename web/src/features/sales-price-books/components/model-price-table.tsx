@@ -150,6 +150,38 @@ function itemStatusLabel(
   return t('Requires review')
 }
 
+function salesPriceBasisChannels(
+  item: SalesPriceBookItem
+): SalesPriceBookChannelMargin[] {
+  const channelMargins = item.channel_margins ?? []
+  const explicitBasisChannels = channelMargins.filter(
+    (channel) => channel.price_basis_role === 'sets_price'
+  )
+  if (explicitBasisChannels.length > 0) return explicitBasisChannels
+  const designatedChannels = channelMargins.filter(
+    (channel) => channel.source_role === 'selected'
+  )
+  if (designatedChannels.length > 0) return designatedChannels
+
+  const purchaseDiscount = Number(item.purchase_discount)
+  if (Number.isFinite(purchaseDiscount)) {
+    const matchingChannels = channelMargins.filter((channel) => {
+      const channelDiscount = Number(channel.purchase_discount)
+      return (
+        channel.purchase_pricing_mode === 'official_ratio' &&
+        Number.isFinite(channelDiscount) &&
+        Math.abs(channelDiscount - purchaseDiscount) < 1e-12
+      )
+    })
+    if (matchingChannels.length > 0) return matchingChannels
+  }
+
+  const costBasisChannels = channelMargins.filter(
+    (channel) => channel.source_role === 'cost_basis'
+  )
+  return costBasisChannels.length === 1 ? costBasisChannels : []
+}
+
 const channelPolicyFieldLabels: Record<
   SalesPriceBookChannelMarginOverrideField,
   string
@@ -372,6 +404,18 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                   const factor = formatSellingFactor(item.selling_factor)
                   const hasSharedFactor = Number(item.selling_factor) > 0
                   const channelMargins = item.channel_margins ?? []
+                  const basisChannels = salesPriceBasisChannels(item)
+                  const basisChannelIds = new Set(
+                    basisChannels.map((channel) => channel.channel_model_id)
+                  )
+                  const hasComponentBasis =
+                    basisChannels.length === 0 &&
+                    channelMargins.some(
+                      (channel) =>
+                        channel.price_basis_role === 'contributes' ||
+                        (!channel.price_basis_role &&
+                          channel.source_role === 'cost_basis')
+                    )
                   const isExpanded = expandedIds.has(item.id)
                   const detailId = `channel-costs-${item.id}`
                   let costBasisStrategy = props.version.cost_basis_strategy
@@ -655,14 +699,33 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                   )}
                                 </p>
                               </div>
-                              <dl className='grid gap-2 md:max-w-md'>
+                              <dl className='grid gap-2 md:max-w-xl'>
                                 <div className='bg-background rounded-md border p-3'>
                                   <dt className='text-muted-foreground text-xs'>
-                                    {t('Unified sales price strategy')}
+                                    {t('Unified sales price basis')}
                                   </dt>
-                                  <dd className='mt-1 font-medium'>
-                                    {costBasisStrategy || '—'}
+                                  <dd className='mt-1 text-base font-semibold'>
+                                    {basisChannels.length > 0
+                                      ? basisChannels
+                                          .map(
+                                            (channel) => channel.channel_name
+                                          )
+                                          .join(' · ')
+                                      : t('Multiple channel costs')}
                                   </dd>
+                                  {item.purchase_discount ? (
+                                    <p className='text-muted-foreground mt-1 text-xs'>
+                                      {t('Purchase discount: {{discount}}', {
+                                        discount: formatPurchaseDiscount(
+                                          item.purchase_discount,
+                                          t
+                                        ),
+                                      })}
+                                    </p>
+                                  ) : null}
+                                  <p className='text-muted-foreground mt-1 text-xs'>
+                                    {costBasisStrategy || '—'}
+                                  </p>
                                 </div>
                               </dl>
                               <div>
@@ -674,7 +737,7 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                   {t('View sales price details')}
                                 </Button>
                               </div>
-                              <Table className='min-w-[64rem]'>
+                              <Table className='min-w-[72rem]'>
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead>{t('Channel')}</TableHead>
@@ -682,6 +745,9 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                       {t('Purchase Discount')}
                                     </TableHead>
                                     <TableHead>{t('Sales discount')}</TableHead>
+                                    <TableHead>
+                                      {t('Sample net margin')}
+                                    </TableHead>
                                     <TableHead>
                                       {t('Effective parameters')}
                                     </TableHead>
@@ -695,6 +761,36 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                   {channelMargins.map((channel) => {
                                     const overriddenFields =
                                       channel.overridden_fields ?? []
+                                    let costRole = (
+                                      <span className='text-muted-foreground text-xs'>
+                                        {t('Margin check only')}
+                                      </span>
+                                    )
+                                    if (
+                                      basisChannelIds.has(
+                                        channel.channel_model_id
+                                      )
+                                    ) {
+                                      costRole = (
+                                        <Badge variant='secondary'>
+                                          {t('Sets unified sales price')}
+                                        </Badge>
+                                      )
+                                    } else if (
+                                      hasComponentBasis &&
+                                      (channel.price_basis_role ===
+                                        'contributes' ||
+                                        (!channel.price_basis_role &&
+                                          channel.source_role === 'cost_basis'))
+                                    ) {
+                                      costRole = (
+                                        <Badge variant='outline'>
+                                          {t(
+                                            'Contributes to unified sales price'
+                                          )}
+                                        </Badge>
+                                      )
+                                    }
                                     return (
                                       <TableRow
                                         key={`${channel.channel_model_id}-${channel.purchase_price_version_id}`}
@@ -725,6 +821,13 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                             ? formatPurchaseDiscount(
                                                 channel.sales_discount,
                                                 t
+                                              )
+                                            : '—'}
+                                        </TableCell>
+                                        <TableCell className='whitespace-nowrap'>
+                                          {channel.margin_rate
+                                            ? formatMarginRate(
+                                                channel.margin_rate
                                               )
                                             : '—'}
                                         </TableCell>
@@ -817,13 +920,7 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                               : t('Margin blocks routing')}
                                           </Badge>
                                         </TableCell>
-                                        <TableCell>
-                                          {channel.source_role === 'candidate'
-                                            ? t('Comparison only')
-                                            : t(
-                                                'Included in unified sales price basis'
-                                              )}
-                                        </TableCell>
+                                        <TableCell>{costRole}</TableCell>
                                       </TableRow>
                                     )
                                   })}

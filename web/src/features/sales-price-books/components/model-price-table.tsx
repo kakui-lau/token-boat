@@ -744,9 +744,11 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                     <TableHead>
                                       {t('Purchase Discount')}
                                     </TableHead>
-                                    <TableHead>{t('Sales discount')}</TableHead>
                                     <TableHead>
-                                      {t('Sample net margin')}
+                                      {t('Channel calculated sales discount')}
+                                    </TableHead>
+                                    <TableHead>
+                                      {t('Net margin at unified sales price')}
                                     </TableHead>
                                     <TableHead>
                                       {t('Effective parameters')}
@@ -761,6 +763,9 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                   {channelMargins.map((channel) => {
                                     const overriddenFields =
                                       channel.overridden_fields ?? []
+                                    const calculatedSalesDiscount =
+                                      channel.calculated_sales_discount ||
+                                      channel.sales_discount
                                     let costRole = (
                                       <span className='text-muted-foreground text-xs'>
                                         {t('Margin check only')}
@@ -817,9 +822,9 @@ export function ModelPriceTable(props: ModelPriceTableProps) {
                                             : t('Not applicable')}
                                         </TableCell>
                                         <TableCell className='whitespace-nowrap'>
-                                          {channel.sales_discount
+                                          {calculatedSalesDiscount
                                             ? formatPurchaseDiscount(
-                                                channel.sales_discount,
+                                                calculatedSalesDiscount,
                                                 t
                                               )
                                             : '—'}

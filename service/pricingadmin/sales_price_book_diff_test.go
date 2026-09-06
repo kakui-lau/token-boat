@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -88,12 +89,14 @@ func TestSalesPriceBookChannelMarginsIdentifyChannelThatSetsUnifiedPrice(t *test
 			{
 				ChannelModelId: 1, ChannelName: "higher-cost", PurchasePriceVersionId: 11,
 				BillingMode: "token", PurchaseBillingExpr: `v2:p * 0.67 / 1000000`,
-				SourceRole: "cost_basis",
+				OfficialBillingExpr: `v2:p / 1000000`,
+				SourceRole:          "cost_basis",
 			},
 			{
 				ChannelModelId: 2, ChannelName: "lower-cost", PurchasePriceVersionId: 12,
 				BillingMode: "token", PurchaseBillingExpr: `v2:p * 0.65 / 1000000`,
-				SourceRole: "cost_basis",
+				OfficialBillingExpr: `v2:p / 1000000`,
+				SourceRole:          "cost_basis",
 			},
 		},
 	)
@@ -102,6 +105,14 @@ func TestSalesPriceBookChannelMarginsIdentifyChannelThatSetsUnifiedPrice(t *test
 	require.Len(t, margins, 2)
 	assert.Equal(t, "sets_price", margins[0].PriceBasisRole)
 	assert.Equal(t, "margin_check", margins[1].PriceBasisRole)
+	assert.Equal(t, "0.78447731893711", margins[0].SalesDiscount)
+	assert.Equal(t, "0.78447731893711", margins[1].SalesDiscount)
+	higherCalculated, err := decimal.NewFromString(margins[0].CalculatedSalesDiscount)
+	require.NoError(t, err)
+	lowerCalculated, err := decimal.NewFromString(margins[1].CalculatedSalesDiscount)
+	require.NoError(t, err)
+	assert.Equal(t, "0.78448", higherCalculated.Round(5).StringFixed(5))
+	assert.Equal(t, "0.76106", lowerCalculated.Round(5).StringFixed(5))
 }
 
 func TestLowestSalesPriceBookChannelMarginUsesEffectiveChannelMargins(t *testing.T) {

@@ -241,6 +241,7 @@ export type SalesPriceBookChannelMargin = {
   currency?: string
   purchase_discount: string
   sales_discount?: string
+  calculated_sales_discount?: string
   source_role: string
   price_basis_role?: 'sets_price' | 'contributes' | 'margin_check'
   reference_cost: string

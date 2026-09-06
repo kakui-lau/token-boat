@@ -361,7 +361,7 @@ func AdminExportSalesPriceBookChannelModels(c *gin.Context) {
 	_ = writer.Write([]string{
 		"报价组", "报价版本", "模型名称", "渠道名称", "渠道模型ID", "上游模型名称",
 		"模型状态", "渠道状态", "渠道模型状态", "计费模式", "统一售价取价策略", "客户售价规则",
-		"采购定价方式", "采购折扣", "销售折扣", "支付手续费", "分销手续费", "运维人力成本",
+		"采购定价方式", "采购折扣", "渠道测算销售折扣", "统一销售折扣", "支付手续费", "分销手续费", "运维人力成本",
 		"变动成本率", "利得税率", "目标净利率", "最低净利率", "特殊参数覆盖", "最低利润校验",
 		"成本角色", "采购价版本", "币种", "采购价格分项", "销售价格分项", "采购计费表达式", "销售计费表达式",
 	})
@@ -394,7 +394,8 @@ func AdminExportSalesPriceBookChannelModels(c *gin.Context) {
 				formatSalesPriceBookRule(item),
 				formatPurchasePricingModeForCSV(margin.PurchasePricingMode),
 				purchaseDiscount,
-				formatSalesPriceBookDiscount(margin.SalesDiscount),
+				formatSalesPriceBookDiscount(margin.CalculatedSalesDiscount),
+				formatSalesPriceBookDiscount(item.SalesDiscount),
 				formatSalesPriceBookRate(margin.PaymentFeeRate),
 				formatSalesPriceBookRate(margin.DistributionFeeRate),
 				formatSalesPriceBookRate(margin.OperationsLaborRate),

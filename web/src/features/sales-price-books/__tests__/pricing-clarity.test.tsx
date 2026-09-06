@@ -106,6 +106,7 @@ function modelPrice(): SalesPriceBookItem {
         purchase_pricing_mode: 'official_ratio',
         purchase_discount: '0.7',
         sales_discount: '0.819397993311036790',
+        calculated_sales_discount: '0.8123',
         source_role: 'cost_basis',
         reference_cost: '4.2',
         margin_rate: '0.03125',
@@ -127,6 +128,7 @@ function modelPrice(): SalesPriceBookItem {
         purchase_pricing_mode: 'official_ratio',
         purchase_discount: '0.8',
         sales_discount: '0.825',
+        calculated_sales_discount: '0.9366',
         source_role: 'cost_basis',
         reference_cost: '4.8',
         margin_rate: '0.015',
@@ -328,12 +330,14 @@ test('expands a logical model to show each channel cost and margin', () => {
   expect(expandButton).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('Primary Channel')).toBeInTheDocument()
   expect(within(channelDetails).getAllByText('Backup Channel')).toHaveLength(2)
-  expect(within(channelDetails).getByText('Sales discount')).toBeInTheDocument()
   expect(
-    within(channelDetails).getByText('8.194/10 (81.9398% of official price)')
+    within(channelDetails).getByText('Channel calculated sales discount')
   ).toBeInTheDocument()
   expect(
-    within(channelDetails).getByText('8.25/10 (82.5% of official price)')
+    within(channelDetails).getByText('8.123/10 (81.23% of official price)')
+  ).toBeInTheDocument()
+  expect(
+    within(channelDetails).getByText('9.366/10 (93.66% of official price)')
   ).toBeInTheDocument()
   expect(
     screen.getByText('Price using the highest eligible channel cost')
@@ -342,7 +346,9 @@ test('expands a logical model to show each channel cost and margin', () => {
   expect(
     screen.getByText('Purchase discount: 8/10 (80% of official price)')
   ).toBeInTheDocument()
-  expect(screen.getByText('Sample net margin')).toBeInTheDocument()
+  expect(
+    screen.getByText('Net margin at unified sales price')
+  ).toBeInTheDocument()
   expect(screen.getByText('1.5%')).toBeInTheDocument()
   expect(screen.getByText('Sets unified sales price')).toBeInTheDocument()
   expect(screen.getByText('Margin check only')).toBeInTheDocument()

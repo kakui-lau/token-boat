@@ -55,6 +55,7 @@ type SalesPriceBookChannelMargin struct {
 	Currency                string   `json:"currency"`
 	PurchaseDiscount        string   `json:"purchase_discount"`
 	SalesDiscount           string   `json:"sales_discount"`
+	CalculatedSalesDiscount string   `json:"calculated_sales_discount"`
 	SourceRole              string   `json:"source_role"`
 	PriceBasisRole          string   `json:"price_basis_role"`
 	ReferenceCost           string   `json:"reference_cost"`
@@ -447,6 +448,19 @@ func salesPriceBookChannelMargins(
 				officialAmount, officialErr := referenceBillingAmount(source.OfficialBillingExpr, source.BillingMode)
 				if officialErr == nil && officialAmount.IsPositive() {
 					entry.SalesDiscount = sales.Div(officialAmount).String()
+					calculator, calculatorErr := NewSalesPriceCalculator(
+						effective.TotalVariableCostRate,
+						effective.EffectiveTaxRate,
+						effective.TargetNetMargin,
+					)
+					if calculatorErr != nil {
+						return nil, calculatorErr
+					}
+					factor, calculatorErr := calculator.SellingFactor()
+					if calculatorErr != nil {
+						return nil, calculatorErr
+					}
+					entry.CalculatedSalesDiscount = cost.Mul(factor).Div(officialAmount).String()
 				}
 			}
 		}

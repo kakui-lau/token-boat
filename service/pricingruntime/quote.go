@@ -47,6 +47,10 @@ var ErrNoEligiblePriceCandidate = errors.New(
 	"no purchase candidate meets the minimum margin for estimated usage",
 )
 
+var ErrSalesPurchaseContractMismatch = errors.New(
+	"sales price contract does not match any purchase candidate",
+)
+
 func parseMargin(value string) (decimal.Decimal, error) {
 	return parseRate("minimum margin rate", value)
 }
@@ -210,7 +214,7 @@ func quoteCandidateBundles(
 		})
 	}
 	if len(quotes) == 0 {
-		return nil, ErrNoEligiblePriceCandidate
+		return nil, ErrSalesPurchaseContractMismatch
 	}
 	return quotes, nil
 }

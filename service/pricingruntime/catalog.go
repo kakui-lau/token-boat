@@ -31,7 +31,37 @@ type CatalogSnapshot struct {
 	CandidatesByGroupModel     map[string][]int
 	TestCandidatesByGroupModel map[string][]int
 	CompleteByGroupModel       map[string]bool
+	AvailabilityByGroupModel   map[string]PricingAvailability
+	ModelStatusByName          map[string]int
 	OfficialByModelName        map[string]model.OfficialModelPriceVersion
+}
+
+type PricingAvailabilityCode string
+
+const (
+	PricingAvailable                PricingAvailabilityCode = "ready"
+	PricingCatalogUnavailable       PricingAvailabilityCode = "pricing_catalog_unavailable"
+	PricingModelNotFound            PricingAvailabilityCode = "model_not_found"
+	PricingModelDisabled            PricingAvailabilityCode = "model_disabled"
+	PricingModelNotAvailableInGroup PricingAvailabilityCode = "model_not_available_in_group"
+	PricingChannelModelMissing      PricingAvailabilityCode = "channel_model_missing"
+	PricingPurchasePriceMissing     PricingAvailabilityCode = "purchase_price_missing"
+	PricingPurchasePriceInvalid     PricingAvailabilityCode = "purchase_price_invalid"
+	PricingPurchaseContractMismatch PricingAvailabilityCode = "purchase_contract_mismatch"
+	PricingConfigurationInvalid     PricingAvailabilityCode = "pricing_configuration_invalid"
+)
+
+// PricingAvailability explains why one model/group scope can or cannot enter
+// priced routing. Detail is intended for correlated server logs, not clients.
+type PricingAvailability struct {
+	Available             bool
+	Code                  PricingAvailabilityCode
+	EnabledRoutes         int
+	PricedCandidates      int
+	MissingChannelModels  int
+	MissingPurchasePrices int
+	InvalidPurchasePrices int
+	Detail                string
 }
 
 type RuntimeReadiness struct {
@@ -48,6 +78,8 @@ type RuntimeReadiness struct {
 var (
 	currentCatalog atomic.Pointer[CatalogSnapshot]
 	refreshLock    sync.Mutex
+
+	ErrActivePurchasePriceMissing = errors.New("active purchase price is missing")
 )
 
 func LoadActivePriceBundle(channelModelId int) (ActivePriceBundle, error) {
@@ -75,8 +107,9 @@ func loadActivePriceBundle(db *gorm.DB, channelModelId int) (ActivePriceBundle, 
 	}
 	if len(activePurchases) == 0 {
 		return bundle, fmt.Errorf(
-			"channel model %d has no active purchase price; publish a purchase price first",
+			"channel model %d has no active purchase price: %w; publish a purchase price first",
 			channelModelId,
+			ErrActivePurchasePriceMissing,
 		)
 	}
 	if len(activePurchases) > 1 {
@@ -229,14 +262,25 @@ func RefreshCatalog() error {
 		CandidatesByGroupModel:     make(map[string][]int),
 		TestCandidatesByGroupModel: make(map[string][]int),
 		CompleteByGroupModel:       make(map[string]bool),
+		AvailabilityByGroupModel:   make(map[string]PricingAvailability),
+		ModelStatusByName:          make(map[string]int),
 		OfficialByModelName:        make(map[string]model.OfficialModelPriceVersion),
 	}
+	type invalidBundle struct {
+		code   PricingAvailabilityCode
+		detail string
+	}
+	invalidBundles := make(map[int]invalidBundle)
 	for _, channelModel := range channelModels {
 		providerCostMode, err := model.NormalizeProviderCostMode(
 			channelModel.ChannelType,
 			channelModel.ProviderCostMode,
 		)
 		if err != nil {
+			invalidBundles[channelModel.Id] = invalidBundle{
+				code:   PricingPurchasePriceInvalid,
+				detail: err.Error(),
+			}
 			common.SysError(fmt.Sprintf(
 				"skip invalid priced channel model %d and make its model unavailable: %v",
 				channelModel.Id,
@@ -246,6 +290,14 @@ func RefreshCatalog() error {
 		}
 		bundle, err := validatePricingActivation(model.DB, channelModel.Id)
 		if err != nil {
+			code := PricingPurchasePriceInvalid
+			if errors.Is(err, ErrActivePurchasePriceMissing) {
+				code = PricingPurchasePriceMissing
+			}
+			invalidBundles[channelModel.Id] = invalidBundle{
+				code:   code,
+				detail: err.Error(),
+			}
 			common.SysError(fmt.Sprintf(
 				"skip invalid priced channel model %d: %v",
 				channelModel.Id,
@@ -265,6 +317,10 @@ func RefreshCatalog() error {
 	modelNameById := make(map[int]string, len(models))
 	for _, logicalModel := range models {
 		modelNameById[logicalModel.Id] = logicalModel.ModelName
+		currentStatus, exists := next.ModelStatusByName[logicalModel.ModelName]
+		if !exists || currentStatus != 1 {
+			next.ModelStatusByName[logicalModel.ModelName] = logicalModel.Status
+		}
 	}
 	var officialPointers []model.ModelOfficialPrice
 	if err := model.DB.Find(&officialPointers).Error; err != nil {
@@ -309,11 +365,34 @@ func RefreshCatalog() error {
 			channelModel.Id,
 		)
 	}
-	enabledCount := make(map[string]int)
+	type availabilityAccumulator struct {
+		enabledRoutes         int
+		missingChannelModels  int
+		missingPurchasePrices int
+		invalidPurchasePrices int
+		details               []string
+	}
+	availability := make(map[string]*availabilityAccumulator)
 	for _, ability := range abilities {
 		key := ability.Group + "\x00" + ability.Model
 		routeKey := fmt.Sprintf("%d\x00%s", ability.ChannelId, ability.Model)
-		for _, channelModelID := range channelModelsByRoute[routeKey] {
+		channelModelIDs := channelModelsByRoute[routeKey]
+		if ability.Enabled {
+			state := availability[key]
+			if state == nil {
+				state = &availabilityAccumulator{}
+				availability[key] = state
+			}
+			state.enabledRoutes++
+			if len(channelModelIDs) == 0 {
+				state.missingChannelModels++
+				state.details = append(state.details, fmt.Sprintf(
+					"channel %d has an enabled ability but no enabled channel-model",
+					ability.ChannelId,
+				))
+			}
+		}
+		for _, channelModelID := range channelModelIDs {
 			if _, valid := next.BundleByChannelModel[channelModelID]; valid {
 				next.TestCandidatesByGroupModel[key] = append(
 					next.TestCandidatesByGroupModel[key],
@@ -326,15 +405,55 @@ func RefreshCatalog() error {
 					next.CandidatesByGroupModel[key],
 					channelModelID,
 				)
+				continue
 			}
-		}
-		if ability.Enabled {
-			enabledCount[key]++
+			if !ability.Enabled {
+				continue
+			}
+			state := availability[key]
+			issue, exists := invalidBundles[channelModelID]
+			if !exists {
+				state.invalidPurchasePrices++
+				state.details = append(state.details, fmt.Sprintf(
+					"channel model %d is not present in the active pricing catalog",
+					channelModelID,
+				))
+				continue
+			}
+			if issue.code == PricingPurchasePriceMissing {
+				state.missingPurchasePrices++
+			} else {
+				state.invalidPurchasePrices++
+			}
+			state.details = append(state.details, fmt.Sprintf(
+				"channel model %d: %s",
+				channelModelID,
+				issue.detail,
+			))
 		}
 	}
-	for key, count := range enabledCount {
+	for key, state := range availability {
 		candidateIds := next.CandidatesByGroupModel[key]
-		if count == 0 || len(candidateIds) != count {
+		result := PricingAvailability{
+			EnabledRoutes:         state.enabledRoutes,
+			PricedCandidates:      len(candidateIds),
+			MissingChannelModels:  state.missingChannelModels,
+			MissingPurchasePrices: state.missingPurchasePrices,
+			InvalidPurchasePrices: state.invalidPurchasePrices,
+			Detail:                strings.Join(state.details, "; "),
+		}
+		switch {
+		case state.missingChannelModels > 0:
+			result.Code = PricingChannelModelMissing
+		case state.missingPurchasePrices > 0:
+			result.Code = PricingPurchasePriceMissing
+		case state.invalidPurchasePrices > 0:
+			result.Code = PricingPurchasePriceInvalid
+		case state.enabledRoutes == 0 || len(candidateIds) != state.enabledRoutes:
+			result.Code = PricingConfigurationInvalid
+		}
+		if result.Code != "" {
+			next.AvailabilityByGroupModel[key] = result
 			continue
 		}
 		bundles := make([]ActivePriceBundle, 0, len(candidateIds))
@@ -342,6 +461,9 @@ func RefreshCatalog() error {
 			bundles = append(bundles, next.BundleByChannelModel[channelModelId])
 		}
 		if err := validateCandidateContracts(bundles); err != nil {
+			result.Code = PricingPurchaseContractMismatch
+			result.Detail = err.Error()
+			next.AvailabilityByGroupModel[key] = result
 			common.SysError(fmt.Sprintf(
 				"skip incompatible priced candidate pool %q and make it unavailable: %v",
 				strings.ReplaceAll(key, "\x00", "/"),
@@ -349,6 +471,9 @@ func RefreshCatalog() error {
 			))
 			continue
 		}
+		result.Available = true
+		result.Code = PricingAvailable
+		next.AvailabilityByGroupModel[key] = result
 		next.CompleteByGroupModel[key] = true
 	}
 	currentCatalog.Store(next)
@@ -409,6 +534,24 @@ func getChannelTestBundle(group string, modelName string, channelID int) (Active
 
 func HasCompletePricing(group string, modelName string) bool {
 	return len(GetCandidateBundles(group, modelName)) > 0
+}
+
+func GetPricingAvailability(group string, modelName string) PricingAvailability {
+	snapshot, ok := getCatalogSnapshot()
+	if !ok {
+		return PricingAvailability{Code: PricingCatalogUnavailable}
+	}
+	status, exists := snapshot.ModelStatusByName[modelName]
+	if !exists {
+		return PricingAvailability{Code: PricingModelNotFound}
+	}
+	if status != 1 {
+		return PricingAvailability{Code: PricingModelDisabled}
+	}
+	if result, exists := snapshot.AvailabilityByGroupModel[group+"\x00"+modelName]; exists {
+		return result
+	}
+	return PricingAvailability{Code: PricingModelNotAvailableInGroup}
 }
 
 func GetRuntimeReadiness() (RuntimeReadiness, error) {

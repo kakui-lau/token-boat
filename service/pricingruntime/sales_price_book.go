@@ -2,13 +2,17 @@ package pricingruntime
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 )
 
-var ErrSalesPriceBookUnavailable = errors.New("sales price book is unavailable")
+var (
+	ErrSalesPriceBookUnavailable = errors.New("sales price book is unavailable")
+	ErrSalesPriceUnavailable     = errors.New("model sales price is unavailable")
+)
 
 type ResolvedSalesPrice struct {
 	PriceBookId        int
@@ -54,13 +58,19 @@ func resolveSalesPriceBook(userId int, at int64) (ResolvedSalesPrice, error) {
 	if priceBookId == 0 {
 		var defaultBook model.SalesPriceBookDefault
 		if err := model.DB.First(&defaultBook, "default_key = ?", "toc_default").Error; err != nil {
-			return result, ErrSalesPriceBookUnavailable
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return result, ErrSalesPriceBookUnavailable
+			}
+			return result, err
 		}
 		priceBookId = defaultBook.PriceBookId
 		result.Source = "toc_default"
 	}
 
 	if err := model.DB.First(&result.Book, priceBookId).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
+		}
 		return ResolvedSalesPrice{}, err
 	}
 	if result.AssignmentId > 0 && result.Book.Audience != "tob" {
@@ -76,6 +86,9 @@ func resolveSalesPriceBook(userId int, at int64) (ResolvedSalesPrice, error) {
 		versionId = *result.Book.CurrentVersionId
 	}
 	if err := model.DB.First(&result.Version, versionId).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ResolvedSalesPrice{}, ErrSalesPriceBookUnavailable
+		}
 		return ResolvedSalesPrice{}, err
 	}
 	if result.Version.PriceBookId != result.Book.Id {
@@ -107,6 +120,9 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 	var logicalModel model.Model
 	if err := model.DB.Where("model_name = ? AND status = ?", modelName, 1).
 		First(&logicalModel).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return result, fmt.Errorf("%w: model %s", ErrSalesPriceUnavailable, modelName)
+		}
 		return result, err
 	}
 	result, err := resolveSalesPriceBook(userId, at)
@@ -119,6 +135,14 @@ func ResolveSalesPrice(userId int, modelName string, at int64) (ResolvedSalesPri
 		logicalModel.Id,
 		"enabled",
 	).First(&result.Item).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ResolvedSalesPrice{}, fmt.Errorf(
+				"%w for model %s in sales price book version %d",
+				ErrSalesPriceUnavailable,
+				modelName,
+				result.Version.Id,
+			)
+		}
 		return ResolvedSalesPrice{}, err
 	}
 	result.PriceBookItemId = result.Item.Id

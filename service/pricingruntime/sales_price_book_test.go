@@ -1,6 +1,7 @@
 package pricingruntime
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -427,6 +428,29 @@ func TestResolveSalesPriceUsesTOCDefaultWithoutChangingRoute(t *testing.T) {
 	assert.Equal(t, version.Id, resolved.PriceBookVersionId)
 	assert.Equal(t, item.Id, resolved.PriceBookItemId)
 	assert.Zero(t, resolved.AssignmentId)
+}
+
+func TestResolveSalesPriceDistinguishesMissingBookAndModelPrice(t *testing.T) {
+	setupSalesPriceResolverTestDB(t)
+	const at = int64(5200)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 702, ModelName: "priced-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 703, ModelName: "missing-sales-price", Status: 1,
+	}).Error)
+
+	_, err := ResolveSalesPrice(10, "priced-model", at)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrSalesPriceBookUnavailable))
+
+	book, _, _ := createResolvedPriceFixture(t, "partial-toc", 702, at)
+	require.NoError(t, model.DB.Create(&model.SalesPriceBookDefault{
+		DefaultKey: "toc_default", PriceBookId: book.Id, UpdatedBy: 1, UpdatedAt: at,
+	}).Error)
+	_, err = ResolveSalesPrice(10, "missing-sales-price", at)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrSalesPriceUnavailable))
 }
 
 func TestResolveSalesPriceAllowsAnonymousTOCDefault(t *testing.T) {

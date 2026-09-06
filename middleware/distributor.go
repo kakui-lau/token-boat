@@ -31,6 +31,69 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+func abortForPricingAvailability(
+	c *gin.Context,
+	group string,
+	modelName string,
+	availability pricingruntime.PricingAvailability,
+) {
+	messageKey := i18n.MsgDistributorPricingConfigurationInvalid
+	errorCode := types.ErrorCodePricingConfigurationInvalid
+	statusCode := http.StatusServiceUnavailable
+	messageData := map[string]any{
+		"Group": group,
+		"Model": modelName,
+		"Count": 0,
+	}
+	switch availability.Code {
+	case pricingruntime.PricingCatalogUnavailable:
+		messageKey = i18n.MsgDistributorPricingCatalogUnavailable
+		errorCode = types.ErrorCodePricingCatalogUnavailable
+	case pricingruntime.PricingModelNotFound:
+		messageKey = i18n.MsgDistributorModelNotFound
+		errorCode = types.ErrorCodeModelNotFound
+		statusCode = http.StatusNotFound
+	case pricingruntime.PricingModelDisabled:
+		messageKey = i18n.MsgDistributorModelDisabled
+		errorCode = types.ErrorCodeModelDisabled
+	case pricingruntime.PricingModelNotAvailableInGroup:
+		messageKey = i18n.MsgDistributorModelNotAvailableInGroup
+		errorCode = types.ErrorCodeModelNotAvailableInGroup
+	case pricingruntime.PricingChannelModelMissing:
+		messageKey = i18n.MsgDistributorChannelModelMissing
+		errorCode = types.ErrorCodeChannelModelMissing
+		messageData["Count"] = availability.MissingChannelModels
+	case pricingruntime.PricingPurchasePriceMissing:
+		messageKey = i18n.MsgDistributorPurchasePriceMissing
+		errorCode = types.ErrorCodePurchasePriceMissing
+		messageData["Count"] = availability.MissingPurchasePrices
+	case pricingruntime.PricingPurchasePriceInvalid:
+		messageKey = i18n.MsgDistributorPurchasePriceInvalid
+		errorCode = types.ErrorCodePurchasePriceInvalid
+		messageData["Count"] = availability.InvalidPurchasePrices
+	case pricingruntime.PricingPurchaseContractMismatch:
+		messageKey = i18n.MsgDistributorPurchaseContractMismatch
+		errorCode = types.ErrorCodePurchaseContractMismatch
+	}
+	if availability.Detail != "" {
+		common.SysError(fmt.Sprintf(
+			"pricing unavailable: group=%s model=%s code=%s enabled_routes=%d priced_candidates=%d detail=%s",
+			group,
+			modelName,
+			availability.Code,
+			availability.EnabledRoutes,
+			availability.PricedCandidates,
+			availability.Detail,
+		))
+	}
+	abortWithOpenAiMessage(
+		c,
+		statusCode,
+		i18n.T(c, messageKey, messageData),
+		errorCode,
+	)
+}
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
@@ -104,8 +167,13 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 				pricingRouteActive := false
-				priceChainFound := false
-				marginEligible := false
+				completePricingFound := false
+				var availabilityFailure pricingruntime.PricingAvailability
+				availabilityFailureGroup := ""
+				var routeFailure error
+				routeFailureGroup := ""
+				routeCandidateCount := 0
+				unsupportedEndpointCount := 0
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				routeGroups := []string{usingGroup}
 				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
@@ -113,14 +181,26 @@ func Distribute() func(c *gin.Context) {
 					routeGroups = service.GetRequestAutoGroups(c, userGroup)
 				}
 				for _, routeGroup := range routeGroups {
-					if !pricingruntime.HasCompletePricing(routeGroup, modelRequest.Model) {
+					availability := pricingruntime.GetPricingAvailability(
+						routeGroup,
+						modelRequest.Model,
+					)
+					if !availability.Available {
+						if availabilityFailureGroup == "" {
+							availabilityFailure = availability
+							availabilityFailureGroup = routeGroup
+						}
 						continue
 					}
-					priceChainFound = true
+					completePricingFound = true
 					routeCandidates, routeErr := pricingruntime.PlanRoute(
 						c.GetInt("id"), routeGroup, modelRequest.Model,
 					)
 					if routeErr != nil {
+						if routeFailure == nil {
+							routeFailure = routeErr
+							routeFailureGroup = routeGroup
+						}
 						common.SysError(fmt.Sprintf(
 							"plan pricing route failed: group=%s model=%s error=%v",
 							routeGroup,
@@ -130,20 +210,35 @@ func Distribute() func(c *gin.Context) {
 						continue
 					}
 					if len(routeCandidates) == 0 {
+						if routeFailure == nil {
+							routeFailure = pricingruntime.ErrNoEligiblePriceCandidate
+							routeFailureGroup = routeGroup
+						}
 						continue
 					}
-					marginEligible = true
 					pricingRouteActive = true
 					for _, candidate := range routeCandidates {
+						routeCandidateCount++
 						planned, getErr := model.CacheGetChannel(candidate.ChannelId)
-						if getErr != nil ||
-							planned == nil ||
-							planned.Status != common.ChannelStatusEnabled ||
-							!ChannelSupportsRequestPath(
-								planned,
-								c.Request.URL.Path,
+						if getErr != nil || planned == nil {
+							common.SysError(fmt.Sprintf(
+								"load priced route channel failed: channel=%d group=%s model=%s error=%v",
+								candidate.ChannelId,
+								routeGroup,
 								modelRequest.Model,
-							) {
+								getErr,
+							))
+							continue
+						}
+						if planned.Status != common.ChannelStatusEnabled {
+							continue
+						}
+						if !ChannelSupportsRequestPath(
+							planned,
+							c.Request.URL.Path,
+							modelRequest.Model,
+						) {
+							unsupportedEndpointCount++
 							continue
 						}
 						channel = planned
@@ -158,36 +253,82 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				if !pricingRouteActive {
-					message := fmt.Sprintf(
-						"分组 %s 下模型 %s 没有完整的采购价和销售报价",
-						usingGroup,
-						modelRequest.Model,
-					)
-					if priceChainFound && !marginEligible {
-						message = fmt.Sprintf(
-							"分组 %s 下模型 %s 没有满足利润底线的销售报价",
-							usingGroup,
-							modelRequest.Model,
+					if routeFailure != nil {
+						messageKey := i18n.MsgDistributorPricingCalculationFailed
+						errorCode := types.ErrorCodePricingCalculationFailed
+						switch {
+						case errors.Is(routeFailure, pricingruntime.ErrSalesPriceBookUnavailable):
+							messageKey = i18n.MsgDistributorSalesPriceBookUnavailable
+							errorCode = types.ErrorCodeSalesPriceBookUnavailable
+						case errors.Is(routeFailure, pricingruntime.ErrSalesPriceUnavailable):
+							messageKey = i18n.MsgDistributorSalesPriceMissing
+							errorCode = types.ErrorCodeSalesPriceMissing
+						case errors.Is(routeFailure, pricingruntime.ErrNoEligiblePriceCandidate):
+							messageKey = i18n.MsgDistributorMinimumMarginNotMet
+							errorCode = types.ErrorCodeMinimumMarginNotMet
+						case errors.Is(routeFailure, pricingruntime.ErrSalesPurchaseContractMismatch):
+							messageKey = i18n.MsgDistributorSalesPurchaseContractMismatch
+							errorCode = types.ErrorCodeSalesPurchaseContractMismatch
+						}
+						abortWithOpenAiMessage(
+							c,
+							http.StatusServiceUnavailable,
+							i18n.T(c, messageKey, map[string]any{
+								"Group": routeFailureGroup,
+								"Model": modelRequest.Model,
+							}),
+							errorCode,
 						)
+						return
+					}
+					if !completePricingFound {
+						failureGroup := availabilityFailureGroup
+						if failureGroup == "" {
+							failureGroup = usingGroup
+							availabilityFailure = pricingruntime.PricingAvailability{
+								Code: pricingruntime.PricingModelNotAvailableInGroup,
+							}
+						}
+						abortForPricingAvailability(
+							c,
+							failureGroup,
+							modelRequest.Model,
+							availabilityFailure,
+						)
+						return
 					}
 					abortWithOpenAiMessage(
 						c,
 						http.StatusServiceUnavailable,
-						message,
-						types.ErrorCodeModelPriceError,
+						i18n.T(c, i18n.MsgDistributorPricingCalculationFailed, map[string]any{
+							"Group": usingGroup,
+							"Model": modelRequest.Model,
+						}),
+						types.ErrorCodePricingCalculationFailed,
 					)
 					return
 				}
 
 				if channel == nil && pricingRouteActive {
+					message := i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{
+						"Group": usingGroup,
+						"Model": modelRequest.Model,
+					})
+					errorCode := types.ErrorCodeNoAvailableChannel
+					if routeCandidateCount > 0 &&
+						unsupportedEndpointCount == routeCandidateCount {
+						message = i18n.T(c, i18n.MsgDistributorNoCompatibleChannel, map[string]any{
+							"Group":    usingGroup,
+							"Model":    modelRequest.Model,
+							"Endpoint": c.Request.URL.Path,
+						})
+						errorCode = types.ErrorCodeNoCompatibleChannel
+					}
 					abortWithOpenAiMessage(
 						c,
 						http.StatusServiceUnavailable,
-						i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{
-							"Group": usingGroup,
-							"Model": modelRequest.Model,
-						}),
-						types.ErrorCodeModelNotFound,
+						message,
+						errorCode,
 					)
 					return
 				}

@@ -116,6 +116,9 @@ func PlanRoute(
 			QualityScore: float64(bundle.ChannelModel.Weight),
 		})
 	}
+	if len(candidates) == 0 {
+		return nil, ErrNoEligiblePriceCandidate
+	}
 	scoreRouteCandidates(candidates)
 	sortRouteCandidates(candidates)
 	return candidates, nil

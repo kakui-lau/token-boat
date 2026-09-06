@@ -102,6 +102,70 @@ func TestRefreshCatalogRejectsMismatchedCandidateContracts(t *testing.T) {
 		Where("id = ?", 4).Update("billing_mode", "video_duration").Error)
 	require.NoError(t, RefreshCatalog())
 	assert.False(t, HasCompletePricing("default", "runtime-model"))
+	availability := GetPricingAvailability("default", "runtime-model")
+	assert.Equal(t, PricingPurchaseContractMismatch, availability.Code)
+	assert.Contains(t, availability.Detail, "purchase contract does not match")
+}
+
+func TestPricingAvailabilityDistinguishesModelAndGroupFailures(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 31, ModelName: "known-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 32, ModelName: "disabled-model", Status: 0,
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.Model{}).
+		Where("id = ?", 32).Update("status", 0).Error)
+	require.NoError(t, RefreshCatalog())
+
+	unknown := GetPricingAvailability("default", "unknown-model")
+	assert.Equal(t, PricingModelNotFound, unknown.Code)
+	known := GetPricingAvailability("default", "known-model")
+	assert.Equal(t, PricingModelNotAvailableInGroup, known.Code)
+	disabled := GetPricingAvailability("default", "disabled-model")
+	assert.Equal(t, PricingModelDisabled, disabled.Code)
+}
+
+func TestPricingAvailabilityReportsMissingChannelModel(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 41, ModelName: "missing-channel-model", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 41, Name: "missing-channel-model-route", Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "missing-channel-model", ChannelId: 41, Enabled: true,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	availability := GetPricingAvailability("default", "missing-channel-model")
+	assert.Equal(t, PricingChannelModelMissing, availability.Code)
+	assert.Equal(t, 1, availability.MissingChannelModels)
+	assert.Contains(t, availability.Detail, "no enabled channel-model")
+}
+
+func TestPricingAvailabilityReportsMissingPurchasePrice(t *testing.T) {
+	setupRuntimeCatalogTestDB(t)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id: 51, ModelName: "missing-purchase", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 51, Name: "missing-purchase-route", Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ChannelModel{
+		Id: 51, ChannelId: 51, ModelId: 51, UpstreamModelName: "missing-purchase", Status: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "missing-purchase", ChannelId: 51, Enabled: true,
+	}).Error)
+	require.NoError(t, RefreshCatalog())
+
+	availability := GetPricingAvailability("default", "missing-purchase")
+	assert.Equal(t, PricingPurchasePriceMissing, availability.Code)
+	assert.Equal(t, 1, availability.MissingPurchasePrices)
+	assert.Contains(t, availability.Detail, "no active purchase price")
 }
 
 func TestLoadActivePriceBundleRejectsAmbiguousPurchaseVersions(t *testing.T) {

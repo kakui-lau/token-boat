@@ -2,12 +2,27 @@ package common
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSanitizeRequestURLForLogMasksCredentialsAndKeepsParameters(t *testing.T) {
+	result := SanitizeRequestURLForLog(
+		"/v1/responses?access_token=client-secret&model=gpt-5.6-sol&X-Amz-Signature=signed-value",
+	)
+
+	parsed, err := url.Parse(result)
+	require.NoError(t, err)
+	assert.Equal(t, "gpt-5.6-sol", parsed.Query().Get("model"))
+	assert.Equal(t, "***masked***", parsed.Query().Get("access_token"))
+	assert.Equal(t, "***masked***", parsed.Query().Get("X-Amz-Signature"))
+	assert.NotContains(t, result, "client-secret")
+	assert.NotContains(t, result, "signed-value")
+}
 
 func TestSanitizeRequestBodyForLogKeepsParametersAndMasksCredentials(t *testing.T) {
 	body := []byte(`{

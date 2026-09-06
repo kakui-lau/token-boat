@@ -8,9 +8,94 @@ import (
 	"mime/multipart"
 	"net/url"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 const requestLogContentLimit = 8192
+
+// ClientRequestParametersForLog renders the client-visible method, URL and
+// body for request-scoped error logs. It only reads an already-cached body so
+// logging can never consume or otherwise change an in-flight request.
+func ClientRequestParametersForLog(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+
+	requestURL := ""
+	if c.Request.URL != nil {
+		requestURL = SanitizeRequestURLForLog(c.Request.URL.RequestURI())
+	}
+
+	body := "{}"
+	bodyAvailable := false
+	if cached, exists := c.Get(KeyBodyStorage); exists && cached != nil {
+		if storage, ok := cached.(BodyStorage); ok {
+			requestBody, err := storage.Bytes()
+			if err != nil {
+				body = fmt.Sprintf("[unavailable: %s]", err.Error())
+			} else {
+				body = SanitizeRequestBodyForLog(
+					requestBody,
+					c.Request.Header.Get("Content-Type"),
+				)
+			}
+			bodyAvailable = true
+		}
+	}
+	if !bodyAvailable {
+		if cached, exists := c.Get(KeyRequestBody); exists && cached != nil {
+			if requestBody, ok := cached.([]byte); ok {
+				body = SanitizeRequestBodyForLog(
+					requestBody,
+					c.Request.Header.Get("Content-Type"),
+				)
+				bodyAvailable = true
+			}
+		}
+	}
+	if !bodyAvailable && c.Request.Body != nil && c.Request.ContentLength != 0 {
+		body = "[unavailable: request body not cached]"
+	}
+
+	return fmt.Sprintf(
+		"method=%s url=%q body=%s",
+		c.Request.Method,
+		requestURL,
+		body,
+	)
+}
+
+// SanitizeRequestURLForLog preserves routing parameters while masking query
+// values that can authenticate a caller or validate a signed request.
+func SanitizeRequestURLForLog(rawURL string) string {
+	if rawURL == "" {
+		return rawURL
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	query := parsedURL.Query()
+	if len(query) == 0 {
+		return rawURL
+	}
+
+	changed := false
+	for key := range query {
+		if isSensitiveRequestLogKey(key) {
+			query.Set(key, "***masked***")
+			changed = true
+		}
+	}
+	if !changed {
+		return rawURL
+	}
+
+	parsedURL.RawQuery = query.Encode()
+	return parsedURL.String()
+}
 
 // SanitizeRequestBodyForLog renders request parameters for failure diagnostics
 // without writing credentials or unbounded file/base64 content to application
@@ -142,7 +227,9 @@ func isSensitiveRequestLogKey(key string) bool {
 		"key", "api-key", "api_key", "apikey", "x-api-key", "x-goog-api-key",
 		"access-token", "access_token", "refresh-token", "refresh_token",
 		"id-token", "id_token", "password", "passwd", "client-secret",
-		"client_secret", "secret", "signature":
+		"client_secret", "secret", "signature", "auth", "sig",
+		"awsaccesskeyid", "x-amz-credential", "x-amz-security-token",
+		"x-amz-signature":
 		return true
 	}
 	return strings.Contains(normalized, "authorization") ||

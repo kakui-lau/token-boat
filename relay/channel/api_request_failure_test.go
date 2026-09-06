@@ -37,6 +37,11 @@ func TestLogFailedUpstreamRequestPrintsClientAndUpstreamParameters(t *testing.T)
 		strings.NewReader(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hello"}],"access_token":"client-secret"}`),
 	)
 	context.Request.Header.Set("Content-Type", "application/json")
+	_, err := projectcommon.GetBodyStorage(context)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		projectcommon.CleanupBodyStorage(context)
+	})
 	upstreamBody := []byte(`{"model":"provider-model","input":"hello","api_key":"upstream-secret"}`)
 	request := httptest.NewRequest(
 		"POST",
@@ -66,7 +71,7 @@ func TestLogFailedUpstreamRequestPrintsClientAndUpstreamParameters(t *testing.T)
 
 	logged := output.String()
 	assert.Contains(t, logged, "channel_id=18")
-	assert.Contains(t, logged, `client_body={"access_token":"***masked***"`)
+	assert.Contains(t, logged, `client_request: method=POST url="/pg/chat/completions" body={"access_token":"***masked***"`)
 	assert.Contains(t, logged, `"model":"gpt-5.6-sol"`)
 	assert.Contains(t, logged, `upstream_body={"api_key":"***masked***"`)
 	assert.Contains(t, logged, `"model":"provider-model"`)

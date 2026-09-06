@@ -101,6 +101,13 @@ func logHelper(ctx context.Context, level string, msg string) {
 			id = requestID
 		}
 	}
+	if level == loggerError {
+		if ginContext, ok := ctx.(*gin.Context); ok {
+			if requestParameters := common.ClientRequestParametersForLog(ginContext); requestParameters != "" {
+				msg += " | client_request: " + requestParameters
+			}
+		}
+	}
 	now := time.Now()
 	common.LogWriterMu.RLock()
 	writer := gin.DefaultErrorWriter

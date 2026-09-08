@@ -24,6 +24,7 @@ var (
 
 type ManualTaskRefundResult struct {
 	RefundedQuota   int
+	RefundedUSD     *float64
 	AlreadyRefunded bool
 }
 
@@ -39,9 +40,28 @@ func ManuallyFailAndRefundTask(ctx context.Context, taskID, reason string) (Manu
 	if !exists {
 		return ManualTaskRefundResult{}, ErrManualTaskNotFound
 	}
+	return manuallyFailAndRefundTask(ctx, task, reason)
+}
+
+// ManuallyFailAndRefundTaskByIdentity is the administrator-only entry point.
+// Requiring both identifiers prevents ambiguous legacy public IDs from
+// selecting an arbitrary task for a financial mutation.
+func ManuallyFailAndRefundTaskByIdentity(ctx context.Context, internalID int64, taskID, reason string) (ManualTaskRefundResult, error) {
+	task, exists, err := model.GetTaskByAdminIdentity(internalID, taskID)
+	if err != nil {
+		return ManualTaskRefundResult{}, err
+	}
+	if !exists {
+		return ManualTaskRefundResult{}, ErrManualTaskNotFound
+	}
+	return manuallyFailAndRefundTask(ctx, task, reason)
+}
+
+func manuallyFailAndRefundTask(ctx context.Context, task *model.Task, reason string) (ManualTaskRefundResult, error) {
 	if task.RefundStatus == model.TaskRefundStatusCompleted && task.Quota == 0 {
 		return ManualTaskRefundResult{
 			RefundedQuota:   task.RefundQuota,
+			RefundedUSD:     taskRefundUSD(task, task.RefundQuota),
 			AlreadyRefunded: true,
 		}, nil
 	}
@@ -71,7 +91,17 @@ func ManuallyFailAndRefundTask(ctx context.Context, taskID, reason string) (Manu
 	if !RefundTaskQuota(ctx, task, reason) {
 		return ManualTaskRefundResult{}, errors.New("task refund failed and will be retried by reconciliation")
 	}
-	return ManualTaskRefundResult{RefundedQuota: refundedQuota}, nil
+	return ManualTaskRefundResult{
+		RefundedQuota: refundedQuota,
+		RefundedUSD:   taskRefundUSD(task, refundedQuota),
+	}, nil
+}
+
+func taskRefundUSD(task *model.Task, refundedQuota int) *float64 {
+	if task == nil || task.PrivateData.BillingContext == nil {
+		return nil
+	}
+	return model.TaskQuotaUSD(refundedQuota, task.PrivateData.BillingContext.QuotaPerUnit)
 }
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。

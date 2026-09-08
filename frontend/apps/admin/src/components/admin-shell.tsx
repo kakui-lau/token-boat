@@ -1,4 +1,4 @@
-import { Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeftIcon,
@@ -12,7 +12,6 @@ import {
   LayoutDashboardIcon,
   ReceiptTextIcon,
   ScrollTextIcon,
-  SearchIcon,
   ServerCogIcon,
   ShieldCheckIcon,
   TicketIcon,
@@ -24,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { adminNavigationItems, adminRouteCatalog } from "@/app/route-catalog";
+import { useAdminSession } from "@/app/admin-session-context";
 import { Badge } from "@token-boat/ui/components/ui/badge";
 import { Button } from "@token-boat/ui/components/ui/button";
 import {
@@ -68,6 +68,7 @@ const capabilityIcons: Record<string, LucideIcon> = {
 
 export function AdminShell() {
   const { i18n, t } = useTranslation();
+  const session = useAdminSession();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const language = i18n.resolvedLanguage?.startsWith("en") ? "en" : "zh";
   const currentItem = adminNavigationItems.find((item) => item.path === pathname);
@@ -80,10 +81,10 @@ export function AdminShell() {
         mobileTitle={t("shell.adminConsole")}
       >
         <SidebarHeader className="h-16 justify-center group-data-[collapsible=icon]:h-12">
-          <a
+          <Link
             aria-label={t("nav.overview")}
             className="flex items-center gap-3 px-1 group-data-[collapsible=icon]:justify-center"
-            href="/admin/"
+            to="/"
           >
             <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent/70 p-1 shadow-sm ring-1 ring-sidebar-border group-data-[collapsible=icon]:size-8">
               <img
@@ -100,7 +101,7 @@ export function AdminShell() {
                 {t("shell.adminConsole")}
               </span>
             </span>
-          </a>
+          </Link>
         </SidebarHeader>
         <SidebarSeparator />
 
@@ -119,7 +120,10 @@ export function AdminShell() {
                         <SidebarMenuButton
                           isActive={isActive}
                           render={
-                            <a aria-current={isActive ? "page" : undefined} href={item.path} />
+                            <Link
+                              aria-current={isActive ? "page" : undefined}
+                              to={adminRouterPath(item.path)}
+                            />
                           }
                           tooltip={t(item.labelKey)}
                         >
@@ -144,12 +148,11 @@ export function AdminShell() {
             <ShieldCheckIcon aria-hidden="true" />
             {t(`scope.${currentItem?.scope ?? "platform"}`)}
           </Badge>
-          <div
-            aria-disabled="true"
-            className="ml-1 hidden min-w-0 flex-1 items-center gap-2 rounded-lg border bg-muted/45 px-3 py-2 text-sm text-muted-foreground md:flex md:max-w-sm"
-          >
-            <SearchIcon aria-hidden="true" className="size-4" />
-            <span className="truncate">{t("common.searchDisabled")}</span>
+          <div className="ml-1 hidden min-w-0 flex-1 md:block">
+            <p className="truncate text-sm font-medium">
+              {t(currentItem?.labelKey ?? "nav.overview")}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">{session.user.displayName}</p>
           </div>
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -173,4 +176,11 @@ export function AdminShell() {
       </SidebarInset>
     </SidebarProvider>
   );
+}
+
+// Capability routes are generated from this same catalog, but TanStack Router
+// cannot retain each literal path through the mapped route factory. Keep the
+// narrow cast at this boundary instead of weakening route types app-wide.
+function adminRouterPath(path: `/admin/${string}`): "/" {
+  return (path === "/admin/" ? "/" : path.slice("/admin".length)) as "/";
 }

@@ -10,7 +10,8 @@ DEV_SQLITE_PATH ?= data/one-api.db
 
 .PHONY: all build-web build-console build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
 
-all: build-all-web start-api
+all: build-all-web
+	@$(MAKE) start-api
 
 build-web:
 	@echo "Building web frontend..."
@@ -18,14 +19,20 @@ build-web:
 	@cd $(WEB_DIR) && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$${VERSION:-$$(cat ../VERSION)} bun run build
 
 build-console:
-	@echo "Building User Console V2..."
+	@echo "Building User Console and Admin V2..."
 	@cd frontend && bun install --frozen-lockfile
 	@cd frontend && bun run build
 	@rm -rf "$(CURDIR)/web/dist/console"
 	@mkdir -p "$(CURDIR)/web/dist/console"
 	@cp -R frontend/apps/console/dist/. "$(CURDIR)/web/dist/console/"
+	@rm -rf "$(CURDIR)/web/dist/admin"
+	@mkdir -p "$(CURDIR)/web/dist/admin"
+	@cp -R frontend/apps/admin/dist/. "$(CURDIR)/web/dist/admin/"
 
-build-all-web: build-web build-console
+# The legacy build empties web/dist, so V2 assembly must run only after it finishes,
+# including when callers enable parallel make execution.
+build-all-web: build-web
+	@$(MAKE) build-console
 
 start-api:
 	@echo "Starting api dev server..."

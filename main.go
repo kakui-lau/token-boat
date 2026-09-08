@@ -198,10 +198,12 @@ func main() {
 
 	// 设置路由
 	consoleIndexPage, _ := buildFS.ReadFile("web/dist/console/index.html")
+	adminIndexPage, _ := buildFS.ReadFile("web/dist/admin/index.html")
 	router.SetRouter(server, router.WebAssets{
 		BuildFS:          buildFS,
 		IndexPage:        indexPage,
 		ConsoleIndexPage: consoleIndexPage,
+		AdminIndexPage:   adminIndexPage,
 	})
 	var port = os.Getenv("PORT")
 	if port == "" {

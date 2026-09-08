@@ -213,6 +213,86 @@ func TestGetUserLogsScopesSeparateRequestActivityAndBillingRecords(t *testing.T)
 	}
 }
 
+func TestGetAllLogsRequestScopeExcludesNonRequestRecords(t *testing.T) {
+	truncateTables(t)
+	for logType := LogTypeTopup; logType <= LogTypeLogin; logType++ {
+		require.NoError(t, LOG_DB.Create(&Log{
+			Type:      logType,
+			CreatedAt: int64(logType),
+			RequestId: fmt.Sprintf("admin-scope-%d", logType),
+		}).Error)
+	}
+
+	logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", "", "", "request", "asc")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, logs, 2)
+	assert.Equal(t, []int{LogTypeConsume, LogTypeError}, []int{logs[0].Type, logs[1].Type})
+
+	allLogs, allTotal, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", "", "", "", "asc")
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), allTotal)
+	assert.Len(t, allLogs, 7)
+
+	manageLogs, manageTotal, err := GetAllLogs(LogTypeManage, 0, 0, "", "", "", 0, 20, 0, "", "", "", "request", "asc")
+	require.NoError(t, err)
+	assert.Zero(t, manageTotal)
+	assert.Empty(t, manageLogs)
+}
+
+func TestGetAllLogsSupportsAscendingOrderAndDefaultsToDescending(t *testing.T) {
+	truncateTables(t)
+	for index, createdAt := range []int64{300, 100, 200} {
+		require.NoError(t, LOG_DB.Create(&Log{
+			Type:      LogTypeConsume,
+			CreatedAt: createdAt,
+			RequestId: fmt.Sprintf("ordered-%d", index),
+		}).Error)
+	}
+
+	testCases := []struct {
+		name          string
+		order         string
+		expectedTimes []int64
+	}{
+		{name: "ascending", order: "asc", expectedTimes: []int64{100, 200, 300}},
+		{name: "default descending", expectedTimes: []int64{300, 200, 100}},
+		{name: "unsupported defaults descending", order: "newest", expectedTimes: []int64{300, 200, 100}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", "", "", "request", testCase.order)
+			require.NoError(t, err)
+			assert.Equal(t, int64(3), total)
+			require.Len(t, logs, 3)
+			actualTimes := make([]int64, 0, len(logs))
+			for _, log := range logs {
+				actualTimes = append(actualTimes, log.CreatedAt)
+			}
+			assert.Equal(t, testCase.expectedTimes, actualTimes)
+		})
+	}
+}
+
+func TestGetAllLogsPreservesLegacyNewestFirstOrdering(t *testing.T) {
+	truncateTables(t)
+	for index, createdAt := range []int64{100, 300, 200} {
+		require.NoError(t, LOG_DB.Create(&Log{
+			Type:      LogTypeManage,
+			CreatedAt: createdAt,
+			RequestId: fmt.Sprintf("legacy-order-%d", index),
+		}).Error)
+	}
+
+	logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 20, 0, "", "", "", "", "asc")
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	require.Len(t, logs, 3)
+	assert.Equal(t, []int64{300, 200, 100}, []int64{logs[0].CreatedAt, logs[1].CreatedAt, logs[2].CreatedAt})
+}
+
 func TestUpdateTaskConsumeLogDetailsMergesPublicAndAdminBillingFields(t *testing.T) {
 	truncateTables(t)
 	log := &Log{
@@ -304,6 +384,133 @@ func TestSumUsedQuotaSubtractsRefunds(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, int64(60), stat.Quota)
+}
+
+func TestSumUsedQuotaRequestScopeUsesRequestOnlyGrossCostAndPeak(t *testing.T) {
+	truncateTables(t)
+	logs := []*Log{
+		{
+			UserId: 1, Username: "request-stat-user", Type: LogTypeConsume, ModelName: "request-model",
+			TokenName: "request-key", ChannelId: 9, Group: "request-group", RequestId: "request-stat",
+			UpstreamRequestId: "upstream-stat", Quota: 100, PromptTokens: 20, CompletionTokens: 30, CreatedAt: 3_601,
+		},
+		{
+			UserId: 1, Username: "request-stat-user", Type: LogTypeError, ModelName: "request-model",
+			TokenName: "request-key", ChannelId: 9, Group: "request-group", RequestId: "request-stat",
+			UpstreamRequestId: "upstream-stat", CreatedAt: 3_620,
+		},
+		{
+			UserId: 1, Username: "request-stat-user", Type: LogTypeRefund, ModelName: "request-model",
+			TokenName: "request-key", ChannelId: 9, Group: "request-group", RequestId: "request-stat",
+			UpstreamRequestId: "upstream-stat", Quota: 40, CreatedAt: 3_630,
+		},
+		{
+			UserId: 1, Username: "request-stat-user", Type: LogTypeManage, ModelName: "request-model",
+			TokenName: "request-key", ChannelId: 9, Group: "request-group", RequestId: "request-stat",
+			UpstreamRequestId: "upstream-stat", CreatedAt: 3_640,
+		},
+		{
+			UserId: 2, Username: "other-user", Type: LogTypeConsume, ModelName: "request-model",
+			TokenName: "request-key", ChannelId: 9, Group: "request-group", RequestId: "request-stat",
+			UpstreamRequestId: "upstream-stat", Quota: 999, CreatedAt: 3_610,
+		},
+	}
+	for _, log := range logs {
+		require.NoError(t, createLog(log))
+	}
+
+	stat, err := SumUsedQuotaWithScope(
+		LogTypeUnknown,
+		3_600,
+		3_659,
+		"request-model",
+		"request-stat-user",
+		"request-key",
+		9,
+		"request-group",
+		"request-stat",
+		"upstream-stat",
+		"request",
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), stat.Quota)
+	assert.Equal(t, int64(1), stat.RequestCount)
+	assert.Equal(t, int64(1), stat.FailureCount)
+	assert.Equal(t, 0.5, stat.FailureRate)
+	assert.Equal(t, int64(2), stat.PeakRpm)
+	assert.Equal(t, int64(50), stat.PeakTpm)
+	assert.Equal(t, int64(50), stat.TotalTokens)
+}
+
+func TestRequestScopeExcludesTaskLifecycleDuplicates(t *testing.T) {
+	truncateTables(t)
+	logs := []*Log{
+		{Type: LogTypeConsume, RequestId: "sync", Quota: 100, CreatedAt: 100, Other: common.MapToJsonStr(map[string]interface{}{"quota_per_unit": 100})},
+		{Type: LogTypeConsume, RequestId: "task-submit", TaskId: "task-1", Quota: 100, CreatedAt: 101, Other: common.MapToJsonStr(map[string]interface{}{"billing_stage": "submitted", "quota_per_unit": 100})},
+		{Type: LogTypeConsume, TaskId: "task-1", Quota: 50, CreatedAt: 102, Other: common.MapToJsonStr(map[string]interface{}{"billing_stage": "completed", "quota_per_unit": 100})},
+		{Type: LogTypeError, TaskId: "task-1", CreatedAt: 103, Other: common.MapToJsonStr(map[string]interface{}{"task_status": "FAILURE"})},
+		{Type: LogTypeError, RequestId: "sync-error", CreatedAt: 104},
+	}
+	for _, log := range logs {
+		require.NoError(t, createLog(log))
+	}
+
+	items, total, err := GetAllLogs(LogTypeUnknown, 1, 200, "", "", "", 0, 20, 0, "", "", "", "request", "asc")
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	require.Len(t, items, 3)
+	assert.Equal(t, []string{"sync", "task-submit", "sync-error"}, []string{items[0].RequestId, items[1].RequestId, items[2].RequestId})
+
+	stat, err := SumUsedQuotaWithScope(LogTypeUnknown, 1, 200, "", "", "", 0, "", "", "", "request")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), stat.RequestCount)
+	assert.Equal(t, int64(1), stat.FailureCount)
+	assert.Equal(t, int64(200), stat.Quota)
+	require.NotNil(t, stat.CostUSD)
+	assert.InDelta(t, 2, *stat.CostUSD, 0.000_001)
+}
+
+func TestRequestScopeUsesEachHistoricalQuotaPerUnitForUSD(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, createLog(&Log{
+		Type: LogTypeConsume, Quota: 100, CreatedAt: 100,
+		Other: common.MapToJsonStr(map[string]interface{}{"quota_per_unit": 100}),
+	}))
+	require.NoError(t, createLog(&Log{
+		Type: LogTypeConsume, Quota: 100, CreatedAt: 101,
+		Other: common.MapToJsonStr(map[string]interface{}{"quota_per_unit": 200}),
+	}))
+
+	stat, err := SumUsedQuotaWithScope(LogTypeUnknown, 1, 200, "", "", "", 0, "", "", "", "request")
+	require.NoError(t, err)
+	require.NotNil(t, stat.CostUSD)
+	assert.InDelta(t, 1.5, *stat.CostUSD, 0.000_001)
+}
+
+func TestRequestScopeZeroQuotaDoesNotMakeHistoricalUSDUnknown(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, createLog(&Log{
+		Type: LogTypeConsume, Quota: 100, CreatedAt: 100,
+		Other: common.MapToJsonStr(map[string]interface{}{"quota_per_unit": 100}),
+	}))
+	require.NoError(t, createLog(&Log{
+		Type: LogTypeConsume, Quota: 0, CreatedAt: 101,
+	}))
+
+	stat, err := SumUsedQuotaWithScope(LogTypeUnknown, 1, 200, "", "", "", 0, "", "", "", "request")
+	require.NoError(t, err)
+	require.NotNil(t, stat.CostUSD)
+	assert.InDelta(t, 1, *stat.CostUSD, 0.000_001)
+}
+
+func TestRequestScopeDoesNotGuessUSDWhenHistoricalQuotaScaleIsMissing(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, createLog(&Log{Type: LogTypeConsume, Quota: 100, CreatedAt: 100}))
+
+	stat, err := SumUsedQuotaWithScope(LogTypeUnknown, 1, 200, "", "", "", 0, "", "", "", "request")
+	require.NoError(t, err)
+	assert.Nil(t, stat.CostUSD)
 }
 
 func TestSumUsedQuotaUsesRequestPeakAndInputCacheRate(t *testing.T) {
@@ -527,6 +734,39 @@ func TestCacheUsageExpressionsSupportEveryLogDatabase(t *testing.T) {
 			assert.Contains(t, cacheTotal, "cache_tokens")
 			assert.Contains(t, cacheRate.RateHitTokens, "input_tokens_total")
 			assert.Contains(t, cacheRate.RateInputTokens, testCase.dialectToken)
+		})
+	}
+}
+
+func TestRequestLogSQLExpressionsSupportEveryLogDatabase(t *testing.T) {
+	originalLogDatabaseType := common.LogDatabaseType()
+	t.Cleanup(func() {
+		common.SetLogDatabaseType(originalLogDatabaseType)
+	})
+
+	testCases := []struct {
+		name               string
+		databaseType       common.DatabaseType
+		stringDialectToken string
+		quotaDialectToken  string
+	}{
+		{name: "SQLite", databaseType: common.DatabaseTypeSQLite, stringDialectToken: "json_extract", quotaDialectToken: "json_type"},
+		{name: "PostgreSQL", databaseType: common.DatabaseTypePostgreSQL, stringDialectToken: "::jsonb ->>", quotaDialectToken: "jsonb_typeof"},
+		{name: "MySQL", databaseType: common.DatabaseTypeMySQL, stringDialectToken: "JSON_UNQUOTE", quotaDialectToken: "DECIMAL(24, 6)"},
+		{name: "ClickHouse", databaseType: common.DatabaseTypeClickHouse, stringDialectToken: "JSONExtractString", quotaDialectToken: "JSONExtractFloat"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			common.SetLogDatabaseType(testCase.databaseType)
+			condition, args := requestLogScopeCondition()
+
+			assert.Contains(t, condition, testCase.stringDialectToken)
+			assert.Contains(t, condition, "COALESCE(logs.task_id, '')")
+			assert.Equal(t, []interface{}{LogTypeConsume, "submitted", LogTypeError}, args)
+			quotaPerUnit := logQuotaPerUnitSQLExpr()
+			assert.Contains(t, quotaPerUnit, testCase.quotaDialectToken)
+			assert.Contains(t, quotaPerUnit, "quota_per_unit")
 		})
 	}
 }

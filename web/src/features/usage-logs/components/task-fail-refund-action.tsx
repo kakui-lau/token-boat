@@ -23,7 +23,13 @@ import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { formatLogQuota } from '@/lib/format'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { manuallyFailAndRefundTask } from '../api'
 import { canManuallyFailAndRefund } from '../lib/task-refund'
@@ -32,11 +38,13 @@ import type { TaskLog } from '../types'
 export function TaskFailRefundAction(props: { log: TaskLog }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.auth.user)
   const [open, setOpen] = useState(false)
   const refundAmount = formatLogQuota(props.log.admin_billing?.quota || 0)
 
   const mutation = useMutation({
-    mutationFn: () => manuallyFailAndRefundTask(props.log.task_id),
+    mutationFn: () =>
+      manuallyFailAndRefundTask(props.log.task_id, props.log.id),
     onSuccess: async (result) => {
       setOpen(false)
       await queryClient.invalidateQueries({ queryKey: ['logs'] })
@@ -55,7 +63,12 @@ export function TaskFailRefundAction(props: { log: TaskLog }) {
     },
   })
 
-  if (!canManuallyFailAndRefund(props.log)) return null
+  const canOperateFinance = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.FINANCE,
+    ADMIN_PERMISSION_ACTIONS.OPERATE
+  )
+  if (!canOperateFinance || !canManuallyFailAndRefund(props.log)) return null
 
   return (
     <>

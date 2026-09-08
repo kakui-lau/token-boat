@@ -18,9 +18,13 @@ type WebAssets struct {
 	BuildFS          fs.FS
 	IndexPage        []byte
 	ConsoleIndexPage []byte
+	AdminIndexPage   []byte
 }
 
 func (assets WebAssets) indexPageForPath(requestPath string) []byte {
+	if strings.HasPrefix(requestPath, "/admin/") && len(assets.AdminIndexPage) > 0 {
+		return assets.AdminIndexPage
+	}
 	if strings.HasPrefix(requestPath, "/console/") && len(assets.ConsoleIndexPage) > 0 {
 		return assets.ConsoleIndexPage
 	}
@@ -33,6 +37,18 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
+	router.GET("/admin", func(c *gin.Context) {
+		location := "/admin/"
+		if c.Request.URL.RawQuery != "" {
+			location += "?" + c.Request.URL.RawQuery
+		}
+		c.Redirect(http.StatusPermanentRedirect, location)
+	})
+	router.GET("/admin/", func(c *gin.Context) {
+		c.Set(middleware.RouteTagKey, "web")
+		c.Header("Cache-Control", "no-cache")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", assets.indexPageForPath(c.Request.URL.Path))
+	})
 	router.GET("/console", func(c *gin.Context) {
 		location := "/console/"
 		if c.Request.URL.RawQuery != "" {
@@ -49,7 +65,7 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
 		requestPath := c.Request.URL.Path
-		if strings.HasPrefix(requestPath, "/v1") || strings.HasPrefix(requestPath, "/api") || strings.HasPrefix(requestPath, "/assets") || strings.HasPrefix(requestPath, "/console/assets/") {
+		if strings.HasPrefix(requestPath, "/v1") || strings.HasPrefix(requestPath, "/api") || strings.HasPrefix(requestPath, "/assets") || strings.HasPrefix(requestPath, "/admin/assets/") || strings.HasPrefix(requestPath, "/console/assets/") {
 			controller.RelayNotFound(c)
 			return
 		}

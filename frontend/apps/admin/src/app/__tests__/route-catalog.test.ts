@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   adminNavigationItems,
+  connectedAdminCapabilities,
   deferredAdminCapabilities,
   embeddedAdminCapabilities,
 } from "@/app/route-catalog";
@@ -39,6 +40,19 @@ describe("admin route catalog boundary", () => {
       "system-info",
       "audit-logs",
     ]);
+  });
+
+  test("marks only workspaces with live administrator contracts as connected", () => {
+    expect(connectedAdminCapabilities.map((item) => item.capabilityId)).toEqual([
+      "channels",
+      "requests",
+    ]);
+    expect(adminNavigationItems.find((item) => item.capabilityId === "channels")?.status).toBe(
+      "connected",
+    );
+    expect(adminNavigationItems.find((item) => item.capabilityId === "requests")?.status).toBe(
+      "connected",
+    );
   });
 
   test("places related capabilities inside an owning workspace", () => {

@@ -1,8 +1,9 @@
 import { useTranslation } from "react-i18next";
-import { BoxesIcon, Layers3Icon, ShieldCheckIcon, UsersRoundIcon } from "lucide-react";
+import { BoxesIcon, Layers3Icon, PlugZapIcon, ShieldCheckIcon, UsersRoundIcon } from "lucide-react";
 
 import {
   adminNavigationItems,
+  connectedAdminCapabilities,
   deferredAdminCapabilities,
   embeddedAdminCapabilities,
 } from "@/app/route-catalog";
@@ -39,7 +40,7 @@ export function AdminOverviewPage() {
         <AlertDescription>{t("bootstrap.description")}</AlertDescription>
       </Alert>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <UsersRoundIcon aria-hidden="true" className="size-5 text-primary" />
@@ -49,6 +50,22 @@ export function AdminOverviewPage() {
           <CardContent>
             <p className="text-3xl font-semibold tabular-nums">{adminNavigationItems.length}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t("architecture.routes")}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <PlugZapIcon aria-hidden="true" className="size-5 text-primary" />
+            <CardTitle>{t("architecture.connectedTitle")}</CardTitle>
+            <CardDescription>{t("architecture.connectedDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold tabular-nums">
+              {connectedAdminCapabilities.length}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("architecture.connectedCapabilities")}
+            </p>
           </CardContent>
         </Card>
 

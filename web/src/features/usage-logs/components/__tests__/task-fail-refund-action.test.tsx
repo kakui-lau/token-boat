@@ -26,7 +26,9 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+
+import { useAuthStore } from '@/stores/auth-store'
 
 import { manuallyFailAndRefundTask } from '../../api'
 import { canManuallyFailAndRefund } from '../../lib/task-refund'
@@ -52,9 +54,22 @@ vi.mock('sonner', () => ({
 }))
 
 describe('TaskFailRefundAction', () => {
+  beforeEach(() => {
+    useAuthStore.getState().auth.setUser({
+      id: 7,
+      role: 10,
+      status: 1,
+      username: 'operator',
+      permissions: {
+        admin_permissions: { finance: { operate: true } },
+      },
+    })
+  })
+
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    useAuthStore.getState().auth.reset()
   })
 
   test('only allows non-terminal tasks to be manually failed and refunded', () => {
@@ -91,8 +106,30 @@ describe('TaskFailRefundAction', () => {
       screen.getByRole('button', { name: 'Confirm failure and refund' })
     )
     await waitFor(() =>
-      expect(manuallyFailAndRefundTask).toHaveBeenCalledWith('task_pending')
+      expect(manuallyFailAndRefundTask).toHaveBeenCalledWith('task_pending', 1)
     )
+  })
+
+  test('hides the financial action without finance operate permission', () => {
+    useAuthStore.getState().auth.setUser({
+      id: 8,
+      role: 10,
+      username: 'read-only-operator',
+      permissions: {
+        admin_permissions: { finance: { operate: false } },
+      },
+    })
+
+    const queryClient = new QueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TaskFailRefundAction log={taskLog('QUEUED')} />
+      </QueryClientProvider>
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Fail and refund' })
+    ).not.toBeInTheDocument()
   })
 })
 

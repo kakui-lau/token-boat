@@ -11,7 +11,9 @@ FROM m.daocloud.io/docker.io/oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be
 
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/bun.lock frontend/tsconfig.base.json frontend/.oxfmtrc.json ./
+COPY frontend/apps/admin/package.json ./apps/admin/package.json
 COPY frontend/apps/console/package.json ./apps/console/package.json
+COPY frontend/apps/site/package.json ./apps/site/package.json
 COPY frontend/packages/api-client/package.json ./packages/api-client/package.json
 COPY frontend/packages/app-core/package.json ./packages/app-core/package.json
 COPY frontend/packages/tokens/package.json ./packages/tokens/package.json
@@ -40,6 +42,7 @@ RUN go mod download
 COPY . .
 COPY --from=legacy-frontend-builder /build/web/dist ./web/dist
 COPY --from=console-frontend-builder /build/frontend/apps/console/dist ./web/dist/console
+COPY --from=console-frontend-builder /build/frontend/apps/admin/dist ./web/dist/admin
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api \
     && mkdir -p /runtime-root/data /runtime-root/tmp \
 	&& go build -ldflags "-s -w" -o /runtime-root/pricing-readiness ./cmd/local-pricing-bootstrap \

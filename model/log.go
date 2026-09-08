@@ -814,12 +814,16 @@ func UpdateTaskConsumeLogDetails(taskID string, fields, adminFields map[string]i
 	return nil
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, scope string, sortOrder string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
 	} else {
 		tx = LOG_DB.Where("logs.type = ?", logType)
+	}
+	if scope == "request" {
+		condition, args := requestLogScopeCondition()
+		tx = tx.Where(condition, args...)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -853,9 +857,26 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if err != nil {
 		return nil, 0, err
 	}
-	order := "logs.created_at desc, logs.id desc"
+	direction := "desc"
+	// Ordering was historically fixed to newest-first. Only the new request
+	// workspace opts into ascending order so existing log consumers retain the
+	// legacy contract even if they happen to send an order query parameter.
+	if scope == "request" && strings.EqualFold(sortOrder, "asc") {
+		direction = "asc"
+	}
+	order := "logs.created_at " + direction + ", logs.id " + direction
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		order = clickHouseLogOrder("logs.")
+		order = "logs.created_at " + direction + ", logs.request_id " + direction
+	}
+	if scope == "request" {
+		columns := []string{
+			"logs.id", "logs.created_at", "logs.type", "logs.content", "logs.username",
+			"logs.token_name", "logs.model_name", "logs.quota", "logs.prompt_tokens",
+			"logs.completion_tokens", "logs.use_time", "logs.is_stream", "logs.channel_id",
+			"logs." + logGroupCol, "logs.ip", "logs.request_id", "logs.upstream_request_id",
+			"logs.task_id", "logs.other",
+		}
+		tx = tx.Select(strings.Join(columns, ", "))
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
@@ -906,6 +927,43 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 
 	return logs, total, err
+}
+
+func requestLogScopeCondition() (string, []interface{}) {
+	billingStage := logOtherStringSQLExpr("billing_stage")
+	condition := "((logs.type = ? AND (COALESCE(logs.task_id, '') = '' OR " + billingStage + " = ?))" +
+		" OR (logs.type = ? AND COALESCE(logs.task_id, '') = ''))"
+	return condition, []interface{}{LogTypeConsume, "submitted", LogTypeError}
+}
+
+func logOtherStringSQLExpr(field string) string {
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return "CASE WHEN isValidJSON(logs.other) AND JSONHas(logs.other, '" + field + "') THEN JSONExtractString(logs.other, '" + field + "') ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "CASE WHEN JSON_VALID(logs.other) THEN JSON_UNQUOTE(JSON_EXTRACT(logs.other, '$." + field + "')) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return "CASE WHEN logs.other IS NOT NULL AND logs.other <> '' THEN logs.other::jsonb ->> '" + field + "' ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		return "CASE WHEN json_valid(logs.other) THEN CAST(json_extract(logs.other, '$." + field + "') AS TEXT) ELSE NULL END"
+	default:
+		return "NULL"
+	}
+}
+
+func logQuotaPerUnitSQLExpr() string {
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return "CASE WHEN isValidJSON(logs.other) AND JSONHas(logs.other, 'quota_per_unit') THEN JSONExtractFloat(logs.other, 'quota_per_unit') ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "CASE WHEN JSON_VALID(logs.other) AND JSON_EXTRACT(logs.other, '$.quota_per_unit') IS NOT NULL THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(logs.other, '$.quota_per_unit')) AS DECIMAL(24, 6)) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return "CASE WHEN logs.other IS NOT NULL AND logs.other <> '' AND jsonb_typeof(logs.other::jsonb -> 'quota_per_unit') = 'number' THEN CAST(logs.other::jsonb ->> 'quota_per_unit' AS DOUBLE PRECISION) ELSE NULL END"
+	case common.UsingLogDatabase(common.DatabaseTypeSQLite):
+		return "CASE WHEN json_valid(logs.other) AND json_type(logs.other, '$.quota_per_unit') IN ('integer', 'real') THEN CAST(json_extract(logs.other, '$.quota_per_unit') AS REAL) ELSE NULL END"
+	default:
+		return "NULL"
+	}
 }
 
 func GetUpstreamRequestIDsByRequestIDs(requestIDs []string) (map[string]string, error) {
@@ -1040,17 +1098,18 @@ func GetUserRequestLog(userId int, requestId string) (*Log, error) {
 }
 
 type Stat struct {
-	Quota            int64   `json:"quota"`
-	RequestCount     int64   `json:"request_count"`
-	FailureCount     int64   `json:"failure_count"`
-	FailureRate      float64 `json:"failure_rate"`
-	PeakRpm          int64   `json:"peak_rpm"`
-	PeakTpm          int64   `json:"peak_tpm"`
-	TotalTokens      int64   `json:"total_tokens"`
-	PromptTokens     int64   `json:"prompt_tokens"`
-	CompletionTokens int64   `json:"completion_tokens"`
-	CacheHitTokens   int64   `json:"cache_hit_tokens"`
-	CacheHitRate     float64 `json:"cache_hit_rate"`
+	Quota            int64    `json:"quota"`
+	CostUSD          *float64 `json:"cost_usd"`
+	RequestCount     int64    `json:"request_count"`
+	FailureCount     int64    `json:"failure_count"`
+	FailureRate      float64  `json:"failure_rate"`
+	PeakRpm          int64    `json:"peak_rpm"`
+	PeakTpm          int64    `json:"peak_tpm"`
+	TotalTokens      int64    `json:"total_tokens"`
+	PromptTokens     int64    `json:"prompt_tokens"`
+	CompletionTokens int64    `json:"completion_tokens"`
+	CacheHitTokens   int64    `json:"cache_hit_tokens"`
+	CacheHitRate     float64  `json:"cache_hit_rate"`
 }
 
 type UserUsageSeriesPoint struct {
@@ -1480,10 +1539,18 @@ func peakTimeBucketExpr() string {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string) (stat Stat, err error) {
+	return SumUsedQuotaWithScope(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId, "")
+}
+
+func SumUsedQuotaWithScope(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string, scope string) (stat Stat, err error) {
 	// 构建带统一过滤条件的基础查询。
 	base := LOG_DB.Table("logs")
 	if logType != LogTypeUnknown {
 		base = base.Where("type = ?", logType)
+	}
+	if scope == "request" {
+		condition, args := requestLogScopeCondition()
+		base = base.Where(condition, args...)
 	}
 	if base, err = applyExplicitLogTextFilter(base, "username", username); err != nil {
 		return stat, err
@@ -1514,13 +1581,34 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 
 	// 1. 费用（消费为正，退款为负）。
-	quotaTx := base.Session(&gorm.Session{}).Select(
+	quotaBase := base.Session(&gorm.Session{})
+	if scope == "request" {
+		quotaBase = quotaBase.Where("type = ?", LogTypeConsume)
+	}
+	quotaTx := quotaBase.Select(
 		"COALESCE(SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END), 0) AS quota",
 		LogTypeConsume, LogTypeRefund,
 	)
 	if err := quotaTx.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log quota stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
+	}
+	if scope == "request" {
+		quotaPerUnit := logQuotaPerUnitSQLExpr()
+		costSelect := "CASE WHEN COUNT(CASE WHEN logs.type = ? AND logs.quota <> 0 AND (" + quotaPerUnit +
+			" IS NULL OR " + quotaPerUnit + " <= 0) THEN 1 END) > 0 THEN NULL " +
+			"ELSE COALESCE(SUM(CASE WHEN logs.type = ? THEN logs.quota * 1.0 / NULLIF(" +
+			quotaPerUnit + ", 0) ELSE 0 END), 0) END AS cost_usd"
+		cost := struct {
+			CostUSD *float64 `gorm:"column:cost_usd"`
+		}{}
+		if err := base.Session(&gorm.Session{}).
+			Select(costSelect, LogTypeConsume, LogTypeConsume).
+			Scan(&cost).Error; err != nil {
+			common.SysError("failed to query log USD cost stat: " + err.Error())
+			return stat, errors.New("查询统计数据失败")
+		}
+		stat.CostUSD = cost.CostUSD
 	}
 
 	// 2. 请求数、失败数、输入 Token、输出 Token、缓存命中 Token。
@@ -1562,7 +1650,11 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	//    否则会在 (subquery) AS peak 外层错误地引用不存在的 created_at 等列，
 	//    这在 PostgreSQL 上会报 SQLSTATE 42703。
 	bucketExpr := peakTimeBucketExpr()
-	peakSub := base.Session(&gorm.Session{}).Select(
+	peakBase := base.Session(&gorm.Session{})
+	if scope == "request" {
+		peakBase = peakBase.Where("type IN ?", []int{LogTypeConsume, LogTypeError})
+	}
+	peakSub := peakBase.Select(
 		bucketExpr+" AS minute_bucket, COUNT(*) AS rpm, COALESCE(SUM(CASE WHEN type = ? THEN COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0) ELSE 0 END), 0) AS tpm",
 		LogTypeConsume,
 	).Group(bucketExpr)

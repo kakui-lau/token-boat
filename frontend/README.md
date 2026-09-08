@@ -112,11 +112,9 @@ bun run test
 bun run build
 ```
 
-From the repository root, `make build-all-web` runs the V2 workspace build but only copies the User
-Console output into `web/dist/console`. Site and Admin builds stay in their own app directories until
-their explicit routing, assembly, staging, and rollback work is approved. Release binaries and Docker
-images therefore continue to serve the legacy public site and legacy admin pages alongside User
-Console V2.
+From the repository root, `make build-all-web` assembles the User Console and Admin V2 outputs into
+`web/dist/console` and `web/dist/admin`. Release binaries and Docker images serve those applications
+at `/console/*` and `/admin/*`, while the legacy public site remains the production root application.
 
 Synchronize the English and Simplified Chinese catalogs after adding UI text with:
 

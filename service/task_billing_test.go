@@ -338,11 +338,14 @@ func TestManuallyFailAndRefundTaskStopsUnfinishedTaskAndRefundsOnce(t *testing.T
 
 	task := makeTask(userID, channelID, chargedQuota, tokenID, BillingSourceWallet, 0)
 	task.TaskID = "task_manual_refund"
+	task.PrivateData.BillingContext.QuotaPerUnit = 1_000
 	require.NoError(t, model.DB.Create(task).Error)
 
 	result, err := ManuallyFailAndRefundTask(ctx, task.TaskID, "administrator manual refund")
 	require.NoError(t, err)
 	assert.Equal(t, chargedQuota, result.RefundedQuota)
+	require.NotNil(t, result.RefundedUSD)
+	assert.Equal(t, 3.0, *result.RefundedUSD)
 	assert.False(t, result.AlreadyRefunded)
 
 	stored, err := model.GetTaskByID(task.ID)
@@ -359,7 +362,53 @@ func TestManuallyFailAndRefundTaskStopsUnfinishedTaskAndRefundsOnce(t *testing.T
 	require.NoError(t, err)
 	assert.True(t, retry.AlreadyRefunded)
 	assert.Equal(t, chargedQuota, retry.RefundedQuota)
+	require.NotNil(t, retry.RefundedUSD)
+	assert.Equal(t, 3.0, *retry.RefundedUSD)
 	assert.Equal(t, initialQuota+chargedQuota, getUserQuota(t, userID))
+}
+
+func TestTaskRefundUSDRequiresHistoricalSnapshot(t *testing.T) {
+	assert.Nil(t, taskRefundUSD(nil, 3_000))
+	assert.Nil(t, taskRefundUSD(&model.Task{}, 3_000))
+	assert.Nil(t, taskRefundUSD(&model.Task{
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{QuotaPerUnit: 0},
+		},
+	}, 3_000))
+
+	refundedUSD := taskRefundUSD(&model.Task{
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{QuotaPerUnit: 2_000},
+		},
+	}, 3_000)
+	require.NotNil(t, refundedUSD)
+	assert.Equal(t, 1.5, *refundedUSD)
+}
+
+func TestManualTaskRefundByIdentityRejectsMismatchedIDs(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	seedUser(t, 33, 10_000)
+	seedChannel(t, 33)
+
+	first := makeTask(33, 33, 1_000, 0, BillingSourceWallet, 0)
+	first.TaskID = "task-first"
+	second := makeTask(33, 33, 2_000, 0, BillingSourceWallet, 0)
+	second.TaskID = "task-second"
+	require.NoError(t, model.DB.Create(first).Error)
+	require.NoError(t, model.DB.Create(second).Error)
+
+	_, err := ManuallyFailAndRefundTaskByIdentity(ctx, first.ID, second.TaskID, "administrator manual refund")
+	assert.ErrorIs(t, err, ErrManualTaskNotFound)
+
+	storedFirst, err := model.GetTaskByID(first.ID)
+	require.NoError(t, err)
+	storedSecond, err := model.GetTaskByID(second.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1_000, storedFirst.Quota)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusInProgress), storedFirst.Status)
+	assert.Equal(t, 2_000, storedSecond.Quota)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusInProgress), storedSecond.Status)
 }
 
 func TestManuallyFailAndRefundTaskRejectsSuccessfulTask(t *testing.T) {

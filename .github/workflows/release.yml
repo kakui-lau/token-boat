@@ -41,6 +41,8 @@ jobs:
           bun run build
           mkdir -p ../web/dist/console
           cp -R apps/console/dist/. ../web/dist/console/
+          mkdir -p ../web/dist/admin
+          cp -R apps/admin/dist/. ../web/dist/admin/
           cd ..
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -96,6 +98,8 @@ jobs:
           bun run build
           mkdir -p ../web/dist/console
           cp -R apps/console/dist/. ../web/dist/console/
+          mkdir -p ../web/dist/admin
+          cp -R apps/admin/dist/. ../web/dist/admin/
           cd ..
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -148,6 +152,8 @@ jobs:
           bun run build
           mkdir -p ../web/dist/console
           cp -R apps/console/dist/. ../web/dist/console/
+          mkdir -p ../web/dist/admin
+          cp -R apps/admin/dist/. ../web/dist/admin/
           cd ..
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0

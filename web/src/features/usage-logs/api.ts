@@ -112,12 +112,17 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
 
-export async function manuallyFailAndRefundTask(taskId: string) {
+export async function manuallyFailAndRefundTask(
+  taskId: string,
+  internalId: number
+) {
   const res = await api.post<{
     success: boolean
     message: string
     data: ManualTaskRefundResult
-  }>(`/api/task/${encodeURIComponent(taskId)}/fail-and-refund`)
+  }>(`/api/task/${encodeURIComponent(taskId)}/fail-and-refund`, {
+    internal_id: internalId,
+  })
   if (!res.data.success) {
     throw new Error(res.data.message || 'Failed to refund task')
   }

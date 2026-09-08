@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"reflect"
 	"strings"
@@ -176,6 +177,19 @@ type TaskBillingContext struct {
 	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为 OriginModelName
 }
 
+// TaskQuotaUSD converts a stored task quota with its submission-time rate.
+// A nil result means the historical amount cannot be represented safely.
+func TaskQuotaUSD(quota int, quotaPerUnit float64) *float64 {
+	if quota < 0 || quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
+		return nil
+	}
+	value := float64(quota) / quotaPerUnit
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return nil
+	}
+	return &value
+}
+
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
 // 旧数据没有 UpstreamTaskID 时，TaskID 本身就是上游 ID
 func (t *Task) GetUpstreamTaskID() string {
@@ -257,41 +271,81 @@ type SyncTaskQueryParams struct {
 	UserIDs        []int
 }
 
+const (
+	TaskTypeAudio = "audio"
+	TaskTypeImage = "image"
+	TaskTypeVideo = "video"
+)
+
+var taskTypeAudioHints = []string{"suno", "audio", "speech", "tts", "music", "lyrics"}
+var taskTypeVideoHints = []string{"video", "veo", "kling", "sora", "runway", "luma", "hailuo", "vidu", "seedance"}
+
+// CanonicalTaskType classifies a task using the same hint sets as the task
+// list filters. Tasks that do not match an audio or video hint are image tasks,
+// preserving the historical image-filter behavior for existing rows.
+func CanonicalTaskType(task *Task) string {
+	if task == nil {
+		return TaskTypeImage
+	}
+	descriptor := strings.ToLower(strings.Join([]string{
+		string(task.Platform),
+		task.Action,
+		task.Properties.UpstreamModelName,
+		task.Properties.OriginModelName,
+	}, " "))
+	for _, hint := range taskTypeAudioHints {
+		if strings.Contains(descriptor, hint) {
+			return TaskTypeAudio
+		}
+	}
+	for _, hint := range taskTypeVideoHints {
+		if strings.Contains(descriptor, hint) {
+			return TaskTypeVideo
+		}
+	}
+	return TaskTypeImage
+}
+
+func taskTypeDescriptorSQL() string {
+	switch {
+	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
+		return "LOWER(COALESCE(platform, '') || ' ' || COALESCE(action, '') || ' ' || COALESCE(properties::jsonb ->> 'upstream_model_name', '') || ' ' || COALESCE(properties::jsonb ->> 'origin_model_name', ''))"
+	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
+		return "LOWER(CONCAT(COALESCE(platform, ''), ' ', COALESCE(action, ''), ' ', CASE WHEN JSON_VALID(properties) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(properties, '$.upstream_model_name')), '') ELSE '' END, ' ', CASE WHEN JSON_VALID(properties) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(properties, '$.origin_model_name')), '') ELSE '' END))"
+	default:
+		return "LOWER(COALESCE(platform, '') || ' ' || COALESCE(action, '') || ' ' || CASE WHEN json_valid(properties) THEN COALESCE(json_extract(properties, '$.upstream_model_name'), '') ELSE '' END || ' ' || CASE WHEN json_valid(properties) THEN COALESCE(json_extract(properties, '$.origin_model_name'), '') ELSE '' END)"
+	}
+}
+
+func taskTypeMatchSQL(descriptor string, hints []string) (string, []any) {
+	conditions := make([]string, 0, len(hints))
+	args := make([]any, 0, len(hints))
+	for _, hint := range hints {
+		conditions = append(conditions, descriptor+" LIKE ?")
+		args = append(args, "%"+hint+"%")
+	}
+	return "(" + strings.Join(conditions, " OR ") + ")", args
+}
+
 func applyTaskTypeFilter(query *gorm.DB, taskType string) *gorm.DB {
+	taskType = strings.ToLower(strings.TrimSpace(taskType))
 	if taskType == "" || taskType == "all" {
 		return query
 	}
-	descriptor := "LOWER(COALESCE(platform, '') || ' ' || COALESCE(action, '') || ' ' || COALESCE(CAST(properties AS TEXT), ''))"
-	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		descriptor = "LOWER(CONCAT(COALESCE(platform, ''), ' ', COALESCE(action, ''), ' ', COALESCE(CAST(properties AS CHAR), '')))"
-	}
-	audioPatterns := []string{"%suno%", "%audio%", "%speech%", "%tts%", "%music%", "%lyrics%"}
-	videoPatterns := []string{"%video%", "%veo%", "%kling%", "%sora%", "%runway%", "%luma%", "%hailuo%", "%vidu%", "%seedance%"}
-	patterns := audioPatterns
-	if taskType == "video" {
-		patterns = videoPatterns
-	}
-	conditions := make([]string, 0, len(patterns))
-	args := make([]any, 0, len(patterns))
-	for _, pattern := range patterns {
-		conditions = append(conditions, descriptor+" LIKE ?")
-		args = append(args, pattern)
-	}
-	condition := "(" + strings.Join(conditions, " OR ") + ")"
-	if taskType == "image" {
-		allPatterns := append(append([]string{}, audioPatterns...), videoPatterns...)
-		conditions = conditions[:0]
-		args = args[:0]
-		for _, pattern := range allPatterns {
-			conditions = append(conditions, descriptor+" LIKE ?")
-			args = append(args, pattern)
-		}
-		condition = "NOT (" + strings.Join(conditions, " OR ") + ")"
-	}
-	if taskType != "audio" && taskType != "video" && taskType != "image" {
+	descriptor := taskTypeDescriptorSQL()
+	if taskType != TaskTypeAudio && taskType != TaskTypeVideo && taskType != TaskTypeImage {
 		return query
 	}
-	return query.Where(condition, args...)
+	audioCondition, audioArgs := taskTypeMatchSQL(descriptor, taskTypeAudioHints)
+	videoCondition, videoArgs := taskTypeMatchSQL(descriptor, taskTypeVideoHints)
+	switch taskType {
+	case TaskTypeAudio:
+		return query.Where(audioCondition, audioArgs...)
+	case TaskTypeVideo:
+		return query.Where("NOT "+audioCondition+" AND "+videoCondition, append(audioArgs, videoArgs...)...)
+	default:
+		return query.Where("NOT "+audioCondition+" AND NOT "+videoCondition, append(audioArgs, videoArgs...)...)
+	}
 }
 
 func applyTaskQueryParams(query *gorm.DB, queryParams SyncTaskQueryParams) *gorm.DB {
@@ -411,6 +465,60 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	return tasks
 }
 
+// TaskGetAllTaskSummaries returns the safe administrator list projection's
+// model fields and preserves query failures for fail-closed API handling.
+func TaskGetAllTaskSummaries(startIdx int, num int, queryParams SyncTaskQueryParams) ([]*Task, error) {
+	var tasks []*Task
+	err := applyTaskQueryParams(DB, queryParams).
+		Omit("private_data", "data").
+		Order(taskListOrder(queryParams.SortOrder)).
+		Limit(num).
+		Offset(startIdx).
+		Find(&tasks).Error
+	if err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+func taskBillingQuotaPerUnitSQL() string {
+	switch {
+	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
+		return "CASE WHEN jsonb_typeof(private_data::jsonb #> '{billing_context,quota_per_unit}') = 'number' THEN CAST(private_data::jsonb #>> '{billing_context,quota_per_unit}' AS DOUBLE PRECISION) ELSE NULL END"
+	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
+		return "CASE WHEN JSON_VALID(private_data) AND JSON_TYPE(JSON_EXTRACT(private_data, '$.billing_context.quota_per_unit')) IN ('INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(private_data, '$.billing_context.quota_per_unit')) AS DECIMAL(36, 18)) ELSE NULL END"
+	default:
+		return "CASE WHEN json_valid(private_data) AND json_type(private_data, '$.billing_context.quota_per_unit') IN ('integer', 'real') THEN CAST(json_extract(private_data, '$.billing_context.quota_per_unit') AS REAL) ELSE NULL END"
+	}
+}
+
+// TaskBillingQuotaPerUnitSnapshots loads only the submission-time quota
+// conversion value needed by the safe administrator summary. It deliberately
+// avoids hydrating the rest of private_data into application memory.
+func TaskBillingQuotaPerUnitSnapshots(taskIDs []int64) (map[int64]float64, error) {
+	result := make(map[int64]float64)
+	if len(taskIDs) == 0 {
+		return result, nil
+	}
+	var rows []struct {
+		ID           int64
+		QuotaPerUnit *float64
+	}
+	err := DB.Model(&Task{}).
+		Select("id, "+taskBillingQuotaPerUnitSQL()+" AS quota_per_unit").
+		Where("id IN ?", taskIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.QuotaPerUnit != nil && *row.QuotaPerUnit > 0 && !math.IsNaN(*row.QuotaPerUnit) && !math.IsInf(*row.QuotaPerUnit, 0) {
+			result[row.ID] = *row.QuotaPerUnit
+		}
+	}
+	return result, nil
+}
+
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
 	err := DB.Where("progress != ?", "100%").
@@ -490,6 +598,22 @@ func GetByOnlyTaskId(taskId string) (*Task, bool, error) {
 		return nil, false, err
 	}
 	return task, exist, err
+}
+
+// GetTaskByAdminIdentity requires both the internal primary key and public
+// task ID. Administrative financial actions must use this exact identity so a
+// duplicated legacy public ID cannot target an arbitrary row.
+func GetTaskByAdminIdentity(id int64, taskId string) (*Task, bool, error) {
+	if id <= 0 || strings.TrimSpace(taskId) == "" {
+		return nil, false, nil
+	}
+	var task Task
+	err := DB.Where("id = ? AND task_id = ?", id, taskId).First(&task).Error
+	exists, err := RecordExist(err)
+	if err != nil {
+		return nil, false, err
+	}
+	return &task, exists, nil
 }
 
 func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
@@ -984,6 +1108,17 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	query := applyTaskQueryParams(DB.Model(&Task{}), queryParams)
 	_ = query.Count(&total).Error
 	return total
+}
+
+// TaskCountAllTaskSummaries is the fail-closed count companion to
+// TaskGetAllTaskSummaries.
+func TaskCountAllTaskSummaries(queryParams SyncTaskQueryParams) (int64, error) {
+	var total int64
+	err := applyTaskQueryParams(DB.Model(&Task{}), queryParams).Count(&total).Error
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // TaskCountAllUserTask returns total tasks for given user

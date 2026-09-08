@@ -27,7 +27,7 @@ export type AdminNavigationItem = {
   labelKey: string;
   path: `/admin/${string}`;
   scope: "customers" | "platform" | "system";
-  status: "scaffolded";
+  status: "connected" | "scaffolded";
 };
 
 export type AdminNavigationGroup = {
@@ -64,6 +64,7 @@ export const adminRouteCatalog: readonly AdminNavigationGroup[] = [
         ],
         labelKey: "nav.channels",
         path: "/admin/gateway/channels",
+        status: "connected",
       }),
       adminItem({
         capabilityId: "requests",
@@ -76,6 +77,7 @@ export const adminRouteCatalog: readonly AdminNavigationGroup[] = [
         ],
         labelKey: "nav.requests",
         path: "/admin/operations/requests",
+        status: "connected",
       }),
       adminItem({
         capabilityId: "channel-usage",
@@ -298,6 +300,10 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = adminRouteCa
   (group) => group.items,
 );
 
+export const connectedAdminCapabilities = adminNavigationItems.filter(
+  (item) => item.status === "connected",
+);
+
 export const embeddedAdminCapabilities = [
   { capabilityId: "routing", owner: "channels" },
   { capabilityId: "probes", owner: "channels" },
@@ -337,7 +343,7 @@ function adminItem(
     Partial<
       Pick<
         AdminNavigationItem,
-        "accessMode" | "dataVisibility" | "includedCapabilityKeys" | "scope"
+        "accessMode" | "dataVisibility" | "includedCapabilityKeys" | "scope" | "status"
       >
     >,
 ): AdminNavigationItem {
@@ -346,7 +352,7 @@ function adminItem(
     dataVisibility: "platform",
     includedCapabilityKeys: [],
     scope: "platform",
-    status: "scaffolded",
+    status: item.status ?? "scaffolded",
     ...item,
   };
 }

@@ -357,13 +357,7 @@ func SetApiRouter(router *gin.Engine) {
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
 		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
 
-		taskRoute := apiRouter.Group("/task")
-		{
-			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
-			taskRoute.GET("/self/:task_id/artifacts/:position", middleware.UserAuth(), controller.GetUserTaskArtifact)
-			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
-			taskRoute.POST("/:task_id/fail-and-refund", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ManuallyFailAndRefundTask)
-		}
+		registerTaskRoutes(apiRouter)
 
 		vendorRoute := apiRouter.Group("/vendors")
 		vendorRoute.Use(middleware.AdminAuth())

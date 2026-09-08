@@ -54,6 +54,8 @@ jobs:
           bun run build
           mkdir -p ../web/dist/console
           cp -R apps/console/dist/. ../web/dist/console/
+          mkdir -p ../web/dist/admin
+          cp -R apps/admin/dist/. ../web/dist/admin/
           cd ..
 
       # - name: Build Go binary (macos/Linux)

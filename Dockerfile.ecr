@@ -39,6 +39,7 @@ RUN go mod download
 COPY . .
 COPY --from=legacy-frontend-builder /build/web/dist ./web/dist
 COPY --from=console-frontend-builder /build/frontend/apps/console/dist ./web/dist/console
+COPY --from=console-frontend-builder /build/frontend/apps/admin/dist ./web/dist/admin
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api \
     && go build -ldflags "-s -w" -o pricing-readiness ./cmd/local-pricing-bootstrap \
     && go build -ldflags "-s -w" -o db-migrate ./cmd/db-migrate \

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 
+import { AdminProviders } from "@/app/providers";
 import { router } from "@/app/router";
 import "@/i18n";
 import "@/styles/index.css";
@@ -14,6 +15,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <AdminProviders>
+      <RouterProvider router={router} />
+    </AdminProviders>
   </StrictMode>,
 );

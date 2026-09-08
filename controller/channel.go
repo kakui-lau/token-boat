@@ -92,6 +92,58 @@ func buildChannelListQuery(group string, statusFilter int, typeFilter int) *gorm
 	return query
 }
 
+type channelSummary struct {
+	Id           int     `json:"id"`
+	Type         int     `json:"type"`
+	Status       int     `json:"status"`
+	Name         string  `json:"name"`
+	Weight       *uint   `json:"weight"`
+	TestTime     int64   `json:"test_time"`
+	ResponseTime int     `json:"response_time"`
+	BaseURL      *string `json:"base_url"`
+	Balance      float64 `json:"balance"`
+	Models       string  `json:"models"`
+	Group        string  `json:"group"`
+	Priority     *int64  `json:"priority"`
+	Tag          *string `json:"tag"`
+}
+
+func channelSummaryView(c *gin.Context) bool {
+	return strings.EqualFold(strings.TrimSpace(c.Query("view")), "summary")
+}
+
+func projectChannelSummaries(channels []*model.Channel) []channelSummary {
+	summaries := make([]channelSummary, 0, len(channels))
+	for _, channel := range channels {
+		if channel == nil {
+			continue
+		}
+		summaries = append(summaries, channelSummary{
+			Id:           channel.Id,
+			Type:         channel.Type,
+			Status:       channel.Status,
+			Name:         channel.Name,
+			Weight:       channel.Weight,
+			TestTime:     channel.TestTime,
+			ResponseTime: channel.ResponseTime,
+			BaseURL:      channel.BaseURL,
+			Balance:      channel.Balance,
+			Models:       channel.Models,
+			Group:        channel.Group,
+			Priority:     channel.Priority,
+			Tag:          channel.Tag,
+		})
+	}
+	return summaries
+}
+
+func channelListResponseItems(c *gin.Context, channels []*model.Channel) any {
+	if channelSummaryView(c) {
+		return projectChannelSummaries(channels)
+	}
+	return channels
+}
+
 func GetChannelOps(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"retry_times": common.RetryTimes,
@@ -185,7 +237,7 @@ func GetAllChannels(c *gin.Context) {
 		typeCounts[r.Type] = r.Count
 	}
 	common.ApiSuccess(c, gin.H{
-		"items":       channelData,
+		"items":       channelListResponseItems(c, channelData),
 		"total":       total,
 		"page":        pageInfo.GetPage(),
 		"page_size":   pageInfo.GetPageSize(),
@@ -405,7 +457,7 @@ func SearchChannels(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"items":       pagedData,
+			"items":       channelListResponseItems(c, pagedData),
 			"total":       total,
 			"type_counts": typeCounts,
 		},

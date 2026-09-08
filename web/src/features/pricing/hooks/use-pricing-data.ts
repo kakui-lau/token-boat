@@ -20,14 +20,17 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { useStatus } from '@/hooks/use-status'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getPricing } from '../api'
 
 export function usePricingData() {
   const { status } = useStatus()
+  const userId = useAuthStore((state) => state.auth.user?.id ?? 0)
+  const canViewSalesPrice = userId > 0
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pricing'],
+    queryKey: ['pricing', userId],
     queryFn: getPricing,
     staleTime: 30 * 1000,
   })
@@ -74,5 +77,6 @@ export function usePricingData() {
     refetch,
     priceRate,
     usdExchangeRate,
+    canViewSalesPrice,
   }
 }

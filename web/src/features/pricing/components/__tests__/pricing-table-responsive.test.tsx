@@ -59,6 +59,38 @@ const model: PricingModel = {
   availability_status: 'available',
 }
 
+const pricedModel: PricingModel = {
+  ...model,
+  official_price: {
+    currency: 'USD',
+    billing_mode: 'request',
+    price_structure: 'flat',
+    items: [
+      {
+        key: 'request',
+        component: 'request',
+        amount: '5',
+        unit: 'request',
+        unit_size: '1',
+      },
+    ],
+  },
+  lowest_price: {
+    currency: 'USD',
+    billing_mode: 'request',
+    price_structure: 'flat',
+    items: [
+      {
+        key: 'request',
+        component: 'request',
+        amount: '4',
+        unit: 'request',
+        unit_size: '1',
+      },
+    ],
+  },
+}
+
 describe('pricing table responsive behavior', () => {
   test('keeps wide price columns inside a horizontal scroll container', () => {
     render(<PricingTable models={[model]} />)
@@ -78,5 +110,21 @@ describe('pricing table responsive behavior', () => {
     )
 
     expect(onModelClick).toHaveBeenCalledWith('mobile-table-model')
+  })
+
+  test('shows only official pricing to signed-out visitors', () => {
+    render(<PricingTable models={[pricedModel]} canViewSalesPrice={false} />)
+
+    expect(screen.getByText('$5')).toBeVisible()
+    expect(screen.queryByText('$4')).not.toBeInTheDocument()
+    expect(screen.getByText('Sign in to view')).toBeVisible()
+  })
+
+  test('shows the customer sales price after sign-in', () => {
+    render(<PricingTable models={[pricedModel]} canViewSalesPrice />)
+
+    expect(screen.getByText('$5')).toBeVisible()
+    expect(screen.getByText('$4')).toBeVisible()
+    expect(screen.queryByText('Sign in to view')).not.toBeInTheDocument()
   })
 })

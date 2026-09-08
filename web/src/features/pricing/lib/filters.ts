@@ -106,7 +106,8 @@ export function filterByEndpointType(
  */
 function getModelPrice(model: PricingModel, group: string): number | null {
   const lowestAmount = Number(
-    getDisplayedSalesPrice(model, group)?.items[0]?.amount
+    (getDisplayedSalesPrice(model, group) ?? model.official_price)?.items[0]
+      ?.amount
   )
   if (Number.isFinite(lowestAmount)) {
     return lowestAmount

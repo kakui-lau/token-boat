@@ -77,6 +77,34 @@ func TestFilterAvailablePublicPricingHidesUnroutableAndUnpricedModels(t *testing
 	assert.Equal(t, "available", filtered[0].ModelName)
 }
 
+func TestHideCustomerPricingForAnonymousKeepsOnlyOfficialPrice(t *testing.T) {
+	officialPrice := &model.PublicPriceSummary{Currency: "USD"}
+	salesPrice := &model.PublicPriceSummary{Currency: "USD"}
+	pricing := []model.Pricing{{
+		ModelName:          "public-model",
+		PricingVersion:     "price-book-v1",
+		PricingSource:      "sales_price_book",
+		OfficialPrice:      officialPrice,
+		LowestPrice:        salesPrice,
+		SalesPricesByGroup: map[string]*model.PublicPriceSummary{"default": salesPrice},
+		PricingGroups:      []string{"default"},
+		Available:          true,
+		AvailabilityStatus: model.PricingAvailabilityAvailable,
+	}}
+
+	hidden := hideCustomerPricingForAnonymous(pricing)
+
+	require.Len(t, hidden, 1)
+	assert.Same(t, officialPrice, hidden[0].OfficialPrice)
+	assert.Nil(t, hidden[0].LowestPrice)
+	assert.Nil(t, hidden[0].SalesPricesByGroup)
+	assert.Equal(t, []string{"default"}, hidden[0].PricingGroups)
+	assert.Equal(t, "sales_price_book", hidden[0].PricingSource)
+	assert.Equal(t, "price-book-v1", hidden[0].PricingVersion)
+	assert.True(t, hidden[0].Available)
+	assert.Equal(t, model.PricingAvailabilityAvailable, hidden[0].AvailabilityStatus)
+}
+
 func TestPublicPricingVersionTracksActualUserVisiblePricing(t *testing.T) {
 	pricing := []model.Pricing{{
 		ModelName: "versioned-model", PricingSource: "sales_price_book",

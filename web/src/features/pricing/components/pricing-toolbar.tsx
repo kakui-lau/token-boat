@@ -72,6 +72,7 @@ export interface PricingToolbarProps {
   onTokenUnitChange: (value: TokenUnit) => void
   showRechargePrice: boolean
   onRechargePriceChange: (value: boolean) => void
+  canViewSalesPrice?: boolean
   viewMode: ViewMode
   onViewModeChange: (value: ViewMode) => void
   quotaTypeFilter: string
@@ -200,15 +201,17 @@ export function PricingToolbar(props: PricingToolbarProps) {
 
         <div className='flex flex-wrap items-center gap-2'>
           <div className='hidden items-center gap-2 sm:flex'>
-            <SegmentedControl
-              options={[
-                { value: 'standard', label: t('Standard') },
-                { value: 'recharge', label: t('Recharge') },
-              ]}
-              value={props.showRechargePrice ? 'recharge' : 'standard'}
-              onChange={handleRechargePriceChange}
-              ariaLabel={t('Price display mode')}
-            />
+            {props.canViewSalesPrice !== false && (
+              <SegmentedControl
+                options={[
+                  { value: 'standard', label: t('Standard') },
+                  { value: 'recharge', label: t('Recharge') },
+                ]}
+                value={props.showRechargePrice ? 'recharge' : 'standard'}
+                onChange={handleRechargePriceChange}
+                ariaLabel={t('Price display mode')}
+              />
+            )}
             <SegmentedControl
               options={[
                 { value: 'M', label: '/1M' },

@@ -49,6 +49,7 @@ export interface PricingColumnsOptions {
   usdExchangeRate?: number
   showRechargePrice?: boolean
   selectedGroup?: string
+  canViewSalesPrice?: boolean
 }
 
 export function usePricingColumns(
@@ -132,21 +133,33 @@ export function usePricingColumns(
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Lowest item price')} />
       ),
-      cell: ({ row }) => (
-        <PublicPriceSummaryCompact
-          summary={getDisplayedSalesPrice(row.original, options.selectedGroup)}
-          tokenUnit={tokenUnit}
-          showRechargePrice={options.showRechargePrice}
-          priceRate={options.priceRate}
-          usdExchangeRate={options.usdExchangeRate}
-          emptyLabel={
-            isModelAvailableForGroup(row.original, options.selectedGroup)
-              ? t('Quote required')
-              : undefined
-          }
-          className='min-w-[190px]'
-        />
-      ),
+      cell: ({ row }) => {
+        const canViewSalesPrice = options.canViewSalesPrice !== false
+        let emptyLabel: string | undefined
+        if (!canViewSalesPrice) {
+          emptyLabel = t('Sign in to view')
+        } else if (
+          isModelAvailableForGroup(row.original, options.selectedGroup)
+        ) {
+          emptyLabel = t('Quote required')
+        }
+
+        return (
+          <PublicPriceSummaryCompact
+            summary={
+              canViewSalesPrice
+                ? getDisplayedSalesPrice(row.original, options.selectedGroup)
+                : undefined
+            }
+            tokenUnit={tokenUnit}
+            showRechargePrice={options.showRechargePrice}
+            priceRate={options.priceRate}
+            usdExchangeRate={options.usdExchangeRate}
+            emptyLabel={emptyLabel}
+            className='min-w-[190px]'
+          />
+        )
+      },
       size: 220,
       enableSorting: false,
     },

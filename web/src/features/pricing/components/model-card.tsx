@@ -44,6 +44,7 @@ export interface ModelCardProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  canViewSalesPrice?: boolean
   perf?: ModelPerfBadgeData
 }
 
@@ -59,6 +60,13 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const bottomTags = [...endpoints.slice(0, 2), ...tags.slice(0, 2)]
   const hiddenCount =
     Math.max(endpoints.length - 2, 0) + Math.max(tags.length - 2, 0)
+  const canViewSalesPrice = props.canViewSalesPrice !== false
+  let lowestEmptyLabel: string | undefined
+  if (!canViewSalesPrice) {
+    lowestEmptyLabel = t('Sign in to view')
+  } else if (isModelAvailableForGroup(props.model, props.selectedGroup)) {
+    lowestEmptyLabel = t('Quote required')
+  }
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -125,16 +133,16 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
 
       <PublicPriceComparison
         official={props.model.official_price}
-        lowest={getDisplayedSalesPrice(props.model, props.selectedGroup)}
+        lowest={
+          canViewSalesPrice
+            ? getDisplayedSalesPrice(props.model, props.selectedGroup)
+            : undefined
+        }
         tokenUnit={tokenUnit}
         showRechargePrice={props.showRechargePrice}
         priceRate={props.priceRate}
         usdExchangeRate={props.usdExchangeRate}
-        lowestEmptyLabel={
-          isModelAvailableForGroup(props.model, props.selectedGroup)
-            ? t('Quote required')
-            : undefined
-        }
+        lowestEmptyLabel={lowestEmptyLabel}
         className='mt-3 sm:mt-4'
       />
 

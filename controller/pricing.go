@@ -68,6 +68,18 @@ func filterAvailablePublicPricing(pricing []model.Pricing) []model.Pricing {
 	return available
 }
 
+// hideCustomerPricingForAnonymous keeps the public catalog and official list
+// prices available without exposing a customer sales price before sign-in.
+// Availability is calculated first so anonymous visitors still see the same
+// set of models that can actually be served.
+func hideCustomerPricingForAnonymous(pricing []model.Pricing) []model.Pricing {
+	for index := range pricing {
+		pricing[index].LowestPrice = nil
+		pricing[index].SalesPricesByGroup = nil
+	}
+	return pricing
+}
+
 func publicPricingVersion(
 	pricing []model.Pricing,
 	groupRatio map[string]float64,
@@ -116,6 +128,9 @@ func GetPricing(c *gin.Context) {
 	)
 	pricing = markPricingAvailability(pricing)
 	pricing = filterAvailablePublicPricing(pricing)
+	if !exists {
+		pricing = hideCustomerPricingForAnonymous(pricing)
+	}
 
 	c.JSON(200, gin.H{
 		"success":            true,

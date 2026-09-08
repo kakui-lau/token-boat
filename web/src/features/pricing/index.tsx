@@ -54,6 +54,7 @@ export function Pricing() {
     isLoading,
     priceRate,
     usdExchangeRate,
+    canViewSalesPrice,
   } = usePricingData()
 
   const {
@@ -140,6 +141,7 @@ export function Pricing() {
           tokenUnit={tokenUnit}
           showRechargePrice={showRechargePrice}
           selectedGroup={groupFilter}
+          canViewSalesPrice={canViewSalesPrice}
         />
       )
     }
@@ -152,6 +154,7 @@ export function Pricing() {
         tokenUnit={tokenUnit}
         showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
+        canViewSalesPrice={canViewSalesPrice}
         onModelClick={handleModelClick}
       />
     )
@@ -243,6 +246,7 @@ export function Pricing() {
                 onTokenUnitChange={setTokenUnit}
                 showRechargePrice={showRechargePrice}
                 onRechargePriceChange={setShowRechargePrice}
+                canViewSalesPrice={canViewSalesPrice}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 quotaTypeFilter={quotaTypeFilter}
@@ -292,6 +296,7 @@ export function Pricing() {
               tokenUnit={tokenUnit}
               showRechargePrice={showRechargePrice}
               selectedGroup={groupFilter}
+              canViewSalesPrice={canViewSalesPrice}
             />
           )}
         </PageTransition>

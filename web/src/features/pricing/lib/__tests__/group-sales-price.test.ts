@@ -125,6 +125,34 @@ describe('group-scoped sales price', () => {
     ])
   })
 
+  test('sorts anonymous catalog models by official price', () => {
+    const lowerOfficialPrice: PricingModel = {
+      ...model,
+      model_name: 'lower-official-price',
+      lowest_price: undefined,
+      sales_prices_by_group: undefined,
+      official_price: {
+        ...vipSummary,
+        items: [{ ...vipSummary.items[0], amount: '1.2' }],
+      },
+    }
+    const higherOfficialPrice: PricingModel = {
+      ...lowerOfficialPrice,
+      model_name: 'higher-official-price',
+      official_price: {
+        ...vipSummary,
+        items: [{ ...vipSummary.items[0], amount: '2.4' }],
+      },
+    }
+
+    expect(
+      sortModels(
+        [higherOfficialPrice, lowerOfficialPrice],
+        SORT_OPTIONS.PRICE_LOW
+      ).map((item) => item.model_name)
+    ).toEqual(['lower-official-price', 'higher-official-price'])
+  })
+
   test('applies the vendor filter in the combined filter pipeline', () => {
     const otherVendorModel: PricingModel = {
       ...model,

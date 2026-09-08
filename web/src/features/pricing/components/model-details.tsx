@@ -561,11 +561,14 @@ function PriceSection(props: {
   model: PricingModel
   tokenUnit: TokenUnit
   selectedGroup?: string
+  canViewSalesPrice: boolean
 }) {
   const { t } = useTranslation()
-  const salesPrice = getDisplayedSalesPrice(props.model, props.selectedGroup)
+  const salesPrice = props.canViewSalesPrice
+    ? getDisplayedSalesPrice(props.model, props.selectedGroup)
+    : undefined
 
-  if (!props.model.official_price && !salesPrice) {
+  if (props.canViewSalesPrice && !props.model.official_price && !salesPrice) {
     return (
       <p className='text-muted-foreground text-sm'>{t('Not configured')}</p>
     )
@@ -574,7 +577,9 @@ function PriceSection(props: {
   return (
     <div>
       <section>
-        <SectionTitle>{t('Your current price')}</SectionTitle>
+        <SectionTitle>
+          {t(props.canViewSalesPrice ? 'Your current price' : 'Official Price')}
+        </SectionTitle>
         <PublicPriceSummaryDetails
           summary={salesPrice || props.model.official_price}
           comparisonSummary={
@@ -583,6 +588,11 @@ function PriceSection(props: {
           tokenUnit={props.tokenUnit}
           emptyLabel={t('Not configured')}
         />
+        {!props.canViewSalesPrice && (
+          <p className='text-muted-foreground mt-3 border-t pt-3 text-sm'>
+            {t('Lowest item price')}: {t('Sign in to view')}
+          </p>
+        )}
       </section>
     </div>
   )
@@ -611,6 +621,7 @@ export interface ModelDetailsContentProps {
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  canViewSalesPrice: boolean
 }
 
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
@@ -646,6 +657,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
               model={props.model}
               tokenUnit={props.tokenUnit}
               selectedGroup={props.selectedGroup}
+              canViewSalesPrice={props.canViewSalesPrice}
             />
           </section>
 
@@ -715,6 +727,7 @@ export function ModelDetails() {
     isLoading,
     priceRate,
     usdExchangeRate,
+    canViewSalesPrice,
   } = usePricingData()
 
   const tokenUnit: TokenUnit =
@@ -795,6 +808,7 @@ export function ModelDetails() {
           tokenUnit={tokenUnit}
           showRechargePrice={search.rechargePrice ?? false}
           selectedGroup={search.group}
+          canViewSalesPrice={canViewSalesPrice}
           endpointMap={
             (endpointMap as Record<
               string,

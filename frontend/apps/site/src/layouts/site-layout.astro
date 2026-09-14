@@ -136,7 +136,13 @@ const jsonLd = props.jsonLd
               ))}
             </div>
           </details>
-          <a class="text-link desktop-only" href="/console/sign-in">{copy.nav.signIn}</a>
+          <a
+            class="text-link desktop-only"
+            data-session-link
+            data-authenticated-href="/console/"
+            data-authenticated-label={copy.nav.console}
+            href="/console/sign-in"
+          ><span data-session-label>{copy.nav.signIn}</span></a>
           <a class="button button--small" href="/console/getting-started">{copy.nav.getStarted}<span aria-hidden="true">↗</span></a>
           <details class="mobile-navigation" data-animated-details data-site-menu="navigation">
             <summary aria-label={copy.nav.menu}><span></span><span></span><span></span></summary>
@@ -148,7 +154,12 @@ const jsonLd = props.jsonLd
                   aria-current={normalizedCanonicalPath === stripLocalePrefix(href) ? "page" : undefined}
                 ><span>{index}</span>{label}</a>
               ))}
-              <a href="/console/sign-in"><span>07</span>{copy.nav.signIn}</a>
+              <a
+                data-session-link
+                data-authenticated-href="/console/"
+                data-authenticated-label={copy.nav.console}
+                href="/console/sign-in"
+              ><span>07</span><strong data-session-label>{copy.nav.signIn}</strong></a>
             </div>
           </details>
         </div>

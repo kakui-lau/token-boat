@@ -1,3 +1,7 @@
+import { hasViewerSession } from "@/islands/auth/viewer-session";
+
+type ViewerSessionResolver = (forceRefresh?: boolean) => Promise<boolean>;
+
 export function preserveLocationState(targetHref: string, currentHref: string): string {
   const currentUrl = new URL(currentHref);
   const targetUrl = new URL(targetHref, currentUrl);
@@ -11,9 +15,23 @@ export function preserveLocationState(targetHref: string, currentHref: string): 
 export function initializeSiteHeader(
   root: Document = document,
   browserWindow: Window = window,
+  resolveViewerSession: ViewerSessionResolver = hasViewerSession,
 ): () => void {
   const menus = Array.from(root.querySelectorAll<HTMLDetailsElement>("details[data-site-menu]"));
+  const sessionLinks = Array.from(
+    root.querySelectorAll<HTMLAnchorElement>("a[data-session-link]"),
+  ).map((link) => {
+    const labelElement = link.querySelector<HTMLElement>("[data-session-label]");
+    return {
+      anonymousHref: link.getAttribute("href"),
+      anonymousLabel: labelElement?.textContent ?? null,
+      labelElement,
+      link,
+    };
+  });
   const closingDetails = new WeakMap<HTMLDetailsElement, number>();
+  let sessionCheckVersion = 0;
+  let disposed = false;
 
   const closeMenu = (menu: HTMLDetailsElement, restoreFocus = false) => {
     const timer = closingDetails.get(menu);
@@ -104,12 +122,39 @@ export function initializeSiteHeader(
     openMenu.querySelector<HTMLElement>("summary")?.focus();
   };
 
+  const updateSessionLinks = (forceRefresh = false) => {
+    const checkVersion = ++sessionCheckVersion;
+    void resolveViewerSession(forceRefresh)
+      .then((authenticated) => {
+        if (disposed || checkVersion !== sessionCheckVersion) return;
+        for (const sessionLink of sessionLinks) {
+          const href = authenticated
+            ? sessionLink.link.dataset.authenticatedHref
+            : sessionLink.anonymousHref;
+          const label = authenticated
+            ? sessionLink.link.dataset.authenticatedLabel
+            : sessionLink.anonymousLabel;
+          if (href) sessionLink.link.setAttribute("href", href);
+          if (label && sessionLink.labelElement) sessionLink.labelElement.textContent = label;
+        }
+      })
+      .catch(() => undefined);
+  };
+
+  const handlePageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) updateSessionLinks(true);
+  };
+
   root.addEventListener("click", handleClick);
   root.addEventListener("keydown", handleKeydown);
+  browserWindow.addEventListener("pageshow", handlePageShow);
+  updateSessionLinks();
 
   return () => {
+    disposed = true;
     root.removeEventListener("click", handleClick);
     root.removeEventListener("keydown", handleKeydown);
+    browserWindow.removeEventListener("pageshow", handlePageShow);
     for (const menu of menus) {
       const timer = closingDetails.get(menu);
       if (timer !== undefined) browserWindow.clearTimeout(timer);

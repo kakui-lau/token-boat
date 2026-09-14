@@ -27,6 +27,7 @@ type SiteCopy = {
     status: string;
     about: string;
     signIn: string;
+    console: string;
     getStarted: string;
     menu: string;
     faq: string;
@@ -61,6 +62,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       status: "服务信息",
       about: "关于",
       signIn: "登录",
+      console: "控制台",
       getStarted: "开始接入",
       menu: "打开导航",
       faq: "常见问题",
@@ -93,6 +95,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       status: "Service info",
       about: "About",
       signIn: "Sign in",
+      console: "Console",
       getStarted: "Get started",
       menu: "Open navigation",
       faq: "FAQ",
@@ -126,6 +129,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       status: "サービス情報",
       about: "概要",
       signIn: "ログイン",
+      console: "コンソール",
       getStarted: "利用を開始",
       menu: "ナビゲーションを開く",
       faq: "よくある質問",
@@ -159,6 +163,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       status: "서비스 안내",
       about: "소개",
       signIn: "로그인",
+      console: "콘솔",
       getStarted: "시작하기",
       menu: "탐색 메뉴 열기",
       faq: "자주 묻는 질문",
@@ -192,6 +197,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       status: "服務資訊",
       about: "關於",
       signIn: "登入",
+      console: "控制台",
       getStarted: "開始串接",
       menu: "開啟導覽",
       faq: "常見問題",

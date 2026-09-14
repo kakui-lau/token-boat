@@ -54,8 +54,13 @@ fi
 registry="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 image="${registry}/${ECR_REPOSITORY}:${image_tag}"
 
-aws ecr get-login-password --region "$AWS_REGION" \
-  | docker login --username AWS --password-stdin "$registry"
+if command -v docker-credential-ecr-login >/dev/null 2>&1 \
+  && printf '%s' "$registry" | docker-credential-ecr-login get >/dev/null 2>&1; then
+  echo "using the configured Amazon ECR Docker credential helper"
+else
+  aws ecr get-login-password --region "$AWS_REGION" \
+    | docker login --username AWS --password-stdin "$registry"
+fi
 
 if ! docker buildx inspect "$BUILDX_BUILDER" >/dev/null 2>&1; then
   docker buildx create \

@@ -1,0 +1,9 @@
+# Local release images only need the prebuilt binary and license notices.
+# Keep the context allowlisted so source, credentials, databases, and test
+# artifacts cannot be sent to the builder by this packaging-only Dockerfile.
+**
+!build/
+!build/new-api-linux-*
+!LICENSE
+!NOTICE
+!THIRD-PARTY-LICENSES.md

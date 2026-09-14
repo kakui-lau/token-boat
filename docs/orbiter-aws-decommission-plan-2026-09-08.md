@@ -1,11 +1,259 @@
 # Orbiter AWS 资源下线与成本回收执行方案
 
-> 文档日期：2026-09-08  
-> AWS 账号：`952178321851`  
-> 主要区域：东京 `ap-northeast-1`  
-> 全局资源：CloudFront、Route 53、IAM、Global WAF  
-> 文档状态：待审批、待执行  
-> 重要说明：本次仅完成只读审计，尚未删除、停止或修改任何 AWS/Kubernetes 资源。
+> 初始审计：2026-09-08<br>
+> 删除后复核：2026-09-10<br>
+> EKS 删除与 Agent API 迁移复核：2026-09-10<br>
+> AWS 账号：`952178321851`<br>
+> 主要区域：东京 `ap-northeast-1`<br>
+> 全局资源：CloudFront、Route 53、IAM、Global WAF<br>
+> 文档状态：待审批、待执行<br>
+> 重要说明：管理员已删除旧 EKS 集群；经用户授权，2026-09-10 已将 Agent API 恢复到新 EKS，并完成 Route 53 切换。其余复核操作为只读。
+
+## 最新结论：2026-09-10 `orbiter-finance` 已删除，Agent API 已恢复
+
+删除发生时 Agent API 尚未迁移，旧 Kubernetes API 随即不可访问。生产 Secret 和 ConfigMap 已从 2026-09-10 的 Velero 备份恢复，并将 Agent API 重新部署到新 `token-boat` EKS。
+
+| 检查项 | 当前结果 |
+|---|---|
+| 旧 EKS `orbiter-finance` | 已不存在，EKS 当前只剩 `token-boat` |
+| 新集群 Agent API | Helm Release `token-boat-agent-api` 状态 `deployed`，2/2 Pod Ready |
+| 镜像 | `token-boat-agent-api:direct-auth-1ac1f2af-arm64` |
+| 新入口 | 独立 ALB `token-boat-agent-api-1649396598.ap-northeast-1.elb.amazonaws.com` |
+| Agent API DNS | `agent-api.tokenboat.com` 已切到新 ALB，Route 53 Change 状态 `INSYNC` |
+| 健康检查 | `GET /api/health/ready` 连续返回 HTTP 200，数据库状态 `ready` |
+| CORS | 已验证允许 `https://agent.tokenboat.com` 并携带凭证 |
+| Agent Web | `https://agent.tokenboat.com` 返回 HTTP 200 |
+| 旧 nginx NLB | 仍为 `active`，但 Agent API DNS 已不再指向它；需作为遗留资源单独复核后删除 |
+| monitoring / Loki / Velero | 随旧集群删除；如仍需要，必须在新集群重新安装 |
+
+已完成：
+
+- [x] 从 Velero 备份恢复 Agent API 生产配置和密钥。
+- [x] 生成并推送适配新集群 ARM64 节点的镜像。
+- [x] 在新集群部署 2 个 Agent API 副本。
+- [x] 配置 EKS Auto Mode Ingress、独立 ALB、ACM 通配符证书和健康检查。
+- [x] 验证新 ALB 后切换 `agent-api.tokenboat.com`。
+- [x] 验证公网 HTTPS、数据库 readiness 和 CORS。
+
+剩余事项：
+
+- [ ] 观察 Agent API 错误率、登录、佣金扫描和提现查询至少 24 小时。
+- [ ] 确认旧 nginx NLB 不再承载其他需要保留的域名，然后删除该遗留 NLB。
+- [ ] 检查旧 EKS 节点、ENI、安全组和 EBS 是否仍有残留。
+- [ ] 决定是否在新集群重新部署 monitoring、Loki 和 Velero。
+- [ ] `vpc-0b05231b600908bdb` 仍由新 `token-boat` EKS、RDS 和中间件使用，**不得删除该 VPC 及共享子网、路由和安全组。**
+
+管理入口：
+
+- [新 EKS：token-boat](https://ap-northeast-1.console.aws.amazon.com/eks/home?region=ap-northeast-1#/clusters/token-boat)
+- [Route 53：tokenboat.com](https://us-east-1.console.aws.amazon.com/route53/v2/hostedzones#ListRecordSets/Z081207432K53WY2YJLLX)
+- [EC2 负载均衡器](https://ap-northeast-1.console.aws.amazon.com/ec2/home?region=ap-northeast-1#LoadBalancers:)
+
+## 0. 2026-09-10 删除后复核（Agent API 迁移前快照）
+
+### 0.1 复核结论
+
+本轮删除为 **部分完成**。EC2、部分负载均衡、DMS Task/Endpoint、Redshift 和部分 S3 已处理；Amplify、CloudFront、ECR、DynamoDB、CloudFormation、WAF 及大部分 EKS Orbiter 资源仍然存在。
+
+同时，新建了独立的 `token-boat` EKS 集群，但迁移尚未完成：
+
+- `tokenboat.com` 和 `www.tokenboat.com` 已切到新集群的 `token-boat-public-v2` ALB。
+- 新集群已经运行 Token Boat Master 和 Worker。
+- `agent-api.tokenboat.com` 仍指向旧 `orbiter-finance` 集群的 nginx NLB。
+- 旧集群仍运行 2 个 Agent API Pod 和 3 个 Worker Pod。
+- monitoring、Loki、Velero 和 Agent API 尚未迁移到新集群。
+
+因此，在该次迁移前快照时点，**不能删除旧 EKS 集群 `orbiter-finance`，也不能删除旧集群的 nginx NLB、monitoring、Loki、Velero 和 Agent API。** 后续管理员已删除旧集群，Agent API 的恢复结果以文档顶部“最新结论”为准。
+
+### 0.2 已确认完成的项目
+
+| 类别 | 已完成内容 | 复核证据 |
+|---|---|---|
+| EC2 | 旧 `maker_ee73`、`MAKER_80`、3 台 Official Bridge EC2、旧 `middleware-service` 已删除 | 当前 EC2 列表中已不存在对应实例 ID |
+| Token Boat Redis | 新建 `token-boat-middleware` / `i-004a6932687b557f1`，私网 IP `192.168.27.2` | 新集群 `REDIS_CONN_STRING` 已指向 `192.168.27.2` |
+| 新 EKS | 新建 `token-boat` 集群，Kubernetes 1.36 | 集群状态 `ACTIVE`，位于 `vpc-0b05231b600908bdb` |
+| Token Boat 主站 | 根域和 `www` 已切到新 ALB `token-boat-public-v2` | Route 53 当前 Alias 指向 `token-boat-public-v2-1417960035...` |
+| RDS | `maker-explore-readonly` 已删除 | 当前 RDS 列表中不存在该实例 |
+| DMS | 两个 Replication Task 和所有 Endpoint 已删除 | DMS Task/Endpoint 列表为空 |
+| Redshift | `orbiter-redshift` 已删除 | Redshift Cluster 列表为空 |
+| Redshift 备份 | 已创建 `orbiter-redshift-final-snapshot` | Snapshot 状态 `available` |
+| Amazon MQ | Broker 很可能已经删除 | 9 月 8–9 日 MQ 费用为 0，日志最后写入时间为 2026-09-08 16:16；当前账号无权限直接 List/Describe Broker，需老板在 MQ 控制台最终确认 |
+| VPC Endpoint | `vpc-02dcfef555a661b85` 内 4 个 Endpoint 已删除 | 当前 VPC Endpoint 列表为空 |
+| Load Balancer | `bridgex-api`、`bridgex-test`、`testapi`、`a348...`、`a6e...`、`a1f...` 已删除 | 当前 ELB/ALB 列表中已不存在 |
+| S3 | `dms-6u5kxhscxjae7krkobp2dcfh24` 已删除 | 当前 Bucket 列表中已不存在 |
+| RDS 快照 | 已创建 `offical-bridge-snapshot0908`；旧 `make-bak-snapshot` 和此前 Token Boat 临时快照已清理 | 当前手工快照列表已变化 |
+| EKS Orbiter 应用 | 原 7 个 `explore-prod` Deployment 已删除 5 个 | 当前只剩 `liquidity-system` 和 `monitoring-holders-obt` |
+
+### 0.3 需要立即处理的项目
+
+#### P0：空闲 5 TB RDS 正在持续计费
+
+[`official-bridge-server-old1`](https://ap-northeast-1.console.aws.amazon.com/rds/home?region=ap-northeast-1#database:id=official-bridge-server-old1;is-cluster=false)
+
+- 状态：`available`
+- 规格：`db.t3.micro`
+- 存储：`5000 GiB gp3`
+- IOPS：`12000`
+- Throughput：`500 MiB/s`
+- 创建时间：2026-09-08
+- 最近两天数据库连接峰值：`0`
+- Deletion protection：`false`
+
+这台实例没有连接，但 5 TB gp3、12000 IOPS 和 500 MiB/s 会持续产生较高费用。已有 `offical-bridge-snapshot0908`，建议确认数据迁移完成后优先删除。
+
+执行前检查：
+
+- [ ] 确认 `official-bridge-server` 新实例数据完整。
+- [ ] 确认 `official-bridge-server-old1` DatabaseConnections 连续为 0。
+- [ ] 确认 `offical-bridge-snapshot0908` 状态为 `available`。
+- [ ] 删除 `official-bridge-server-old1`。
+- [ ] 24 小时后在 Cost Explorer 检查 RDS gp3/IOPS 费用下降。
+
+#### P0：DMS 实例仍在运行但没有任务
+
+[`orbiter-v3` DMS Replication Instance](https://ap-northeast-1.console.aws.amazon.com/dms/v2/home?region=ap-northeast-1#replicationInstances)
+
+- 状态：`available`
+- DMS Task：0
+- DMS Endpoint：0
+- Redshift：已删除
+
+该实例已经没有任何用途，仍会产生 dms.t3.medium 和存储费用。建议直接删除 Replication Instance，并检查 DMS subnet group、日志组和 IAM Role 残留。
+
+#### P0：Token Boat 生产数据库关闭了删除保护
+
+[`maker-explore`](https://ap-northeast-1.console.aws.amazon.com/rds/home?region=ap-northeast-1#database:id=maker-explore;is-cluster=false)
+
+- 已从 `db.t3.xlarge` 缩容到 `db.t3.small`。
+- 最近两天连接峰值约 `37`，仍是 Token Boat 生产数据库。
+- CPU 峰值约 `54%`。
+- 当前 Deletion protection：`false`。
+
+建议重新开启 Deletion protection，避免后续批量清理时误删。该数据库必须保留。
+
+#### P0：旧集群 Worker 仍引用已经不存在的 Redis
+
+旧 `orbiter-finance` 集群的 Secret：
+
+- `token-boat-runtime/REDIS_CONN_STRING` → `172.31.15.167`
+- 该 IP 对应的旧 `middleware-service` EC2 已删除。
+- AWS 当前不存在使用 `172.31.15.167` 的 ENI。
+- 旧集群仍有 3 个 `token-boat-worker` Pod，Pod 显示 Ready，但 readiness 可能没有检查 Redis。
+
+新 `token-boat` 集群：
+
+- `REDIS_CONN_STRING` → `192.168.27.2`
+- 对应新 EC2 `token-boat-middleware`。
+
+建议确认新 Worker 已完全接管队列后，将旧集群 Worker 缩容到 0。否则会存在重复消费、无效重试或连接旧 Redis 失败的风险。
+
+### 0.4 新旧 EKS 迁移状态
+
+#### 新集群 `token-boat`
+
+[打开新集群](https://ap-northeast-1.console.aws.amazon.com/eks/home?region=ap-northeast-1#/clusters/token-boat)
+
+| 项目 | 当前状态 |
+|---|---|
+| Kubernetes | 1.36 / ACTIVE |
+| VPC | `vpc-0b05231b600908bdb` |
+| 节点 | 4 台 c6g.large Auto Mode Node |
+| Token Boat Master | 1 Pod，Ready |
+| Token Boat Worker | 3 Pod，Ready |
+| Agent API | **未部署** |
+| monitoring/Loki | **未部署** |
+| Velero | **未部署** |
+| cert-manager | 已部署 |
+| external-dns | 已部署 |
+| 主站入口 | `token-boat-public-v2` ALB |
+
+新集群当前有两个 Token Boat ALB：
+
+- `token-boat-public`
+- `token-boat-public-v2`
+
+Route 53 当前使用 `token-boat-public-v2`。`token-boat-public` 可能是迁移期间的 Canary/旧版本；属于 Token Boat 资源，暂不删除，迁移稳定后单独确认是否重复。
+
+#### 旧集群 `orbiter-finance`
+
+[打开旧集群](https://ap-northeast-1.console.aws.amazon.com/eks/home?region=ap-northeast-1#/clusters/orbiter-finance)
+
+| 项目 | 当前状态 |
+|---|---|
+| Kubernetes | 1.34 / ACTIVE |
+| 节点 | 3 台 m6a.xlarge，仍在计费 |
+| Token Boat Master | 已缩容到 0 |
+| Token Boat Worker | 3 Pod，仍在运行 |
+| Token Boat Agent API | 2 Pod，仍在运行 |
+| Agent API DNS | `agent-api.tokenboat.com` 仍指向旧 nginx NLB |
+| monitoring | 24 个 Pod，尚未迁移 |
+| Velero | 仍在旧集群运行 |
+| Consul | 7 个 Pod、3 个 PVC，尚未删除 |
+| Istio | internal/external ingress、Jaeger、Kiali、OTel 等仍在运行 |
+
+旧集群剩余 Orbiter 资源：
+
+- `explore-prod/liquidity-system`：1 个 Deployment。
+- `explore-prod/monitoring-holders-obt`：1 个 Deployment。
+- `liquidity-system-restart`：1 个仍启用的 CronJob。
+- `explore-prod` 仍有约 33 个历史 Job、3 个 Service、2 个 Ingress。
+- `dashboard-prod` 仍有 `public-balances-api` Service 和遗留 Ingress。
+- `beta-prod` namespace 仍存在。
+- `consul-prod` 完整保留。
+- Orbiter OTel Mutating/Validating Webhook 仍存在。
+- 4 个 Orbiter/共享 Istio Gateway 仍存在。
+- `istio-system/orbiter-finance-tls` 仍存在。
+
+旧集群删除前必须完成：
+
+1. 将 Agent API 迁移到新 `token-boat` 集群。
+2. 将 `agent-api.tokenboat.com` 切换到新集群入口。
+3. 确认新集群 Worker 完全接管后，将旧 Worker 缩容为 0。
+4. 在新集群部署 monitoring/日志方案，或明确批准不迁移。
+5. 在新集群安装并验证 Velero，完成一次可恢复备份。
+6. 删除剩余 Orbiter Deployment、CronJob、Ingress、Service 和 Job。
+7. 删除 Consul、Istio internal ingress、OTel 遗留资源。
+8. 确认旧集群没有 Token Boat 流量后，删除旧集群和 3 台 m6a.xlarge 节点。
+
+### 0.5 删除不完整或尚未开始的资源
+
+| 类别 | 当前状态 | 下一步 |
+|---|---|---|
+| 空闲 VPC `vpc-02dcfef555a661b85` | VPC Endpoint 已删；NAT `nat-0479f334dd0b10353`、EIP `3.114.234.192`、VPC 仍在 | 删除 NAT → 释放 EIP → 删除子网/IGW/SG/VPC |
+| Internal Istio NLB | 仍存在，并于 2026-09-08 被重新创建 | 必须先删除 Helm Release/Service，否则 LB 会再次创建 |
+| Route 53 `jmsweb.orbk8s.com` | 仍指向已删除的 `a348...` ELB | 删除死记录 |
+| Route 53 `router-internal.orbk8s.com` | 仍指向旧 NLB DNS `...2aa0...`；当前 NLB 已变为 `...0db55...` | 该记录已经失效，Orbiter 下线场景直接删除 |
+| Route 53 `orbiter.finance` | 大部分业务/旧 IP 记录仍存在 | 按域名/邮箱保留决策清理 |
+| RDS `official-bridge-server` | 新建为 db.t3.micro/20 GiB，最近连接峰值约 15 | 当前仍有客户端连接，暂不删除；先查连接来源 |
+| RDS `official-bridge-server-old1` | 5 TB、0 连接 | 优先删除 |
+| RDS `obbridge-uat-snapshot` | 仍存在 | 保留期确认后删除 |
+| DMS `orbiter-v3` | 实例仍为 available | 立即删除 |
+| Redshift Snapshot | `orbiter-redshift-final-snapshot` 仍存在 | 按审计保留期保存，之后删除 |
+| Amplify | 29 个 App 全部仍在，包括 27 个非 Token Boat App | 尚未开始清理 |
+| CloudFront | 5 个非 Token Boat Distribution 全部 Enabled | 尚未开始清理 |
+| ECR | 36 个非 Token Boat Repo 全部仍在 | EKS/EC2 完全下线后删除 |
+| S3 | 只删除了一个 DMS Bucket；其余旧 Bucket 仍在 | 按依赖逐个清理 |
+| DynamoDB | 9 张旧表全部仍在 | 导出后通过 Stack 删除 |
+| CloudFormation | 旧 Stack 基本全部仍在 | 尚未开始清理 |
+| WAF | 1 个 Regional + 2 个 Global Web ACL 全部仍在 | 删除关联 App 后清理 |
+| ACM | 过期证书仍待清理 | Listener 已删除后可重新检查 InUseBy |
+| IAM/Cognito | Amplify、DMS、旧 EKS Role/Pool 仍待清理 | 对应服务删除后清理 |
+| CloudWatch Logs | MQ、DMS、Redshift、Amplify、Lambda 等日志仍在 | 服务删除并归档后清理 |
+| Support AMI/Snapshot | `ami-05fff1bf79d2bb753` 和 `snap-0a626798dc5d20008` 仍在 | Deregister AMI 后删除 Snapshot |
+| FSx Backup | `backup-072273bbb87eb60f3` 仍在 | 保留期确认后删除 |
+
+### 0.6 下一批建议操作顺序
+
+1. **立即重新开启 `maker-explore` 删除保护。**
+2. **确认后删除 5 TB 的 `official-bridge-server-old1`。**
+3. **删除无 Task/Endpoint 的 DMS `orbiter-v3`。**
+4. 确认 Amazon MQ 控制台中 Broker 已不存在，再删除 MQ 日志组。
+5. 删除旧 VPC 的 NAT，释放 `3.114.234.192`，完成 `vpc-02dcfef555a661b85` 清理。
+6. 将 Agent API、monitoring、Velero 迁移到新 `token-boat` 集群。
+7. 将旧集群 Worker 缩容为 0，至少观察 24 小时。
+8. 删除旧集群剩余 Orbiter/Consul/Istio/OTel 资源。
+9. 删除旧 `orbiter-finance` EKS 集群及 3 台 m6a.xlarge 节点。
+10. 再处理 Amplify、CloudFront、ECR、S3、DynamoDB、CloudFormation、WAF、IAM 和日志残留。
 
 ## 1. 管理层摘要
 
@@ -803,4 +1051,3 @@ SNS/告警清理：
 | Token Boat 负责人 |  |  |  |
 | 数据负责人 |  |  |  |
 | 安全负责人 |  |  |  |
-

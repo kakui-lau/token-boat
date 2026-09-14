@@ -1,0 +1,28 @@
+---
+import NotFoundPage from "@/components/not-found-page.astro";
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import SiteLayout from "@/layouts/site-layout.astro";
+
+export function getStaticPaths() {
+  const locales = ["en", "ja", "ko", "zh-TW"] satisfies SiteLocale[];
+  return locales.map((locale) => ({ params: { locale }, props: { locale } }));
+}
+
+const { locale } = Astro.props as { locale: SiteLocale };
+const metadata = {
+  en: { description: "The requested Token Boat page does not exist or has moved.", title: "Page not found | Token Boat" },
+  ja: { description: "指定された Token Boat のページは存在しないか、移動しました。", title: "ページが見つかりません | Token Boat" },
+  ko: { description: "요청한 Token Boat 페이지가 없거나 이동되었습니다.", title: "페이지를 찾을 수 없음 | Token Boat" },
+  "zh-TW": { description: "要求的 Token Boat 頁面不存在或已移動。", title: "找不到頁面｜Token Boat" },
+}[locale as Exclude<SiteLocale, "zh">];
+---
+
+<SiteLayout
+  canonicalPath={localizedPath(locale, "/404")}
+  description={metadata.description}
+  locale={locale}
+  noindex
+  title={metadata.title}
+>
+  <NotFoundPage locale={locale} />
+</SiteLayout>

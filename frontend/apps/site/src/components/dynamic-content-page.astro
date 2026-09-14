@@ -1,17 +1,32 @@
 ---
-import { contentLocale, type SiteLocale } from "@/content/site-copy";
+import type { SiteLocale } from "@/content/site-copy";
 import { PublicContentHub } from "@/islands/content/public-content-hub";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 type Props = { locale: SiteLocale; mode: "faq" | "changelog" };
 const { locale, mode } = Astro.props;
-const c = contentLocale(locale) === "zh" ? {
-  faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["常见问题，", "直接给出", "答案。"], lead: "涵盖接入、模型选择、计费、密钥、安全和故障排查；后台发布的内容会优先显示。" },
-  changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["平台公告", "与更新", "日志。"], lead: "集中展示后台已发布的通知和公告，帮助你确认平台变化，而不是再做一个重复的价格页面。" },
-} : {
-  faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["COMMON QUESTIONS.", "DIRECT", "ANSWERS."], lead: "Answers for integration, model choice, billing, keys, security, and troubleshooting. Published platform entries take priority." },
-  changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["ANNOUNCEMENTS", "AND CHANGE", "LOG."], lead: "A single place for published notices and platform announcements—rather than another duplicate pricing page." },
+const c = {
+  zh: {
+    faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["常见问题，", "直接给出", "答案。"], lead: "涵盖接入、模型选择、计费、密钥、安全和故障排查；后台发布的内容会优先显示。" },
+    changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["平台公告", "与更新", "日志。"], lead: "集中展示后台已发布的通知和公告，帮助你确认平台变化。" },
+  },
+  en: {
+    faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["COMMON QUESTIONS.", "DIRECT", "ANSWERS."], lead: "Answers for integration, model choice, billing, keys, security, and troubleshooting. Published platform entries take priority." },
+    changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["ANNOUNCEMENTS", "AND CHANGE", "LOG."], lead: "A single place for published notices and platform announcements." },
+  },
+  ja: {
+    faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["よくある質問に、", "明確な", "回答を。"], lead: "導入、モデル選択、課金、キー、セキュリティ、トラブルシューティングを案内します。プラットフォームから公開された内容を優先します。" },
+    changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["お知らせと", "更新", "履歴。"], lead: "公開済みのお知らせとプラットフォームの変更を一か所で確認できます。" },
+  },
+  ko: {
+    faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["자주 묻는 질문에", "명확한", "답변을."], lead: "연동, 모델 선택, 과금, 키, 보안 및 문제 해결을 안내합니다. 플랫폼에 게시된 내용을 우선 표시합니다." },
+    changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["공지와", "변경", "내역."], lead: "게시된 공지와 플랫폼 변경 사항을 한곳에서 확인하세요." },
+  },
+  "zh-TW": {
+    faq: { eyebrow: "SUPPORT / FAQ", titleLines: ["常見問題，", "直接提供", "答案。"], lead: "涵蓋串接、模型選擇、計費、Key、安全與問題排查；平台發布的內容會優先顯示。" },
+    changelog: { eyebrow: "RELEASES / NOTICES", titleLines: ["平台公告", "與更新", "日誌。"], lead: "集中顯示已發布的通知與平台變更，方便確認最新資訊。" },
+  },
 };
-const content = c[mode];
+const content = c[locale][mode];
 ---
 <EditorialPageHero lead={content.lead} locale={locale} meta={content.eyebrow} titleLines={content.titleLines} />
 <section class="section public-data-section"><div class="site-shell"><PublicContentHub client:load locale={locale} mode={mode} /></div></section>

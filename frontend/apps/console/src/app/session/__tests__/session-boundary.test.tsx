@@ -19,7 +19,7 @@ const { navigate, retry, sessionState } = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigate,
-  useRouterState: () => "/console/logs?field=request&q=req-1",
+  useRouterState: () => "/logs?field=request&q=req-1",
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("../session-context", () => ({

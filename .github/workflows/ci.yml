@@ -37,8 +37,9 @@ jobs:
 
       - name: Create frontend embed placeholder
         run: |
-          mkdir -p web/dist
-          touch web/dist/index.html
+          mkdir -p web/dist/_astro
+          printf '%s\n' '<link rel="stylesheet" href="/_astro/placeholder.css">' > web/dist/index.html
+          printf '%s\n' '/* backend compile placeholder */' > web/dist/_astro/placeholder.css
 
       - name: Vet root module
         run: go vet ./...
@@ -122,5 +123,21 @@ jobs:
           bun run lint
           bun run format:check
 
-      - name: Build production console
+      - name: Build production applications
         run: bun run build
+
+      - name: Verify final embedded web assembly
+        working-directory: ${{ github.workspace }}
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          DISABLE_ESLINT_PLUGIN='true' bun run build
+          cd ../frontend
+          mkdir -p ../web/dist/legacy
+          cp ../web/dist/index.html ../web/dist/legacy/index.html
+          cp -R apps/site/dist/. ../web/dist/
+          mkdir -p ../web/dist/console
+          cp -R apps/console/dist/. ../web/dist/console/
+          rm -rf ../web/dist/admin
+          cd ..
+          ./scripts/check-web-assembly.sh

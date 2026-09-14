@@ -1,29 +1,65 @@
 ---
-import { contentLocale, localizedPath, type SiteLocale } from "@/content/site-copy";
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 type Props = { locale: SiteLocale };
 const { locale } = Astro.props;
-const c = contentLocale(locale) === "zh" ? {
-  eyebrow: "CONTACT / SUPPORT", titleLines: ["把问题", "交给正确的", "入口。"], lead: "技术、账户、费用与商务问题需要不同上下文。我们先提供可追踪、不会泄露密钥的处理路径。",
-  cards: [
-    ["01", "技术支持", "带上请求时间、模型 ID、端点、HTTP 状态和控制台请求日志中的 Request ID；不要提交完整 API Key 或敏感提示词。", "/console/logs", "打开请求日志"],
-    ["02", "账户与安全", "登录、邮箱、密码、2FA、Passkey 与账户资料问题，请从账户设置进入。", "/console/account", "打开账户设置"],
-    ["03", "计费与充值", "账户余额、账单、充值记录和账户实际价格，以登录后的计费页面为准。", "/console/billing", "打开计费中心"],
-    ["04", "商务合作", "正式商务联系方式尚未在后台公开配置。配置后会在这里和 About 页同步显示，不使用虚构邮箱占位。", null, "等待正式渠道"],
-  ],
-  checklist: "提交技术问题时建议包含", items: ["问题发生的日期与时区", "模型 ID 与调用端点", "HTTP 状态码和 Request ID", "是否可稳定复现及最小复现步骤"],
-  docs: "先查看开发者文档", status: "查看公开服务状态",
-} : {
-  eyebrow: "CONTACT / SUPPORT", titleLines: ["SEND EACH", "QUESTION TO THE", "RIGHT PLACE."], lead: "Technical, account, billing, and commercial questions need different context. These paths keep requests traceable without exposing credentials.",
-  cards: [
-    ["01", "Technical support", "Include request time, model ID, endpoint, HTTP status, and the Request ID from console logs. Never submit a full API key or sensitive prompt content.", "/console/logs", "Open request logs"],
-    ["02", "Account & security", "Use account settings for sign-in, email, password, 2FA, passkeys, and profile questions.", "/console/account", "Open account settings"],
-    ["03", "Billing & recharge", "Use the signed-in billing page for balance, invoices, recharge history, and the price that applies to the account.", "/console/billing", "Open billing"],
-    ["04", "Business enquiries", "A formal commercial contact has not yet been published in platform configuration. Once configured, it will appear here and on About; this page will not invent a placeholder email.", null, "Awaiting published channel"],
-  ],
-  checklist: "Include with a technical issue", items: ["Date, time, and timezone", "Model ID and endpoint", "HTTP status and Request ID", "Whether it is reproducible and minimal steps"],
-  docs: "Read developer docs first", status: "Check public service status",
-};
+const c = {
+  zh: {
+    eyebrow: "CONTACT / SUPPORT", titleLines: ["把问题", "交给正确的", "入口。"], lead: "技术、账户、费用、隐私与商务问题需要不同上下文。以下路径便于追踪问题，同时避免泄露密钥。",
+    cards: [
+      ["01", "技术支持", "提供请求时间、模型 ID、端点、HTTP 状态及控制台请求日志中的 Request ID；请勿提交完整 API Key 或敏感提示词。", "/console/logs", "打开请求日志"],
+      ["02", "账户与安全", "登录、邮箱、密码、2FA、Passkey 与账户资料问题，可先从账户设置核对当前状态。", "/console/account", "打开账户设置"],
+      ["03", "计费与充值", "账户余额、账单、充值记录和账户实际价格，以登录后的计费页面为准。", "/console/billing", "打开计费中心"],
+      ["04", "商务、条款与隐私", "商务合作、服务条款、数据安全或个人权利请求，请说明组织、账户及事项，并避免通过邮件发送密钥或敏感请求正文。", "mailto:support@quantumnous.com", "发送支持邮件"],
+    ],
+    checklist: "提交技术问题时建议包含", items: ["问题发生的日期与时区", "模型 ID 与调用端点", "HTTP 状态码和 Request ID", "是否可稳定复现及最小复现步骤"],
+    docs: "先查看开发者文档", status: "查看公开服务状态",
+  },
+  en: {
+    eyebrow: "CONTACT / SUPPORT", titleLines: ["SEND EACH", "QUESTION TO THE", "RIGHT PLACE."], lead: "Technical, account, billing, privacy, and commercial questions need different context. These paths keep requests traceable without exposing credentials.",
+    cards: [
+      ["01", "Technical support", "Include request time, model ID, endpoint, HTTP status, and the Request ID from console logs. Never submit a full API key or sensitive prompt content.", "/console/logs", "Open request logs"],
+      ["02", "Account & security", "Use account settings to review sign-in, email, password, 2FA, passkey, and profile matters.", "/console/account", "Open account settings"],
+      ["03", "Billing & recharge", "Use the signed-in billing page for balance, invoices, recharge history, and the price that applies to the account.", "/console/billing", "Open billing"],
+      ["04", "Business, terms & privacy", "For business, terms, data-security, or individual-rights enquiries, identify the organization, account, and issue. Never email credentials or sensitive request bodies.", "mailto:support@quantumnous.com", "Email support"],
+    ],
+    checklist: "Include with a technical issue", items: ["Date, time, and timezone", "Model ID and endpoint", "HTTP status and Request ID", "Whether it is reproducible and minimal steps"],
+    docs: "Read developer docs first", status: "Check public service status",
+  },
+  ja: {
+    eyebrow: "CONTACT / SUPPORT", titleLines: ["質問を", "適切な窓口へ", "届ける。"], lead: "技術、アカウント、課金、プライバシー、商談では必要な情報が異なります。認証情報を開示せず、追跡しやすい経路をご利用ください。",
+    cards: [
+      ["01", "技術サポート", "リクエスト時刻、モデル ID、エンドポイント、HTTP ステータス、コンソールログの Request ID をお知らせください。完全な API キーや機密プロンプトは送らないでください。", "/console/logs", "リクエストログを開く"],
+      ["02", "アカウントとセキュリティ", "ログイン、メール、パスワード、2FA、パスキー、プロフィールについては、まずアカウント設定で現在の状態をご確認ください。", "/console/account", "アカウント設定を開く"],
+      ["03", "課金と入金", "残高、請求、入金履歴、適用料金はログイン後の課金ページで確認できます。", "/console/billing", "課金ページを開く"],
+      ["04", "商談・規約・プライバシー", "商談、利用規約、データセキュリティ、個人の権利に関するお問い合わせには、組織、アカウント、用件を記載してください。認証情報や機密の本文はメールしないでください。", "mailto:support@quantumnous.com", "サポートへメール"],
+    ],
+    checklist: "技術的な問い合わせに含める情報", items: ["発生日時とタイムゾーン", "モデル ID とエンドポイント", "HTTP ステータスと Request ID", "再現性と最小再現手順"],
+    docs: "先に開発者ドキュメントを確認", status: "公開サービス状況を確認",
+  },
+  ko: {
+    eyebrow: "CONTACT / SUPPORT", titleLines: ["질문을", "알맞은 경로로", "보내세요."], lead: "기술, 계정, 과금, 개인정보 및 비즈니스 문의에는 서로 다른 정보가 필요합니다. 자격 증명을 노출하지 않고 추적 가능한 경로를 이용하세요.",
+    cards: [
+      ["01", "기술 지원", "요청 시간, 모델 ID, 엔드포인트, HTTP 상태 및 콘솔 로그의 Request ID를 포함하세요. 전체 API 키나 민감한 프롬프트를 보내지 마세요.", "/console/logs", "요청 로그 열기"],
+      ["02", "계정 및 보안", "로그인, 이메일, 비밀번호, 2FA, 패스키와 프로필 문제는 먼저 계정 설정에서 현재 상태를 확인하세요.", "/console/account", "계정 설정 열기"],
+      ["03", "과금 및 충전", "잔액, 청구서, 충전 내역과 계정 적용 가격은 로그인 후 과금 페이지에서 확인하세요.", "/console/billing", "과금 페이지 열기"],
+      ["04", "비즈니스·약관·개인정보", "비즈니스, 약관, 데이터 보안 또는 정보주체 권리 문의에는 조직, 계정 및 사안을 적어 주세요. 자격 증명이나 민감한 요청 본문은 이메일로 보내지 마세요.", "mailto:support@quantumnous.com", "지원 이메일 보내기"],
+    ],
+    checklist: "기술 문의에 포함할 정보", items: ["발생 날짜, 시간 및 시간대", "모델 ID와 엔드포인트", "HTTP 상태 및 Request ID", "재현 가능 여부와 최소 재현 단계"],
+    docs: "개발자 문서 먼저 확인", status: "공개 서비스 상태 확인",
+  },
+  "zh-TW": {
+    eyebrow: "CONTACT / SUPPORT", titleLines: ["把問題", "交給正確的", "入口。"], lead: "技術、帳戶、費用、隱私與商務問題需要不同資訊。以下路徑便於追蹤，同時避免洩露憑證。",
+    cards: [
+      ["01", "技術支援", "提供請求時間、模型 ID、端點、HTTP 狀態及控制台記錄中的 Request ID；請勿提交完整 API Key 或敏感提示詞。", "/console/logs", "開啟請求記錄"],
+      ["02", "帳戶與安全", "登入、電子郵件、密碼、2FA、Passkey 與帳戶資料問題，可先從帳戶設定確認目前狀態。", "/console/account", "開啟帳戶設定"],
+      ["03", "計費與儲值", "帳戶餘額、帳單、儲值記錄及帳戶實際價格，以登入後的計費頁面為準。", "/console/billing", "開啟計費中心"],
+      ["04", "商務、條款與隱私", "商務合作、服務條款、資料安全或個人權利請求，請說明組織、帳戶及事項；不要透過郵件傳送憑證或敏感請求正文。", "mailto:support@quantumnous.com", "寄送支援郵件"],
+    ],
+    checklist: "提交技術問題時建議包含", items: ["問題發生日期、時間與時區", "模型 ID 與呼叫端點", "HTTP 狀態碼與 Request ID", "是否可穩定重現及最小重現步驟"],
+    docs: "先查看開發者文件", status: "查看公開服務狀態",
+  },
+}[locale];
 ---
 <EditorialPageHero lead={c.lead} locale={locale} meta={c.eyebrow} titleLines={c.titleLines} />
 <section class="section content-section"><div class="site-shell content-grid support-grid">{c.cards.map((card) => <article class="content-card"><div class="content-card__meta"><span>{card[0]}</span><p>SUPPORT ROUTE</p></div><h2>{card[1]}</h2><p>{card[2]}</p>{card[3] ? <a href={card[3]}>{card[4]}<span aria-hidden="true">↗</span></a> : <span class="muted-action">{card[4]}</span>}</article>)}</div></section>

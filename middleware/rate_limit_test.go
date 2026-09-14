@@ -177,19 +177,33 @@ func TestFrontendAssetsDoNotShareGlobalWebLimit(t *testing.T) {
 	require.NoError(t, router.SetTrustedProxies(nil))
 	router.Use(GlobalWebRateLimit())
 	router.GET("/console/", func(c *gin.Context) { c.Status(http.StatusNoContent) })
-	router.GET("/console/assets/app.js", func(c *gin.Context) { c.Status(http.StatusNoContent) })
-	router.HEAD("/assets/app.css", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	assetRoutes := []string{
+		"/_astro/site.HASH.js",
+		"/assets/app.css",
+		"/brand/token-boat-logo.svg",
+		"/console/assets/app.js",
+		"/favicon.ico",
+		"/fonts/site.woff2",
+		"/logo.png",
+		"/static/js/legacy.js",
+	}
+	for _, route := range assetRoutes {
+		router.GET(route, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+		router.HEAD(route, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	}
 
 	remoteAddr := "192.0.2.27:12345"
 	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/console/", remoteAddr).Code)
 	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/console/", remoteAddr).Code)
-	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/console/assets/app.js", remoteAddr).Code)
+	for _, route := range assetRoutes {
+		assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, route, remoteAddr).Code, route)
 
-	headRecorder := httptest.NewRecorder()
-	headRequest := httptest.NewRequest(http.MethodHead, "/assets/app.css", nil)
-	headRequest.RemoteAddr = remoteAddr
-	router.ServeHTTP(headRecorder, headRequest)
-	assert.Equal(t, http.StatusNoContent, headRecorder.Code)
+		headRecorder := httptest.NewRecorder()
+		headRequest := httptest.NewRequest(http.MethodHead, route, nil)
+		headRequest.RemoteAddr = remoteAddr
+		router.ServeHTTP(headRecorder, headRequest)
+		assert.Equal(t, http.StatusNoContent, headRecorder.Code, route)
+	}
 
 	count, err := redisServer.Get(redisIPRateLimitKey("GW", "192.0.2.27"))
 	require.NoError(t, err)

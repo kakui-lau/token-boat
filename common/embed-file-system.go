@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-contrib/static"
 )
@@ -15,22 +16,55 @@ type embedFileSystem struct {
 }
 
 func (e *embedFileSystem) Exists(prefix string, path string) bool {
-	_, err := e.Open(path)
+	file, err := e.Open(path)
 	if err != nil {
 		return false
 	}
+	_ = file.Close()
 	return true
 }
 
 func (e *embedFileSystem) Open(name string) (http.File, error) {
-	if name == "/" || (len(name) > 0 && name[len(name)-1] == '/') {
-		// Directory requests belong to the SPA fallback. Letting net/http open an
-		// embedded directory makes it canonicalize "/console/" to "/console",
-		// which conflicts with the explicit "/console" -> "/console/" redirect.
-		// The NoRoute handler also serves the final index bytes with analytics.
+	internalPath := strings.TrimSuffix(name, "/")
+	if name == "/" || internalPath == "/legacy" || strings.HasPrefix(internalPath, "/legacy/") ||
+		internalPath == "/admin" || strings.HasPrefix(internalPath, "/admin/") ||
+		internalPath == "/404.html" || internalPath == "/en/404" ||
+		internalPath == "/ja/404" || internalPath == "/ko/404" || internalPath == "/zh-TW/404" ||
+		strings.HasSuffix(internalPath, "/404/index.html") {
+		// The root document is served by the web router so runtime analytics and
+		// explicit cache policy still apply. Compatibility and 404 documents are
+		// internal templates that the router serves only with the correct status.
 		return nil, os.ErrNotExist
 	}
-	return e.FileSystem.Open(name)
+
+	openName := internalPath
+	file, err := e.FileSystem.Open(openName)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if !info.IsDir() {
+		return file, nil
+	}
+	directoryPath := openName
+	switch directoryPath {
+	case "/en", "/ja", "/ko", "/zh-TW":
+		indexFile, indexErr := e.FileSystem.Open(directoryPath + "/index.html")
+		if indexErr != nil {
+			_ = file.Close()
+			return nil, indexErr
+		}
+		_ = indexFile.Close()
+		return file, nil
+	}
+
+	_ = file.Close()
+	indexPath := directoryPath + "/index.html"
+	return e.FileSystem.Open(indexPath)
 }
 
 func EmbedFolder(fsEmbed fs.FS, targetPath string) static.ServeFileSystem {

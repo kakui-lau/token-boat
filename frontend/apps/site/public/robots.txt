@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /console/
 Disallow: /admin/
+Disallow: /dashboard/
 
 Sitemap: https://tokenboat.com/sitemap.xml

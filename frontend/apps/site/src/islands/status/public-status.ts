@@ -10,9 +10,16 @@ export type PublicStatusGroup = {
   monitors: PublicMonitorStatus[];
 };
 
+export const publicRequestLogsPath = "/console/logs";
+
+export function isSuccessfulPublicStatusEnvelope(value: unknown): boolean {
+  const envelope = asRecord(value);
+  return envelope.success === true && Array.isArray(envelope.data);
+}
+
 export function parsePublicStatusEnvelope(value: unknown): PublicStatusGroup[] {
   const envelope = asRecord(value);
-  if (envelope.success !== true) return [];
+  if (!isSuccessfulPublicStatusEnvelope(envelope)) return [];
 
   return asArray(envelope.data)
     .map(asRecord)

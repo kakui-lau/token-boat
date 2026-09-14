@@ -1,0 +1,68 @@
+---
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+
+type Props = { locale: SiteLocale };
+
+const { locale } = Astro.props;
+const copy = {
+  zh: {
+    eyebrow: "错误 / 404",
+    title: ["这一页", "没有上船。"],
+    lead: "页面不存在，可能已经被移动或删除。你可以返回首页，或前往模型目录继续浏览。",
+    home: "返回首页",
+    models: "浏览模型",
+    label: "页面未找到",
+  },
+  en: {
+    eyebrow: "ERROR / 404",
+    title: ["THIS PAGE", "MISSED THE BOAT."],
+    lead: "The page does not exist or may have moved. Return home or continue with the model catalog.",
+    home: "Return home",
+    models: "Browse models",
+    label: "PAGE NOT FOUND",
+  },
+  ja: {
+    eyebrow: "エラー / 404",
+    title: ["このページは", "見つかりません。"],
+    lead: "ページが存在しないか、移動または削除された可能性があります。ホームへ戻るか、モデルカタログをご覧ください。",
+    home: "ホームへ戻る",
+    models: "モデルを見る",
+    label: "ページが見つかりません",
+  },
+  ko: {
+    eyebrow: "오류 / 404",
+    title: ["페이지를", "찾을 수 없습니다."],
+    lead: "페이지가 없거나 이동 또는 삭제되었을 수 있습니다. 홈으로 돌아가거나 모델 카탈로그를 계속 둘러보세요.",
+    home: "홈으로 돌아가기",
+    models: "모델 보기",
+    label: "페이지를 찾을 수 없음",
+  },
+  "zh-TW": {
+    eyebrow: "錯誤 / 404",
+    title: ["這一頁", "沒有上船。"],
+    lead: "頁面不存在，可能已移動或刪除。你可以返回首頁，或前往模型目錄繼續瀏覽。",
+    home: "返回首頁",
+    models: "瀏覽模型",
+    label: "找不到頁面",
+  },
+}[locale];
+---
+
+<section class="not-found">
+  <div class="site-shell not-found__grid">
+    <div class="not-found__content">
+      <p class="eyebrow">{copy.eyebrow}</p>
+      <h1>{copy.title[0]}<br />{copy.title[1]}</h1>
+      <p class="not-found__lead">{copy.lead}</p>
+      <div class="not-found__actions">
+        <a class="button" href={localizedPath(locale, "/")}>{copy.home}<span aria-hidden="true">↗</span></a>
+        <a class="not-found__secondary" href={localizedPath(locale, "/models")}>{copy.models}<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+    <div class="not-found__visual" aria-hidden="true">
+      <span>404</span>
+      <div class="not-found__boat"><i></i></div>
+      <p>{copy.label}</p>
+    </div>
+  </div>
+</section>

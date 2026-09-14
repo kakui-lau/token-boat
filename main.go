@@ -39,7 +39,7 @@ import (
 	_ "net/http/pprof"
 )
 
-//go:embed web/dist
+//go:embed all:web/dist
 var buildFS embed.FS
 
 //go:embed web/dist/index.html
@@ -193,17 +193,34 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
-	InjectUmamiAnalytics()
-	InjectGoogleAnalytics()
-
 	// 设置路由
-	consoleIndexPage, _ := buildFS.ReadFile("web/dist/console/index.html")
-	adminIndexPage, _ := buildFS.ReadFile("web/dist/admin/index.html")
+	legacyIndexPage := mustReadEmbeddedWebAsset("web/dist/legacy/index.html")
+	// The legacy compatibility shell retains the existing runtime analytics
+	// integration. The public Astro site intentionally stays analytics-free until
+	// it has an explicit notice and choice flow for non-essential tracking.
+	legacyIndexPage = InjectUmamiAnalytics(legacyIndexPage)
+	legacyIndexPage = InjectGoogleAnalytics(legacyIndexPage)
+	notFoundPage := mustReadEmbeddedWebAsset("web/dist/404.html")
+	notFoundPages := make(map[string][]byte, 4)
+	localizedIndexPages := make(map[string][]byte, 4)
+	for _, locale := range []string{"en", "ja", "ko", "zh-TW"} {
+		notFoundPages[locale] = mustReadEmbeddedWebAsset("web/dist/" + locale + "/404/index.html")
+		localizedIndexPages[locale] = mustReadEmbeddedWebAsset("web/dist/" + locale + "/index.html")
+	}
+	consoleIndexPage := mustReadEmbeddedWebAsset("web/dist/console/index.html")
+	legacyPublicSite := strings.EqualFold(strings.TrimSpace(os.Getenv("PUBLIC_SITE_MODE")), "legacy")
+	if legacyPublicSite {
+		common.SysLog("PUBLIC_SITE_MODE=legacy: serving the legacy public site; /console remains on the new user console")
+	}
 	router.SetRouter(server, router.WebAssets{
-		BuildFS:          buildFS,
-		IndexPage:        indexPage,
-		ConsoleIndexPage: consoleIndexPage,
-		AdminIndexPage:   adminIndexPage,
+		BuildFS:             buildFS,
+		IndexPage:           indexPage,
+		LocalizedIndexPages: localizedIndexPages,
+		LegacyIndexPage:     legacyIndexPage,
+		NotFoundPage:        notFoundPage,
+		NotFoundPages:       notFoundPages,
+		ConsoleIndexPage:    consoleIndexPage,
+		LegacyPublicSite:    legacyPublicSite,
 	})
 	var port = os.Getenv("PORT")
 	if port == "" {
@@ -246,7 +263,16 @@ func main() {
 	common.SysLog("server exited")
 }
 
-func InjectUmamiAnalytics() {
+func mustReadEmbeddedWebAsset(path string) []byte {
+	content, err := buildFS.ReadFile(path)
+	if err != nil {
+		common.FatalLog("required embedded web asset is missing: " + path + ": " + err.Error())
+		return nil
+	}
+	return content
+}
+
+func InjectUmamiAnalytics(page []byte) []byte {
 	analyticsInjectBuilder := &strings.Builder{}
 	if os.Getenv("UMAMI_WEBSITE_ID") != "" {
 		umamiSiteID := os.Getenv("UMAMI_WEBSITE_ID")
@@ -263,10 +289,10 @@ func InjectUmamiAnalytics() {
 	analyticsInjectBuilder.WriteString("<!--Umami QuantumNous-->\n")
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--umami-->\n")
-	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
+	return bytes.ReplaceAll(page, placeholder, analyticsInject)
 }
 
-func InjectGoogleAnalytics() {
+func InjectGoogleAnalytics(page []byte) []byte {
 	analyticsInjectBuilder := &strings.Builder{}
 	if os.Getenv("GOOGLE_ANALYTICS_ID") != "" {
 		gaID := os.Getenv("GOOGLE_ANALYTICS_ID")
@@ -286,7 +312,7 @@ func InjectGoogleAnalytics() {
 	analyticsInjectBuilder.WriteString("<!--Google Analytics QuantumNous-->\n")
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--Google Analytics-->\n")
-	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
+	return bytes.ReplaceAll(page, placeholder, analyticsInject)
 }
 
 func InitResources() error {

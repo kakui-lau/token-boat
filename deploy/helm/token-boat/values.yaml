@@ -1,0 +1,190 @@
+image:
+  repository: 952178321851.dkr.ecr.ap-northeast-1.amazonaws.com/token-boat
+  digest: sha256:6408851233a8bbde4dee1412d1b3341b7e7a3f0deb6a6f6e7e28caabc85647d5
+  pullPolicy: IfNotPresent
+
+existingSecret: token-boat-runtime
+
+worker:
+  replicaCount: 3
+  # Runtime-only public-site switch. It is intentionally injected into workers
+  # only so changing the public shell never restarts the singleton master.
+  publicSiteMode: new
+  minReadySeconds: 15
+  progressDeadlineSeconds: 1800
+  terminationGracePeriodSeconds: 3700
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+master:
+  # The orbiter-finance master is scaled to zero before this singleton is enabled.
+  enabled: true
+  replicaCount: 1
+  terminationGracePeriodSeconds: 3700
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: token-boat
+  automount: false
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  scaleDownStabilizationSeconds: 600
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+nodePool:
+  create: true
+  name: token-boat-arm64
+  nodeClassName: default
+  architecture: arm64
+  capacityTypes:
+    - on-demand
+  instanceCategories:
+    - c
+    - m
+    - r
+  minimumInstanceGeneration: "5"
+  limits:
+    cpu: "32"
+    memory: 64Gi
+  consolidateAfter: 10m
+  expireAfter: 336h
+  terminationGracePeriod: 24h
+  taint:
+    key: dedicated
+    value: token-boat
+    effect: NoSchedule
+
+topologySpread:
+  enabled: true
+  minDomains: 2
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+env:
+  NODE_ENV: production
+  # Embedded web routing must not be bypassed by an older value in the runtime Secret.
+  FRONTEND_BASE_URL: ""
+  # The ALB uses IP targets and connects from its three configured public
+  # subnets. Keep this list aligned with ingress.class.subnetIds; do not broaden
+  # it to the whole VPC because forwarded client headers are security-sensitive.
+  TRUSTED_PROXIES: "192.168.0.0/20,192.168.16.0/20,192.168.32.0/20"
+  SESSION_COOKIE_SECURE: "true"
+  SESSION_COOKIE_TRUSTED_URL: https://tokenboat.com,https://www.tokenboat.com,https://eks-canary.tokenboat.com
+  BATCH_UPDATE_ENABLED: "false"
+  # Keep AI relay limits explicit so an application-default change cannot alter production behavior.
+  MAX_REQUEST_BODY_MB: "128"
+  ANONYMOUS_REQUEST_BODY_LIMIT_KB: "512"
+  MAX_FILE_DOWNLOAD_MB: "64"
+  RELAY_TIMEOUT: "0"
+  STREAMING_TIMEOUT: "3600"
+  SHUTDOWN_TIMEOUT_SECONDS: "3600"
+  ERROR_LOG_ENABLED: "true"
+  ALWAYS_RECORD_IP: "true"
+  SKIP_DB_MIGRATION: "true"
+
+probes:
+  startup:
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 60
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+ingress:
+  enabled: true
+  name: token-boat-canary-v2
+  class:
+    create: true
+    name: token-boat-public-v2
+    scheme: internet-facing
+    targetType: ip
+    ipAddressType: ipv4
+    loadBalancerName: token-boat-public-v2
+    certificateARNs:
+      - arn:aws:acm:ap-northeast-1:952178321851:certificate/511a0f0b-f7e8-49b2-89e0-9a95b55c7f22
+    sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    inboundCIDRs:
+      - 0.0.0.0/0
+    subnetIds:
+      - subnet-03e8cada74f7dc0bd
+      - subnet-0d72da1376faab673
+      - subnet-02bf6de90f6f05937
+    idleTimeoutSeconds: 3600
+  # The production aliases and canary hostname already route to this ALB.
+  hosts:
+    - eks-canary.tokenboat.com
+    - tokenboat.com
+    - www.tokenboat.com
+  # ExternalDNS owns only the canary record. Production DNS is stable and is
+  # deliberately not changed by chart releases or rollbacks.
+  externalDNS:
+    enabled: true
+    hostnames:
+      - eks-canary.tokenboat.com
+  annotations:
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # Preserve in-flight AI streams while a Pod is removed during rollout or scale-down.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=3600
+    alb.ingress.kubernetes.io/healthcheck-path: /api/status
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/success-codes: "200"
+
+preflightTest:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

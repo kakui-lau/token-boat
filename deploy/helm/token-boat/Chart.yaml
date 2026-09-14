@@ -1,0 +1,7 @@
+apiVersion: v2
+name: token-boat
+description: Production Helm chart for token-boat on EKS Auto Mode
+type: application
+version: 0.4.0
+appVersion: e5e8207d5
+kubeVersion: ">=1.30.0-0"

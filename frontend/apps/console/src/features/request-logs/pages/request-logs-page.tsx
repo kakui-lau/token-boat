@@ -33,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@token-boat/ui/components/ui/table";
+import { useSession } from "@/app/session/session-context";
 import { DataPagination } from "@/components/data-pagination";
 import { DataLoadError } from "@/components/data-load-error";
 import { PageHeader } from "@/components/page-header";
@@ -66,6 +67,8 @@ type RequestLogsPageProps = {
 
 export function RequestLogsPage(props: RequestLogsPageProps) {
   const { t, i18n } = useTranslation();
+  const { session } = useSession();
+  const queriesEnabled = session !== null;
   const [search, updateSearch] = useControllableSearch(props.search, props.onSearchChange);
   const range = useMemo(
     () => resolveRequestLogRange(search, "today"),
@@ -89,6 +92,7 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
         searchField,
         status,
       }),
+    enabled: queriesEnabled,
   });
   const analyticsQuery = useQuery({
     queryKey: ["request-log-analytics", { keyword, range, searchField, status }],
@@ -99,12 +103,13 @@ export function RequestLogsPage(props: RequestLogsPageProps) {
         searchField,
         status,
       }),
+    enabled: queriesEnabled,
   });
   const selectedRequestId = search.detail?.trim() || null;
   const detailQuery = useQuery({
     queryKey: ["request-log-detail", selectedRequestId],
     queryFn: () => repository.getRequestLog(selectedRequestId!),
-    enabled: selectedRequestId !== null,
+    enabled: queriesEnabled && selectedRequestId !== null,
     retry: false,
   });
   const locale = i18n.resolvedLanguage ?? "zh";

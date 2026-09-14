@@ -1,4 +1,5 @@
 const consoleRedirectOrigin = "https://console.invalid";
+const consoleBasePath = "/console";
 const guestRoutePaths = new Set([
   "/console/forgot-password",
   "/console/register",
@@ -29,7 +30,20 @@ export function normalizeConsoleRedirect(value: unknown): string | undefined {
 }
 
 export function protectedConsoleRedirect(value: unknown): string | undefined {
-  const redirect = normalizeConsoleRedirect(value);
+  let candidate = value;
+  if (typeof value === "string") {
+    const target = value.trim();
+    const hasConsoleBasePath =
+      target === consoleBasePath ||
+      target.startsWith(`${consoleBasePath}/`) ||
+      target.startsWith(`${consoleBasePath}?`) ||
+      target.startsWith(`${consoleBasePath}#`);
+    const isRouterLocalPath =
+      target.startsWith("/") && !target.startsWith("//") && !hasConsoleBasePath;
+    if (isRouterLocalPath) candidate = `${consoleBasePath}${target}`;
+  }
+
+  const redirect = normalizeConsoleRedirect(candidate);
   return redirect === "/console" || redirect === "/console/" ? undefined : redirect;
 }
 

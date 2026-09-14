@@ -44,6 +44,7 @@ token_estimator_test.go
 skills-lock.json
 .playwright-mcp
 .playwright-cli/
+/Library/
 motion-audits/
 output/
 

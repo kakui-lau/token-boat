@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { parsePublicStatusEnvelope } from "@/islands/status/public-status";
+import {
+  isSuccessfulPublicStatusEnvelope,
+  parsePublicStatusEnvelope,
+  publicRequestLogsPath,
+} from "@/islands/status/public-status";
 
 describe("public status contract", () => {
   test("keeps only named monitors with bounded uptime values", () => {
@@ -32,5 +36,12 @@ describe("public status contract", () => {
   test("fails closed for unsuccessful or malformed payloads", () => {
     expect(parsePublicStatusEnvelope({ data: [{ monitors: [] }], success: false })).toEqual([]);
     expect(parsePublicStatusEnvelope(null)).toEqual([]);
+    expect(isSuccessfulPublicStatusEnvelope({ data: [], success: true })).toBe(true);
+    expect(isSuccessfulPublicStatusEnvelope({ data: null, success: true })).toBe(false);
+    expect(isSuccessfulPublicStatusEnvelope({ data: [], success: false })).toBe(false);
+  });
+
+  test("sends account-level diagnosis to the existing request logs route", () => {
+    expect(publicRequestLogsPath).toBe("/console/logs");
   });
 });

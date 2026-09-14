@@ -2,16 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createPricingI18n } from "@/i18n/pricing";
-import { contentLocale, siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
-import { formatCardCurrency } from "@/islands/pricing/price-format";
+import { siteLocaleMeta, type SiteLocale } from "@/content/site-copy";
+import { PriceBreakdown, PriceSummary } from "@/islands/pricing/price-breakdown";
 import { modelDialogHasMoreContent } from "@/islands/pricing/scroll-state";
-import {
-  parsePublicPricingEnvelope,
-  type PublicModelFamily,
-  type PublicModelPrice,
-  type PublicPriceComponent,
-  type PublicPricingModel,
-} from "@/islands/pricing/public-pricing";
+import { type PublicModelFamily, type PublicPricingModel } from "@/islands/pricing/public-pricing";
+import { fetchViewerPricing, type ViewerPricingAudience } from "@/islands/pricing/viewer-pricing";
 
 type PricingExplorerIslandProps = {
   locale: SiteLocale;
@@ -20,7 +15,12 @@ type PricingExplorerIslandProps = {
 type LoadingState =
   | { status: "error" }
   | { status: "loading" }
-  | { models: PublicPricingModel[]; status: "ready" };
+  | {
+      audience: ViewerPricingAudience;
+      models: PublicPricingModel[];
+      officialModels: PublicPricingModel[];
+      status: "ready";
+    };
 
 const familyOptions: readonly (PublicModelFamily | "all")[] = [
   "all",
@@ -81,13 +81,9 @@ function PricingExplorer(props: PricingExplorerIslandProps) {
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: "loading" });
-    void fetch("/api/pricing", { credentials: "same-origin", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Pricing request failed with ${response.status}`);
-        return response.json() as Promise<unknown>;
-      })
-      .then((payload) => {
-        setState({ models: parsePublicPricingEnvelope(payload), status: "ready" });
+    void fetchViewerPricing(controller.signal)
+      .then((catalog) => {
+        setState({ ...catalog, status: "ready" });
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -112,13 +108,19 @@ function PricingExplorer(props: PricingExplorerIslandProps) {
     state.status === "ready"
       ? (state.models.find((model) => model.id === selectedModelId) ?? null)
       : null;
+  const selectedOfficialModel =
+    state.status === "ready"
+      ? (state.officialModels.find((model) => model.id === selectedModelId) ?? null)
+      : null;
+  const showsAccountPricing = state.status === "ready" && state.audience === "account";
+  const accountPricingUnverified = state.status === "ready" && state.audience === "degraded";
 
   return (
     <section className="price-explorer" aria-busy={state.status === "loading"}>
       <div className="price-explorer__heading">
         <p>{t("catalog.catalogEyebrow")}</p>
         <h2>{t("catalog.catalogTitle")}</h2>
-        <span>{t("catalog.liveData")}</span>
+        <span>{t(showsAccountPricing ? "catalog.accountData" : "catalog.liveData")}</span>
       </div>
       <div className="price-explorer__toolbar">
         <label className="catalog-search">
@@ -215,16 +217,11 @@ function PricingExplorer(props: PricingExplorerIslandProps) {
                     ))}
                   </ul>
                 ) : null}
-                <dl className="model-price-grid">
-                  <div>
-                    <dt>{t("catalog.input")}</dt>
-                    <dd>{formatPrice(model.inputPrice, props.locale, t)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("catalog.output")}</dt>
-                    <dd>{formatPrice(model.outputPrice, props.locale, t)}</dd>
-                  </div>
-                </dl>
+                <PriceSummary
+                  locale={props.locale}
+                  model={model}
+                  showSource={showsAccountPricing}
+                />
                 <div className="model-card__footer">
                   <div>
                     <span>{t("catalog.context")}</span>
@@ -247,15 +244,34 @@ function PricingExplorer(props: PricingExplorerIslandProps) {
 
       <div className="catalog-disclaimer">
         <span aria-hidden="true">ⓘ</span>
-        <p>{t("catalog.disclaimer")}</p>
-        <a href="/console/sign-in">
-          {t("catalog.accountPricing")} <span aria-hidden="true">↗</span>
+        <p>
+          {t(
+            showsAccountPricing
+              ? "catalog.accountDisclaimer"
+              : accountPricingUnverified
+                ? "catalog.degradedDisclaimer"
+                : "catalog.disclaimer",
+          )}
+        </p>
+        <a
+          href={
+            showsAccountPricing || accountPricingUnverified ? "/console/models" : "/console/sign-in"
+          }
+        >
+          {t(
+            showsAccountPricing || accountPricingUnverified
+              ? "catalog.accountPricing"
+              : "catalog.signInToConfirm",
+          )}{" "}
+          <span aria-hidden="true">↗</span>
         </a>
       </div>
 
       <ModelDetailsDialog
+        audience={state.status === "ready" ? state.audience : "official"}
         locale={props.locale}
         model={selectedModel}
+        officialModel={selectedOfficialModel}
         onClose={() => setSelectedModelId(null)}
       />
     </section>
@@ -263,8 +279,10 @@ function PricingExplorer(props: PricingExplorerIslandProps) {
 }
 
 function ModelDetailsDialog(props: {
+  audience: ViewerPricingAudience;
   locale: SiteLocale;
   model: PublicPricingModel | null;
+  officialModel: PublicPricingModel | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -273,9 +291,13 @@ function ModelDetailsDialog(props: {
   const closeTimerRef = useRef<number | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [displayedModel, setDisplayedModel] = useState<PublicPricingModel | null>(props.model);
+  const [displayedOfficialModel, setDisplayedOfficialModel] = useState<PublicPricingModel | null>(
+    props.officialModel,
+  );
   const [isClosing, setIsClosing] = useState(false);
   const [showScrollCue, setShowScrollCue] = useState(false);
   const model = props.model ?? displayedModel;
+  const officialModel = props.officialModel ?? displayedOfficialModel;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -288,6 +310,7 @@ function ModelDetailsDialog(props: {
 
     if (props.model) {
       setDisplayedModel(props.model);
+      setDisplayedOfficialModel(props.officialModel);
       setIsClosing(false);
       if (!dialog.open) dialog.showModal();
       return;
@@ -295,6 +318,7 @@ function ModelDetailsDialog(props: {
 
     if (!dialog.open) {
       setDisplayedModel(null);
+      setDisplayedOfficialModel(null);
       return;
     }
 
@@ -302,6 +326,7 @@ function ModelDetailsDialog(props: {
     if (reducedMotion) {
       dialog.close();
       setDisplayedModel(null);
+      setDisplayedOfficialModel(null);
       return;
     }
 
@@ -309,10 +334,11 @@ function ModelDetailsDialog(props: {
     closeTimerRef.current = window.setTimeout(() => {
       dialog.close();
       setDisplayedModel(null);
+      setDisplayedOfficialModel(null);
       setIsClosing(false);
       closeTimerRef.current = null;
     }, 140);
-  }, [props.model]);
+  }, [props.model, props.officialModel]);
 
   useEffect(
     () => () => {
@@ -357,6 +383,7 @@ function ModelDetailsDialog(props: {
       }}
       onClose={() => {
         setDisplayedModel(null);
+        setDisplayedOfficialModel(null);
         setIsClosing(false);
         if (props.model) props.onClose();
       }}
@@ -423,7 +450,15 @@ function ModelDetailsDialog(props: {
               </div>
               <div>
                 <dt>{t("catalog.pricingSource")}</dt>
-                <dd translate="no">{model.pricingSource ?? "—"}</dd>
+                <dd>
+                  {model.priceAudience
+                    ? t(
+                        model.priceAudience === "account"
+                          ? "catalog.accountPrice"
+                          : "catalog.officialPrice",
+                      )
+                    : "—"}
+                </dd>
               </div>
             </dl>
 
@@ -456,20 +491,13 @@ function ModelDetailsDialog(props: {
             </div>
 
             <div className="model-detail-section">
-              <h3>{t("catalog.completePricing")}</h3>
-              {model.priceComponents.length > 0 ? (
-                <div className="price-component-list">
-                  {model.priceComponents.map((item, index) => (
-                    <PriceComponentRow
-                      item={item}
-                      key={`${item.component}-${item.tier ?? "base"}-${index}`}
-                      locale={props.locale}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p>—</p>
-              )}
+              <h3>{t("catalog.priceDetails")}</h3>
+              <PriceBreakdown
+                key={model.id}
+                locale={props.locale}
+                model={model}
+                officialModel={officialModel}
+              />
             </div>
           </div>
 
@@ -495,63 +523,19 @@ function ModelDetailsDialog(props: {
             >
               {t("catalog.copyId")}
             </button>
-            <a href="/console/sign-in">
-              {t("catalog.signInToConfirm")} <span aria-hidden="true">↗</span>
+            <a href={props.audience !== "official" ? "/console/models" : "/console/sign-in"}>
+              {t(
+                props.audience !== "official"
+                  ? "catalog.accountPricing"
+                  : "catalog.signInToConfirm",
+              )}{" "}
+              <span aria-hidden="true">↗</span>
             </a>
           </footer>
         </div>
       ) : null}
     </dialog>
   );
-}
-
-function PriceComponentRow(props: { item: PublicPriceComponent; locale: SiteLocale }) {
-  const { t } = useTranslation();
-  const conditions = [
-    props.item.tier,
-    props.item.operation,
-    props.item.quality,
-    props.item.resolution,
-    props.item.withAudio,
-    props.item.upperBound ? `≤ ${props.item.upperBound}` : null,
-  ].filter((value): value is string => Boolean(value));
-
-  return (
-    <dl className="price-component-row">
-      <div>
-        <dt>{t("catalog.component")}</dt>
-        <dd>{t(`price.${props.item.component}`, { defaultValue: props.item.component })}</dd>
-      </div>
-      <div>
-        <dt>{t("catalog.price")}</dt>
-        <dd>{formatComponentPrice(props.item, props.locale)}</dd>
-      </div>
-      <div>
-        <dt>{t("catalog.unit")}</dt>
-        <dd translate="no">{formatComponentUnit(props.item, props.locale)}</dd>
-      </div>
-      <div>
-        <dt>{t("catalog.conditions")}</dt>
-        <dd translate="no">{conditions.join(" · ") || "—"}</dd>
-      </div>
-    </dl>
-  );
-}
-
-function formatPrice(
-  price: PublicModelPrice | null,
-  locale: SiteLocale,
-  translate: (key: string) => string,
-): string {
-  if (!price) return "—";
-  const unitKey =
-    price.unit === "million_tokens"
-      ? "price.perMillion"
-      : price.unit === "second"
-        ? "price.perSecond"
-        : "price.perRequest";
-  const prefix = price.qualifier === "from" ? `${translate("price.from")} ` : "";
-  return `${prefix}${formatCardCurrency(price.amount, price.currency, locale)} ${translate(unitKey)}`;
 }
 
 function formatContext(contextLength: number | null, locale: SiteLocale): string {
@@ -569,57 +553,40 @@ function formatFullNumber(value: number | null, locale: SiteLocale): string {
   }).format(value);
 }
 
-function formatComponentPrice(item: PublicPriceComponent, locale: SiteLocale): string {
-  return new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
-    currency: item.currency,
-    maximumFractionDigits: 6,
-    minimumFractionDigits: 2,
-    style: "currency",
-  }).format(item.amount);
-}
-
-function formatComponentUnit(item: PublicPriceComponent, locale: SiteLocale): string {
-  const size = item.unitSize;
-  const formattedSize = size
-    ? new Intl.NumberFormat(siteLocaleMeta[locale].numberLocale, {
-        notation: size >= 1_000 ? "compact" : "standard",
-      }).format(size)
-    : null;
-  const localizedUnits: Record<string, [string, string]> = {
-    character: ["字符", "characters"],
-    image: ["张图", "images"],
-    item: ["项", "items"],
-    request: ["次请求", "requests"],
-    second: ["秒", "seconds"],
-    token: ["Token", "tokens"],
-  };
-  const unit = localizedUnits[item.unit]?.[contentLocale(locale) === "zh" ? 0 : 1] ?? item.unit;
-  return formattedSize ? `${formattedSize} ${unit}` : unit;
-}
-
 function localizedDescription(
   model: PublicPricingModel,
   locale: SiteLocale,
   fallback: string,
 ): string {
-  const baseLocale = contentLocale(locale);
-  if (model.description && (baseLocale === "zh" || !/[\u3400-\u9fff]/u.test(model.description))) {
+  if (locale === "zh") return model.description ?? fallback;
+  if (model.description && locale === "en" && !/[\u3400-\u9fff]/u.test(model.description)) {
     return model.description;
   }
-  if (baseLocale === "zh") return model.description ?? fallback;
   const provider = model.provider ?? "the listed provider";
   const capabilities = model.tags
     .slice(0, 3)
-    .map((tag) => localizedTag(tag, locale).toLowerCase())
+    .map((tag) => localizedTag(tag, locale))
     .join(", ");
+  if (locale === "ja")
+    return capabilities
+      ? `${provider} が提供する ${model.family} モデル。主な機能：${capabilities}。`
+      : `${provider} が提供する ${model.family} モデルです。`;
+  if (locale === "ko")
+    return capabilities
+      ? `${provider}의 ${model.family} 모델입니다. 주요 기능: ${capabilities}.`
+      : `${provider}의 ${model.family} 모델입니다.`;
+  if (locale === "zh-TW")
+    return capabilities
+      ? `${provider} 提供的 ${model.family} 模型，主要能力：${capabilities}。`
+      : `${provider} 提供的 ${model.family} 模型。`;
   return capabilities
-    ? `A ${model.family} model from ${provider}, listed for ${capabilities}.`
+    ? `A ${model.family} model from ${provider}, listed for ${capabilities.toLowerCase()}.`
     : `A ${model.family} model from ${provider}.`;
 }
 
 function localizedTag(tag: string, locale: SiteLocale): string {
-  if (contentLocale(locale) === "zh") return tag;
-  const translations: Record<string, string> = {
+  if (locale === "zh") return tag;
+  const english: Record<string, string> = {
     人物高一致: "Character consistency",
     代码: "Coding",
     内测预览: "Private preview",
@@ -649,5 +616,103 @@ function localizedTag(tag: string, locale: SiteLocale): string {
     高速: "High speed",
     音频: "Audio",
   };
+  const japanese: Record<string, string> = {
+    人物高一致: "人物の高い一貫性",
+    代码: "コード",
+    内测预览: "限定プレビュー",
+    多模态: "マルチモーダル",
+    对话: "チャット",
+    工具: "ツール利用",
+    固定版本: "固定バージョン",
+    图片: "画像",
+    图像: "画像",
+    嵌入: "埋め込み",
+    快速: "高速",
+    推理: "推論",
+    文本: "テキスト",
+    智能体: "エージェント",
+    标准版: "標準",
+    生成: "生成",
+    稳定正式版: "安定版",
+    经济: "低コスト",
+    视频: "動画",
+    视频生成: "動画生成",
+    语音: "音声",
+    超分: "アップスケール",
+    轻量化: "軽量",
+    长上下文: "長いコンテキスト",
+    预览: "プレビュー",
+    高性价比: "高コスト効率",
+    高速: "高速",
+    音频: "オーディオ",
+  };
+  const korean: Record<string, string> = {
+    人物高一致: "인물 일관성",
+    代码: "코드",
+    内测预览: "비공개 미리보기",
+    多模态: "멀티모달",
+    对话: "채팅",
+    工具: "도구 사용",
+    固定版本: "고정 버전",
+    图片: "이미지",
+    图像: "이미지",
+    嵌入: "임베딩",
+    快速: "빠름",
+    推理: "추론",
+    文本: "텍스트",
+    智能体: "에이전트",
+    标准版: "표준",
+    生成: "생성",
+    稳定正式版: "안정 버전",
+    经济: "경제적",
+    视频: "비디오",
+    视频生成: "비디오 생성",
+    语音: "음성",
+    超分: "업스케일",
+    轻量化: "경량",
+    长上下文: "긴 컨텍스트",
+    预览: "미리보기",
+    高性价比: "비용 효율",
+    高速: "고속",
+    音频: "오디오",
+  };
+  const traditionalChinese: Record<string, string> = {
+    人物高一致: "人物高一致性",
+    代码: "程式碼",
+    内测预览: "內測預覽",
+    多模态: "多模態",
+    对话: "對話",
+    工具: "工具",
+    固定版本: "固定版本",
+    图片: "圖片",
+    图像: "圖像",
+    嵌入: "嵌入",
+    快速: "快速",
+    推理: "推理",
+    文本: "文字",
+    智能体: "智慧代理",
+    标准版: "標準版",
+    生成: "生成",
+    稳定正式版: "穩定正式版",
+    经济: "經濟",
+    视频: "影片",
+    视频生成: "影片生成",
+    语音: "語音",
+    超分: "超解析",
+    轻量化: "輕量化",
+    长上下文: "長上下文",
+    预览: "預覽",
+    高性价比: "高性價比",
+    高速: "高速",
+    音频: "音訊",
+  };
+  const translations =
+    locale === "ja"
+      ? japanese
+      : locale === "ko"
+        ? korean
+        : locale === "zh-TW"
+          ? traditionalChinese
+          : english;
   return translations[tag] ?? tag;
 }

@@ -1,7 +1,6 @@
 export const siteLocales = ["zh", "en", "ja", "ko", "zh-TW"] as const;
 
 export type SiteLocale = (typeof siteLocales)[number];
-export type BaseContentLocale = "en" | "zh";
 
 type SiteLocaleMeta = {
   htmlLanguage: string;
@@ -59,7 +58,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       models: "模型与价格",
       rankings: "排行榜",
       docs: "文档",
-      status: "状态",
+      status: "服务信息",
       about: "关于",
       signIn: "登录",
       getStarted: "开始接入",
@@ -91,7 +90,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       models: "Models & pricing",
       rankings: "Rankings",
       docs: "Docs",
-      status: "Status",
+      status: "Service info",
       about: "About",
       signIn: "Sign in",
       getStarted: "Get started",
@@ -124,7 +123,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       models: "モデルと料金",
       rankings: "ランキング",
       docs: "ドキュメント",
-      status: "稼働状況",
+      status: "サービス情報",
       about: "概要",
       signIn: "ログイン",
       getStarted: "利用を開始",
@@ -157,7 +156,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       models: "모델 및 가격",
       rankings: "순위",
       docs: "문서",
-      status: "상태",
+      status: "서비스 안내",
       about: "소개",
       signIn: "로그인",
       getStarted: "시작하기",
@@ -190,7 +189,7 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
       models: "模型與價格",
       rankings: "排行榜",
       docs: "文件",
-      status: "狀態",
+      status: "服務資訊",
       about: "關於",
       signIn: "登入",
       getStarted: "開始串接",
@@ -216,10 +215,6 @@ export const siteCopy: Record<SiteLocale, SiteCopy> = {
     },
   },
 };
-
-export function contentLocale(locale: SiteLocale): BaseContentLocale {
-  return locale === "zh" || locale === "zh-TW" ? "zh" : "en";
-}
 
 export function localizedPath(locale: SiteLocale, path: string): string {
   const normalizedPath = path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;

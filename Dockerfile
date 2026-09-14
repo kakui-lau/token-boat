@@ -41,8 +41,10 @@ RUN go mod download
 
 COPY . .
 COPY --from=legacy-frontend-builder /build/web/dist ./web/dist
+RUN mkdir -p ./web/dist/legacy && cp ./web/dist/index.html ./web/dist/legacy/index.html
+COPY --from=console-frontend-builder /build/frontend/apps/site/dist ./web/dist
 COPY --from=console-frontend-builder /build/frontend/apps/console/dist ./web/dist/console
-COPY --from=console-frontend-builder /build/frontend/apps/admin/dist ./web/dist/admin
+RUN ./scripts/check-web-assembly.sh ./web/dist
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api \
     && mkdir -p /runtime-root/data /runtime-root/tmp \
 	&& go build -ldflags "-s -w" -o /runtime-root/pricing-readiness ./cmd/local-pricing-bootstrap \

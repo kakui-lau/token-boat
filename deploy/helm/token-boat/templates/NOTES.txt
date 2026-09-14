@@ -1,0 +1,14 @@
+token-boat has been deployed to namespace {{ .Release.Namespace }}.
+
+Canary endpoint:
+  https://{{ first .Values.ingress.hosts }}
+
+Verify:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+  kubectl logs -n {{ .Release.Namespace }} job/{{ include "token-boat.fullname" . }}-preflight
+  kubectl rollout status deployment/{{ include "token-boat.fullname" . }}-worker -n {{ .Release.Namespace }}
+
+The runtime Secret is external to this chart:
+  {{ .Values.existingSecret }}
+
+The master is {{ ternary "enabled" "disabled" .Values.master.enabled }}. Do not enable it until the old cluster master is stopped.

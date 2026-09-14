@@ -120,7 +120,7 @@ const jsonLd = props.jsonLd
         </nav>
 
         <div class="header-actions">
-          <details class="language-menu" data-animated-details>
+          <details class="language-menu" data-animated-details data-site-menu="language">
             <summary class="language-link" aria-label={copy.accessibility.language}>
               <span>LANG</span><strong>{props.locale === "zh-TW" ? "繁中" : props.locale.toUpperCase()}</strong>
             </summary>
@@ -128,6 +128,7 @@ const jsonLd = props.jsonLd
               {siteLocales.map((locale) => (
                 <a
                   class:list={{ "is-active": locale === props.locale }}
+                  data-language-link
                   href={localizedPath(locale, basePath)}
                   lang={siteLocaleMeta[locale].htmlLanguage}
                   aria-current={locale === props.locale ? "page" : undefined}
@@ -137,7 +138,7 @@ const jsonLd = props.jsonLd
           </details>
           <a class="text-link desktop-only" href="/console/sign-in">{copy.nav.signIn}</a>
           <a class="button button--small" href="/console/getting-started">{copy.nav.getStarted}<span aria-hidden="true">↗</span></a>
-          <details class="mobile-navigation" data-animated-details>
+          <details class="mobile-navigation" data-animated-details data-site-menu="navigation">
             <summary aria-label={copy.nav.menu}><span></span><span></span><span></span></summary>
             <div class="mobile-navigation__panel">
               {navigation.map(([index, label, href]) => (
@@ -197,42 +198,9 @@ const jsonLd = props.jsonLd
       </div>
     </footer>
     <script>
-      const closingDetails = new WeakMap<HTMLDetailsElement, number>();
+      import { initializeSiteHeader } from "@/islands/navigation/site-header";
 
-      document.addEventListener("click", (event) => {
-        if (!(event.target instanceof Element)) return;
-        const summary = event.target.closest("summary");
-        const details = summary?.parentElement;
-        if (!(details instanceof HTMLDetailsElement) || !details.matches("[data-animated-details]")) {
-          return;
-        }
-
-        if (event.detail === 0) {
-          details.dataset.instant = "true";
-          window.setTimeout(() => delete details.dataset.instant, 50);
-          return;
-        }
-
-        const existingTimer = closingDetails.get(details);
-        if (existingTimer !== undefined) {
-          event.preventDefault();
-          window.clearTimeout(existingTimer);
-          closingDetails.delete(details);
-          delete details.dataset.closing;
-          return;
-        }
-
-        if (!details.open || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-        event.preventDefault();
-        details.dataset.closing = "true";
-        const timer = window.setTimeout(() => {
-          details.open = false;
-          delete details.dataset.closing;
-          closingDetails.delete(details);
-        }, 140);
-        closingDetails.set(details, timer);
-      });
+      initializeSiteHeader();
     </script>
   </body>
 </html>

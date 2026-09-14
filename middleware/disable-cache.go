@@ -10,3 +10,11 @@ func DisableCache() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func PrivateNoStore() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "private, no-store")
+		c.Writer.Header().Add("Vary", "Authorization")
+		c.Next()
+	}
+}

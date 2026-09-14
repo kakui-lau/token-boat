@@ -41,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from "@token-boat/ui/components/ui/table";
+import { useSession } from "@/app/session/session-context";
 import { DataLoadError } from "@/components/data-load-error";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { PageHeader } from "@/components/page-header";
@@ -67,6 +68,8 @@ type OverviewDestination = "/api-keys" | "/billing" | "/logs" | "/usage";
 
 export function OverviewPage(props: OverviewPageProps) {
   const { t, i18n } = useTranslation();
+  const { session } = useSession();
+  const queriesEnabled = session !== null;
   const [search, updateSearch] = useControllableSearch(props.search, props.onSearchChange);
   const range = useMemo(
     () => resolveDateRange(search, "7d"),
@@ -76,10 +79,12 @@ export function OverviewPage(props: OverviewPageProps) {
   const overview = useQuery({
     queryKey: ["overview", range],
     queryFn: () => repository.getOverview(range),
+    enabled: queriesEnabled,
   });
   const onboarding = useQuery({
     queryKey: ["onboarding"],
     queryFn: () => repository.getOnboarding(),
+    enabled: queriesEnabled,
   });
   const locale = i18n.resolvedLanguage ?? "en";
   const metrics = overview.data

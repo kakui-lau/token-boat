@@ -30,6 +30,13 @@ describe("User Console authentication redirects", () => {
     expect(protectedConsoleRedirect("/console/")).toBeUndefined();
   });
 
+  test.each([
+    ["/logs?detail=request-1#diagnostics", "/console/logs?detail=request-1#diagnostics"],
+    ["/playground?model=gpt-5", "/console/playground?model=gpt-5"],
+  ])("restores the console base path for a router-local deep link: %s", (target, expected) => {
+    expect(protectedConsoleRedirect(target)).toBe(expected);
+  });
+
   test("stores an OAuth return target for one callback only", () => {
     rememberOAuthRedirect("flow-token", "/console/usage?range=30d");
 

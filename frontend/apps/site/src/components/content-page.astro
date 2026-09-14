@@ -1,7 +1,8 @@
 ---
-import { contentLocale, localizedPath, type BaseContentLocale, type SiteLocale } from "@/content/site-copy";
-import { legalDocumentDrafts } from "@/content/legal-documents";
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
+import { legalDocuments } from "@/content/legal-documents";
 import { LegalDocument } from "@/islands/legal/legal-document";
+import { demoteLegalMarkdownHeadings } from "@/islands/legal/legal-content";
 import { StatusPanel } from "@/islands/status/status-panel";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 import { marked } from "marked";
@@ -31,7 +32,7 @@ type ContentPage = {
 };
 
 const props = Astro.props;
-const pages: Record<BaseContentLocale, Record<ContentPageKey, ContentPage>> = {
+const pages: Record<SiteLocale, Record<ContentPageKey, ContentPage>> = {
   zh: {
     docs: {
       eyebrow: "开发者文档",
@@ -71,9 +72,9 @@ const pages: Record<BaseContentLocale, Record<ContentPageKey, ContentPage>> = {
       },
     },
     status: {
-      eyebrow: "服务状态",
-      titleLines: ["查看当前", "公开服务", "状态。"],
-      lead: "这里只展示已接入公开监控的数据。账户级请求问题可登录控制台，通过请求日志继续定位。",
+      eyebrow: "服务信息",
+      titleLines: ["公开监控，", "与请求", "排障入口。"],
+      lead: "这里只展示已接入公开监控的数据；没有监控数据时不会推断实时状态。账户级请求问题可登录控制台，通过请求日志继续定位。",
       cards: [],
     },
     about: {
@@ -159,9 +160,9 @@ const pages: Record<BaseContentLocale, Record<ContentPageKey, ContentPage>> = {
       },
     },
     status: {
-      eyebrow: "Service status",
-      titleLines: ["SEE THE PUBLIC", "SERVICE", "STATUS."],
-      lead: "This page shows only data connected to public monitoring. For account-level request issues, sign in and continue with Request Logs.",
+      eyebrow: "Service information",
+      titleLines: ["PUBLIC MONITORS", "AND REQUEST", "DIAGNOSTICS."],
+      lead: "This page shows only connected public monitoring data and does not infer live status when none is available. For account-level request issues, sign in and continue with Request Logs.",
       cards: [],
     },
     about: {
@@ -208,11 +209,122 @@ const pages: Record<BaseContentLocale, Record<ContentPageKey, ContentPage>> = {
       cards: [],
     },
   },
+  ja: {
+    docs: {
+      eyebrow: "開発者ドキュメント",
+      titleLines: ["API キーから、", "最初のレスポンス", "まで。"],
+      lead: "最短の導入手順から始め、必要に応じてモデル、料金、使用量、リクエストログを確認できます。",
+      cards: [
+        {
+          action: "クイックスタートを開く",
+          description: "API キーを作成し、利用可能なモデルを選び、使い慣れた OpenAI SDK で最初のリクエストを送信します。",
+          href: "/console/getting-started",
+          index: "01",
+          label: "QUICKSTART",
+          title: "最初の接続を完了",
+        },
+        {
+          action: "モデルを見る",
+          description: "プロバイダーと機能でモデルを絞り込み、コンテキストと公開料金の概要を確認します。",
+          href: localizedPath("ja", "/models"),
+          index: "02",
+          label: "MODEL SELECTION",
+          title: "用途に合うモデルを選択",
+        },
+        {
+          action: "料金を比較",
+          description: "本番実装の前に入力、出力、メディアの課金単位を比較し、ログイン後にアカウント料金を確認します。",
+          href: `${localizedPath("ja", "/models")}#catalog`,
+          index: "03",
+          label: "PRICING",
+          title: "呼び出しコストを把握",
+        },
+      ],
+      cta: {
+        action: "開発を始める",
+        href: "/console/getting-started",
+        label: "READY TO BUILD",
+        title: "最初のリクエストを送る準備はできましたか？",
+      },
+    },
+    status: {
+      eyebrow: "サービス情報",
+      titleLines: ["公開監視と", "リクエストの", "調査窓口。"],
+      lead: "接続済みの公開監視データだけを表示し、データがない場合はリアルタイム状況を推測しません。アカウント固有の問題は、ログイン後にリクエストログで確認してください。",
+      cards: [],
+    },
+    about: {
+      eyebrow: "Token Boat について",
+      titleLines: ["複数の AI モデルを", "継続的に使う", "チームのために。"],
+      lead: "Token Boat は、複数の AI モデルを評価・接続・運用するプロダクト、開発、運用チームを支援します。",
+      cards: [
+        { description: "互換エンドポイントと使い慣れた SDK を使い、プロダクトロジックと体験設計に集中できます。", index: "01", label: "FOR DEVELOPERS", title: "短い導入経路" },
+        { description: "単一のプロバイダーに固定せず、機能、応答品質、公開料金を比較して選べます。", index: "02", label: "FOR PRODUCT TEAMS", title: "柔軟なモデル選択" },
+        { description: "使用量、リクエスト、アカウント料金からコストを把握し、日々の運用と調査を明確にします。", index: "03", label: "FOR OPERATIONS", title: "明確な運用ビュー" },
+      ],
+      cta: { action: "モデルを見る", href: localizedPath("ja", "/models"), label: "EXPLORE THE CATALOG", title: "現在利用できるモデルを確認。" },
+    },
+    terms: { eyebrow: "法務", titleLines: ["現在の", "利用規約を", "確認。"], lead: "Token Boat のアカウント、サービス利用、料金に適用される規約をご確認ください。", cards: [] },
+    privacy: { eyebrow: "法務", titleLines: ["プライバシー", "ポリシーを", "確認。"], lead: "Token Boat がアカウント、サービス利用、送信されたコンテンツに関する情報をどのように扱うかをご確認ください。", cards: [] },
+  },
+  ko: {
+    docs: {
+      eyebrow: "개발자 문서",
+      titleLines: ["API 키부터", "첫 응답까지", "한 번에."],
+      lead: "가장 짧은 연동 경로에서 시작하고 필요할 때 모델, 가격, 사용량, 요청 로그를 자세히 확인하세요.",
+      cards: [
+        { action: "빠른 시작 열기", description: "API 키를 만들고 현재 사용 가능한 모델을 선택한 뒤 익숙한 OpenAI SDK로 첫 요청을 보냅니다.", href: "/console/getting-started", index: "01", label: "QUICKSTART", title: "첫 연동 완료" },
+        { action: "모델 보기", description: "공급자와 기능별로 모델을 필터링하고 컨텍스트와 공개 가격 요약을 확인합니다.", href: localizedPath("ko", "/models"), index: "02", label: "MODEL SELECTION", title: "작업에 맞는 모델 선택" },
+        { action: "가격 비교", description: "운영 코드에 적용하기 전에 입력, 출력, 미디어 과금 단위를 비교하고 로그인 후 계정 가격을 확인합니다.", href: `${localizedPath("ko", "/models")}#catalog`, index: "03", label: "PRICING", title: "호출 비용 이해" },
+      ],
+      cta: { action: "개발 시작", href: "/console/getting-started", label: "READY TO BUILD", title: "첫 요청을 보낼 준비가 되셨나요?" },
+    },
+    status: { eyebrow: "서비스 안내", titleLines: ["공개 모니터링과", "요청 진단", "안내."], lead: "연결된 공개 모니터링 데이터만 표시하며, 데이터가 없을 때 실시간 상태를 추정하지 않습니다. 계정별 요청 문제는 로그인 후 요청 로그에서 확인하세요.", cards: [] },
+    about: {
+      eyebrow: "Token Boat 소개",
+      titleLines: ["AI 모델을", "지속적으로 사용하는", "팀을 위해."],
+      lead: "Token Boat는 여러 AI 모델을 평가하고 연동하며 운영해야 하는 제품, 개발, 운영 팀을 지원합니다.",
+      cards: [
+        { description: "호환 엔드포인트와 익숙한 SDK를 사용해 제품 로직과 사용자 경험에 더 집중할 수 있습니다.", index: "01", label: "FOR DEVELOPERS", title: "더 짧은 연동 경로" },
+        { description: "한 공급자에 종속되지 않고 기능, 응답 품질, 공개 가격을 비교해 선택합니다.", index: "02", label: "FOR PRODUCT TEAMS", title: "유연한 모델 선택" },
+        { description: "사용량, 요청, 계정 가격으로 비용을 이해해 일상 운영과 문제 진단을 명확하게 합니다.", index: "03", label: "FOR OPERATIONS", title: "명확한 운영 보기" },
+      ],
+      cta: { action: "모델 보기", href: localizedPath("ko", "/models"), label: "EXPLORE THE CATALOG", title: "현재 이용 가능한 모델을 확인하세요." },
+    },
+    terms: { eyebrow: "법률", titleLines: ["현재", "서비스 약관을", "확인하세요."], lead: "Token Boat 계정, 서비스 이용 및 요금 관련 사항에 적용되는 약관을 확인하세요.", cards: [] },
+    privacy: { eyebrow: "법률", titleLines: ["개인정보", "처리방침을", "확인하세요."], lead: "Token Boat가 계정, 서비스 접근 및 사용자가 제출한 콘텐츠 관련 정보를 처리하는 방식을 확인하세요.", cards: [] },
+  },
+  "zh-TW": {
+    docs: {
+      eyebrow: "開發者文件",
+      titleLines: ["從 API Key，", "到第一個", "回應。"],
+      lead: "從最短的串接路徑開始；需要深入時，再查看模型、價格、用量與請求記錄。",
+      cards: [
+        { action: "開啟快速開始", description: "建立 API Key、選擇目前可用的模型，並用熟悉的 OpenAI SDK 發送第一個請求。", href: "/console/getting-started", index: "01", label: "QUICKSTART", title: "完成首次串接" },
+        { action: "瀏覽模型", description: "依供應商與能力類型篩選模型，同時查看上下文與公開價格摘要。", href: localizedPath("zh-TW", "/models"), index: "02", label: "MODEL SELECTION", title: "選擇適合任務的模型" },
+        { action: "比較價格", description: "寫入正式環境程式碼前，比較輸入、輸出與媒體計費單位；登入後再確認帳戶價格。", href: `${localizedPath("zh-TW", "/models")}#catalog`, index: "03", label: "PRICING", title: "瞭解呼叫成本" },
+      ],
+      cta: { action: "開始串接", href: "/console/getting-started", label: "READY TO BUILD", title: "準備好發送第一個請求了嗎？" },
+    },
+    status: { eyebrow: "服務資訊", titleLines: ["公開監控，", "與請求", "排查入口。"], lead: "這裡只顯示已接入的公開監控資料；沒有監控資料時不會推斷即時狀態。帳戶層級的請求問題可登入控制台，透過請求記錄繼續排查。", cards: [] },
+    about: {
+      eyebrow: "關於 Token Boat",
+      titleLines: ["為持續使用", "AI 模型的", "團隊而建。"],
+      lead: "Token Boat 服務需要同時評估、串接及營運多種 AI 模型的產品、開發與營運團隊。",
+      cards: [
+        { description: "使用相容端點與熟悉的 SDK 串接模型，把更多時間留給產品邏輯與使用者體驗。", index: "01", label: "FOR DEVELOPERS", title: "更短的串接路徑" },
+        { description: "在模型能力、回應品質與公開價格之間做選擇，不讓產品綁定單一供應商。", index: "02", label: "FOR PRODUCT TEAMS", title: "更彈性的模型選擇" },
+        { description: "透過用量、請求與帳戶價格瞭解成本，讓日常營運與問題排查更清楚。", index: "03", label: "FOR OPERATIONS", title: "更清楚的營運視圖" },
+      ],
+      cta: { action: "瀏覽模型", href: localizedPath("zh-TW", "/models"), label: "EXPLORE THE CATALOG", title: "查看目前可用的模型。" },
+    },
+    terms: { eyebrow: "法律", titleLines: ["閱讀目前", "服務", "條款。"], lead: "閱讀適用於 Token Boat 帳戶、服務使用與費用相關事項的現行條款。", cards: [] },
+    privacy: { eyebrow: "法律", titleLines: ["瞭解目前", "隱私權", "政策。"], lead: "瞭解 Token Boat 如何處理與帳戶、服務存取及使用者提交內容相關的資訊。", cards: [] },
+  },
 };
-const documentLocale = contentLocale(props.locale);
-const content = pages[documentLocale][props.page];
+const content = pages[props.locale][props.page];
 const legalDocument = props.page === "terms" ? "terms" : "privacy";
-const legalDraftHtml = marked.parse(legalDocumentDrafts[documentLocale][legalDocument], {
+const legalDocumentHtml = marked.parse(demoteLegalMarkdownHeadings(legalDocuments[props.locale][legalDocument]), {
   async: false,
 }) as string;
 ---
@@ -248,7 +360,7 @@ const legalDraftHtml = marked.parse(legalDocumentDrafts[documentLocale][legalDoc
 {(props.page === "terms" || props.page === "privacy") && (
   <section class="section public-data-section" id="document">
     <div class="site-shell">
-      <LegalDocument client:load document={legalDocument} fallbackHtml={legalDraftHtml} locale={props.locale} />
+      <LegalDocument client:load document={legalDocument} fallbackHtml={legalDocumentHtml} locale={props.locale} />
     </div>
   </section>
 )}

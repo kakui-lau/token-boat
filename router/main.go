@@ -13,6 +13,10 @@ import (
 )
 
 func SetRouter(router *gin.Engine, assets WebAssets) {
+	// Cache policy must be installed before route registration because Gin
+	// snapshots the middleware chain when each route is added. This keeps every
+	// API/relay response private while still allowing immutable web assets.
+	router.Use(middleware.Cache())
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)

@@ -1,12 +1,12 @@
 ---
-import { contentLocale, localizedPath, type SiteLocale } from "@/content/site-copy";
+import { localizedPath, type SiteLocale } from "@/content/site-copy";
 import { quickstartCode, relayEndpoints } from "@/content/developer-docs";
 import EditorialPageHero from "@/components/editorial-page-hero.astro";
 
 type Props = { locale: SiteLocale };
 const { locale } = Astro.props;
-const documentLocale = contentLocale(locale);
-const c = documentLocale === "zh" ? {
+const copies = {
+  zh: {
   eyebrow: "开发者文档 / API 参考",
   titleLines: ["从 API Key", "到生产", "请求。"],
   lead: "这里是可直接使用的接入说明。示例基于统一 Base URL，端点清单与仓库中的 relay OpenAPI 契约保持一致。",
@@ -32,7 +32,8 @@ const c = documentLocale === "zh" ? {
   endpointLead: "以下为主要公共端点；模型实际支持哪些端点，以模型详情中的兼容端点为准。",
   method: "方法", path: "路径", purpose: "用途",
   source: "接口契约来源：docs/openapi/relay.json",
-} : {
+  },
+  en: {
   eyebrow: "DEVELOPER DOCS / API REFERENCE",
   titleLines: ["FROM API KEY", "TO PRODUCTION", "REQUEST."],
   lead: "A directly usable integration guide. Examples share one base URL, while the endpoint index stays contract-checked against the relay OpenAPI file in this repository.",
@@ -58,7 +59,60 @@ const c = documentLocale === "zh" ? {
   endpointLead: "These are the main public endpoints. Check each model detail for the endpoint types actually supported by that model.",
   method: "Method", path: "Path", purpose: "Purpose",
   source: "API contract source: docs/openapi/relay.json",
+  },
+  ja: {
+    eyebrow: "開発者ドキュメント / API リファレンス",
+    titleLines: ["API キーから", "本番リクエスト", "まで。"],
+    lead: "すぐに使える導入ガイドです。例は共通の Base URL を使い、エンドポイント一覧はリポジトリの relay OpenAPI 契約に準拠しています。",
+    toc: "このページの内容",
+    quickstart: "クイックスタート", auth: "認証と Base URL", examples: "3つの呼び出し方法", streaming: "ストリーミング", errors: "エラーと再試行", limits: "レート制限", endpoints: "主要エンドポイント",
+    keySteps: ["コンソールで API キーを作成します。", "公開モデルカタログからモデル ID をコピーします。", "キーをサーバー側の環境変数に保存し、最初のリクエストを送信します。"],
+    authLead: "保護されたエンドポイントは Bearer Token を使います。API キーをブラウザーコード、公開リポジトリ、ログ、スクリーンショットに保存しないでください。",
+    base: "Base URL", authHeader: "リクエストヘッダー", modelLink: "モデルカタログを開く", accountLink: "API キーを作成・管理",
+    streamLead: "ストリーミング対応モデルでは stream: true を設定し、Server-Sent Events を順次処理します。切断と不完全な最終チャンクを処理できるようにしてください。",
+    errorLead: "エラー応答には HTTP ステータスとメッセージが含まれます。リクエスト時刻、エンドポイント、モデル ID、ステータスを記録し、完全なキーや機密プロンプトは記録しないでください。",
+    errorRows: [["400", "リクエスト項目またはモデルパラメーターが無効", "修正してから再試行"], ["401", "API キーがない、無効、または失効", "Authorization ヘッダーとキー状態を確認"], ["403", "アカウントまたはモデルへのアクセス不可", "権限とモデルの利用可否を確認"], ["429", "リクエストまたはトークン制限", "Retry-After に従いジッター付き指数バックオフを使用"], ["5xx", "ゲートウェイまたは上流が一時的に利用不可", "安全に再送できるリクエストだけを限定的に再試行"]],
+    limitsLead: "RPM、TPM、同時実行数はアカウント、モデル、現在のポリシーにより異なるため、変動する数値は固定表示しません。429 では応答ヘッダーとアカウントコンソールを確認してください。",
+    limitsList: ["同時実行数を制限し、クライアントタイムアウトを設定します。", "429 と一時的な 5xx にはジッター付き指数バックオフを使います。", "生成タスクを無条件に再送せず、先にタスク状態を確認します。", "本番負荷で上限引き上げが必要な場合はサポートセンターへ連絡します。"],
+    endpointLead: "主要な公開エンドポイントです。各モデルが実際に対応する形式はモデル詳細で確認してください。",
+    method: "メソッド", path: "パス", purpose: "用途", source: "API 契約の参照元：docs/openapi/relay.json",
+  },
+  ko: {
+    eyebrow: "개발자 문서 / API 레퍼런스",
+    titleLines: ["API 키부터", "운영 요청까지", "한 번에."],
+    lead: "바로 사용할 수 있는 연동 가이드입니다. 예시는 공통 Base URL을 사용하며 엔드포인트 목록은 저장소의 relay OpenAPI 계약을 따릅니다.",
+    toc: "이 페이지의 내용",
+    quickstart: "빠른 시작", auth: "인증 및 Base URL", examples: "세 가지 호출 방법", streaming: "스트리밍", errors: "오류 및 재시도", limits: "속도 제한", endpoints: "주요 엔드포인트",
+    keySteps: ["콘솔에서 API 키를 만듭니다.", "공개 모델 카탈로그에서 모델 ID를 복사합니다.", "키를 서버 측 환경 변수에 저장한 뒤 첫 요청을 보냅니다."],
+    authLead: "보호된 엔드포인트는 Bearer Token을 사용합니다. API 키를 브라우저 코드, 공개 저장소, 로그 또는 화면 캡처에 넣지 마세요.",
+    base: "Base URL", authHeader: "요청 헤더", modelLink: "모델 카탈로그 열기", accountLink: "API 키 만들기 또는 관리",
+    streamLead: "스트리밍을 지원하는 모델에는 stream: true를 설정하고 Server-Sent Events를 순차적으로 처리하세요. 연결 중단과 불완전한 마지막 청크를 처리해야 합니다.",
+    errorLead: "오류 응답에는 HTTP 상태와 메시지가 포함됩니다. 요청 시간, 엔드포인트, 모델 ID와 상태를 기록하되 전체 키나 민감한 프롬프트는 기록하지 마세요.",
+    errorRows: [["400", "요청 필드 또는 모델 매개변수가 잘못됨", "요청을 수정한 뒤 재시도"], ["401", "API 키 누락, 무효 또는 만료", "Authorization 헤더와 키 상태 확인"], ["403", "계정 또는 모델 접근 불가", "계정 권한과 모델 가용성 확인"], ["429", "요청 또는 토큰 제한 도달", "Retry-After를 따르고 지터를 포함한 지수 백오프 사용"], ["5xx", "게이트웨이 또는 상위 서비스 일시 장애", "안전하게 재전송할 수 있는 요청만 제한적으로 재시도"]],
+    limitsLead: "RPM, TPM과 동시 실행 제한은 계정, 모델 및 현재 정책에 따라 달라지므로 변경될 수 있는 숫자를 고정하지 않습니다. 429 응답에서는 헤더와 계정 콘솔을 기준으로 확인하세요.",
+    limitsList: ["동시 실행을 제한하고 클라이언트 타임아웃을 설정하세요.", "429와 일시적인 5xx에는 지터를 포함한 지수 백오프를 사용하세요.", "생성 작업을 무작정 다시 보내지 말고 먼저 작업 상태를 조회하세요.", "운영 워크로드의 한도 상향이 필요하면 지원 센터로 문의하세요."],
+    endpointLead: "주요 공개 엔드포인트입니다. 모델이 실제 지원하는 형식은 각 모델 상세에서 확인하세요.",
+    method: "메서드", path: "경로", purpose: "용도", source: "API 계약 출처: docs/openapi/relay.json",
+  },
+  "zh-TW": {
+    eyebrow: "開發者文件 / API 參考",
+    titleLines: ["從 API Key", "到正式環境", "請求。"],
+    lead: "可直接使用的串接說明。範例共用一個 Base URL，端點清單則與儲存庫中的 relay OpenAPI 契約保持一致。",
+    toc: "本頁目錄",
+    quickstart: "快速開始", auth: "驗證與 Base URL", examples: "三種呼叫方式", streaming: "串流輸出", errors: "錯誤與重試", limits: "速率限制", endpoints: "主要端點",
+    keySteps: ["登入控制台建立 API Key。", "從公開模型目錄複製模型 ID。", "將 Key 存放於伺服器端環境變數，再發送第一個請求。"],
+    authLead: "所有受保護端點使用 Bearer Token。請勿將 API Key 放入瀏覽器程式碼、公開儲存庫、記錄或螢幕截圖。",
+    base: "Base URL", authHeader: "請求標頭", modelLink: "開啟模型目錄", accountLink: "建立或管理 API Key",
+    streamLead: "對支援串流回應的模型設定 stream: true，並逐步讀取 Server-Sent Events。用戶端應處理連線中斷及不完整的最後一個區塊。",
+    errorLead: "錯誤回應包含 HTTP 狀態與訊息。請記錄請求時間、端點、模型 ID 及狀態；不要記錄完整 Key 或敏感提示詞。",
+    errorRows: [["400", "請求欄位或模型參數無效", "修正請求後再試"], ["401", "API Key 缺少、無效或已失效", "檢查 Authorization 標頭與 Key 狀態"], ["403", "帳戶或模型不可存取", "檢查帳戶權限與模型可用性"], ["429", "達到請求或 Token 限制", "遵循 Retry-After 並使用加入抖動的指數退避"], ["5xx", "閘道或上游暫時無法使用", "只對可安全重送的請求有限重試"]],
+    limitsLead: "RPM、TPM 與並行上限會依帳戶、模型及目前政策而異，因此不固定寫入可能失真的數字。收到 429 時，以回應標頭與帳戶控制台為準。",
+    limitsList: ["限制並行並設定用戶端逾時。", "對 429 與暫時性 5xx 使用加入抖動的指數退避。", "生成類任務不要盲目重送；先查詢任務狀態。", "正式環境工作負載需要提高上限時，請透過支援中心聯絡。"],
+    endpointLead: "以下是主要公開端點；各模型實際支援的端點類型，以模型詳情為準。",
+    method: "方法", path: "路徑", purpose: "用途", source: "API 契約來源：docs/openapi/relay.json",
+  },
 };
+const c = copies[locale];
 const sections = [["quickstart", c.quickstart], ["authentication", c.auth], ["examples", c.examples], ["streaming", c.streaming], ["errors", c.errors], ["rate-limits", c.limits], ["endpoints", c.endpoints]];
 ---
 
@@ -71,9 +125,9 @@ const sections = [["quickstart", c.quickstart], ["authentication", c.auth], ["ex
       <section id="authentication" class="docs-block"><p class="eyebrow">02 / AUTH</p><h2>{c.auth}</h2><p>{c.authLead}</p><div class="docs-facts"><div><span>{c.base}</span><code>https://tokenboat.com/v1</code></div><div><span>{c.authHeader}</span><code>Authorization: Bearer $TOKEN_BOAT_API_KEY</code></div></div></section>
       <section id="examples" class="docs-block"><p class="eyebrow">03 / CALL</p><h2>{c.examples}</h2><div class="code-stack"><details data-animated-details open><summary>Curl</summary><div class="details-reveal"><pre><code>{quickstartCode.curl}</code></pre></div></details><details data-animated-details><summary>Python</summary><div class="details-reveal"><pre><code>{quickstartCode.python}</code></pre></div></details><details data-animated-details><summary>JavaScript</summary><div class="details-reveal"><pre><code>{quickstartCode.javascript}</code></pre></div></details></div></section>
       <section id="streaming" class="docs-block"><p class="eyebrow">04 / STREAM</p><h2>{c.streaming}</h2><p>{c.streamLead}</p><pre><code>{quickstartCode.streaming}</code></pre></section>
-      <section id="errors" class="docs-block"><p class="eyebrow">05 / RECOVER</p><h2>{c.errors}</h2><p>{c.errorLead}</p><div class="docs-table-wrap"><table><thead><tr><th>Status</th><th>{documentLocale === "zh" ? "含义" : "Meaning"}</th><th>{documentLocale === "zh" ? "建议动作" : "Action"}</th></tr></thead><tbody>{c.errorRows.map((row) => <tr>{row.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div></section>
+      <section id="errors" class="docs-block"><p class="eyebrow">05 / RECOVER</p><h2>{c.errors}</h2><p>{c.errorLead}</p><div class="docs-table-wrap"><table><thead><tr><th>Status</th><th>{locale === "zh" ? "含义" : locale === "zh-TW" ? "含義" : locale === "ja" ? "意味" : locale === "ko" ? "의미" : "Meaning"}</th><th>{locale === "zh" ? "建议动作" : locale === "zh-TW" ? "建議動作" : locale === "ja" ? "対応" : locale === "ko" ? "조치" : "Action"}</th></tr></thead><tbody>{c.errorRows.map((row) => <tr>{row.map((cell) => <td>{cell}</td>)}</tr>)}</tbody></table></div></section>
       <section id="rate-limits" class="docs-block"><p class="eyebrow">06 / LIMITS</p><h2>{c.limits}</h2><p>{c.limitsLead}</p><ul class="docs-list">{c.limitsList.map((item) => <li>{item}</li>)}</ul></section>
-      <section id="endpoints" class="docs-block"><p class="eyebrow">07 / REFERENCE</p><h2>{c.endpoints}</h2><p>{c.endpointLead}</p><div class="docs-table-wrap"><table><thead><tr><th>{c.method}</th><th>{c.path}</th><th>{c.purpose}</th></tr></thead><tbody>{relayEndpoints.map((endpoint) => <tr><td><span class={`method-badge method-badge--${endpoint.method.toLowerCase()}`}>{endpoint.method}</span></td><td><code>{endpoint.path}</code></td><td>{endpoint.description[documentLocale]}</td></tr>)}</tbody></table></div><p class="docs-source">{c.source}</p></section>
+      <section id="endpoints" class="docs-block"><p class="eyebrow">07 / REFERENCE</p><h2>{c.endpoints}</h2><p>{c.endpointLead}</p><div class="docs-table-wrap"><table><thead><tr><th>{c.method}</th><th>{c.path}</th><th>{c.purpose}</th></tr></thead><tbody>{relayEndpoints.map((endpoint) => <tr><td><span class={`method-badge method-badge--${endpoint.method.toLowerCase()}`}>{endpoint.method}</span></td><td><code>{endpoint.path}</code></td><td>{endpoint.description[locale]}</td></tr>)}</tbody></table></div><p class="docs-source">{c.source}</p></section>
     </div>
   </div>
 </section>

@@ -48,12 +48,17 @@ export function CatalogSummary({ locale }: Props) {
   }[locale];
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/pricing", { credentials: "same-origin", signal: controller.signal })
+    void fetch("/api/pricing", {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error("pricing unavailable");
-        const models = parsePublicPricingEnvelope((await response.json()) as unknown).filter(
-          (model) => model.available,
-        );
+        const models = parsePublicPricingEnvelope(
+          (await response.json()) as unknown,
+          "official",
+        ).filter((model) => model.available);
         const providers = new Set(models.map((model) => model.provider).filter(Boolean));
         const endpoints = new Set(models.flatMap((model) => model.endpoints));
         setState({

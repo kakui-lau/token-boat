@@ -172,14 +172,20 @@ func GlobalWebRateLimit() func(c *gin.Context) {
 	}
 }
 
-// Versioned frontend assets are immutable public files. A single page load can
-// fetch many chunks in parallel, so counting them against the per-IP page limit
-// can prevent a valid console route from loading completely.
+// Frontend assets are public files. A single page load can fetch many chunks,
+// fonts, and brand images in parallel, so counting them against the per-IP page
+// limit can prevent a valid public-site or console route from loading completely.
 func isGlobalWebRateLimitExempt(method string, path string) bool {
 	if method != http.MethodGet && method != http.MethodHead {
 		return false
 	}
-	return strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/console/assets/")
+	return path == "/favicon.ico" || path == "/logo.png" ||
+		strings.HasPrefix(path, "/_astro/") ||
+		strings.HasPrefix(path, "/assets/") ||
+		strings.HasPrefix(path, "/brand/") ||
+		strings.HasPrefix(path, "/console/assets/") ||
+		strings.HasPrefix(path, "/fonts/") ||
+		strings.HasPrefix(path, "/static/")
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {

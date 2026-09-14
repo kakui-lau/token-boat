@@ -1,14 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { OnboardingData, OverviewData } from "@/data/contracts";
 import { OverviewPage } from "../pages/overview-page";
 
-const { getOnboarding, getOverview } = vi.hoisted(() => ({
+const { getOnboarding, getOverview, sessionState } = vi.hoisted(() => ({
   getOnboarding: vi.fn(),
   getOverview: vi.fn(),
+  sessionState: { value: { session: { user: { id: 1 } } as object | null } },
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -41,6 +42,10 @@ vi.mock("@/components/date-range-picker", () => ({
 
 vi.mock("@/data/repository", () => ({ repository: { getOnboarding, getOverview } }));
 
+vi.mock("@/app/session/session-context", () => ({
+  useSession: () => sessionState.value,
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     i18n: { resolvedLanguage: "en" },
@@ -51,9 +56,22 @@ vi.mock("react-i18next", () => ({
 beforeEach(() => {
   getOnboarding.mockReset();
   getOverview.mockReset();
+  sessionState.value = { session: { user: { id: 1 } } };
 });
 
 describe("OverviewPage data boundaries", () => {
+  test("does not request protected overview data for a confirmed anonymous session", async () => {
+    sessionState.value = { session: null };
+    getOverview.mockResolvedValue(overviewFixture());
+    getOnboarding.mockResolvedValue(onboardingFixture());
+
+    renderOverviewPage();
+    await act(async () => Promise.resolve());
+
+    expect(getOverview).not.toHaveBeenCalled();
+    expect(getOnboarding).not.toHaveBeenCalled();
+  });
+
   test("keeps setup and quick actions available when workspace statistics fail", async () => {
     getOverview.mockRejectedValue(new Error("offline"));
     getOnboarding.mockResolvedValue(onboardingFixture());

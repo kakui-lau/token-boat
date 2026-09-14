@@ -1,0 +1,86 @@
+{{- if .Values.master.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "token-boat.fullname" . }}-master
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "token-boat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  replicas: {{ .Values.master.replicaCount }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "token-boat.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: master
+  template:
+    metadata:
+      labels:
+        {{- include "token-boat.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: master
+    spec:
+      serviceAccountName: {{ include "token-boat.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      terminationGracePeriodSeconds: {{ .Values.master.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      nodeSelector:
+        kubernetes.io/arch: {{ .Values.nodePool.architecture }}
+        karpenter.sh/nodepool: {{ .Values.nodePool.name }}
+      tolerations:
+        - key: {{ .Values.nodePool.taint.key }}
+          operator: Equal
+          value: {{ .Values.nodePool.taint.value }}
+          effect: {{ .Values.nodePool.taint.effect }}
+      containers:
+        - name: token-boat
+          image: {{ include "token-boat.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ required "existingSecret is required" .Values.existingSecret }}
+          env:
+            {{- range $name, $value := .Values.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: NODE_TYPE
+              value: master
+          resources:
+            {{- toYaml .Values.master.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          volumeMounts:
+            - name: runtime-data
+              mountPath: /data
+            - name: runtime-tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-data
+          emptyDir: {}
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 512Mi
+{{- end }}

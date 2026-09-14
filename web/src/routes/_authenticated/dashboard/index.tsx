@@ -18,10 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { canAccessLegacyDashboard } from '@/features/dashboard/lib/dashboard-access'
 import { DASHBOARD_DEFAULT_SECTION } from '@/features/dashboard/section-registry'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/dashboard/')({
   beforeLoad: () => {
+    const { auth } = useAuthStore.getState()
+    if (!canAccessLegacyDashboard(auth.user?.role)) {
+      throw redirect({ href: '/console/', replace: true })
+    }
+
     throw redirect({
       to: '/dashboard/$section',
       params: { section: DASHBOARD_DEFAULT_SECTION },

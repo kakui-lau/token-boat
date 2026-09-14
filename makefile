@@ -18,21 +18,23 @@ build-web:
 	@cd $(WEB_DIR) && bun install --frozen-lockfile
 	@cd $(WEB_DIR) && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$${VERSION:-$$(cat ../VERSION)} bun run build
 
-build-console:
-	@echo "Building User Console and Admin V2..."
+build-console: build-web
+	@echo "Building public site, User Console, and the development-only Admin V2..."
 	@cd frontend && bun install --frozen-lockfile
 	@cd frontend && bun run build
+	@mkdir -p "$(CURDIR)/web/dist/legacy"
+	@cp "$(CURDIR)/web/dist/index.html" "$(CURDIR)/web/dist/legacy/index.html"
+	@cp -R frontend/apps/site/dist/. "$(CURDIR)/web/dist/"
 	@rm -rf "$(CURDIR)/web/dist/console"
 	@mkdir -p "$(CURDIR)/web/dist/console"
 	@cp -R frontend/apps/console/dist/. "$(CURDIR)/web/dist/console/"
+	# Admin V2 remains build-tested but is not shipped until it replaces the legacy dashboard.
 	@rm -rf "$(CURDIR)/web/dist/admin"
-	@mkdir -p "$(CURDIR)/web/dist/admin"
-	@cp -R frontend/apps/admin/dist/. "$(CURDIR)/web/dist/admin/"
+	@./scripts/check-web-assembly.sh "$(CURDIR)/web/dist"
 
-# The legacy build empties web/dist, so V2 assembly must run only after it finishes,
-# including when callers enable parallel make execution.
-build-all-web: build-web
-	@$(MAKE) build-console
+# The legacy build supplies the setup/auth compatibility shell and empties
+# web/dist, so the public-site overlay must run only after it finishes.
+build-all-web: build-console
 
 start-api:
 	@echo "Starting api dev server..."

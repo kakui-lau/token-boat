@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.ingress.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "token-boat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: canary-ingress
+  annotations:
+    {{- if .Values.ingress.externalDNS.enabled }}
+    external-dns.alpha.kubernetes.io/hostname: {{ join "," .Values.ingress.externalDNS.hostnames | quote }}
+    {{- end }}
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.class.name }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "token-boat.fullname" . }}
+                port:
+                  name: http
+    {{- end }}
+{{- end }}

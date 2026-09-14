@@ -1,0 +1,47 @@
+{{- if and .Values.ingress.enabled .Values.ingress.class.create }}
+apiVersion: eks.amazonaws.com/v1
+kind: IngressClassParams
+metadata:
+  name: {{ .Values.ingress.class.name }}
+  labels:
+    {{- include "token-boat.labels" . | nindent 4 }}
+spec:
+  scheme: {{ .Values.ingress.class.scheme }}
+  targetType: {{ .Values.ingress.class.targetType }}
+  ipAddressType: {{ .Values.ingress.class.ipAddressType }}
+  loadBalancerName: {{ .Values.ingress.class.loadBalancerName }}
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ .Release.Namespace }}
+  subnets:
+    ids:
+      {{- toYaml .Values.ingress.class.subnetIds | nindent 6 }}
+  listeners:
+    - port: 80
+      protocol: HTTP
+    - port: 443
+      protocol: HTTPS
+  certificateARNs:
+    {{- toYaml .Values.ingress.class.certificateARNs | nindent 4 }}
+  sslPolicy: {{ .Values.ingress.class.sslPolicy }}
+  inboundCIDRs:
+    {{- toYaml .Values.ingress.class.inboundCIDRs | nindent 4 }}
+  loadBalancerAttributes:
+    - key: idle_timeout.timeout_seconds
+      value: {{ .Values.ingress.class.idleTimeoutSeconds | quote }}
+    - key: routing.http2.enabled
+      value: "true"
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: {{ .Values.ingress.class.name }}
+  labels:
+    {{- include "token-boat.labels" . | nindent 4 }}
+spec:
+  controller: eks.amazonaws.com/alb
+  parameters:
+    apiGroup: eks.amazonaws.com
+    kind: IngressClassParams
+    name: {{ .Values.ingress.class.name }}
+{{- end }}

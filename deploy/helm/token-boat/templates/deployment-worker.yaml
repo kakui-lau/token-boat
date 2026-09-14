@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "token-boat.fullname" . }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "token-boat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  minReadySeconds: {{ .Values.worker.minReadySeconds }}
+  progressDeadlineSeconds: {{ .Values.worker.progressDeadlineSeconds }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "token-boat.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "token-boat.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: {{ include "token-boat.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      nodeSelector:
+        kubernetes.io/arch: {{ .Values.nodePool.architecture }}
+        karpenter.sh/nodepool: {{ .Values.nodePool.name }}
+      tolerations:
+        - key: {{ .Values.nodePool.taint.key }}
+          operator: Equal
+          value: {{ .Values.nodePool.taint.value }}
+          effect: {{ .Values.nodePool.taint.effect }}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: {{ .Values.topologySpread.minDomains }}
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              {{- include "token-boat.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: worker
+        - maxSkew: 1
+          minDomains: {{ .Values.topologySpread.minDomains }}
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              {{- include "token-boat.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: worker
+      {{- end }}
+      containers:
+        - name: token-boat
+          image: {{ include "token-boat.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ required "existingSecret is required" .Values.existingSecret }}
+          env:
+            {{- range $name, $value := .Values.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: PUBLIC_SITE_MODE
+              value: {{ .Values.worker.publicSiteMode | quote }}
+            - name: NODE_TYPE
+              value: slave
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          volumeMounts:
+            - name: runtime-data
+              mountPath: /data
+            - name: runtime-tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-data
+          emptyDir: {}
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 512Mi

@@ -1,24 +1,36 @@
 # Token Boat Frontend V2
 
-This directory contains three isolated V2 product surfaces:
+This directory contains three isolated product surfaces:
 
-- `apps/site`: Astro public site, currently developed and previewed beside production.
-- `apps/console`: React User Console, already assembled into the production Go binary.
-- `apps/admin`: independent React Admin Console scaffold, not yet connected to management APIs.
+- `apps/site`: Astro public site, assembled at the production root.
+- `apps/console`: React User Console, assembled at `/console/*`.
+- `apps/admin`: independent React Admin Console under development; it is build-tested but not
+  included in the production web bundle yet.
 
 The applications share workspace packages, design-system composition, and a product capability
-catalog, but not business routers, query caches, repositories, or role-specific API DTOs. The current
-production build assembles only the User Console with the legacy frontend:
+catalog, but not business routers, query caches, repositories, or role-specific API DTOs. The
+production build assembles the public site and User Console with the legacy compatibility shell:
 
-- `/` and existing non-`/console` routes serve the legacy frontend from `../web`.
-- `/console/` and `/console/*` serve User Console V2.
-- Both applications use the same API origin, backend, session, and database.
+- `/` and public content routes serve the Astro site.
+- `/console/*` serves the new React User Console.
+- `/dashboard/*` serves the established legacy administrator dashboard. The public site has no
+  administrator link; authorized operators open the URL directly. Regular users are redirected to
+  the new `/console/` application if they enter a dashboard URL manually.
+- The legacy frontend is retained as an internal compatibility shell for the administrator
+  dashboard, first-run setup, authentication and migration callbacks. It is not mounted as a public
+  `/legacy` application, and the unfinished Admin V2 is not exposed at `/admin`.
+- All applications use the same API origin, backend, session, and database.
 
-User Console V2 is live in production at `https://tokenboat.com/console/`.
-Source changes in the current working tree are not production until they pass
-the release checks and are included in a later deployment; this currently
-applies to the new public site, Admin Console, EVM wallet authentication, and related
-account-security work.
+The release workflow, Docker images, and `make build-all-web` use the same assembly order: preserve
+the legacy compatibility shell, overlay the Astro public output at `web/dist`, then mount the User
+Console below it. The default public site is Astro. Set `PUBLIC_SITE_MODE=legacy` and restart the
+service to roll back only the public pages; `/console/*` remains new and `/dashboard/*` remains the
+legacy administrator dashboard in either mode. Unset it or use `PUBLIC_SITE_MODE=new` to restore the
+new public site.
+
+The legacy compatibility shell keeps the existing runtime Umami/Google Analytics injection. The
+Astro public site does not load non-essential analytics until it has an explicit notice and choice
+flow consistent with the published privacy policy.
 
 ## Development
 
@@ -74,9 +86,11 @@ bun run dev:site      # New Astro public site at localhost:4321/
 bun run dev:admin     # New Admin Console at localhost:5175/admin/
 ```
 
-The Site and Admin commands are side-by-side development previews. They do not replace `/` or
-mount `/admin/*` in the production Go router. The public pricing and model pages read the existing
-same-origin `/api/pricing` contract; account-group prices remain in the signed-in User Console.
+The Site and Admin commands run standalone development servers. Production does not use those dev
+ports: the public-site output is embedded at `/`, while Admin V2 remains available only through its
+development server until it is approved to replace `/dashboard`. The public pricing and model pages
+read the existing same-origin `/api/pricing` contract; account-group prices remain in the signed-in
+User Console.
 
 Admin Console is organized around administrator workflows instead of mirroring User Console pages.
 Its focused navigation covers gateway operations, request tracing, channel usage, model
@@ -112,9 +126,11 @@ bun run test
 bun run build
 ```
 
-From the repository root, `make build-all-web` assembles the User Console and Admin V2 outputs into
-`web/dist/console` and `web/dist/admin`. Release binaries and Docker images serve those applications
-at `/console/*` and `/admin/*`, while the legacy public site remains the production root application.
+From the repository root, `make build-all-web` assembles the Astro site at `web/dist`, the User
+Console at `web/dist/console`, and the compatibility shell at `web/dist/legacy/index.html`. The Admin
+V2 build is still verified but is removed from the assembled production directory. Release binaries
+and Docker images embed that same layout. `scripts/check-web-assembly.sh` fails the build if a
+required shell is absent, the Astro overlay did not occur, or Admin V2 leaked into the bundle.
 
 Synchronize the English and Simplified Chinese catalogs after adding UI text with:
 

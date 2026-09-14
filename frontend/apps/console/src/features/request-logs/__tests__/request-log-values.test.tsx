@@ -6,14 +6,21 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { RequestLogAnalytics, RequestLogRecord } from "@/data/contracts";
 import { RequestLogsPage } from "../pages/request-logs-page";
 
-const { getRequestLog, getRequestLogAnalytics, getRequestLogsPage } = vi.hoisted(() => ({
-  getRequestLog: vi.fn(),
-  getRequestLogAnalytics: vi.fn(),
-  getRequestLogsPage: vi.fn(),
-}));
+const { getRequestLog, getRequestLogAnalytics, getRequestLogsPage, sessionState } = vi.hoisted(
+  () => ({
+    getRequestLog: vi.fn(),
+    getRequestLogAnalytics: vi.fn(),
+    getRequestLogsPage: vi.fn(),
+    sessionState: { value: { session: { user: { id: 1 } } as object | null } },
+  }),
+);
 
 vi.mock("@/data/repository", () => ({
   repository: { getRequestLog, getRequestLogAnalytics, getRequestLogsPage },
+}));
+
+vi.mock("@/app/session/session-context", () => ({
+  useSession: () => sessionState.value,
 }));
 
 vi.mock("../components/request-log-date-time-range-picker", () => ({
@@ -38,9 +45,22 @@ beforeEach(() => {
   getRequestLogAnalytics.mockReset();
   getRequestLogsPage.mockReset();
   getRequestLogAnalytics.mockResolvedValue(requestAnalyticsFixture());
+  sessionState.value = { session: { user: { id: 1 } } };
 });
 
 describe("RequestLogsPage values", () => {
+  test("does not request protected log data for a confirmed anonymous session", async () => {
+    sessionState.value = { session: null };
+    configureRequestLogs([]);
+
+    renderRequestLogsPage();
+    await act(async () => Promise.resolve());
+
+    expect(getRequestLogsPage).not.toHaveBeenCalled();
+    expect(getRequestLogAnalytics).not.toHaveBeenCalled();
+    expect(getRequestLog).not.toHaveBeenCalled();
+  });
+
   test("queries only today when the URL has no date range", async () => {
     configureRequestLogs([]);
 

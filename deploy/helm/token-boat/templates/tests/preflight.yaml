@@ -1,0 +1,70 @@
+{{- if .Values.preflightTest.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "token-boat.fullname" . }}-preflight
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "token-boat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: preflight
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "token-boat.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: preflight
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      nodeSelector:
+        kubernetes.io/arch: {{ .Values.nodePool.architecture }}
+        karpenter.sh/nodepool: {{ .Values.nodePool.name }}
+      tolerations:
+        - key: {{ .Values.nodePool.taint.key }}
+          operator: Equal
+          value: {{ .Values.nodePool.taint.value }}
+          effect: {{ .Values.nodePool.taint.effect }}
+      containers:
+        - name: pricing-readiness
+          image: {{ include "token-boat.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /pricing-readiness
+          args:
+            - --current-env
+            - --verify
+            - --production
+            - --allow-remote-read-only
+          env:
+            - name: SQL_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: SQL_DSN
+            - name: REDIS_CONN_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: REDIS_CONN_STRING
+          resources:
+            {{- toYaml .Values.preflightTest.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: runtime-data
+              mountPath: /data
+            - name: runtime-tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-data
+          emptyDir: {}
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 256Mi
+{{- end }}

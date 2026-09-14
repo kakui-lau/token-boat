@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { contentLocale, type SiteLocale } from "@/content/site-copy";
+import type { SiteLocale } from "@/content/site-copy";
 
-import { readLegalContent } from "@/islands/legal/legal-content";
+import {
+  demoteLegalHtmlHeadings,
+  demoteLegalMarkdownHeadings,
+  readLegalContent,
+} from "@/islands/legal/legal-content";
 
 type LegalDocumentProps = {
   document: "privacy" | "terms";
@@ -9,37 +13,41 @@ type LegalDocumentProps = {
   locale: SiteLocale;
 };
 
-type DocumentState =
-  | { status: "error" }
-  | { status: "fallback" }
-  | { status: "loading" }
-  | { content: string; status: "ready" };
+type DocumentState = { status: "fallback" } | { content: string; status: "ready" };
 
 const copy = {
   en: {
-    empty:
-      "This document has not been published yet. Please return later and do not treat this page as an effective legal document until the complete text appears here.",
-    error: "This document is temporarily unavailable. Please try again later.",
     external: "The current document is published on a separate page.",
-    loading: "Loading the current document…",
     open: "Open current document",
   },
   zh: {
-    empty: "该文件暂未发布。完整文本在此出现前，请勿将本页面视为已经生效的法律文件。",
-    error: "暂时无法获取该文件，请稍后重试。",
     external: "当前文件发布在独立页面。",
-    loading: "正在加载当前文件…",
     open: "打开当前文件",
+  },
+  ja: {
+    external: "現在の文書は別のページで公開されています。",
+    open: "現在の文書を開く",
+  },
+  ko: {
+    external: "현재 문서는 별도 페이지에 게시되어 있습니다.",
+    open: "현재 문서 열기",
+  },
+  "zh-TW": {
+    external: "目前文件發布於獨立頁面。",
+    open: "開啟目前文件",
   },
 } as const;
 
 export function LegalDocument(props: LegalDocumentProps) {
-  const content = copy[contentLocale(props.locale)];
+  const content = copy[props.locale];
   const endpoint = props.document === "terms" ? "/api/user-agreement" : "/api/privacy-policy";
   const [renderedHtml, setRenderedHtml] = useState<string | null>(null);
-  const [state, setState] = useState<DocumentState>({ status: "loading" });
+  const [state, setState] = useState<DocumentState>({ status: "fallback" });
 
   useEffect(() => {
+    // The legacy publication endpoint has no locale parameter. Keep approved localized
+    // snapshots intact instead of replacing them with content in an unknown language.
+    if (props.locale !== "zh") return;
     const controller = new AbortController();
     void fetch(endpoint, { credentials: "same-origin", signal: controller.signal })
       .then(async (response) => {
@@ -55,52 +63,31 @@ export function LegalDocument(props: LegalDocumentProps) {
         setState({ status: "fallback" });
       });
     return () => controller.abort();
-  }, [endpoint]);
+  }, [endpoint, props.locale]);
 
   useEffect(() => {
     if (state.status !== "ready" || !state.content || isHttpUrl(state.content)) return;
     let active = true;
     void Promise.all([import("dompurify"), import("marked")])
       .then(([domPurifyModule, markedModule]) => {
-        const source = isLikelyHtml(state.content)
+        const contentIsHtml = isLikelyHtml(state.content);
+        const source = contentIsHtml
           ? state.content
-          : (markedModule.marked.parse(state.content, { async: false }) as string);
+          : (markedModule.marked.parse(demoteLegalMarkdownHeadings(state.content), {
+              async: false,
+            }) as string);
         const sanitized = domPurifyModule.default.sanitize(source, {
           USE_PROFILES: { html: true },
         });
-        if (active) setRenderedHtml(sanitized);
+        if (active) setRenderedHtml(contentIsHtml ? demoteLegalHtmlHeadings(sanitized) : sanitized);
       })
       .catch(() => {
-        if (active) setState({ status: "error" });
+        if (active) setState({ status: "fallback" });
       });
     return () => {
       active = false;
     };
   }, [state]);
-
-  if (state.status === "loading") {
-    return (
-      <section
-        className="legal-document legal-document--loading"
-        aria-busy="true"
-        aria-live="polite"
-      >
-        <p>{content.loading}</p>
-        <span></span>
-        <span></span>
-        <span></span>
-      </section>
-    );
-  }
-
-  if (state.status === "error") {
-    return (
-      <section className="public-state" role="alert">
-        <span className="public-state__index">DOCUMENT / UNAVAILABLE</span>
-        <h2>{content.error}</h2>
-      </section>
-    );
-  }
 
   if (state.status === "fallback") {
     return (
@@ -108,15 +95,6 @@ export function LegalDocument(props: LegalDocumentProps) {
         className="legal-document"
         dangerouslySetInnerHTML={{ __html: props.fallbackHtml }}
       />
-    );
-  }
-
-  if (!state.content) {
-    return (
-      <section className="public-state">
-        <span className="public-state__index">DOCUMENT / NOT PUBLISHED</span>
-        <h2>{content.empty}</h2>
-      </section>
     );
   }
 
@@ -134,12 +112,10 @@ export function LegalDocument(props: LegalDocumentProps) {
 
   if (renderedHtml === null) {
     return (
-      <section className="legal-document legal-document--loading" aria-busy="true">
-        <p>{content.loading}</p>
-        <span></span>
-        <span></span>
-        <span></span>
-      </section>
+      <article
+        className="legal-document"
+        dangerouslySetInnerHTML={{ __html: props.fallbackHtml }}
+      />
     );
   }
 

@@ -1,5 +1,6 @@
 # Backend-only build for frontend development
-# Skips frontend build and uses a placeholder for //go:embed web/dist
+# Skips frontend builds and uses placeholders for the embedded shells that are
+# served by the separate frontend development servers.
 
 FROM golang:1.26.1-alpine AS builder
 
@@ -19,8 +20,25 @@ RUN go mod download
 
 COPY . .
 
-RUN mkdir -p web/dist && \
-    echo '<!doctype html><html><head><title>dev</title></head><body>use frontend dev server</body></html>' > web/dist/index.html
+RUN mkdir -p \
+      web/dist/legacy \
+      web/dist/console \
+      web/dist/en/404 \
+      web/dist/ja/404 \
+      web/dist/ko/404 \
+      web/dist/zh-TW/404 && \
+    printf '%s\n' '<!doctype html><html><head><title>dev</title></head><body>use frontend dev server</body></html>' > web/dist/index.html && \
+    cp web/dist/index.html web/dist/legacy/index.html && \
+    cp web/dist/index.html web/dist/console/index.html && \
+    cp web/dist/index.html web/dist/404.html && \
+    cp web/dist/index.html web/dist/en/index.html && \
+    cp web/dist/index.html web/dist/ja/index.html && \
+    cp web/dist/index.html web/dist/ko/index.html && \
+    cp web/dist/index.html web/dist/zh-TW/index.html && \
+    cp web/dist/index.html web/dist/en/404/index.html && \
+    cp web/dist/index.html web/dist/ja/404/index.html && \
+    cp web/dist/index.html web/dist/ko/404/index.html && \
+    cp web/dist/index.html web/dist/zh-TW/404/index.html
 
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 

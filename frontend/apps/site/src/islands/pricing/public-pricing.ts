@@ -7,6 +7,8 @@ export type PublicModelFamily =
   | "unknown"
   | "video";
 
+export type PricingAudience = "account" | "official";
+
 export type PublicModelPrice = {
   amount: number;
   currency: string;
@@ -42,6 +44,7 @@ export type PublicPricingModel = {
   limitsSourceUrl: string | null;
   limitsVerifiedAt: number | null;
   outputPrice: PublicModelPrice | null;
+  priceAudience: PricingAudience | null;
   priceComponents: PublicPriceComponent[];
   priceStructure: string | null;
   pricingSource: string | null;
@@ -53,6 +56,11 @@ type PriceSelection = {
   amount: number;
   qualifier: "from" | null;
   unit: PublicModelPrice["unit"];
+};
+
+type SummarySelection = {
+  audience: PricingAudience;
+  summary: Record<string, unknown>;
 };
 
 const inputComponents = [
@@ -77,7 +85,10 @@ const outputComponents = [
   "character_output",
 ] as const;
 
-export function parsePublicPricingEnvelope(value: unknown): PublicPricingModel[] {
+export function parsePublicPricingEnvelope(
+  value: unknown,
+  audience: PricingAudience = "official",
+): PublicPricingModel[] {
   const envelope = asRecord(value);
   const vendorNames = new Map<number, string>();
   for (const rawVendor of asArray(envelope.vendors)) {
@@ -93,7 +104,8 @@ export function parsePublicPricingEnvelope(value: unknown): PublicPricingModel[]
     const id = readString(model.model_name);
     if (!id) continue;
     const vendorId = readNumber(model.vendor_id);
-    const summary = selectPublicSummary(model);
+    const selection = selectPricingSummary(model, audience);
+    const summary = selection?.summary ?? null;
     const currency = summary ? readString(summary.currency) : null;
     const input = summary ? selectPrice(summary, inputComponents) : null;
     const output = summary ? selectPrice(summary, outputComponents) : null;
@@ -115,9 +127,15 @@ export function parsePublicPricingEnvelope(value: unknown): PublicPricingModel[]
       limitsSourceUrl: readHttpUrl(model.limits_source_url),
       limitsVerifiedAt: readPositiveNumber(model.limits_verified_at),
       outputPrice: output && currency ? { ...output, currency } : null,
+      priceAudience: selection?.audience ?? null,
       priceComponents: summary && currency ? readPriceComponents(summary, currency) : [],
       priceStructure: summary ? readString(summary.price_structure) : null,
-      pricingSource: readString(model.pricing_source),
+      pricingSource:
+        selection?.audience === "account"
+          ? (readString(model.pricing_source) ?? "account_price")
+          : selection?.audience === "official"
+            ? "official_price"
+            : null,
       provider: vendorName ?? readString(model.provider) ?? readString(model.owner_by),
       tags,
     });
@@ -151,12 +169,21 @@ function readPriceComponents(
     );
 }
 
-function selectPublicSummary(model: Record<string, unknown>): Record<string, unknown> | null {
-  const lowestPrice = asRecord(model.lowest_price);
-  if (asArray(lowestPrice.items).length > 0) return lowestPrice;
+function selectPricingSummary(
+  model: Record<string, unknown>,
+  audience: PricingAudience,
+): SummarySelection | null {
+  if (audience === "account") {
+    const lowestPrice = asRecord(model.lowest_price);
+    if (asArray(lowestPrice.items).length > 0) {
+      return { audience: "account", summary: lowestPrice };
+    }
+  }
 
   const officialPrice = asRecord(model.official_price);
-  if (asArray(officialPrice.items).length > 0) return officialPrice;
+  if (asArray(officialPrice.items).length > 0) {
+    return { audience: "official", summary: officialPrice };
+  }
   return null;
 }
 

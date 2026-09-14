@@ -58,7 +58,8 @@ RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$
 
 FROM public.ecr.aws/docker/library/alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40
 
-RUN apk add --no-cache tzdata
+RUN apk upgrade --no-cache \
+    && apk add --no-cache tzdata
 
 COPY --from=builder2 --chown=65532:65532 /runtime-root/data /data
 COPY --from=builder2 --chown=65532:65532 /runtime-root/tmp /tmp

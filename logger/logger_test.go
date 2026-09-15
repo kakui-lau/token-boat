@@ -87,3 +87,30 @@ func TestLogErrorDoesNotConsumeUncachedRequestBody(t *testing.T) {
 	assert.JSONEq(t, `{"model":"gpt-5.6-sol"}`, string(remainingBody))
 	assert.Contains(t, output.String(), "body=[unavailable: request body not cached]")
 }
+
+func TestLogErrorDoesNotRepeatParametersWhenRelayAccessAuditIsActive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/responses",
+		strings.NewReader(`{"model":"gpt-5.6-sol"}`),
+	)
+	common.BeginClientRequestLog(context)
+
+	var output bytes.Buffer
+	common.LogWriterMu.Lock()
+	originalWriter := gin.DefaultErrorWriter
+	gin.DefaultErrorWriter = &output
+	common.LogWriterMu.Unlock()
+	t.Cleanup(func() {
+		common.LogWriterMu.Lock()
+		gin.DefaultErrorWriter = originalWriter
+		common.LogWriterMu.Unlock()
+	})
+
+	LogError(context, "upstream failed")
+
+	assert.Contains(t, output.String(), "upstream failed")
+	assert.NotContains(t, output.String(), "client_request:")
+}

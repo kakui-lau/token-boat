@@ -461,7 +461,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		var condition = struct {
 			IDs []string `json:"ids"`
 		}{}
-		err = c.BindJSON(&condition)
+		err = common.DecodeJsonBodyReusable(c, &condition)
 		if err != nil {
 			return &dto.MidjourneyResponse{
 				Code:        4,

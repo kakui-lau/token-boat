@@ -473,7 +473,7 @@ func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.Ta
 		IDs    []any  `json:"ids"`
 		Action string `json:"action"`
 	}{}
-	err := c.BindJSON(&condition)
+	err := common.DecodeJsonBodyReusable(c, &condition)
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "invalid_request", http.StatusBadRequest)
 		return

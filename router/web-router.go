@@ -349,12 +349,22 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	}
 	router.Use(static.Serve("/", frontendFS))
 	router.NoRoute(func(c *gin.Context) {
-		c.Set(middleware.RouteTagKey, "web")
 		requestPath := c.Request.URL.Path
-		if strings.HasPrefix(requestPath, "/v1") || strings.HasPrefix(requestPath, "/api") {
+		if middleware.IsRelayRequestPath(requestPath) {
+			c.Set(middleware.RouteTagKey, "relay")
+			if !c.GetBool(common.ClientRequestAuditKey) {
+				common.BeginClientRequestLog(c)
+				defer common.FinishClientRequestLog(c)
+			}
 			controller.RelayNotFound(c)
 			return
 		}
+		if requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") {
+			c.Set(middleware.RouteTagKey, "api")
+			controller.RelayNotFound(c)
+			return
+		}
+		c.Set(middleware.RouteTagKey, "web")
 		if strings.HasPrefix(requestPath, "/_astro/") || strings.HasPrefix(requestPath, "/assets") ||
 			strings.HasPrefix(requestPath, "/static/") || strings.HasPrefix(requestPath, "/admin/assets/") ||
 			strings.HasPrefix(requestPath, "/console/assets/") {

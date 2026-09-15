@@ -103,8 +103,10 @@ func logHelper(ctx context.Context, level string, msg string) {
 	}
 	if level == loggerError {
 		if ginContext, ok := ctx.(*gin.Context); ok {
-			if requestParameters := common.ClientRequestParametersForLog(ginContext); requestParameters != "" {
-				msg += " | client_request: " + requestParameters
+			if !ginContext.GetBool(common.ClientRequestAuditKey) {
+				if requestParameters := common.ClientRequestParametersForLog(ginContext); requestParameters != "" {
+					msg += " | client_request: " + requestParameters
+				}
 			}
 		}
 	}

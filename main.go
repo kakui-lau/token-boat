@@ -178,6 +178,9 @@ func main() {
 		common.FatalLog("failed to configure trusted proxies: " + err.Error())
 		return
 	}
+	// Keep the access logger outside recovery so every completed request,
+	// including a recovered panic, emits exactly one status-bearing entry.
+	middleware.SetUpLogger(server)
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -192,7 +195,6 @@ func main() {
 	server.Use(middleware.RequestId())
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
-	middleware.SetUpLogger(server)
 	// 设置路由
 	legacyIndexPage := mustReadEmbeddedWebAsset("web/dist/legacy/index.html")
 	// The legacy compatibility shell retains the existing runtime analytics

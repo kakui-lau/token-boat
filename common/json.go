@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 )
 
@@ -12,6 +13,25 @@ func Unmarshal(data []byte, v any) error {
 
 func UnmarshalJsonStr(data string, v any) error {
 	return json.Unmarshal(StringToByteSlice(data), v)
+}
+
+// UnmarshalUseNumber decodes arbitrary JSON while preserving numeric lexemes.
+// This keeps large IDs and seeds exact in diagnostics instead of converting
+// them through float64.
+func UnmarshalUseNumber(data []byte, v any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(v); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("unexpected JSON value after top-level value")
+		}
+		return err
+	}
+	return nil
 }
 
 func DecodeJson(reader io.Reader, v any) error {

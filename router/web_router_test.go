@@ -4,14 +4,61 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRelayAPIPathClassification(t *testing.T) {
+	for _, requestPath := range []string{
+		"/v1", "/v1/responses", "/v1beta/models/gemini:generateContent",
+		"/pg/chat/completions", "/mj/submit/imagine", "/task/mj/submit",
+		"/suno/submit/music", "/kling/v1/videos/text2video", "/jimeng/",
+	} {
+		assert.True(t, middleware.IsRelayRequestPath(requestPath), requestPath)
+	}
+	for _, requestPath := range []string{"/", "/v10", "/api/mj", "/console/logs", "/models"} {
+		assert.False(t, middleware.IsRelayRequestPath(requestPath), requestPath)
+	}
+}
+
+func TestWebRouterAuditsUnknownRelayRequestWithoutReadingBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	buildFS := fstest.MapFS{
+		"web/dist/index.html": {Data: []byte("site-home")},
+	}
+	var routeTag string
+	var clientRequest string
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		routeTag = c.GetString(middleware.RouteTagKey)
+		clientRequest = c.GetString(common.ClientRequestAccessLogKey)
+	})
+	SetWebRouter(router, WebAssets{BuildFS: buildFS, IndexPage: []byte("site-home")})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/unknown?key=query-secret&trace_id=trace-1",
+		strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello"}`),
+	)
+	request.Header.Set("Authorization", "Bearer sk-client-secret-value")
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusNotFound, recorder.Code)
+	assert.Equal(t, "relay", routeTag)
+	assert.Contains(t, clientRequest, "trace_id=trace-1")
+	assert.Contains(t, clientRequest, "body=[not read because request ended before normal body processing]")
+	assert.NotContains(t, clientRequest, "query-secret")
+	assert.NotContains(t, clientRequest, "client-secret-value")
+}
 
 func TestWebAssetsSelectsProductAndCompatibilityShells(t *testing.T) {
 	assets := WebAssets{

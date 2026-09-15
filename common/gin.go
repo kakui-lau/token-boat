@@ -38,8 +38,10 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {
 		if bs, ok := storage.(BodyStorage); ok {
 			if _, err := bs.Seek(0, io.SeekStart); err != nil {
+				CaptureClientRequestBodyErrorForLog(c, err)
 				return nil, fmt.Errorf("failed to seek body storage: %w", err)
 			}
+			CaptureClientRequestBodyForLog(c, bs)
 			return bs, nil
 		}
 	}
@@ -50,9 +52,11 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 		if b, ok := cached.([]byte); ok {
 			bs, err := CreateBodyStorage(b)
 			if err != nil {
+				CaptureClientRequestBodyErrorForLog(c, err)
 				return nil, err
 			}
 			c.Set(KeyBodyStorage, bs)
+			CaptureClientRequestBodyForLog(c, bs)
 			return bs, nil
 		}
 	}
@@ -71,13 +75,17 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 
 	if err != nil {
 		if IsRequestBodyTooLargeError(err) {
-			return nil, errors.Wrap(ErrRequestBodyTooLarge, fmt.Sprintf("request body exceeds %d MB", maxMB))
+			wrappedErr := errors.Wrap(ErrRequestBodyTooLarge, fmt.Sprintf("request body exceeds %d MB", maxMB))
+			CaptureClientRequestBodyErrorForLog(c, wrappedErr)
+			return nil, wrappedErr
 		}
+		CaptureClientRequestBodyErrorForLog(c, err)
 		return nil, err
 	}
 
 	// 缓存存储对象
 	c.Set(KeyBodyStorage, storage)
+	CaptureClientRequestBodyForLog(c, storage)
 
 	return storage, nil
 }
@@ -93,6 +101,26 @@ func GetBodyStorage(c *gin.Context) (BodyStorage, error) {
 		return nil, errors.New("unexpected body storage type")
 	}
 	return bs, nil
+}
+
+// DecodeJsonBodyReusable preserves BindJSON's content-type-independent JSON
+// decoding while keeping the cached body available to downstream handlers.
+func DecodeJsonBodyReusable(c *gin.Context, v any) error {
+	storage, err := GetBodyStorage(c)
+	if err != nil {
+		return err
+	}
+	if _, err = storage.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if err = DecodeJson(storage, v); err != nil {
+		return err
+	}
+	if _, err = storage.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	c.Request.Body = io.NopCloser(storage)
+	return nil
 }
 
 // CleanupBodyStorage 清理请求体存储（应在请求结束时调用）

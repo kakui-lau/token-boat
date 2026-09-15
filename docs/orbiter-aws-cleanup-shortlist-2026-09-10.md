@@ -1,8 +1,19 @@
 # Orbiter AWS 剩余资源清理清单
 
-> 更新日期：2026-09-10
+> 更新日期：2026-09-14
 > AWS 账号：`952178321851`
 > 清理范围：Orbiter 及历史遗留资源；**Token Boat 资源不删除**。
+
+## 成本预估
+
+| 项目 | 预估月成本 |
+|---|---:|
+| 当前 AWS 整账号 | **约 $1,150–$1,300/月** |
+| 中位估算 | **约 $1,200/月** |
+| 清完本文 Orbiter/历史资源后 | **约 $880–$950/月** |
+| 本轮预计可节省 | **约 $280–$350/月** |
+
+估算基于 2026-09-13 最近账单运行速率和 2026-09-14 实时资源数量；不包含业务流量突然增长。当前 RDS 已缩容为 `db.t3.small + 400 GiB gp3`，本估算已按缩容后的配置计算。
 
 ## 一、优先清理
 
@@ -65,7 +76,7 @@ VPC 删除顺序：Endpoint → NAT → EIP → Subnet/路由/IGW/安全组 → 
 
 - EKS `token-boat` 及其 EC2 Node。
 - EC2 `token-boat-middleware`。
-- RDS `maker-explore` 及 `full-0909`、`maker-explore-0908` 快照。
+- RDS `maker-explore` 及 `full-0909`、`maker-explore-0913` 快照。
 - ALB `token-boat-public`、`token-boat-public-v2`、`token-boat-agent-api`。
 - ECR `token-boat`、`token-boat-agent-api`。
 - Amplify `token-boat-api-docs`、`token-boat-agent`。

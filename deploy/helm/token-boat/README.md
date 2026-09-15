@@ -162,6 +162,44 @@ set to exactly those ranges. If the ALB subnet IDs change, verify their current
 CIDRs in EC2 and update `TRUSTED_PROXIES` in the same release. Do not replace the
 list with the entire VPC range.
 
+## CloudWatch container logs
+
+Production uses the AWS-managed `amazon-cloudwatch-observability` EKS add-on.
+Its checked-in configuration is
+`deploy/aws/cloudwatch-observability-values.json`. It keeps infrastructure
+metrics enabled, sends application logs through Fluent Bit only, and limits
+application-log ingestion to the `token-boat-prod` namespace. Successful
+health-probe requests are dropped before CloudWatch ingestion; failed probes,
+API requests, errors, billing events, host logs, and dataplane logs remain.
+
+The add-on uses the `cloudwatch-agent` service account through EKS Pod Identity
+and the IAM role `TokenBoatCloudWatchObservabilityRole`. That role has the AWS
+managed `CloudWatchAgentServerPolicy`; no application credentials belong in
+this file or the Helm release.
+
+Reapply the versioned add-on configuration after a cluster rebuild or add-on
+upgrade:
+
+```bash
+aws eks update-addon \
+  --cluster-name token-boat \
+  --region ap-northeast-1 \
+  --addon-name amazon-cloudwatch-observability \
+  --configuration-values file://deploy/aws/cloudwatch-observability-values.json \
+  --resolve-conflicts PRESERVE
+
+aws eks describe-addon \
+  --cluster-name token-boat \
+  --region ap-northeast-1 \
+  --addon-name amazon-cloudwatch-observability \
+  --query 'addon.{status:status,issues:health.issues}'
+```
+
+Application logs are available in
+`/aws/containerinsights/token-boat/application`. The application, dataplane,
+host, and performance log groups use a 30-day retention policy. Retention is a
+CloudWatch log-group setting and must be reapplied if the groups are recreated.
+
 ## One-time stale ingress cleanup
 
 The initial non-Helm test created `token-boat-canary`, `token-boat-public`, and a

@@ -44,6 +44,16 @@ service:
   port: 80
   targetPort: 3000
 
+# Token Boat is a native Go binary. Explicit opt-out annotations keep the
+# cluster-wide CloudWatch Application Signals auto-monitor from injecting
+# Java, Python, Node.js, or .NET init containers into restricted workloads.
+podAnnotations:
+  instrumentation.opentelemetry.io/inject-java: "false"
+  instrumentation.opentelemetry.io/inject-python: "false"
+  instrumentation.opentelemetry.io/inject-nodejs: "false"
+  instrumentation.opentelemetry.io/inject-dotnet: "false"
+  sidecar.opentelemetry.io/inject: "false"
+
 autoscaling:
   enabled: true
   minReplicas: 3

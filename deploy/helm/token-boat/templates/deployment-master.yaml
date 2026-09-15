@@ -18,6 +18,8 @@ spec:
       app.kubernetes.io/component: master
   template:
     metadata:
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
       labels:
         {{- include "token-boat.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: master

@@ -170,7 +170,9 @@ Its checked-in configuration is
 metrics enabled, sends application logs through Fluent Bit only, and limits
 application-log ingestion to the `token-boat-prod` namespace. Successful
 health-probe requests are dropped before CloudWatch ingestion; failed probes,
-API requests, errors, billing events, host logs, and dataplane logs remain.
+API requests, errors, billing events, host logs, and dataplane logs remain. The
+application log output uses Fluent Bit's `log_key`, so CloudWatch `@message`
+contains the application line directly instead of the Kubernetes JSON wrapper.
 
 The add-on uses the `cloudwatch-agent` service account through EKS Pod Identity
 and the IAM role `TokenBoatCloudWatchObservabilityRole`. That role has the AWS

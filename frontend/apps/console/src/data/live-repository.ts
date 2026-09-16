@@ -573,7 +573,10 @@ function mapApiKey(value: unknown, quotaPerUnit: number): ApiKeyRecord {
       requireNumber(record, "used_quota", "api_key.used_quota"),
       quotaPerUnit,
     ),
-    group: requireString(record, "group", "api_key.group"),
+    // Legacy keys may leave group empty, which means they follow the user's
+    // current account group. Preserve that value instead of rejecting the
+    // otherwise valid token response.
+    group: readString(record, "group").trim(),
     environment: "unclassified",
     allowedModels: modelLimits
       .split(",")

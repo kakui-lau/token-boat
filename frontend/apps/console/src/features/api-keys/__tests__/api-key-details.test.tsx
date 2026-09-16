@@ -176,6 +176,26 @@ describe("API key details and editing", () => {
     expect((await screen.findAllByText("Production gateway")).length).toBeGreaterThan(0);
   });
 
+  test("shows and preserves legacy keys that follow the account group", async () => {
+    const apiKey = { ...apiKeyFixture(), group: "" };
+    getApiKeysPage.mockResolvedValue({ items: [apiKey], page: 1, pageSize: 20, total: 1 });
+    updateApiKey.mockResolvedValue(apiKey);
+
+    renderApiKeysPage(<ApiKeysPage defaultGroup="default" />);
+
+    expect(await screen.findByText("Follows account group (default)")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Production app" }));
+    const editDialog = await screen.findByRole("dialog", { name: "Edit API key" });
+    const saveButton = within(editDialog).getByRole("button", { name: "Save changes" });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    fireEvent.click(saveButton);
+
+    await waitFor(() =>
+      expect(updateApiKey.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ group: "" })),
+    );
+    expect(listPlaygroundModels).toHaveBeenCalledWith("default");
+  });
+
   test("submits one key update for rapid clicks and unlocks the editor after failure", async () => {
     const apiKey = apiKeyFixture();
     let rejectUpdate!: (reason: Error) => void;

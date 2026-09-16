@@ -37,6 +37,7 @@ import { formatCurrency, formatDateTime } from "@/lib/format";
 
 type ApiKeyDetailsSheetProps = {
   apiKey: ApiKeyRecord | null;
+  defaultGroup?: string;
   locale: string;
   onEdit(apiKey: ApiKeyRecord): void;
   onOpenChange(open: boolean): void;
@@ -56,7 +57,13 @@ export function ApiKeyDetailsSheet(props: ApiKeyDetailsSheetProps) {
     identityRows.push(
       { label: t("Name"), value: apiKey.name },
       { label: t("Key"), value: apiKey.maskedKey, mono: true },
-      { label: t("Group"), value: apiKey.group, mono: true },
+      {
+        label: t("Group"),
+        value:
+          apiKey.group ||
+          t("Follows account group ({{group}})", { group: props.defaultGroup || "—" }),
+        mono: true,
+      },
     );
     if (props.showEnvironment) {
       identityRows.push({

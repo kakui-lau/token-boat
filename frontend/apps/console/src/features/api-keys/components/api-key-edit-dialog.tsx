@@ -39,6 +39,7 @@ import { ExpiryDateTimePicker } from "./expiry-date-time-picker";
 
 type ApiKeyEditDialogProps = {
   apiKey: ApiKeyRecord;
+  defaultGroup?: string;
   locale: string;
   onOpenChange(open: boolean): void;
   onSubmit(input: UpdateApiKeyInput): void;
@@ -64,7 +65,7 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
     allowedModels: props.apiKey.allowedModels,
     environment: props.apiKey.environment,
     expiresAt: props.apiKey.expiresAt,
-    group: props.apiKey.group,
+    group: props.apiKey.group || props.defaultGroup || "",
     name: props.apiKey.name,
     remainingQuotaUsd: props.apiKey.remainingQuotaUsd,
     unlimitedQuota: props.apiKey.unlimitedQuota,
@@ -87,7 +88,10 @@ export function ApiKeyEditDialog(props: ApiKeyEditDialogProps) {
       expiresAt: form.expiresAt,
       unlimitedQuota: form.unlimitedQuota,
       remainingQuotaUsd: form.unlimitedQuota ? 0 : form.remainingQuotaUsd,
-      group: form.group.trim(),
+      group:
+        props.apiKey.group.length === 0 && form.group === props.defaultGroup
+          ? ""
+          : form.group.trim(),
       environment: form.environment,
       allowedModels: form.allowedModels,
       allowedIps: parseList(form.allowedIps),

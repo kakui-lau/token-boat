@@ -1071,6 +1071,45 @@ describe("live repository contracts", () => {
     ]);
   });
 
+  test("preserves an empty legacy API key group as account-group inheritance", async () => {
+    server.use(
+      http.get("*/api/token/", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            page: 1,
+            page_size: 100,
+            total: 1,
+            items: [
+              {
+                id: 9,
+                name: "Inherited group key",
+                key: "inhe**********cdef",
+                status: 1,
+                created_time: 1_754_000_000,
+                accessed_time: 0,
+                expired_time: -1,
+                remain_quota: 0,
+                used_quota: 0,
+                unlimited_quota: true,
+                group: "",
+                model_limits: "",
+                allow_ips: "",
+              },
+            ],
+          },
+        }),
+      ),
+      http.get("*/api/status", () =>
+        HttpResponse.json({ success: true, data: { quota_per_unit: 500_000 } }),
+      ),
+    );
+
+    await expect(liveRepository.listApiKeys()).resolves.toEqual([
+      expect.objectContaining({ id: 9, group: "" }),
+    ]);
+  });
+
   test("forwards API key pagination filters and preserves server totals", async () => {
     server.use(
       http.get("*/api/token/search", ({ request }) => {

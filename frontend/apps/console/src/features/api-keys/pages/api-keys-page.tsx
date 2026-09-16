@@ -629,7 +629,12 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
                             )}
                             <TableText
                               className="max-w-20 text-xs text-muted-foreground"
-                              value={apiKey.group}
+                              value={
+                                apiKey.group ||
+                                t("Follows account group ({{group}})", {
+                                  group: props.defaultGroup || "—",
+                                })
+                              }
                             />
                           </div>
                         </TableCell>
@@ -835,6 +840,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
       </Dialog>
       <ApiKeyDetailsSheet
         apiKey={selectedKey}
+        defaultGroup={props.defaultGroup}
         locale={locale}
         onEdit={(apiKey) => {
           setEditingKey(apiKey);
@@ -847,6 +853,7 @@ export function ApiKeysPage(props: ApiKeysPageProps) {
       {editingKey && (
         <ApiKeyEditDialog
           apiKey={editingKey}
+          defaultGroup={props.defaultGroup}
           key={editingKey.id}
           locale={locale}
           onOpenChange={(open) => {

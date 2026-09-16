@@ -19,5 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { ROLE } from '@/lib/roles'
 
 export function canAccessLegacyDashboard(role?: number): boolean {
+  return role !== undefined && role >= ROLE.USER
+}
+
+export function canAccessLegacyDashboardSection(
+  role: number | undefined,
+  section: string
+): boolean {
+  if (!canAccessLegacyDashboard(role)) return false
+  if (section !== 'users') return true
   return role !== undefined && role >= ROLE.ADMIN
 }

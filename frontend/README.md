@@ -13,9 +13,9 @@ production build assembles the public site and User Console with the legacy comp
 
 - `/` and public content routes serve the Astro site.
 - `/console/*` serves the new React User Console.
-- `/dashboard/*` serves the established legacy administrator dashboard. The public site has no
-  administrator link; authorized operators open the URL directly. Regular users are redirected to
-  the new `/console/` application if they enter a dashboard URL manually.
+- `/dashboard/*` serves the established legacy dashboard for any signed-in user. The public site has
+  no legacy-dashboard link; users open the URL directly when they need the compatibility interface.
+  Administrator-only sections and actions keep their existing role and permission checks.
 - The legacy frontend is retained as an internal compatibility shell for the administrator
   dashboard, first-run setup, authentication and migration callbacks. It is not mounted as a public
   `/legacy` application, and the unfinished Admin V2 is not exposed at `/admin`.
@@ -25,7 +25,7 @@ The release workflow, Docker images, and `make build-all-web` use the same assem
 the legacy compatibility shell, overlay the Astro public output at `web/dist`, then mount the User
 Console below it. The default public site is Astro. Set `PUBLIC_SITE_MODE=legacy` and restart the
 service to roll back only the public pages; `/console/*` remains new and `/dashboard/*` remains the
-legacy administrator dashboard in either mode. Unset it or use `PUBLIC_SITE_MODE=new` to restore the
+legacy compatibility dashboard in either mode. Unset it or use `PUBLIC_SITE_MODE=new` to restore the
 new public site.
 
 The legacy compatibility shell keeps the existing runtime Umami/Google Analytics injection. The

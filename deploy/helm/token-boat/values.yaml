@@ -1,6 +1,6 @@
 image:
   repository: 952178321851.dkr.ecr.ap-northeast-1.amazonaws.com/token-boat
-  digest: sha256:94215a38d2b047dfd1c81a477b4d2360f437970026eca3d59b5e7d32bb374dd2
+  digest: sha256:c10e29ccd2d1d0b1728a0c443c8d36a27861bf661c31e630fd9c515a6a20ac56
   pullPolicy: IfNotPresent
 
 existingSecret: token-boat-runtime

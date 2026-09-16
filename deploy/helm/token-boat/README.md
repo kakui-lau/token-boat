@@ -109,8 +109,8 @@ The shipped web routing is:
 
 - `/` and public content: new Astro site;
 - `/console/*`: new User Console;
-- `/dashboard/*`: legacy administrator dashboard, available only by direct URL; regular users are
-  redirected to `/console/`;
+- `/dashboard/*`: legacy compatibility dashboard, available by direct URL to any signed-in user;
+  administrator-only sections and actions retain their role and permission checks;
 - `/admin/*`: not shipped while Admin V2 is under development.
 
 Keep `FRONTEND_BASE_URL` empty for this embedded layout. A non-empty value makes
